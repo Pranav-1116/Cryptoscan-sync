@@ -3,11 +3,22 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import subprocess
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+#: What a fetchable remote may look like. Deliberately excludes anything that
+#: starts with "-", and any scheme git would hand to a transport we do not want a
+#: bank scan to open (`ext::`, `fd::`).
+_REMOTE_URL = re.compile(
+    r"^(?:https?://|ssh://(?:[\w.\-]+@)?|git://)[^\s]+$"
+)
+#: Hex revision or a plain ref name — never an option.
+_COMMIT = re.compile(r"^(?:[0-9a-fA-F]{7,64}|[A-Za-z0-9._/\-]{1,200})$")
 
 
 def _is_within(child: Path, parent: Path) -> bool:
@@ -38,16 +49,24 @@ class RepoCloner:
             self._copy_local_tree(local, dest)
             return commit or "local"
 
+        # A remote URL is a positional to `git clone`; a positional beginning with
+        # "-" is an option, and `--upload-pack=` turns a clone into arbitrary
+        # command execution. `--` ends option parsing, and the URL grammar is
+        # checked first so a non-URL never reaches the process at all.
+        if not _REMOTE_URL.match(str(repo_url or "")):
+            raise ValueError("repository URL is not an http(s), ssh or git URL")
         cmd = ["git", "clone", "--depth", str(depth)]
         if branch:
             cmd.extend(["--branch", branch, "--single-branch"])
-        cmd.extend([repo_url, str(dest)])
+        cmd.extend(["--", repo_url, str(dest)])
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if proc.returncode != 0:
             raise RuntimeError(f"git clone failed: {proc.stderr.strip()}")
         if commit:
+            if not _COMMIT.match(str(commit or "")):
+                raise ValueError("commit must be a hex revision or a ref name")
             checkout = subprocess.run(
-                ["git", "-C", str(dest), "checkout", commit],
+                ["git", "-C", str(dest), "checkout", commit, "--"],
                 capture_output=True,
                 text=True,
                 timeout=60,

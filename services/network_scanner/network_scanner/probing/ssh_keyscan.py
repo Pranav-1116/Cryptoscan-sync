@@ -34,6 +34,13 @@ from pathlib import Path
 from typing import Any
 
 SCAN_TYPES = ("rsa", "ecdsa", "ed25519")
+
+#: A host must look like a host. Not a convenience check: `ssh-keyscan` takes the
+#: host as a positional argument, and a positional that begins with "-" is parsed
+#: as an *option* — `-oProxyCommand=...` would run a command of the caller's
+#: choosing before any key is fetched. Validating the grammar is the defence;
+#: `--` is the belt, and both are used.
+_HOSTNAME = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._:\-]{0,253}[A-Za-z0-9])?$")
 _KEY_LINE = re.compile(r"^(\S+)\s+(\S+)\s+(\S+)$")
 _FP_LINE = re.compile(
     r"^\s*(\d+)\s+(SHA256:\S+)\s+(.*?)\s*\((\w+)\)\s*$"
@@ -179,6 +186,19 @@ def scan_ssh_host_keys(
     baseline: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Fetch + fingerprint + classify one host's SSH public keys."""
+    host = (host or "").strip()
+    if not _HOSTNAME.match(host) or host.startswith("-"):
+        # Refused before a process exists: an unparseable host is not worth a
+        # subprocess, and a leading "-" is an option, not a host.
+        return {
+            "endpoint": f"{host or '(empty)'}:{port}",
+            "status": "REFUSED",
+            "keys": [],
+            "policy_issues": [],
+            "key_drift": None,
+            "method": "ssh-keyscan",
+            "detail": "host is not a hostname or IP literal; refusing to pass it to ssh-keyscan",
+        }
     finding: dict[str, Any] = {
         "endpoint": f"{host}:{port}",
         "status": "OK",
@@ -196,7 +216,8 @@ def scan_ssh_host_keys(
         return finding
     try:
         proc = subprocess.run(  # noqa: S603 — fixed argv, local diagnostic tool
-            [keyscan, "-p", str(port), "-T", str(int(max(2, timeout))), "-t", ",".join(SCAN_TYPES), host],
+            [keyscan, "-p", str(port), "-T", str(int(max(2, timeout))),
+             "-t", ",".join(SCAN_TYPES), "--", host],
             capture_output=True,
             text=True,
             timeout=max(4.0, timeout) + 4.0,

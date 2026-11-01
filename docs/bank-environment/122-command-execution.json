@@ -1,0 +1,776 @@
+{
+  "schema": "cryptoscan.command-execution/1",
+  "version": "command-execution/1.0",
+  "generated_at": "2026-11-01T03:51:33.365536+00:00",
+  "counts": {
+    "PASS": 3,
+    "PARTIAL": 1,
+    "FAIL": 0
+  },
+  "sites": 91,
+  "rows": [
+    {
+      "id": "shell_sinks",
+      "question": "does any collector input reach a shell?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "no-shell",
+          "expected": "no shell=True, os.system, os.popen or string command line",
+          "ok": true,
+          "observed": "0 shell sink(s); 0 string command(s); 91 argv-list call(s) in 50 module(s)"
+        }
+      ],
+      "unproven": [],
+      "limits": [
+        "a census reads source; a call site reached through an import alias or a compiled extension would be invisible to it"
+      ],
+      "sinks": []
+    },
+    {
+      "id": "argument_injection",
+      "question": "can a hostile target become an option or a second argument?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "hostile-inputs-contained",
+          "expected": "every call site refuses or passes the input as one argv element",
+          "ok": true,
+          "observed": "3 call site(s) driven with 6 hostile inputs each; 0 site(s) failed"
+        },
+        {
+          "probe": "control-vulnerable-sink",
+          "expected": "the control's shell string is reported as a failure",
+          "ok": true,
+          "observed": "a shell string reached subprocess, so the check reports a failure"
+        }
+      ],
+      "unproven": [],
+      "limits": [
+        "the canary proves an input did not execute through *this* call site; it cannot prove the same input does not reach another sink later in the pipeline",
+        "the recorder replaces subprocess, so a site that shells out through a library (paramiko, docker-py) would not appear here"
+      ],
+      "sites": [
+        {
+          "site": "ssh_keyscan",
+          "qualified": "network_scanner.probing.ssh_keyscan.scan_ssh_host_keys",
+          "parameter": "host",
+          "verdict": "PASS",
+          "probes": [
+            {
+              "probe": "ssh_keyscan:option:-oProxyCommand=tou",
+              "ok": true,
+              "observed": "no process was spawned \u2014 the input never reached a command"
+            },
+            {
+              "probe": "ssh_keyscan:semicolon:example.com; touch",
+              "ok": true,
+              "observed": "no process was spawned \u2014 the input never reached a command"
+            },
+            {
+              "probe": "ssh_keyscan:subshell:example.com$(touch",
+              "ok": true,
+              "observed": "no process was spawned \u2014 the input never reached a command"
+            },
+            {
+              "probe": "ssh_keyscan:backtick:example.com`touch ",
+              "ok": true,
+              "observed": "no process was spawned \u2014 the input never reached a command"
+            },
+            {
+              "probe": "ssh_keyscan:newline:example.com\ntouch ",
+              "ok": true,
+              "observed": "no process was spawned \u2014 the input never reached a command"
+            },
+            {
+              "probe": "ssh_keyscan:pipe:example.com | touc",
+              "ok": true,
+              "observed": "no process was spawned \u2014 the input never reached a command"
+            },
+            {
+              "probe": "control-legitimate-value",
+              "ok": true,
+              "observed": "passed as a single argv element (ssh-keyscan \u2026)"
+            }
+          ],
+          "hostile_inputs": 6
+        },
+        {
+          "site": "git_clone",
+          "qualified": "worker.workspace.repo_cloner.RepoCloner.clone",
+          "parameter": "repo_url",
+          "verdict": "PASS",
+          "probes": [
+            {
+              "probe": "git_clone:option:-oProxyCommand=tou",
+              "ok": true,
+              "observed": "refused with ValueError"
+            },
+            {
+              "probe": "git_clone:semicolon:example.com; touch",
+              "ok": true,
+              "observed": "refused with ValueError"
+            },
+            {
+              "probe": "git_clone:subshell:example.com$(touch",
+              "ok": true,
+              "observed": "refused with ValueError"
+            },
+            {
+              "probe": "git_clone:backtick:example.com`touch ",
+              "ok": true,
+              "observed": "refused with ValueError"
+            },
+            {
+              "probe": "git_clone:newline:example.com\ntouch ",
+              "ok": true,
+              "observed": "refused with ValueError"
+            },
+            {
+              "probe": "git_clone:pipe:example.com | touc",
+              "ok": true,
+              "observed": "refused with ValueError"
+            },
+            {
+              "probe": "control-legitimate-value",
+              "ok": true,
+              "observed": "refused with RuntimeError"
+            }
+          ],
+          "hostile_inputs": 6
+        },
+        {
+          "site": "image_reference",
+          "qualified": "container_scanner.image.puller._validated",
+          "parameter": "reference",
+          "verdict": "PASS",
+          "probes": [
+            {
+              "probe": "image_reference:option:-oProxyCommand=tou",
+              "ok": true,
+              "observed": "refused with ValueError"
+            },
+            {
+              "probe": "image_reference:semicolon:example.com; touch",
+              "ok": true,
+              "observed": "refused with ValueError"
+            },
+            {
+              "probe": "image_reference:subshell:example.com$(touch",
+              "ok": true,
+              "observed": "refused with ValueError"
+            },
+            {
+              "probe": "image_reference:backtick:example.com`touch ",
+              "ok": true,
+              "observed": "refused with ValueError"
+            },
+            {
+              "probe": "image_reference:newline:example.com\ntouch ",
+              "ok": true,
+              "observed": "refused with ValueError"
+            },
+            {
+              "probe": "image_reference:pipe:example.com | touc",
+              "ok": true,
+              "observed": "refused with ValueError"
+            },
+            {
+              "probe": "control-legitimate-value",
+              "ok": true,
+              "observed": "no process was spawned \u2014 the input never reached a command"
+            }
+          ],
+          "hostile_inputs": 6
+        }
+      ]
+    },
+    {
+      "id": "end_of_options",
+      "question": "is `--` used before untrusted positionals where the tool supports it?",
+      "verdict": "PARTIAL",
+      "probes": [
+        {
+          "probe": "counted",
+          "expected": "the count is reported per call site, not assumed complete",
+          "ok": true,
+          "observed": "3 of 91 call sites pass `--` before an untrusted positional"
+        }
+      ],
+      "unproven": [
+        "some tools have no end-of-options support (`openssl s_client` takes its target as the value of `-connect`, which is safe by shape rather than by `--`); the count is therefore evidence of intent, not a complete measure"
+      ],
+      "limits": [],
+      "sites": [
+        {
+          "module": "scripts/backup_drill.py",
+          "function": "main",
+          "line": 180,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/backup_evidence.py",
+          "function": "backup_postgres",
+          "line": 68,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/bank_readiness.py",
+          "function": "run",
+          "line": 60,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/bank_readiness.py",
+          "function": "run_engineering",
+          "line": 279,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/benchmark_scan.py",
+          "function": "main",
+          "line": 138,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/benchmark_scan.py",
+          "function": "main",
+          "line": 164,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/check_prod_compose.py",
+          "function": "render",
+          "line": 41,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/controlled_recovery_drill.py",
+          "function": "run",
+          "line": 46,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/engineering_gate.py",
+          "function": "tenant_isolation_audit",
+          "line": 207,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/engineering_gate.py",
+          "function": "branch_protection",
+          "line": 272,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/engineering_gate.py",
+          "function": "branch_protection",
+          "line": 275,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/failure_matrix.py",
+          "function": "drill_queue",
+          "line": 592,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/generate_own_sbom.py",
+          "function": "python_components",
+          "line": 50,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/generate_own_sbom.py",
+          "function": "_version",
+          "line": 111,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/hsm_qualification.py",
+          "function": "run_operator_command",
+          "line": 185,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/operational_deployment_readiness.py",
+          "function": "_git",
+          "line": 234,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/operator_loop_drill.py",
+          "function": "git",
+          "line": 1136,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/operator_release.py",
+          "function": "git",
+          "line": 178,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/operator_release.py",
+          "function": "cluster_preflight",
+          "line": 323,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/pitr_drill.py",
+          "function": "find_binaries",
+          "line": 115,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/pitr_drill.py",
+          "function": "run",
+          "line": 141,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/postgres_drill.py",
+          "function": "main",
+          "line": 404,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/postgres_drill.py",
+          "function": "main",
+          "line": 425,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/postgres_drill.py",
+          "function": "main",
+          "line": 438,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/prepare_replay_redis_lab.py",
+          "function": "openssl",
+          "line": 26,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/production_evidence.py",
+          "function": "run_guard",
+          "line": 154,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/production_evidence.py",
+          "function": "run_guard",
+          "line": 158,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/production_evidence.py",
+          "function": "run_drill",
+          "line": 191,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/production_evidence.py",
+          "function": "bring_up_staging",
+          "line": 251,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/production_evidence.py",
+          "function": "run_load",
+          "line": 293,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/production_evidence.py",
+          "function": "identity",
+          "line": 429,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/production_evidence.py",
+          "function": "identity",
+          "line": 432,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/production_qualification.py",
+          "function": "command",
+          "line": 79,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/production_qualification.py",
+          "function": "_repository_metadata",
+          "line": 287,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/qualify_owned_namespace_container.py",
+          "function": "run_owned",
+          "line": 156,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/qualify_owned_namespace_container.py",
+          "function": "execute",
+          "line": 190,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/queue_kill9_drill.py",
+          "function": "drill",
+          "line": 73,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/readiness_closure_gate.py",
+          "function": "current_commit",
+          "line": 260,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/realtime_dataplane_drill.py",
+          "function": "_psql",
+          "line": 98,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/realtime_dataplane_drill.py",
+          "function": "_docker",
+          "line": 106,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/release_check.py",
+          "function": "_git",
+          "line": 72,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/release_check.py",
+          "function": "_head_tagged",
+          "line": 79,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/release_check.py",
+          "function": "_run_guard",
+          "line": 133,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/release_check.py",
+          "function": "_release_attestation_findings",
+          "line": 205,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/release_check.py",
+          "function": "_operational_policy_findings",
+          "line": 226,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/release_check.py",
+          "function": "_readiness_closure_findings",
+          "line": 250,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/release_check.py",
+          "function": "_production_evidence",
+          "line": 314,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/reliability_drill.py",
+          "function": "_psql",
+          "line": 59,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/reliability_drill.py",
+          "function": "worker_restart",
+          "line": 236,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/reliability_drill.py",
+          "function": "worker_restart",
+          "line": 246,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/reliability_drill.py",
+          "function": "db_outage",
+          "line": 274,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/reliability_drill.py",
+          "function": "db_outage",
+          "line": 284,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/restore_evidence.py",
+          "function": "_restore",
+          "line": 140,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/scanner_qualification.py",
+          "function": "_run_network_unconfigured",
+          "line": 129,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/scanner_qualification_matrix.py",
+          "function": "_run",
+          "line": 112,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/snb_1k_e2e.py",
+          "function": "run",
+          "line": 602,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/snb_1k_e2e.py",
+          "function": "run",
+          "line": 603,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/snb_1k_e2e.py",
+          "function": "run",
+          "line": 604,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/snb_1k_e2e.py",
+          "function": "run",
+          "line": 605,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/snb_1k_e2e.py",
+          "function": "run",
+          "line": 606,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/soak.py",
+          "function": "_git_head",
+          "line": 466,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/worker_dispatch_drill.py",
+          "function": "start_redis",
+          "line": 101,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/worker_dispatch_drill.py",
+          "function": "ready",
+          "line": 131,
+          "end_of_options": false
+        },
+        {
+          "module": "scripts/worker_dispatch_drill.py",
+          "function": "worker",
+          "line": 188,
+          "end_of_options": false
+        },
+        {
+          "module": "services/api/api/live_scan/runner.py",
+          "function": "_execute",
+          "line": 576,
+          "end_of_options": false
+        },
+        {
+          "module": "services/api/api/security/oidc.py",
+          "function": "_verify_rs256",
+          "line": 220,
+          "end_of_options": false
+        },
+        {
+          "module": "services/container_scanner/container_scanner/image/puller.py",
+          "function": "_run",
+          "line": 120,
+          "end_of_options": false
+        },
+        {
+          "module": "services/governance/governance/backup_jobs.py",
+          "function": "_run",
+          "line": 82,
+          "end_of_options": false
+        },
+        {
+          "module": "services/inventory/inventory/isolation.py",
+          "function": "collect_isolated",
+          "line": 318,
+          "end_of_options": false
+        },
+        {
+          "module": "services/inventory/inventory/linux_runtime.py",
+          "function": "systemd_output",
+          "line": 348,
+          "end_of_options": false
+        },
+        {
+          "module": "services/inventory/inventory/linux_traffic_preflight.py",
+          "function": "bounded_command",
+          "line": 59,
+          "end_of_options": false
+        },
+        {
+          "module": "services/keyassure/keyassure/trust_store.py",
+          "function": "parse_jks",
+          "line": 138,
+          "end_of_options": false
+        },
+        {
+          "module": "services/network_scanner/network_scanner/certificates/cert_parser.py",
+          "function": "_openssl_text",
+          "line": 211,
+          "end_of_options": false
+        },
+        {
+          "module": "services/network_scanner/network_scanner/certificates/chain_order.py",
+          "function": "fetch_sent_chain",
+          "line": 60,
+          "end_of_options": false
+        },
+        {
+          "module": "services/network_scanner/network_scanner/certificates/revocation_live.py",
+          "function": "_run",
+          "line": 117,
+          "end_of_options": false
+        },
+        {
+          "module": "services/network_scanner/network_scanner/probing/renegotiation.py",
+          "function": "_run_s_client",
+          "line": 60,
+          "end_of_options": false
+        },
+        {
+          "module": "services/network_scanner/network_scanner/probing/ssh_keyscan.py",
+          "function": "_fingerprint_keydata",
+          "line": 171,
+          "end_of_options": false
+        },
+        {
+          "module": "services/network_scanner/network_scanner/probing/ssh_keyscan.py",
+          "function": "scan_ssh_host_keys",
+          "line": 218,
+          "end_of_options": true
+        },
+        {
+          "module": "services/reporting/reporting/signing.py",
+          "function": "_run_openssl",
+          "line": 106,
+          "end_of_options": false
+        },
+        {
+          "module": "services/runtime/runtime/agent/preload_trace.py",
+          "function": "ensure_shim",
+          "line": 110,
+          "end_of_options": false
+        },
+        {
+          "module": "services/runtime/runtime/agent/preload_trace.py",
+          "function": "trace_command",
+          "line": 253,
+          "end_of_options": false
+        },
+        {
+          "module": "services/runtime/runtime/agent/version_resolve.py",
+          "function": "_run",
+          "line": 39,
+          "end_of_options": false
+        },
+        {
+          "module": "services/universal_crypto/universal_crypto/binary_cfa.py",
+          "function": "ghidra_analysis",
+          "line": 140,
+          "end_of_options": false
+        },
+        {
+          "module": "services/worker/worker/core/static_scan_isolation.py",
+          "function": "_exchange",
+          "line": 87,
+          "end_of_options": false
+        },
+        {
+          "module": "services/worker/worker/core/static_scan_isolation.py",
+          "function": "scan_static",
+          "line": 271,
+          "end_of_options": false
+        },
+        {
+          "module": "services/worker/worker/core/static_scan_isolation.py",
+          "function": "scan_static",
+          "line": 277,
+          "end_of_options": false
+        },
+        {
+          "module": "services/worker/worker/monitor/watch.py",
+          "function": "git_probe",
+          "line": 70,
+          "end_of_options": false
+        },
+        {
+          "module": "services/worker/worker/monitor/watch.py",
+          "function": "container_probe",
+          "line": 112,
+          "end_of_options": false
+        },
+        {
+          "module": "services/worker/worker/workspace/repo_cloner.py",
+          "function": "clone",
+          "line": 62,
+          "end_of_options": true
+        },
+        {
+          "module": "services/worker/worker/workspace/repo_cloner.py",
+          "function": "clone",
+          "line": 68,
+          "end_of_options": true
+        },
+        {
+          "module": "services/worker/worker/workspace/repo_cloner.py",
+          "function": "clone",
+          "line": 76,
+          "end_of_options": false
+        }
+      ]
+    },
+    {
+      "id": "privileged_surfaces",
+      "question": "does the branch touch the docker socket, exec into pods, or run as root?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "no-privileged-exec",
+          "expected": "no docker-socket mount, no kubectl exec, no privilege drop-to-root",
+          "ok": true,
+          "observed": "docker socket 0 \u00b7 pod exec 0 \u00b7 setuid(0) 0"
+        }
+      ],
+      "unproven": [
+        "the container scanner reads images through skopeo/docker/podman CLIs; if a deployment mounts the socket, the CLI inherits that authority and this source census would not see it",
+        "seccomp and namespace isolation of the static scanner are not measured here"
+      ],
+      "limits": []
+    }
+  ],
+  "limits": [
+    "Source census plus executed probes in-process. No real `ssh-keyscan`, `git` or container CLI was asked to run: the recorder stands in for subprocess, so this proves what would have been passed to them, not what they did with it.",
+    "Shell expansion inside a spawned tool (a tool that itself calls a shell) is out of scope \u2014 the tool's own argument handling is the boundary."
+  ]
+}

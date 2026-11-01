@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -81,18 +82,37 @@ def _pull_to_archive(reference: str, archive: Path, *, timeout: int) -> Path:
     )
 
 
+#: An image reference, per the distribution spec: lowercase path components,
+#: optional registry:port, optional :tag or @digest. A reference that starts with
+#: "-" is an *option* to docker/podman/skopeo (`--config`, `-a`), so the grammar
+#: is enforced before any of them sees it.
+_REFERENCE = re.compile(
+    r"^(?:[a-z0-9][a-z0-9.\-]*(?::\d+)?/)?(?:[a-z0-9._\-/]+)(?::[\w.\-]{1,128})?"
+    r"(?:@sha256:[0-9a-f]{64})?$"
+)
+
+
+def _validated(reference: str) -> str:
+    if not _REFERENCE.match(reference or "") or reference.startswith("-"):
+        raise ValueError(f"not an image reference: {reference[:80]!r}")
+    return reference
+
+
 def _pull_skopeo(binary: str, reference: str, archive: Path, timeout: int) -> None:
+    reference = _validated(reference)
     src = reference if "://" in reference else f"docker://{reference}"
     _run([binary, "copy", "--quiet", src, f"docker-archive:{archive}"], timeout)
 
 
 def _pull_docker(binary: str, reference: str, archive: Path, timeout: int) -> None:
-    _run([binary, "pull", "--quiet", reference], timeout)
+    reference = _validated(reference)
+    _run([binary, "pull", "--quiet", "--", reference], timeout)
     _run([binary, "save", "-o", str(archive), reference], timeout)
 
 
 def _pull_podman(binary: str, reference: str, archive: Path, timeout: int) -> None:
-    _run([binary, "pull", "--quiet", reference], timeout)
+    reference = _validated(reference)
+    _run([binary, "pull", "--quiet", "--", reference], timeout)
     _run([binary, "save", "-o", str(archive), reference], timeout)
 
 
