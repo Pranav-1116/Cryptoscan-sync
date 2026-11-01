@@ -29,7 +29,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import JSON, DateTime, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Index, Integer, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -209,6 +209,15 @@ class EstateObservationRecord(BaseModel, TenantScoped):
         # twin's detail); without this the planner drives the tenant index and walks
         # the whole tenant to find ten rows — 1.5 s at a million facts, measured
         Index("ix_estate_observations_tenant_asset", "tenant_id", "asset_id"),
+        # Disputes are rare; finding them by grouping every CURRENT fact cost 1.5 s
+        # at a million facts and grows with the estate, so the write path marks the
+        # rows and this **partial** index holds only the marked ones. A plain
+        # (tenant_id, conflict) index was read as a full tenant scan by the planner
+        # — measured — because its cost estimate is the whole prefix.
+        Index(
+            "ix_estate_observations_disputed", "tenant_id", "asset_id", "fact_type",
+            sqlite_where=text("conflict = 1"), postgresql_where=text("conflict"),
+        ),
     )
 
     observation_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
@@ -221,6 +230,10 @@ class EstateObservationRecord(BaseModel, TenantScoped):
     layer: Mapped[Optional[str]] = mapped_column(String(40))
 
     lifecycle_state: Mapped[str] = mapped_column(String(20), nullable=False, default="CURRENT", index=True)
+    #: Two values are still asserted for this ``(asset, fact)`` and the twin will not
+    #: choose. Maintained by the write path; see ``estate_observations.sync``.
+    conflict: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False,
+                                           server_default="0")
     first_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     observation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)

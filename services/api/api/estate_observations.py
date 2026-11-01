@@ -286,16 +286,23 @@ def sync(
                     "values": sorted(set(values)),
                     "meaning": "two observations disagree about this fact; both are kept as CURRENT",
                 })
+            # Rows that will be CURRENT for this fact once the observation is
+            # applied. Disagreement inside one observation is what makes a
+            # dispute, so the flag is decided here — where the fact is known —
+            # rather than by re-grouping every CURRENT fact on every console read.
+            current_for_key: list[Any] = []
             for value in dict.fromkeys(values):
                 row = existing.get(observation_id(asset_id, fact_type, value))
                 if row is not None and row.lifecycle_state == "CURRENT":
                     row.last_seen_at = now
                     row.observation_count = int(row.observation_count or 0) + 1
+                    current_for_key.append(row)
                     refreshed += 1
                     continue
                 if row is not None:
                     # the value was true before and is asserted again: revive the window
                     row.lifecycle_state = "CURRENT"
+                    current_for_key.append(row)
                     row.last_seen_at = now
                     row.observation_count = int(row.observation_count or 0) + 1
                     if primary and not row.evidence_id:
@@ -304,7 +311,7 @@ def sync(
                     continue
                 entry_row = next(item for item in rows
                                  if item["fact_type"] == fact_type and item["value"] == value)
-                db.add(EstateObservationRecord(
+                fresh = EstateObservationRecord(
                     tenant_id=tenant_id,
                     observation_id=observation_id(asset_id, fact_type, value),
                     asset_id=asset_id,
@@ -318,11 +325,17 @@ def sync(
                     first_seen_at=now,
                     last_seen_at=now,
                     observation_count=1,
-                ))
+                )
+                db.add(fresh)
+                current_for_key.append(fresh)
                 created += 1
+            disputed = len({row.value for row in current_for_key}) > 1
+            for row in current_for_key:
+                row.conflict = disputed
             for old in held:
                 if old.value not in values:
                     old.lifecycle_state = "HISTORICAL"
+                    old.conflict = False
                     superseded += 1
 
         # a fact this asset no longer asserts is retired — including one whose asset is
@@ -333,6 +346,7 @@ def sync(
                 continue
             for row in held_rows:
                 row.lifecycle_state = "HISTORICAL"
+                row.conflict = False
                 retired += 1
 
     for key, rows in current.items():
@@ -340,6 +354,7 @@ def sync(
             continue
         for row in rows:
             row.lifecycle_state = "HISTORICAL"
+            row.conflict = False
             retired += 1
 
     db.commit()
@@ -790,17 +805,33 @@ def summary(db: Any, *, tenant_id: str | None) -> dict[str, Any]:
         ).all()
     }
 
-    # a dispute is two CURRENT values for the same (asset, fact) — found by grouping,
-    # not by counting in Python
+    # A dispute is two CURRENT values for the same (asset, fact). The write path
+    # marks those rows, so this reads a short index instead of grouping every
+    # CURRENT fact: the group-by version cost 1.5 s at a million facts and grew
+    # with the estate, and the console asks this on its first request after an
+    # ingest. `history()` still derives the state per asset, which is O(facts for
+    # one asset) and is where the per-fact answer belongs.
+    dispute_where = (
+        observation_tenant,
+        EstateObservationRecord.conflict.is_(True),
+        EstateObservationRecord.lifecycle_state == "CURRENT",
+    )
+    disputed_count = int(db.execute(
+        select(func.count()).select_from(
+            select(EstateObservationRecord.asset_id, EstateObservationRecord.fact_type)
+            .where(*dispute_where)
+            .group_by(EstateObservationRecord.asset_id, EstateObservationRecord.fact_type)
+            .subquery()
+        )
+    ).scalar() or 0)
     disputed_rows = db.execute(
-        select(EstateObservationRecord.asset_id, EstateObservationRecord.fact_type,
-               func.count().label("asserted"))
-        .where(observation_tenant, EstateObservationRecord.lifecycle_state == "CURRENT")
+        select(EstateObservationRecord.asset_id, EstateObservationRecord.fact_type)
+        .where(*dispute_where)
         .group_by(EstateObservationRecord.asset_id, EstateObservationRecord.fact_type)
-        .having(func.count() > 1)
         .order_by(EstateObservationRecord.asset_id, EstateObservationRecord.fact_type)
+        .limit(50)
     ).all()
-    disputed = [(str(asset_id), str(fact_type)) for asset_id, fact_type, _ in disputed_rows]
+    disputed = [(str(asset_id), str(fact_type)) for asset_id, fact_type in disputed_rows]
 
     return {
         "schema": SCHEMA,
@@ -817,11 +848,11 @@ def summary(db: Any, *, tenant_id: str | None) -> dict[str, Any]:
             "historical": historical,
             "assets": assets,
             "changed_facts": changed,
-            "disputed_facts": len(disputed),
+            "disputed_facts": disputed_count,
         },
         "disputes": [
             {"asset_id": asset_id, "fact_type": fact_type}
-            for asset_id, fact_type in disputed[:50]
+            for asset_id, fact_type in disputed
         ],
         "meaning": (
             "the twin remembers every value it has ever asserted for a fact and the window in which "
