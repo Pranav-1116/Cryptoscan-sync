@@ -1,0 +1,362 @@
+{
+  "schema": "cryptoscan.authorization-boundaries/1",
+  "version": "authorization-boundaries/1.0",
+  "generated_at": "2026-11-01T03:08:21.481861+00:00",
+  "counts": {
+    "PASS": 8,
+    "PARTIAL": 1,
+    "FAIL": 0
+  },
+  "operations": 1225,
+  "requests_executed": 1617,
+  "rows": [
+    {
+      "id": "role_catalog",
+      "question": "are Admin, Auditor and Viewer distinct identities with distinct authority?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "role-superadmin",
+          "expected": "admin resolves to superadmin in the catalog",
+          "ok": true,
+          "observed": "normalize_roles(['admin']) = ['superadmin']"
+        },
+        {
+          "probe": "role-auditor",
+          "expected": "auditor resolves to auditor in the catalog",
+          "ok": true,
+          "observed": "normalize_roles(['auditor']) = ['auditor']"
+        },
+        {
+          "probe": "role-readonly",
+          "expected": "viewer resolves to readonly in the catalog",
+          "ok": true,
+          "observed": "normalize_roles(['viewer']) = ['readonly']"
+        },
+        {
+          "probe": "permissions-are-nested",
+          "expected": "viewer \u2282 auditor \u2282 admin",
+          "ok": true,
+          "observed": "4 / 13 / 36 permissions"
+        }
+      ],
+      "unproven": [],
+      "limits": []
+    },
+    {
+      "id": "boundary_superadmin",
+      "question": "can a admin (superadmin) cross into authority it does not hold?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "no-escape",
+          "expected": "no operation allowed that the declaration forbids",
+          "ok": true,
+          "observed": "0 escape(s)"
+        },
+        {
+          "probe": "boundary-is-real",
+          "expected": "every forbidden operation probed is refused",
+          "ok": true,
+          "observed": "0 of 0 forbidden operations refused"
+        }
+      ],
+      "unproven": [],
+      "limits": [],
+      "escapes": []
+    },
+    {
+      "id": "boundary_auditor",
+      "question": "can a auditor (auditor) cross into authority it does not hold?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "no-escape",
+          "expected": "no operation allowed that the declaration forbids",
+          "ok": true,
+          "observed": "0 escape(s)"
+        },
+        {
+          "probe": "boundary-is-real",
+          "expected": "every forbidden operation probed is refused",
+          "ok": true,
+          "observed": "188 of 188 forbidden operations refused"
+        }
+      ],
+      "unproven": [],
+      "limits": [],
+      "escapes": []
+    },
+    {
+      "id": "boundary_readonly",
+      "question": "can a viewer (readonly) cross into authority it does not hold?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "no-escape",
+          "expected": "no operation allowed that the declaration forbids",
+          "ok": true,
+          "observed": "0 escape(s)"
+        },
+        {
+          "probe": "boundary-is-real",
+          "expected": "every forbidden operation probed is refused",
+          "ok": true,
+          "observed": "286 of 286 forbidden operations refused"
+        }
+      ],
+      "unproven": [],
+      "limits": [],
+      "escapes": []
+    },
+    {
+      "id": "declared_vs_enforced",
+      "question": "does what the route declares match what the server enforces?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "matrix-agrees",
+          "expected": "every executed decision matches the declared requirement",
+          "ok": true,
+          "observed": "1617 decisions, 0 violating, 9 over-tight"
+        },
+        {
+          "probe": "comparator-can-fail",
+          "expected": "the comparison reports a decision the declaration forbids, and only that",
+          "ok": true,
+          "observed": "a viewer allowed on a superadmin-only permission is reported; the superadmin on the same permission is not"
+        }
+      ],
+      "unproven": [
+        "over-tight guards refuse a role the declaration allows; see over_tight"
+      ],
+      "limits": [],
+      "violations": [],
+      "over_tight": [
+        {
+          "method": "DELETE",
+          "path": "/api/v1/estate/evidence/schedules/{identifier}",
+          "role": "superadmin",
+          "status": 403,
+          "declared": [],
+          "reason": "declared to allow this role, refused"
+        },
+        {
+          "method": "DELETE",
+          "path": "/api/v1/estate/evidence/schedules/{identifier}",
+          "role": "auditor",
+          "status": 403,
+          "declared": [],
+          "reason": "declared to allow this role, refused"
+        },
+        {
+          "method": "DELETE",
+          "path": "/api/v1/estate/evidence/schedules/{identifier}",
+          "role": "readonly",
+          "status": 403,
+          "declared": [],
+          "reason": "declared to allow this role, refused"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/estate/evidence/tick",
+          "role": "superadmin",
+          "status": 403,
+          "declared": [],
+          "reason": "declared to allow this role, refused"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/estate/evidence/tick",
+          "role": "auditor",
+          "status": 403,
+          "declared": [],
+          "reason": "declared to allow this role, refused"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/estate/evidence/tick",
+          "role": "readonly",
+          "status": 403,
+          "declared": [],
+          "reason": "declared to allow this role, refused"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/webhooks/github",
+          "role": "superadmin",
+          "status": 401,
+          "declared": [],
+          "reason": "declared to allow this role, refused"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/webhooks/github",
+          "role": "auditor",
+          "status": 401,
+          "declared": [],
+          "reason": "declared to allow this role, refused"
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/webhooks/github",
+          "role": "readonly",
+          "status": 401,
+          "declared": [],
+          "reason": "declared to allow this role, refused"
+        }
+      ],
+      "destructive": [
+        "POST /api/v1/auth/me/sessions/revoke",
+        "POST /api/v1/auth/users/{username}/restore",
+        "POST /api/v1/certificates/{fingerprint}/revoke",
+        "POST /api/v1/control/credentials/{credential_id}/rotate",
+        "POST /api/v1/control/safe-scan/emergency-stop",
+        "POST /api/v1/exceptions/{exception_id}/revoke",
+        "POST /api/v1/findings/{evidence_id}/restore",
+        "POST /api/v1/live-scan/stop",
+        "GET /api/v1/network/crypto-safety",
+        "POST /api/v1/network/crypto-stop",
+        "POST /api/v1/resilience/backup/restore",
+        "POST /api/v1/saas/admin/tenants/{tenant_id}/restore"
+      ]
+    },
+    {
+      "id": "anonymous_refused",
+      "question": "is the boundary enforced without a session, or is it a UI convention?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "no-token-on-writes",
+          "expected": "every state-changing operation refuses an unauthenticated caller",
+          "ok": true,
+          "observed": "0 of 562 gated writes answered without a token"
+        }
+      ],
+      "unproven": [],
+      "limits": [
+        "public-by-design paths (login, register, webhooks) are exempted by the gate and are guide 120's subject"
+      ],
+      "allowed": []
+    },
+    {
+      "id": "forged_credentials",
+      "question": "does a token claiming superadmin, signed elsewhere, get in?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "foreign-signature",
+          "expected": "a token signed by another deployment is refused",
+          "ok": true,
+          "observed": "0 write(s) accepted a foreign-signed token"
+        }
+      ],
+      "unproven": [],
+      "limits": [
+        "forgery with the real signing key is out of reach by definition; the key's custody is not measured here"
+      ],
+      "allowed": []
+    },
+    {
+      "id": "session_only_writes",
+      "question": "which state-changing operations demand nothing beyond a session?",
+      "verdict": "PARTIAL",
+      "probes": [
+        {
+          "probe": "counted",
+          "expected": "the count is reported rather than assumed zero",
+          "ok": true,
+          "observed": "180 of 562 gated writes are session-only"
+        }
+      ],
+      "unproven": [
+        "180 write operation(s) are callable by any authenticated principal, including a viewer; the owner list is docs/bank-environment/102-authenticated-only-writes.json"
+      ],
+      "limits": [
+        "this row is a policy question, not a defect: it is reported so a bank can decide per area, which is the review's own framing",
+        "228 operation(s) are gated by tenant membership (owner/admin within an organisation) rather than a catalog role; those are excluded from the matrix comparison and measured by the tenancy drill"
+      ],
+      "by_area": {
+        "estate": 24,
+        "network": 24,
+        "migrations": 13,
+        "vendors": 10,
+        "graph": 9,
+        "banking": 8,
+        "cbom": 8,
+        "systems": 8,
+        "security": 7,
+        "technology-bom": 7,
+        "auth": 6,
+        "cloud": 6
+      }
+    },
+    {
+      "id": "target_authorization",
+      "question": "is the target of a collection authorized by the server, not by the caller's role?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "no-scope-fails-closed",
+          "expected": "refused (409/422) with no approved scope",
+          "ok": true,
+          "observed": "409 {\"detail\":{\"error\":\"scope_not_configured\",\"reason\":\"no approved network scope \u2014 CryptoScan refuses to probe until a scope names the exact destinations\"}}"
+        },
+        {
+          "probe": "scope-rejects-cidr",
+          "expected": "422 when the approved scope names a /8",
+          "ok": true,
+          "observed": "422 {\"detail\":{\"error\":\"invalid_destination\",\"reason\":\"probe_target[0]: malformed probe hostname: '10.0.0.0/8'\"}}"
+        },
+        {
+          "probe": "scope-rejects-metadata",
+          "expected": "422 when the scope names 169.254.169.254",
+          "ok": true,
+          "observed": "422 {\"detail\":{\"error\":\"invalid_destination\",\"reason\":\"probe_target[0]: refusing to probe loopback/cloud-metadata target\"}}"
+        },
+        {
+          "probe": "scope-rejects-loopback",
+          "expected": "422 when the scope names 127.0.0.1",
+          "ok": true,
+          "observed": "422 {\"detail\":{\"error\":\"invalid_destination\",\"reason\":\"probe_target[0]: refusing to probe 127.0.0.1 \u2014 loopback/metadata/multicast/reserved blocked\"}}"
+        },
+        {
+          "probe": "scope-accepted",
+          "expected": "2xx for one exact host:port",
+          "ok": true,
+          "observed": "200 {\"inventory_id\":\"default\",\"scope\":{\"name\":\"drill-scope\",\"type\":\"network\",\"destinations\":[\"10.20.10.15:443\"],\"protocols\":[\"TLS\"],\"allowed_operations\":[\"CONNECT\",\"TLS_HANDSHAKE\",\"CERTIFICATE_READ\"],\"tra"
+        },
+        {
+          "probe": "out-of-scope-host-refused",
+          "expected": "refused for a host outside the approved scope",
+          "ok": true,
+          "observed": "409 {\"detail\":{\"error\":\"destination_outside_scope\",\"reason\":\"1 destination(s) outside the approved scope\",\"outside\":[\"10.20.10.99:443\"],\"approved\":[\"10.20.10.15:443\"]}}"
+        },
+        {
+          "probe": "cidr-in-request-refused",
+          "expected": "refused for a CIDR in the request itself",
+          "ok": true,
+          "observed": "409 {\"detail\":{\"error\":\"destination_outside_scope\",\"reason\":\"1 destination(s) outside the approved scope\",\"outside\":[\"10.20.10.0/24:443\"],\"approved\":[\"10.20.10.15:443\"]}}"
+        },
+        {
+          "probe": "source-root-refused",
+          "expected": "4xx for a target outside CRYPTOSCAN_SOURCE_ROOTS",
+          "ok": true,
+          "observed": "400 {\"detail\":\"repo_url: source path /etc is outside the allowed source roots\"}"
+        }
+      ],
+      "unproven": [
+        "which hosts a bank has *approved* is deployment data; this row proves the refusal paths, not that a given CIDR list is the right one"
+      ],
+      "limits": [
+        "the per-collector matrix for these questions is guide 116",
+        "the traffic budget and window are measured by guide 116's probes"
+      ]
+    }
+  ],
+  "limits": [
+    "Executed in-process against the real app and a temporary SQLite database. Authorization decisions are the server's own; what is not proven is the deployment around it (reverse proxy, identity provider, network policy).",
+    "A permitted request is not a completed one: this drill asks whether the guard let the caller through, not whether the handler then did something useful. A 5xx past the guard still counts as past the boundary.",
+    "Empty request bodies mean body-level validation is not exercised; tenant isolation is a separate drill (guide 124)."
+  ]
+}

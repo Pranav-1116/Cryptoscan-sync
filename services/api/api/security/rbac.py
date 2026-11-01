@@ -257,6 +257,11 @@ def require_permission(*actions: str):
         )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
+    # Introspection, exactly as `require_roles` does it: the actions otherwise live
+    # in a closure and cannot be read off the route table, so "which role may call
+    # this?" is answerable only by reading the router source. The boundary drill
+    # needs the declaration in order to compare it with what the server enforces.
+    dependency.permissions = tuple(actions)
     return dependency
 
 

@@ -50,6 +50,19 @@
 > [guide 118](118-frontend-hardening.md) audits nine console behaviours
 > (**5 pass · 4 partial · 0 fail**) with a negative control that strips the console
 > and makes every pass disappear.
+>
+> **Security, executed rather than asserted** — [guide 119](119-security-blockers.md)
+> grades the eight security blockers a bank asks about. Two are measured this pass:
+> [authentication](120-authentication-qualification.md) (**3 pass · 5 partial · 0
+> fail**, 55 probes — login, session integrity, MFA, expiry, revocation, password
+> policy, lockout, credential handling) and
+> [authorization boundaries](121-authorization-boundaries.md) (**8 pass · 1 partial
+> · 0 fail**, 1,617 executed decisions — Admin, Auditor and Viewer cannot cross, no
+> gated write answers without a session, a foreign-signed token gets nowhere, and a
+> collector target is authorized server-side for the most powerful principal too).
+> The other six — agent machine identity, secret management, command execution,
+> SSRF, multi-tenant isolation, evidence tampering — are graded in the same guide
+> with what exists and what does not.
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

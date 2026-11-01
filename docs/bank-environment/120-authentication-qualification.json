@@ -1,0 +1,454 @@
+{
+  "schema": "cryptoscan.authentication-qualification/1",
+  "version": "auth-qualification/1.0",
+  "generated_at": "2026-11-01T03:11:43.978270+00:00",
+  "counts": {
+    "PASS": 3,
+    "PARTIAL": 5,
+    "FAIL": 0
+  },
+  "probes": 55,
+  "rows": [
+    {
+      "id": "login",
+      "question": "does a correct credential mint a session, and a wrong one never?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "valid-credentials",
+          "expected": "200 with a session token",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "valid-credentials-token",
+          "expected": "a token is returned",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "wrong-password",
+          "expected": "401",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
+          "probe": "no-user-enumeration",
+          "expected": "unknown user and wrong password answer identically",
+          "ok": true,
+          "observed": "observed (401, True)"
+        },
+        {
+          "probe": "control-mismatch-detected",
+          "expected": "a deliberately wrong expectation is refused",
+          "ok": true,
+          "observed": "mismatch reported for 401 != 200"
+        },
+        {
+          "probe": "empty-password",
+          "expected": "no session for an empty password",
+          "ok": true,
+          "observed": "observed (True, False)"
+        }
+      ],
+      "passed": 6,
+      "failed": 0,
+      "unproven": [],
+      "limits": [
+        "no TLS and no reverse proxy in the harness: transport security of the credential is guide 125's subject, not this row's"
+      ]
+    },
+    {
+      "id": "session_token",
+      "question": "does the session token mean what it claims, and nothing more?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "token-accepted",
+          "expected": "200 through the session gate",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "identity-established",
+          "expected": "the gate names the same user",
+          "ok": true,
+          "observed": "observed 'admin'"
+        },
+        {
+          "probe": "tampered-payload",
+          "expected": "401 on a modified payload",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
+          "probe": "foreign-key",
+          "expected": "401 for a token signed by another deployment",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
+          "probe": "missing-token",
+          "expected": "401 with no credential",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
+          "probe": "garbage-token",
+          "expected": "401 for a non-token",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
+          "probe": "role-header-ignored",
+          "expected": "a role header does not change the identity",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "cookie-flags",
+          "expected": "session cookie is HttpOnly and SameSite",
+          "ok": true,
+          "observed": "observed (True, True)"
+        }
+      ],
+      "passed": 8,
+      "failed": 0,
+      "unproven": [],
+      "limits": [
+        "token transport (secure cookie flag, TLS) depends on deployment config"
+      ]
+    },
+    {
+      "id": "mfa",
+      "question": "does the second factor exist, and can the first factor alone bypass it?",
+      "verdict": "PARTIAL",
+      "probes": [
+        {
+          "probe": "enroll",
+          "expected": "a pending TOTP secret is issued",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "enroll-secret",
+          "expected": "the secret is a base32 string",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "enable",
+          "expected": "a correct code activates MFA",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "recovery-codes",
+          "expected": "recovery codes are returned once",
+          "ok": true,
+          "observed": "observed 10"
+        },
+        {
+          "probe": "password-alone",
+          "expected": "no session token when MFA is enabled",
+          "ok": true,
+          "observed": "observed (200, '', True)"
+        },
+        {
+          "probe": "challenge-not-a-session",
+          "expected": "the challenge token is not accepted as a session",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
+          "probe": "wrong-code",
+          "expected": "401 for a wrong TOTP",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
+          "probe": "correct-code",
+          "expected": "200 and a session for the right TOTP",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "second-factor-session",
+          "expected": "the issued token works at the gate",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "recovery-code",
+          "expected": "a recovery code is accepted once",
+          "ok": true,
+          "observed": "observed 200"
+        }
+      ],
+      "passed": 10,
+      "failed": 0,
+      "unproven": [
+        "no external authenticator (hardware key, IdP push) is exercised: TOTP is the only second factor measured here"
+      ],
+      "limits": [
+        "the challenge is validated by the same session key as the session; an attacker with the signing key can forge both"
+      ]
+    },
+    {
+      "id": "expiry",
+      "question": "does a session end when it says it will?",
+      "verdict": "PARTIAL",
+      "probes": [
+        {
+          "probe": "expired-session",
+          "expected": "401 once the session has expired",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
+          "probe": "live-session",
+          "expected": "a session inside its window is accepted",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "expiry-claim",
+          "expected": "the token carries an expiry",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "expiry-horizon",
+          "expected": "expiry is inside the configured window",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "mfa-challenge-purpose",
+          "expected": "an MFA challenge is not a session",
+          "ok": true,
+          "observed": "observed None"
+        }
+      ],
+      "passed": 5,
+      "failed": 0,
+      "unproven": [
+        "idle timeout and absolute session lifetime per role are not implemented separately: there is one TTL"
+      ],
+      "limits": []
+    },
+    {
+      "id": "revocation",
+      "question": "can a session be ended before it expires, and does the gate honour it?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "before-logout",
+          "expected": "the token works",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "logout",
+          "expected": "logout is accepted",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "after-logout",
+          "expected": "the same token is refused after logout",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
+          "probe": "revocation-is-stored",
+          "expected": "a second client sees the same revocation state",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "revocation-crosses-clients",
+          "expected": "the revoke is visible to the first client too",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
+          "probe": "revoke-all",
+          "expected": "revoke-all is accepted",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "revoke-all-effect",
+          "expected": "another session for the same user stops working",
+          "ok": true,
+          "observed": "observed 401"
+        }
+      ],
+      "passed": 7,
+      "failed": 0,
+      "unproven": [],
+      "limits": [
+        "revocation reads the session store on every request; a store outage is fail-closed in production, which is a availability trade this row does not measure"
+      ]
+    },
+    {
+      "id": "password_policy",
+      "question": "is a weak password refused, and is what is stored unusable?",
+      "verdict": "PARTIAL",
+      "probes": [
+        {
+          "probe": "weak-short",
+          "expected": "422 for a too-short password",
+          "ok": true,
+          "observed": "observed 422"
+        },
+        {
+          "probe": "weak-variety",
+          "expected": "422 for a single-class password",
+          "ok": true,
+          "observed": "observed 422"
+        },
+        {
+          "probe": "self-service-privilege",
+          "expected": "403 when public registration asks for a privileged role",
+          "ok": true,
+          "observed": "observed 403"
+        },
+        {
+          "probe": "strong-accepted",
+          "expected": "201 for a strong password",
+          "ok": true,
+          "observed": "observed 201"
+        },
+        {
+          "probe": "hash-scheme",
+          "expected": "the stored credential is PBKDF2, never plaintext",
+          "ok": true,
+          "observed": "observed 'pbkdf2_sha256'"
+        },
+        {
+          "probe": "plaintext-absent",
+          "expected": "the plaintext is not in the stored value",
+          "ok": true,
+          "observed": "observed False"
+        },
+        {
+          "probe": "hash-verifies",
+          "expected": "the stored hash verifies the password",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "plaintext-fallback-refused",
+          "expected": "a plaintext stored secret never verifies in production",
+          "ok": true,
+          "observed": "observed False"
+        }
+      ],
+      "passed": 8,
+      "failed": 0,
+      "unproven": [
+        "no breach-list or history check: a strong-but-breached password is accepted, and password reuse across changes is not compared"
+      ],
+      "limits": []
+    },
+    {
+      "id": "lockout",
+      "question": "does repeated failure lock the account, and does the lock survive a restart?",
+      "verdict": "PARTIAL",
+      "probes": [
+        {
+          "probe": "failures-refused",
+          "expected": "every failed attempt is 401",
+          "ok": true,
+          "observed": "observed {401}"
+        },
+        {
+          "probe": "locked-with-right-password",
+          "expected": "the correct password is refused while locked",
+          "ok": true,
+          "observed": "observed 401"
+        },
+        {
+          "probe": "lock-message",
+          "expected": "the refusal says the account is locked",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "lock-is-stored",
+          "expected": "a fresh service object still refuses the account",
+          "ok": true,
+          "observed": "observed True"
+        },
+        {
+          "probe": "lock-is-per-account",
+          "expected": "a lock on one account does not lock the platform",
+          "ok": true,
+          "observed": "observed 200"
+        },
+        {
+          "probe": "audited",
+          "expected": "the failures are in the audit trail",
+          "ok": true,
+          "observed": "observed True"
+        }
+      ],
+      "passed": 6,
+      "failed": 0,
+      "unproven": [
+        "the harness counts 8 failures from one client; distributed attempts across source addresses are not counted together because the lock is per account and per attempt, not per-source velocity"
+      ],
+      "limits": []
+    },
+    {
+      "id": "credential_handling",
+      "question": "does a credential leak into a response, a URL or a log?",
+      "verdict": "PARTIAL",
+      "probes": [
+        {
+          "probe": "password-not-echoed",
+          "expected": "the response never contains the password",
+          "ok": true,
+          "observed": "observed False"
+        },
+        {
+          "probe": "me-has-no-hash",
+          "expected": "the profile carries no password hash",
+          "ok": true,
+          "observed": "observed False"
+        },
+        {
+          "probe": "me-has-no-secret",
+          "expected": "the profile carries no MFA secret",
+          "ok": true,
+          "observed": "observed False"
+        },
+        {
+          "probe": "error-no-echo",
+          "expected": "the error body does not repeat the attempted password",
+          "ok": true,
+          "observed": "observed False"
+        },
+        {
+          "probe": "token-not-a-query-credential",
+          "expected": "a token in the query string grants nothing",
+          "ok": true,
+          "observed": "observed 401"
+        }
+      ],
+      "passed": 5,
+      "failed": 0,
+      "unproven": [
+        "log redaction is measured by guide 121's log probe, not here; this row only reads HTTP responses"
+      ],
+      "limits": []
+    }
+  ],
+  "limits": [
+    "Executed in-process with the ASGI app and a temporary SQLite database: no TLS, no reverse proxy, no external IdP and no cluster, so a property that depends on those is marked UNPROVEN rather than passed.",
+    "One process, one database file: federation across replicas, and a session store outage, are not exercised.",
+    "No timing measurement: PBKDF2 work factor is asserted from the stored hash, not benchmarked against an attacker's budget."
+  ]
+}
