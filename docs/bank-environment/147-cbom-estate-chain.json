@@ -1,0 +1,260 @@
+{
+  "schema": "cryptoscan.cbom-estate-chain-guide/1",
+  "generated_at": "2026-11-02T18:26:13.382006+00:00",
+  "counts": {
+    "PASS": 6,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 31,
+  "estate": "bank-estate-2026-11",
+  "summary": {
+    "schema": "cryptoscan.cbom-estate-chain/1",
+    "estate": "bank-estate-2026-11",
+    "checks_passed": 7,
+    "checks_total": 7,
+    "failed_checks": [],
+    "documented_assets": 1,
+    "candidates_excluded": 2,
+    "graph_edges": 3,
+    "migration_immediate": [],
+    "coverage_completeness": "PARTIAL",
+    "status": "HOLDS",
+    "statement": "7/7 cross-layer checks hold"
+  },
+  "evidence_counts": {
+    "CONFIGURED": 1,
+    "RUNTIME_OBSERVED": 2
+  },
+  "graph_edges": 3,
+  "document_properties": {
+    "cryptoscan:promoted_assets": "1",
+    "cryptoscan:candidates_excluded": "2",
+    "cryptoscan:promotion_schema": "cryptoscan.cbom-promotion/1",
+    "cryptoscan:promotion_statement": "1 CBOM asset(s) promoted from evidence, 2 candidate(s) left out of the document; a capability is not an invocation",
+    "cryptoscan:coverage": "{\"as_of\": \"2026-11-02\", \"assets_discovered\": 1, \"completeness\": \"PARTIAL\", \"coverage_pct\": 62.0, \"may_report_total\": false, \"status_counts\": {\"CURRENT\": 50, \"FAILED\": 8, \"NEVER_SCANNED\": 25, \"NO_TARGET\": 5, \"STALE\": 12}, \"systems_inspected\": 62, \"systems_total\": 100, \"unit\": \"application\"}",
+    "cryptoscan:coverage_pct": "62.0",
+    "cryptoscan:coverage_completeness": "PARTIAL",
+    "cryptoscan:assets_discovered": "1"
+  },
+  "rows": [
+    {
+      "id": "runtime",
+      "question": "does the runtime layer keep the chain and the disagreement?",
+      "phase": "review 7",
+      "probes": [
+        {
+          "probe": "the-chain-arrives-whole",
+          "ok": true,
+          "observed": "application:payments-api \u2192 process:payments-api/9182 \u2192 provider:OpenSSL@3.0.11 \u2192 operation:EVP_EncryptInit_ex \u2192 algorithm:AES-256-GCM"
+        },
+        {
+          "probe": "the-version-mismatch-is-reported-not-resolved",
+          "ok": true,
+          "observed": "['3.0.13'] declared, 3.0.11 loaded"
+        },
+        {
+          "probe": "an-unknown-provider-version-is-not-guessed",
+          "ok": true,
+          "observed": "the process did not say which provider version it loaded, and the chain does not fill it in from the SBOM"
+        },
+        {
+          "probe": "runtime-evidence-is-runtime-observed-and-nothing-more",
+          "ok": true,
+          "observed": "a trace is an observation of an operation, not a quantum verdict"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "keys",
+      "question": "is a configured key kept apart from a used key?",
+      "phase": "review 11",
+      "probes": [
+        {
+          "probe": "a-key-exists-and-a-key-is-used-are-different-classes",
+          "ok": true,
+          "observed": "1 configured key(s), 2 recorded operation(s); 1 row(s) refused"
+        },
+        {
+          "probe": "a-disabled-key-is-carried-as-not-usable",
+          "ok": true,
+          "observed": "DISABLED key: usable=False"
+        },
+        {
+          "probe": "an-operation-on-a-disabled-key-is-refused-with-its-reason",
+          "ok": true,
+          "observed": "the key is DISABLED, so a recorded operation on it is a discrepancy, not evidence that the algorithm is in use"
+        },
+        {
+          "probe": "no-suppressed-key-operation-reaches-the-evidence-set",
+          "ok": true,
+          "observed": "3 evidence event(s), none from the disabled key"
+        },
+        {
+          "probe": "no-key-material-is-ever-carried",
+          "ok": true,
+          "observed": "metadata only: the key layer stores no secret"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "promotion",
+      "question": "does only the evidence reach the document?",
+      "phase": "review 5 / 12",
+      "probes": [
+        {
+          "probe": "a-capability-never-becomes-a-document-asset",
+          "ok": true,
+          "observed": "0 CBOM asset(s) promoted from evidence, 2 candidate(s) left out of the document; a capability is not an invocation"
+        },
+        {
+          "probe": "an-observed-operation-becomes-an-asset",
+          "ok": true,
+          "observed": "a candidate for 2 algorithm(s), documented for 1"
+        },
+        {
+          "probe": "the-level-is-recomputed-from-the-classes",
+          "ok": true,
+          "observed": "{\"AES-256-GCM\": \"RUNTIME\"}"
+        },
+        {
+          "probe": "runtime-alone-never-reads-as-verified",
+          "ok": true,
+          "observed": "one observing layer is still one layer"
+        },
+        {
+          "probe": "an-observation-without-an-evidence-id-is-refused",
+          "ok": true,
+          "observed": "no handshake completed, so nothing was negotiated"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_document",
+      "question": "can the document be read without asking what it left out?",
+      "phase": "review 12 / 20",
+      "probes": [
+        {
+          "probe": "the-document-has-no-top-level-properties-array",
+          "ok": true,
+          "observed": "platform claims live in metadata.properties, as CycloneDX expects"
+        },
+        {
+          "probe": "the-document-states-its-coverage",
+          "ok": true,
+          "observed": "completeness=PARTIAL, pct=62.0"
+        },
+        {
+          "probe": "the-document-does-not-quote-a-total-it-cannot-support",
+          "ok": true,
+          "observed": "62 of 100 systems inspected, so no estate-wide total is asserted"
+        },
+        {
+          "probe": "an-empty-document-says-why-it-is-empty",
+          "ok": true,
+          "observed": "the document has no components: the estate was only partly inspected, so an empty result here says nothing about the rest; it is not evidence that no cryptography exists"
+        },
+        {
+          "probe": "the-document-records-what-it-left-out",
+          "ok": true,
+          "observed": "1 promoted, 2 excluded"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "conflicts",
+      "question": "does a disagreement reach the twin, or get resolved quietly?",
+      "phase": "review 8",
+      "probes": [
+        {
+          "probe": "two-observing-layers-that-disagree-are-a-conflict",
+          "ok": true,
+          "observed": "cipher_suite has 2 observed values across 2 source(s); the observation layers disagree and the disagreement is the finding"
+        },
+        {
+          "probe": "a-declaration-against-an-observation-is-a-mismatch-not-a-conflict",
+          "ok": true,
+          "observed": "the SBOM does not observe; the process tracer owns that comparison"
+        },
+        {
+          "probe": "the-conflict-survives-to-the-graph-as-an-edge",
+          "ok": true,
+          "observed": "1 conflict edge(s), each carrying its evidence ids"
+        },
+        {
+          "probe": "no-single-value-is-asserted-where-the-sources-disagree",
+          "ok": true,
+          "observed": "the disagreement is the finding; a human decides"
+        },
+        {
+          "probe": "every-claim-survives-as-a-row",
+          "ok": true,
+          "observed": "4 claim row(s) kept"
+        },
+        {
+          "probe": "agreement-is-not-a-conflict",
+          "ok": true,
+          "observed": "two layers agreeing on the same value is a corroboration"
+        },
+        {
+          "probe": "the-graph-hangs-off-the-estate-it-describes",
+          "ok": true,
+          "observed": "3 edge(s) on system:bank-estate-2026-11"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_seven",
+      "question": "are the invariants checked, or only documented?",
+      "phase": "review 7 / 8 / 11 / 12 / 20",
+      "probes": [
+        {
+          "probe": "all-seven-cross-layer-checks-hold-on-a-mixed-estate",
+          "ok": true,
+          "observed": "7/7 cross-layer checks hold"
+        },
+        {
+          "probe": "the-checks-are-a-named-contract-not-a-count",
+          "ok": true,
+          "observed": "no_capability_is_documented_as_usage, every_documented_asset_is_attributable, promotion_level_matches_the_evidence, conflicts_survive_to_the_graph, a_disabled_key_never_produces_runtime_evidence, coverage_travels_with_the_document, emptiness_is_explained"
+        },
+        {
+          "probe": "a-failing-check-makes-the-pipeline-broken-not-warning",
+          "ok": true,
+          "observed": "the response carries the failure; it is not smoothed into the document"
+        },
+        {
+          "probe": "the-disabled-key-check-has-teeth",
+          "ok": true,
+          "observed": "a leaked RUNTIME_OBSERVED event on a DISABLED key fails the check"
+        },
+        {
+          "probe": "the-route-exists-typed-and-role-gated",
+          "ok": true,
+          "observed": "POST /cbom/estate-chain"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the chain composes the modules; it does not add a collector. An estate that omits a layer produces a document that is honest about that layer and silent about what it never looked at",
+    "a passing check means the layers agree with each other, not that the estate is correctly described. Seven invariants cannot detect a collector that is consistently wrong",
+    "conflicts are only visible when the caller supplies conflicting claims. The chain does not invent a second source to test the first, and an estate with one source can never produce a conflict",
+    "coverage is read from the estate's rollup. If the caller passes a rollup that overstates inspection, the document repeats the overstatement with the same confidence",
+    "emptiness is explained from the file counts and the coverage block. An empty document from a fully covered estate is a real finding; an empty document from an uncovered one is not evidence of absence, and the reasons say which",
+    "the graph is a projection for one run. Persisting it as a twin snapshot and diffing runs for drift is the estate twin's job, not this guide's",
+    "the invariants are structural. They cannot tell whether the seven checks are the seven a regulator wants; that is a scoping decision made in the review, not a property of the code"
+  ]
+}

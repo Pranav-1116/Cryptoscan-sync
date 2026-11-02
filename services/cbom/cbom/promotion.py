@@ -239,16 +239,19 @@ def to_cbom(promoted: Mapping[str, Any], *, name: str = "cryptoscan-promotion",
         "version": 1,
         "metadata": {
             "component": {"type": "application", "name": name, "version": version},
+            # Platform claims live in metadata properties: CycloneDX has no
+            # top-level ``properties`` array, so writing one there produced a
+            # document a strict consumer rejects.
             "properties": [
                 {"name": "cryptoscan:promoted_assets", "value": str(len(components))},
                 {"name": "cryptoscan:candidates_excluded",
                  "value": str(len(promoted.get("candidates") or ()))},
                 {"name": "cryptoscan:promotion_schema", "value": SCHEMA},
+                {"name": "cryptoscan:promotion_statement",
+                 "value": str(promoted.get("statement") or "")},
             ],
         },
         "components": components,
-        "properties": [{"name": "cryptoscan:promotion_statement",
-                        "value": str(promoted.get("statement") or "")}],
     }
 
 

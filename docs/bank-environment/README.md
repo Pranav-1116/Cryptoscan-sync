@@ -555,6 +555,26 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [The whole chain over one estate: seven seams, seven checks](147-cbom-estate-chain.md)
+> (**6 pass · 0 partial · 0 fail**, 37 probes) is the increment that stops proving
+> layers one at a time. `cbom.estate_chain.run` runs the runtime tracer, the KMS
+> collector, the network and static collectors, the evidence classes, the promotion
+> ladder, the coverage renderer, the handoff and the twin graph over **one** estate
+> description — then checks the invariants that hold *between* them:
+> `no_capability_is_documented_as_usage`, `every_documented_asset_is_attributable`,
+> `promotion_level_matches_the_evidence`, `conflicts_survive_to_the_graph`,
+> `a_disabled_key_never_produces_runtime_evidence`,
+> `coverage_travels_with_the_document`, `emptiness_is_explained`. A failing check is
+> returned in `checks` and as `summary.status = BROKEN`; nothing is smoothed into the
+> document to make a check pass. Two seams are worth naming: an operation recorded
+> against a `DISABLED` key is carried as a **refusal with its reason**, not as runtime
+> evidence, and a declaration against an observation (SBOM 3.0.13 vs loaded 3.0.11) is
+> a `VERSION_MISMATCH` for the tracer while two *observing* layers that disagree stay a
+> `CONFLICTS_WITH` edge with no resolved value. The document also stopped emitting a
+> top-level `properties` array, which CycloneDX does not allow — platform claims live in
+> `metadata.properties`. `POST /cbom/estate-chain` exposes it, typed, behind the same
+> reader roles.
+
 > [Process-level runtime tracing: the chain is the evidence](146-cbom-process-tracing.md)
 > (**5 pass · 0 partial · 0 fail**, 24 probes) closes review item 7 — the gap the
 > review calls the biggest one. `cbom.process_tracing` keeps the whole chain:

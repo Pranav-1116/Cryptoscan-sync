@@ -198,6 +198,34 @@ class CbomPqcHandoffResponse(BaseModel):
     as_of: str
 
 
+class CbomEstateChainRequest(BaseModel):
+    estate: dict = Field(..., description=(
+        "one estate description, the shape a scan or an integration produces: name, "
+        "components (SBOM rows with their algorithms), operations (runtime traces), keys "
+        "and key_uses (KMS inventory and recorded operations), probes (TLS endpoints), "
+        "findings (static results), conflicts (claims to reconcile), coverage (rollup and "
+        "file counts), purposes, primitives and as_of"))
+
+
+class CbomEstateChainResponse(BaseModel):
+    estate: str
+    generated_at: str
+    runtime: dict
+    keys: dict
+    evidence: dict
+    profiles: dict
+    promotion: dict
+    document: dict
+    empty: dict
+    handoff: dict
+    conflicts: dict
+    graph: dict
+    coverage: dict
+    checks: list[dict]
+    summary: dict
+    statement: str
+
+
 class CbomHsmRequest(BaseModel):
     kind: str = Field(..., description=(
         "CAPABILITY, CONFIGURED_KEY or OPERATION — the three HSM/KMS answers, only the last "
@@ -418,6 +446,28 @@ def cbom_pqc_handoff(body: CbomPqcHandoffRequest,
     if body.document is not None:
         return pq.handoff_from_cbom(body.document, as_of=body.as_of)
     return pq.handoff(body.assets, as_of=body.as_of)
+
+
+@router.post("/estate-chain", response_model=CbomEstateChainResponse)
+def cbom_estate_chain(body: CbomEstateChainRequest,
+                      user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Every CBOM layer over one estate, with the seams checked.
+
+    The single-asset and single-layer routes answer "what does this row mean". This
+    answers "does the pipeline hold together": the document, its coverage, the
+    handoff, the conflicts, and the twin edges are produced once from the same
+    evidence — and then seven invariants are checked across them. A failing check
+    comes back in ``checks`` and in ``summary.status`` as ``BROKEN``; the response
+    is still 200, because a pipeline that hides its own failure is the bug.
+    """
+    from cbom import estate_chain as ec
+
+    try:
+        result = ec.run(body.estate)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    result["summary"] = ec.summary(result)
+    return result
 
 
 @router.post("/hsm-evidence")

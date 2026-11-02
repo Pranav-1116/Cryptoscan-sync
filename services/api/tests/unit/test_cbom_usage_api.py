@@ -422,3 +422,50 @@ def test_the_loaded_provider_version_is_correlated_not_resolved(client):
     assert row["state"] == "VERSION_MISMATCH"
     assert row["runtime_version"] == "3.0.13" and row["declared_versions"] == ["3.0.11"]
     assert set(row["evidence_ids"]) == {"SBOM-1", "RUNTIME-92821"}
+
+
+ESTATE = {
+    "name": "bank-estate-2026-11",
+    "components": [{"name": "openssl", "version": "3.0.13", "evidence_id": "SBOM-1",
+                    "algorithms": ["AES-256-GCM", "RSA-2048"]}],
+    "operations": [TRACE],
+    "coverage": {"rollup": {"systems": 100, "with_cbom": 62}, "files_scanned": 900},
+}
+
+
+def test_estate_chain_returns_every_layer_and_holds(client):
+    body = _post(client, "/estate-chain", {"estate": ESTATE}).json()
+    assert [check["check"] for check in body["checks"]] == [
+        "no_capability_is_documented_as_usage",
+        "every_documented_asset_is_attributable",
+        "promotion_level_matches_the_evidence",
+        "conflicts_survive_to_the_graph",
+        "a_disabled_key_never_produces_runtime_evidence",
+        "coverage_travels_with_the_document",
+        "emptiness_is_explained",
+    ]
+    assert body["summary"]["status"] == "HOLDS"
+    assert body["document"]["components"]
+    for layer in ("runtime", "keys", "evidence", "promotion", "handoff", "graph",
+                  "conflicts", "coverage", "empty"):
+        assert layer in body, layer
+
+
+def test_estate_chain_documents_no_capability(client):
+    body = _post(client, "/estate-chain", {"estate": {
+        "name": "capabilities-only",
+        "components": [{"name": "openssl", "version": "3.0.13", "evidence_id": "SBOM-1",
+                        "algorithms": ["AES-256-GCM", "RSA-2048"]}],
+    }}).json()
+    assert body["document"]["components"] == []
+    properties = {row["name"]: row["value"]
+                  for row in body["document"]["metadata"]["properties"]}
+    assert properties["cryptoscan:promoted_assets"] == "0"
+    assert properties["cryptoscan:candidates_excluded"] == "2"
+    assert properties["cryptoscan:empty_bom"] == "true"
+    assert body["summary"]["documented_assets"] == 0
+
+
+def test_estate_chain_rejects_an_estate_that_is_not_an_object(client):
+    resp = _post(client, "/estate-chain", {"estate": ["not", "an", "estate"]})
+    assert resp.status_code == 422
