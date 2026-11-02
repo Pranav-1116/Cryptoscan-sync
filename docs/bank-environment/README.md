@@ -555,6 +555,25 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [Adversarial CBOM: the five blockers, attacked](151-cbom-adversarial.md)
+> (**5 pass · 0 partial · 0 fail**, 30 probes) closes review item 21 by attacking it.
+> Five red blockers — evidence spoofing, false attribution, weak evidence promotion,
+> secret leakage, signature/hash confusion — each handed the most convenient possible
+> input, with the pipeline required not to believe it. **One was a real hole**: an event
+> naming an imported or vendor origin while *claiming* `RUNTIME_OBSERVED` was promoted
+> as runtime usage, so `usage_evidence.normalize_event` now makes the origin win in
+> **both** directions and records the downgrade on the event
+> (`"the event claims RUNTIME_OBSERVED, but its origin is imported (IMPORTED); … the
+> weaker class is kept"`) instead of reclassifying it silently. Imported origins
+> (`imported`, `import`, `upload`, `document`, `cyclonedx`, `spdx`, `sbom`) are covered
+> by name. The rest held: a library supporting four algorithms yields four candidates
+> and zero assets; a vendor claiming runtime use and `POST_QUANTUM` yields a candidate
+> and a registry-classified `QUANTUM_SENSITIVE`; key records carrying `private_key`,
+> `session_key`, `plaintext`, `customer_payload` or an unknown field are refused before
+> storage with `private_material: NOT STORED`; and a certificate's `ECDSA-SHA256` stays
+> `CERTIFICATE_ONLY` with `application_operation_proven: false` while suite roles keep
+> `BULK`/`SIGNATURE`/`KEY_EXCHANGE`/`HASH` apart. 42 adversarial tests pin the attacks.
+
 > [Component completeness: unmeasured is not clean](150-cbom-inventory-completeness.md)
 > (**4 pass · 0 partial · 0 fail**, 22 probes) closes the other half of review items 18
 > and 19 at the level a CBOM is actually assembled: the **component**, not the system.

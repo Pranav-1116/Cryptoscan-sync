@@ -67,6 +67,12 @@ LAYER_CLASSES: dict[str, str] = {
     "tls": "NETWORK_OBSERVED",
     "certificate": "NETWORK_OBSERVED",
     "sbom": "IMPORTED",
+    "imported": "IMPORTED",
+    "import": "IMPORTED",
+    "upload": "IMPORTED",
+    "document": "IMPORTED",
+    "cyclonedx": "IMPORTED",
+    "spdx": "IMPORTED",
     "container": "OBSERVED",
     "artifact": "OBSERVED",
     "vendor": "VENDOR_DECLARED",
@@ -130,6 +136,12 @@ def normalize_event(event: Mapping[str, Any]) -> dict[str, Any]:
       with ``class: IMPORTED``) keeps its class — the weaker one — and says so;
     * an observing event with no evidence id is refused, because an observation
       nobody can point at is a rumour with a timestamp.
+
+    The class and the origin must also agree, in **both** directions: a declared
+    event that claims to be an observation keeps its declared class, and an event
+    that claims an observation while naming an imported or vendor-declared origin
+    is downgraded to that origin. An imported CBOM that says ``RUNTIME_OBSERVED``
+    is the review's first security blocker, and the class string is not evidence.
     """
     if not isinstance(event, Mapping):
         raise EvidenceRefused("an evidence event must be an object")
@@ -147,6 +159,14 @@ def normalize_event(event: Mapping[str, Any]) -> dict[str, Any]:
         downgrades.append(
             f"{layer} claims {implied}, but the event is {declared}; it cannot become an "
             "observation without independent evidence")
+    elif implied in DECLARED_CLASSES and declared in OBSERVING_CLASSES:
+        # the other direction, and the one an imported document takes: the event *says*
+        # it was observed, but the origin it names is a declaration. The origin wins.
+        klass = implied
+        downgrades.append(
+            f"the event claims {declared}, but its origin is {layer} ({implied}); an "
+            "imported or vendor-declared source cannot observe, so the weaker class is "
+            "kept")
     evidence_id = _evidence_id(event)
     if klass in OBSERVING_CLASSES and not evidence_id:
         raise EvidenceRefused(

@@ -1,0 +1,243 @@
+{
+  "schema": "cryptoscan.cbom-adversarial-guide/1",
+  "generated_at": "2026-11-02T18:46:19.019272+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 30,
+  "origins": {
+    "import": [
+      "imported",
+      "import",
+      "upload",
+      "document",
+      "cyclonedx",
+      "spdx",
+      "sbom"
+    ],
+    "vendor": [
+      "vendor",
+      "vendor_declaration"
+    ]
+  },
+  "spoof_example": {
+    "evidence_id": "VENDOR-1",
+    "class": "IMPORTED",
+    "layer": "imported",
+    "observed": false,
+    "algorithm": "AES-256-GCM",
+    "parameters": {},
+    "purpose": null,
+    "location": null,
+    "observed_at": null,
+    "downgrades": [
+      "the event claims RUNTIME_OBSERVED, but its origin is imported (IMPORTED); an imported or vendor-declared source cannot observe, so the weaker class is kept"
+    ]
+  },
+  "rows": [
+    {
+      "id": "evidence_spoofing",
+      "question": "can an imported document call itself an observation?",
+      "phase": "review 21 / 4",
+      "probes": [
+        {
+          "probe": "an-imported-origin-is-never-an-observation",
+          "ok": true,
+          "observed": "7 import spellings, all IMPORTED"
+        },
+        {
+          "probe": "a-vendor-origin-is-downgraded-to-a-declaration",
+          "ok": true,
+          "observed": "vendor \u2192 VENDOR_DECLARED, vendor_declaration \u2192 VENDOR_DECLARED"
+        },
+        {
+          "probe": "the-downgrade-is-recorded-not-silent",
+          "ok": true,
+          "observed": "the event claims RUNTIME_OBSERVED, but its origin is sbom (IMPORTED); an imported or vendor-declared source cannot observe, so the weaker class is kept"
+        },
+        {
+          "probe": "an-evidence-id-does-not-launder-an-imported-source",
+          "ok": true,
+          "observed": "a plausible evidence id on an imported event is still an import"
+        },
+        {
+          "probe": "a-real-runtime-event-is-not-downgraded",
+          "ok": true,
+          "observed": "the guard protects the collector it exists to protect"
+        },
+        {
+          "probe": "a-spoofed-event-cannot-promote-a-capability",
+          "ok": true,
+          "observed": "0 CBOM asset(s) promoted from evidence, 1 candidate(s) left out of the document; a capability is not an invocation"
+        },
+        {
+          "probe": "a-spoofed-estate-produces-an-empty-document",
+          "ok": true,
+          "observed": "the chain never sees a claimed class, only the collector's"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "false_attribution",
+      "question": "does a supporting library become an inventory of usage?",
+      "phase": "review 21 / 6",
+      "probes": [
+        {
+          "probe": "a-library-does-not-become-every-algorithm-it-supports",
+          "ok": true,
+          "observed": "0 CBOM asset(s) promoted from evidence, 4 candidate(s) left out of the document; a capability is not an invocation"
+        },
+        {
+          "probe": "a-candidate-is-not-usage",
+          "ok": true,
+          "observed": "AES-128-GCM=NOT_OBSERVED, AES-256-GCM=NOT_OBSERVED, RSA-2048=NOT_OBSERVED, ECDSA-P256=NOT_OBSERVED"
+        },
+        {
+          "probe": "the-candidate-lists-what-would-promote-it",
+          "ok": true,
+          "observed": "a reviewer can see the evidence that would make it an asset"
+        },
+        {
+          "probe": "a-component-with-no-evidence-id-contributes-nothing",
+          "ok": true,
+          "observed": "the component has no evidence id, so its capabilities cannot be attributed to a document"
+        },
+        {
+          "probe": "a-capability-only-estate-has-an-empty-document",
+          "ok": true,
+          "observed": "capabilities are reported, never written as fact"
+        },
+        {
+          "probe": "the-document-says-how-many-it-left-out",
+          "ok": true,
+          "observed": "the exclusion is in the document, not only in a log"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "weak_promotion",
+      "question": "can a declaration be promoted into an observation?",
+      "phase": "review 21 / 5",
+      "probes": [
+        {
+          "probe": "a-vendor-declaration-never-reaches-runtime",
+          "ok": true,
+          "observed": "0 CBOM asset(s) promoted from evidence, 1 candidate(s) left out of the document; a capability is not an invocation"
+        },
+        {
+          "probe": "an-observation-with-no-evidence-id-is-refused",
+          "ok": true,
+          "observed": "a claim nobody can point at cannot promote anything"
+        },
+        {
+          "probe": "a-vendor-quantum-claim-is-ignored-and-the-algorithm-is-classified",
+          "ok": true,
+          "observed": "vendor said POST_QUANTUM; the handoff says QUANTUM_SENSITIVE (REGISTRY_SHOR)"
+        },
+        {
+          "probe": "a-declared-class-promotes-to-a-declared-level-never-runtime",
+          "ok": true,
+          "observed": "VENDOR_DECLARED \u2192 CAPABILITY"
+        },
+        {
+          "probe": "the-quantum-verdict-is-never-taken-from-the-document",
+          "ok": true,
+          "observed": "a vendor cannot certify its own migration"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "secret_leakage",
+      "question": "can a collector be talked into storing key material?",
+      "phase": "review 21 / 12",
+      "probes": [
+        {
+          "probe": "every-material-bearing-field-is-refused",
+          "ok": true,
+          "observed": "7 of 7 refused, e.g. this record carries private_key; a CBOM stores key references and properties, never key material"
+        },
+        {
+          "probe": "the-record-states-that-nothing-is-stored",
+          "ok": true,
+          "observed": "NOT STORED"
+        },
+        {
+          "probe": "the-metadata-that-is-allowed-is-the-metadata-a-bank-needs",
+          "ok": true,
+          "observed": "key_ref=HSM://partition-01/key/PAY-SIGN-001, algorithm=RSA, key_size=2048, purpose=SIGNATURE"
+        },
+        {
+          "probe": "an-unexpected-field-is-refused-rather-than-kept",
+          "ok": true,
+          "observed": "unexpected key metadata field(s): opaque_blob"
+        },
+        {
+          "probe": "the-chain-refuses-a-key-record-carrying-material",
+          "ok": true,
+          "observed": "the row carries private_key; a CBOM stores key references, never material"
+        },
+        {
+          "probe": "no-material-reaches-the-document",
+          "ok": true,
+          "observed": "the exported document is checked for the value, not for the field name"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "signature_hash",
+      "question": "are hashes, signatures and key exchanges kept apart?",
+      "phase": "review 21 / 3",
+      "probes": [
+        {
+          "probe": "a-certificate-is-its-own-category",
+          "ok": true,
+          "observed": "ECDSA-SHA256"
+        },
+        {
+          "probe": "a-certificate-does-not-prove-an-application-operation",
+          "ok": true,
+          "observed": "ECDSA / ECDSA-SHA256 describes the certificate on payments.bank.example:443. A certificate's public key does not prove the application behind it performs that algorithm"
+        },
+        {
+          "probe": "a-certificate-never-promotes-the-application-to-its-algorithm",
+          "ok": true,
+          "observed": "0 CBOM asset(s) promoted from evidence, 1 candidate(s) left out of the document; a capability is not an invocation"
+        },
+        {
+          "probe": "a-suite-says-which-algorithm-plays-which-role",
+          "ok": true,
+          "observed": "{\"AES-256-GCM\": \"BULK\", \"ECDHE\": \"KEY_EXCHANGE\", \"RSA\": \"SIGNATURE\", \"SHA-384\": \"HASH\"}"
+        },
+        {
+          "probe": "a-hash-is-never-counted-as-a-signature",
+          "ok": true,
+          "observed": "SHA-384 in a TLS 1.3 suite is a hash and nothing else"
+        },
+        {
+          "probe": "an-unknown-suite-produces-no-fact-rather-than-a-guess",
+          "ok": true,
+          "observed": "a suite the table does not know yields nothing"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the guard is about the origin an event names, not about the class string. A caller that supplies its own evidence id and names a genuinely observing layer is believed, because the platform cannot audit a collector it did not write",
+    "an imported *document* is still parsed for capabilities, and a capability is reported. What cannot happen is a capability becoming usage, which is a different claim from 'the document was ignored'",
+    "the secret guard is a field-name and vocabulary check, not a secret scanner. A key material pasted into a free-text field named 'note' would pass, which is why the KMS collector also refuses unknown fields",
+    "the certificate category says what the certificate contains. It cannot say whether the endpoint is still served by that certificate, which needs a probe",
+    "these probes attack the modules directly. An attacker with write access to the platform's own collector output does not need any of this \u2014 provenance, not classification, is what stops that"
+  ]
+}
