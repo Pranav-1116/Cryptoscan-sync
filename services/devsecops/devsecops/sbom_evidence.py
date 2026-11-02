@@ -157,6 +157,10 @@ class SbomRecord:
     components: tuple[Mapping[str, Any], ...] = ()
     created_at: date | None = None
     build_id: str | None = None
+    #: Tie-break for same-day snapshots, taken from the store's full timestamp.
+    #: Two SBOMs generated in the same second would otherwise be ordered by their
+    #: random ids, and a timeline that reorders itself is not evidence.
+    sequence: str | None = None
 
     def names(self) -> set[str]:
         return {_norm(component.get("name")) for component in self.components
@@ -1188,7 +1192,7 @@ def twin_edges(sbom: SbomRecord, *, build: BuildIdentity | None = None,
                       "source": origin, "observed_at": _iso(observed_at),
                       "confidence": confidence})
 
-    artifact_ref = artifact.reference if artifact else "artifact:unknown"
+    artifact_ref = f"artifact:{artifact.reference}" if artifact else "artifact:unknown"
     edge(f"sbom:{sbom.sbom_id}", "DESCRIBED_BY", artifact_ref, evidence_id=sbom.sbom_id,
          evidence_type="SBOM", origin="scan", observed_at=sbom.created_at,
          confidence="HIGH" if artifact else "MEDIUM")
@@ -1261,7 +1265,7 @@ def history(snapshots: Sequence[SbomRecord]) -> dict[str, Any]:
     evidence.
     """
     ordered = sorted(snapshots, key=lambda record: (record.created_at or date.min,
-                                                    str(record.sbom_id)))
+                                                    str(record.sequence or record.sbom_id)))
     transitions: list[dict[str, Any]] = []
     for previous, current in zip(ordered, ordered[1:]):
         changes = snapshot_changes(previous, current)
@@ -1298,6 +1302,86 @@ def history(snapshots: Sequence[SbomRecord]) -> dict[str, Any]:
             + (f"; the longest gap between snapshots is {max(durations)} day(s)"
                if durations else "")),
     }
+
+
+#: Which twin provenance class each evidence kind earns. The vocabulary is the
+#: graph engine's, repeated here as plain strings so this module does not import
+#: a sibling service to say what it means.
+PROVENANCE_FOR_EVIDENCE: dict[str, str] = {
+    "SBOM": "DECLARED",              # a document saying a component is in a build
+    "SCAN": "SCANNER_DERIVED",       # this platform's own parse of the bytes
+    "DEPLOYMENT": "OBSERVED",        # somebody saw the digest running
+    "OBSERVATION": "OBSERVED",
+    "REGISTER": "DECLARED",          # the CMDB asserting an ownership
+    "CMDB": "DECLARED",
+    "VEX": "DECLARED",
+    "CAPABILITY": "INFERRED",        # "can do AES" is inference, never observation
+}
+
+
+def apply_twin_edges(engine: Any, edges: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """Write twin edges into a graph engine, with their evidence attached.
+
+    Duck-typed on purpose: anything with ``add_node``/``add_edge`` will do, so the
+    bridge can be qualified without starting the graph engine. Every edge keeps
+    its ``evidence_id`` as ``evidence_ref`` and its evidence kind decides the
+    provenance class — an SBOM edge is ``DECLARED`` and only a deployment
+    observation can produce ``OBSERVED``.
+
+    An edge with no evidence id is **refused**: an unattributable edge is exactly
+    what the twin must not contain.
+    """
+    written = 0
+    refused: list[dict[str, Any]] = []
+    by_provenance: dict[str, int] = {}
+    nodes: set[str] = set()
+    for edge in edges:
+        evidence_id = str(edge.get("evidence_id") or "").strip()
+        source, target = str(edge.get("from") or ""), str(edge.get("to") or "")
+        if not evidence_id or not source or not target:
+            refused.append({"edge": dict(edge),
+                            "reason": ("an edge with no evidence id or no endpoint cannot be "
+                                       "attributed, so it is not written")})
+            continue
+        provenance = PROVENANCE_FOR_EVIDENCE.get(
+            str(edge.get("evidence_type") or "").upper(), "UNATTRIBUTED")
+        for node in (source, target):
+            if node not in nodes:
+                engine.add_node(node, kind=_twin_node_kind(node))
+                nodes.add(node)
+        engine.add_edge(source, target, str(edge.get("kind") or "CONTAINS"),
+                        provenance=provenance, source=edge.get("source"),
+                        observed_at=edge.get("observed_at"),
+                        confidence=edge.get("confidence"),
+                        evidence_ref=evidence_id)
+        written += 1
+        by_provenance[provenance] = by_provenance.get(provenance, 0) + 1
+    unattributed = sum(1 for edge in edges
+                       if str(edge.get("evidence_type") or "").upper()
+                       not in PROVENANCE_FOR_EVIDENCE)
+    return {
+        "written": written,
+        "nodes": len(nodes),
+        "refused": refused,
+        "by_provenance": dict(sorted(by_provenance.items())),
+        "unattributed_kinds": unattributed,
+        "statement": (
+            f"{written} edge(s) written across {len(nodes)} node(s)"
+            + (f"; {len(refused)} refused for carrying no evidence" if refused else "")
+            + (f"; {unattributed} edge kind(s) had no provenance class and were written as "
+               "UNATTRIBUTED" if unattributed else "")),
+    }
+
+
+def _twin_node_kind(node: str) -> str:
+    """A node's kind from its id prefix (``sbom:``, ``pkg:``, ``pod/`` …)."""
+    head = node.split(":", 1)[0].split("/", 1)[0].strip().lower()
+    return {"sbom": "SBOM", "pkg": "COMPONENT", "component": "COMPONENT",
+            "application": "APPLICATION", "business": "BUSINESS_SYSTEM",
+            "business-system": "BUSINESS_SYSTEM", "artifact": "ARTIFACT",
+            "deployment": "DEPLOYMENT", "workload": "WORKLOAD", "pod": "WORKLOAD",
+            "builder": "BUILDER", "build": "BUILD", "release": "BUILD",
+            "capability": "CAPABILITY", "algorithm": "CAPABILITY"}.get(head, "ENTITY")
 
 
 def _norm(value: Any) -> str:

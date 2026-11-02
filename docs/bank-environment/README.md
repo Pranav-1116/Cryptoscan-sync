@@ -469,6 +469,29 @@
 > `/sbom/scan` and `/binary/scan` onto `manifest.provenance`, with every missing
 > link named and `complete` also requiring an observation.
 
+> [The SBOM reaches the graph, and the store becomes a timeline](138-sbom-twin-timeline.md)
+> (**5 pass · 0 partial · 0 fail**, 40 probes) closes the two gaps guide 137's
+> own limits named. **The twin had edges nobody wrote**: `twin_edges` produced
+> them with an evidence id, and `apply_twin_edges` now writes them into the graph
+> with the provenance class the evidence earns — an SBOM edge is `DECLARED`, a
+> deployment observation is `OBSERVED`, a name-based capability is `INFERRED`,
+> and an evidence kind nobody classified is written as `UNATTRIBUTED` and counted
+> rather than hidden. An edge with no evidence id is **refused**: an unattributable
+> edge is exactly what the twin must not contain. An observation of a different
+> digest, or an SBOM bound to no digest, adds no path to production, and the
+> nodes are typed from their ids. **History lived in a list, not in the store**:
+> `sbom_timeline` reads each stored manifest and the document behind it into a
+> snapshot, produces the series in a deterministic order, and turns every change
+> into a drift event naming both artifacts (`from_sbom`/`to_sbom`/`at`), with
+> artifact-level changes not reported as components and the gap between snapshots
+> measured. One stored snapshot is not a timeline: the statement says drift is
+> **unmeasured** rather than "no changes". Both are reachable:
+> `POST /sbom/{artifact_id}/twin` (bind a digest, hand it observations, get the
+> edges plus the graph the engine renders) and `GET /sbom/{artifact_id}/history`
+> (tenant-scoped, target-scoped, typed) — two typed routes, so the untyped-response
+> inventory stays at 1156 of 1265 operations and the authorization register at
+> 1235.
+
 > [Durability, archives, obligations, deployment](136-sbom-durability-archives-obligations-deployment.md)
 > (**5 pass · 0 partial · 0 fail**, 68 probes, 4 placement, 9 archive and 13
 > licence-model cases) takes the four limits guide 135 named and makes each one

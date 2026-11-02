@@ -2427,6 +2427,42 @@ class SbomDeploymentsResponse(BaseModel):
     correlation: dict | None = None
 
 
+class SbomTwinRequest(BaseModel):
+    image_reference: str | None = Field(None, description=(
+        "registry reference of the artifact the SBOM describes; with image_digest it binds the "
+        "document to a digest so deployment observations can reach it"))
+    image_digest: str | None = Field(None, description="sha256:... of the described artifact")
+    application: str | None = Field(None, description="the application the artifact serves")
+    business_system: str | None = Field(None, description="the business system that application serves")
+    observations: list[dict] | None = Field(None, description=(
+        "deployment observations (as produced by /sbom/deployments); only these can create a "
+        "path to production in the graph"))
+    algorithms: dict | None = Field(None, description=(
+        "component name -> algorithm names, for HAS_CAPABILITY edges. A capability is inference, "
+        "so those edges are written INFERRED"))
+
+
+class SbomTwinResponse(BaseModel):
+    artifact_id: str
+    edges: dict
+    applied: dict
+    graph: dict
+
+
+class SbomHistoryResponse(BaseModel):
+    artifact_id: str
+    schema_: str = Field(alias="schema")
+    target: str | None = None
+    snapshots: list[str]
+    transitions: list[dict]
+    events: list[dict]
+    event_counts: dict[str, int]
+    components: dict
+    changed_transitions: int
+    gap_days: int | None = None
+    statement: str
+
+
 class SbomVexRequest(BaseModel):
     doc: dict | None = Field(None, description="CycloneDX or SPDX JSON document")
     artifact_id: str | None = Field(None, description="stored artifact instead of an inline document")
@@ -2603,6 +2639,118 @@ def sbom_obligations(body: SbomObligationsRequest, request: Request,
                       "the engine does not assume permissive."]
         payload["markdown"] = "\n".join(lines)
     return payload
+
+
+def _twin_build(manifest: dict) -> Any:
+    """The build identity the manifest recorded, as the evidence layer's type."""
+    from devsecops import sbom_evidence as evidence
+
+    build = ((manifest.get("provenance") or {}).get("build") or {})
+    if not build:
+        return None
+    artifact = None
+    detail = build.get("artifact") or {}
+    if detail.get("reference") and detail.get("digest"):
+        try:
+            artifact = evidence.ArtifactIdentity(detail["reference"], detail["digest"])
+        except ValueError:
+            artifact = None
+
+    def _date(value: Any) -> Any:
+        if not value:
+            return None
+        from datetime import date as _date_type
+
+        try:
+            return _date_type.fromisoformat(str(value)[:10])
+        except ValueError:
+            return None
+
+    return evidence.BuildIdentity(
+        source_commit=str(build.get("source_commit") or ""),
+        build_id=str(build.get("build_id") or ""),
+        builder=str(build.get("builder") or ""),
+        pipeline=str(build.get("pipeline") or ""),
+        artifact=artifact, sbom_id=build.get("sbom_id"),
+        started_at=_date(build.get("started_at")), finished_at=_date(build.get("finished_at")))
+
+
+@router.post("/sbom/{artifact_id}/twin", response_model=SbomTwinResponse)
+def sbom_twin(artifact_id: str, request: Request, body: SbomTwinRequest | None = None,
+              db: Session = Depends(get_db_session),
+              user: str = Depends(require_roles(*_SBOM_READERS))):
+    """The SBOM's edges for the digital twin, written with their evidence attached.
+
+    The graph is where the review's distinction has to survive: an SBOM edge is
+    ``DECLARED``, a capability is ``INFERRED``, and only a deployment observation
+    produces ``OBSERVED`` and a path to production. An edge with no evidence id is
+    refused rather than written unattributed.
+    """
+    from devsecops import deployment_collectors as collectors
+    from devsecops import sbom_evidence as evidence
+    from devsecops import sbom_timeline as timeline
+    from graph_engine.core.engine import GraphEngine
+
+    body = body or SbomTwinRequest()
+    man, blob = _load_sbom_artifact(artifact_id, _artifact_tenant(request, db, user))
+    try:
+        document = json.loads(blob.decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001 — a corrupt blob is a real failure
+        raise HTTPException(status_code=422, detail=f"stored SBOM could not be parsed: {exc}")
+    record = timeline.record_from_document(man, document)
+    if body.image_digest:
+        try:
+            identity = evidence.ArtifactIdentity(
+                str(body.image_reference or man.get("target") or "artifact"), body.image_digest)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        record = evidence.SbomRecord(sbom_id=record.sbom_id, artifact=identity,
+                                     components=record.components,
+                                     created_at=record.created_at, build_id=record.build_id)
+    observations = []
+    for row in body.observations or ():
+        try:
+            observations.append(collectors._observation_from_dict(row))
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(status_code=422, detail="an observation is missing its digest")
+    edges = evidence.twin_edges(record, build=_twin_build(man), deployments=observations,
+                                application=body.application,
+                                business_system=body.business_system,
+                                algorithms=body.algorithms)
+    engine = GraphEngine()
+    applied = evidence.apply_twin_edges(engine, edges["edges"])
+    return {"artifact_id": artifact_id, "edges": edges, "applied": applied,
+            "graph": engine.to_vis()}
+
+
+@router.get("/sbom/{artifact_id}/history", response_model=SbomHistoryResponse)
+def sbom_history(artifact_id: str, request: Request, limit: int = Query(12, ge=2, le=50),
+                 db: Session = Depends(get_db_session),
+                 user: str = Depends(require_roles(*_SBOM_READERS))):
+    """The stored artifacts for this target, as a timeline and a drift feed.
+
+    A timeline of one snapshot is not a timeline: the statement says drift is
+    unmeasured rather than reporting "no changes". Every change becomes a drift
+    event carrying the two snapshots it sits between.
+    """
+    from devsecops import sbom_timeline as timeline
+
+    tenant = _artifact_tenant(request, db, user)
+    store = _sbom_storage()
+    man, _blob = _load_sbom_artifact(artifact_id, tenant)
+    target = man.get("target")
+    candidates = [row for row in _visible_manifests(store, tenant_id=tenant)
+                  if row.get("target") == target and row.get("storage_key")]
+    candidates.sort(key=lambda row: str(row.get("created_at") or ""))
+    entries = []
+    for candidate in candidates[-limit:]:
+        try:
+            payload, _ = _artifact_blob(store, candidate, tenant)
+            entries.append((candidate, json.loads(payload.decode("utf-8"))))
+        except (HTTPException, ValueError):
+            continue
+    report = timeline.timeline(entries, target=target)
+    return {"artifact_id": artifact_id, **report}
 
 
 @router.post("/sbom/vex")

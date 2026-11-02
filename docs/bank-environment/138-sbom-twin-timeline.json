@@ -1,0 +1,266 @@
+{
+  "schema": "cryptoscan.sbom-twin-timeline-guide/1",
+  "generated_at": "2026-11-02T17:30:42.742559+00:00",
+  "as_of": "2026-11-02",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 40,
+  "rows": [
+    {
+      "id": "twin_edges",
+      "question": "does the graph distinguish declared from observed?",
+      "phase": "review item 14",
+      "probes": [
+        {
+          "probe": "an-sbom-edge-stops-at-the-artifact",
+          "ok": true,
+          "observed": "3 edge(s) from SBOM-1; no observation reaches this artifact, so no component resolves to a running system"
+        },
+        {
+          "probe": "an-observation-is-what-creates-a-path-to-production",
+          "ok": true,
+          "observed": "5 edge(s), including DEPLOYED_AS, RUNS_AS"
+        },
+        {
+          "probe": "an-observation-of-another-digest-does-not-reach-this-artifact",
+          "ok": true,
+          "observed": "an observation of a different digest adds nothing to this SBOM's graph"
+        },
+        {
+          "probe": "an-unbound-document-cannot-be-deployed",
+          "ok": true,
+          "observed": "an SBOM with no artifact digest has no path to an observation"
+        },
+        {
+          "probe": "a-capability-is-inference-and-says-so",
+          "ok": true,
+          "observed": "1 HAS_CAPABILITY edge(s), confidence LOW"
+        },
+        {
+          "probe": "every-edge-carries-an-evidence-id-and-a-time",
+          "ok": true,
+          "observed": "5 edge(s), each with evidence_id and source"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "provenance_bridge",
+      "question": "is the provenance class decided by the evidence, not the edge?",
+      "phase": "review item 14",
+      "probes": [
+        {
+          "probe": "the-whole-sbom-graph-is-written",
+          "ok": true,
+          "observed": "7 edge(s) written across 9 node(s)"
+        },
+        {
+          "probe": "each-evidence-kind-earns-its-provenance-class",
+          "ok": true,
+          "observed": "{\"DECLARED\": 4, \"INFERRED\": 1, \"OBSERVED\": 2}"
+        },
+        {
+          "probe": "the-rendered-graph-shows-the-classes",
+          "ok": true,
+          "observed": "9 node(s), 7 edge(s)"
+        },
+        {
+          "probe": "every-written-edge-keeps-its-evidence-reference",
+          "ok": true,
+          "observed": "4 distinct evidence reference(s)"
+        },
+        {
+          "probe": "the-nodes-are-typed-by-what-they-are",
+          "ok": true,
+          "observed": "APPLICATION, ARTIFACT, BUSINESS_SYSTEM, CAPABILITY, COMPONENT, DEPLOYMENT, SBOM, WORKLOAD"
+        },
+        {
+          "probe": "an-edge-with-no-evidence-is-refused-not-written",
+          "ok": true,
+          "observed": "0 edge(s) written across 0 node(s); 1 refused for carrying no evidence"
+        },
+        {
+          "probe": "one-refused-edge-does-not-stop-the-rest",
+          "ok": true,
+          "observed": "1 written, 1 refused"
+        },
+        {
+          "probe": "an-unknown-evidence-kind-is-visible-as-unattributed",
+          "ok": true,
+          "observed": "1 edge(s) written across 2 node(s); 1 edge kind(s) had no provenance class and were written as UNATTRIBUTED"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "artifact_timeline",
+      "question": "can the store answer what moved, between which artifacts?",
+      "phase": "review items 12 / 15",
+      "probes": [
+        {
+          "probe": "a-stored-manifest-and-its-document-become-a-snapshot",
+          "ok": true,
+          "observed": "ART-1 at 2026-10-01, bound to sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        {
+          "probe": "an-spdx-document-produces-the-same-shape",
+          "ok": true,
+          "observed": "1 component(s) from SPDX"
+        },
+        {
+          "probe": "a-manifest-with-no-digest-binds-the-document-to-nothing",
+          "ok": true,
+          "observed": "no artifact identity is claimed for a manifest with no sha256"
+        },
+        {
+          "probe": "the-scanners-own-crypto-registry-is-read",
+          "ok": true,
+          "observed": "openssl is crypto-relevant by the registry the scanner ships"
+        },
+        {
+          "probe": "two-snapshots-produce-a-change-with-both-ends-named",
+          "ok": true,
+          "observed": "{'ARTIFACT_CHANGED': 1, 'PACKAGE_REMOVED': 1, 'VERSION_CHANGED': 1}"
+        },
+        {
+          "probe": "the-input-order-does-not-decide-the-timeline",
+          "ok": true,
+          "observed": "2 snapshot(s) for ghcr.io/bank/payments-api: 2 snapshot(s), 1 transition(s), 0 with no change; the longest gap between snapshots is 14 day(s)"
+        },
+        {
+          "probe": "one-snapshot-reports-drift-as-unmeasured",
+          "ok": true,
+          "observed": "1 snapshot(s): with fewer than two snapshots nothing has been compared, so drift is unmeasured"
+        },
+        {
+          "probe": "identical-snapshots-are-no-drift-not-unmeasured",
+          "ok": true,
+          "observed": "2 snapshot(s): 2 snapshot(s), 1 transition(s), 1 with no change; the longest gap between snapshots is 14 day(s)"
+        },
+        {
+          "probe": "two-snapshots-on-the-same-day-keep-their-stored-order",
+          "ok": true,
+          "observed": "['ART-b', 'ART-a'] from the stored timestamps, not from the ids"
+        },
+        {
+          "probe": "the-gap-between-snapshots-is-reported",
+          "ok": true,
+          "observed": "14 day(s)"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "drift_feed",
+      "question": "can a drift engine consume this without a human reading it?",
+      "phase": "review item 12",
+      "probes": [
+        {
+          "probe": "each-change-becomes-an-event-a-drift-engine-can-consume",
+          "ok": true,
+          "observed": "3 event(s): {'ARTIFACT_CHANGED': 1, 'PACKAGE_REMOVED': 1, 'VERSION_CHANGED': 1}"
+        },
+        {
+          "probe": "an-event-names-the-two-artifacts-it-sits-between",
+          "ok": true,
+          "observed": "ART-1 -> ART-2 at 2026-10-15"
+        },
+        {
+          "probe": "a-change-to-the-artifact-is-not-reported-as-a-component",
+          "ok": true,
+          "observed": "1 artifact-level event(s)"
+        },
+        {
+          "probe": "the-event-counts-add-up-to-the-events",
+          "ok": true,
+          "observed": "3 counted, 3 emitted"
+        },
+        {
+          "probe": "a-single-snapshot-emits-no-events-and-says-why",
+          "ok": true,
+          "observed": "1 snapshot(s): with fewer than two snapshots nothing has been compared, so drift is unmeasured"
+        },
+        {
+          "probe": "the-component-series-keeps-every-version-with-its-snapshot",
+          "ok": true,
+          "observed": "2 component series"
+        },
+        {
+          "probe": "the-schema-is-declared-on-every-report",
+          "ok": true,
+          "observed": "cryptoscan.sbom-timeline/1"
+        },
+        {
+          "probe": "an-empty-store-is-an-empty-timeline-not-an-error",
+          "ok": true,
+          "observed": "0 snapshot(s): with fewer than two snapshots nothing has been compared, so drift is unmeasured"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "api_exposure",
+      "question": "can a caller reach these answers through the API?",
+      "phase": "review items 12 / 14",
+      "probes": [
+        {
+          "probe": "the-twin-edges-are-reachable",
+          "ok": true,
+          "observed": "POST /sbom/{artifact_id}/twin is declared"
+        },
+        {
+          "probe": "the-history-is-reachable",
+          "ok": true,
+          "observed": "GET /sbom/{artifact_id}/history is declared"
+        },
+        {
+          "probe": "both-routes-are-typed",
+          "ok": true,
+          "observed": "both responses are Pydantic models, so the untyped inventory is unchanged"
+        },
+        {
+          "probe": "the-schema-key-is-not-renamed-by-the-response-model",
+          "ok": true,
+          "observed": "the report's `schema` key survives response validation"
+        },
+        {
+          "probe": "the-twin-route-can-bind-a-digest-and-carry-observations",
+          "ok": true,
+          "observed": "an operator can bind the stored SBOM to a digest and hand it observations"
+        },
+        {
+          "probe": "the-twin-route-uses-the-real-graph-engine",
+          "ok": true,
+          "observed": "the response carries the graph the engine would render"
+        },
+        {
+          "probe": "the-history-route-reads-the-store-not-the-request",
+          "ok": true,
+          "observed": "history is scoped to the tenant and to the artifact's target"
+        },
+        {
+          "probe": "both-routes-require-the-existing-sbom-roles",
+          "ok": true,
+          "observed": "no new permission surface was invented for these reads"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "provenance is a classification of the evidence, not a judgement of it: an SBOM edge marked DECLARED is only as true as the document, and the graph saying OBSERVED means somebody reported an observation, not that the observation is right",
+    "the twin writes what it is given. A deployment observation supplied by a caller can be fabricated, which is why the evidence id and observed_at travel onto the edge rather than being summarised away",
+    "HAS_CAPABILITY is inference from a name-based registry: a component that can do AES is not a component that uses AES, and the edge keeps confidence LOW for that reason",
+    "the timeline is built from stored manifests for one target. Two targets with the same components produce two separate timelines, and nothing here decides whether an artifact change is a release or a rebuild",
+    "drift events describe what the documents say changed. A component whose version is identical but whose bytes differ is invisible to a component-level diff",
+    "retention is the store's policy: a history is only as long as the artifacts that were kept, so a pruned series can report fewer transitions without anything having been stable"
+  ]
+}
