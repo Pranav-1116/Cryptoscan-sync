@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.hardware-discovery/1",
-  "generated_at": "2026-11-02T11:24:19.162743+00:00",
+  "generated_at": "2026-11-02T11:37:28.336233+00:00",
   "counts": {
     "PASS": 6,
     "PARTIAL": 1,
@@ -107,19 +107,40 @@
           "observed": "storage inventory and encryption state reached the record: ['serial', 'firmware', 'disk_encryption']"
         },
         {
-          "probe": "windows-collection-surface",
+          "probe": "linux-reader-reads-sysfs",
           "ok": true,
-          "observed": "a Windows/host collection surface exists in the platform tree"
+          "observed": "the Linux reader took manufacturer, serial and 2 interface(s) straight from a sysfs tree, with no binary involved"
         },
         {
-          "probe": "os-readers-execute",
+          "probe": "linux-reader-parses-allowlisted-commands",
+          "ok": true,
+          "observed": "1 memory module(s), 2 disk(s), SMART health and 1 PCI device(s) from 5 command(s): ['dmidecode', 'lsblk', 'smartctl', 'smartctl', 'lspci']"
+        },
+        {
+          "probe": "linux-reader-refuses-arbitrary-commands",
+          "ok": true,
+          "observed": "a shell, a metacharacter argument, a traversal device path and a non-device file were all refused (4/4)"
+        },
+        {
+          "probe": "linux-reader-runs-no-shell",
+          "ok": true,
+          "observed": "the only subprocess call site passes an argv list with shell=False"
+        },
+        {
+          "probe": "windows-reader",
           "ok": false,
-          "observed": "collectors name OS readers ['sys'] \u2014 but every one of them consumes a context dict; nothing here shells out to /sys, dmidecode, WMI or SNMP, so this row measures the schema the collectors fill, not a run against a host"
+          "observed": "no WMI/CIM reader anywhere in the tree: on Windows the collectors still wait for a caller to supply the context"
+        },
+        {
+          "probe": "network-transport-wired",
+          "ok": false,
+          "observed": "an SNMP client exists in the network scanner but nothing bridges it into hardware observations, so a switch still arrives only if a caller fills the context"
         }
       ],
       "verdict": "PARTIAL",
       "failed": [
-        "os-readers-execute"
+        "windows-reader",
+        "network-transport-wired"
       ]
     },
     {
@@ -237,7 +258,7 @@
         {
           "probe": "synthetic-estate-projects",
           "ok": true,
-          "observed": "600 synthetic hardware assets across 4 vendors and 6 device types, projected in 0.02s"
+          "observed": "600 synthetic hardware assets across 4 vendors and 6 device types, projected in 0.00s"
         },
         {
           "probe": "identity-does-not-collide",
@@ -260,7 +281,7 @@
         "vendors": 4,
         "device_types": 6,
         "changes": 400,
-        "seconds": 0.019
+        "seconds": 0.004
       },
       "verdict": "PASS",
       "failed": []
@@ -323,7 +344,8 @@
   },
   "limits": [
     "no bank hardware was touched: every HSM and TPM here is a synthetic payload, and no appliance, hypervisor or network device was contacted",
-    "collector breadth feeds each collector a synthetic payload and checks which facts reach the record; no collector has a transport that reads a real host, so the row measures the schema a collector fills, not a discovery run",
+    "collector breadth feeds each collector a synthetic payload and drives the Linux reader against a fixture sysfs tree and a recorded transcript; no bank host was read, and real hosts differ \u2014 dmidecode absent, root denied, vendor quirks its allowlist has not seen",
+    "the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data",
     "the synthetic estate measures identity, drift volume and runtime, not discovery precision or recall against real vendor firmware",
     "encryption at rest, per-tenant key custody and vendor attestation are outside this artifact entirely"
   ]

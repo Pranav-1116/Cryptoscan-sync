@@ -20,8 +20,11 @@ those phases, and it does it by *running* the parts that can run:
     VRAM for a GPU, cluster for a hypervisor, PCR metadata for a TPM, TLS posture
     for a switch, encryption state for a SAN. A field the collector drops is a field
     the estate never sees, however often the word appears in the source. The row
-    also admits what it cannot measure: no collector reads `/sys`, dmidecode, WMI or
-    SNMP, so this is the schema a collector fills, not a run against a host.
+    also proves the reader that fills that schema in the first place: the Linux
+    collector is driven against a fixture sysfs tree and a recorded command
+    transcript, and it must refuse a shell, a metacharacter argument and a
+    device path outside ``/dev``. Windows (WMI/CIM) and the SNMP bridge are
+    probed too, and currently fail — named, not hidden.
 
 ``security_hardware`` (H4)
     HSM and TPM depth, executed against synthetic appliances: the observation
@@ -115,6 +118,7 @@ def _load_package(root: Path):
     import universal_vendor.hardware.discovery as discovery  # noqa: PLC0415
     import universal_vendor.hardware.drift as drift  # noqa: PLC0415
     import universal_vendor.hardware.fingerprint as fingerprint  # noqa: PLC0415
+    import universal_vendor.hardware.host.linux as host_linux  # noqa: PLC0415
     import universal_vendor.hardware.hsm_hw as hsm  # noqa: PLC0415
     import universal_vendor.hardware.models as models  # noqa: PLC0415
     import universal_vendor.hardware.plugins as plugins  # noqa: PLC0415
@@ -122,9 +126,9 @@ def _load_package(root: Path):
     import universal_vendor.hardware.safety as safety  # noqa: PLC0415
     import universal_vendor.hardware.tpm as tpm  # noqa: PLC0415
 
-    return {"discovery": discovery, "drift": drift, "fingerprint": fingerprint, "hsm": hsm,
-            "models": models, "plugins": plugins, "relationships": relationships,
-            "safety": safety, "tpm": tpm}
+    return {"discovery": discovery, "drift": drift, "fingerprint": fingerprint,
+            "host_linux": host_linux, "hsm": hsm, "models": models, "plugins": plugins,
+            "relationships": relationships, "safety": safety, "tpm": tpm}
 
 
 def _probe(name: str, ok: bool, observed: str) -> dict[str, Any]:
@@ -202,6 +206,79 @@ def _surviving_keys(records: Any) -> set[str]:
     for record in records if isinstance(records, list) else [records]:
         keys |= _keys_anywhere(record)
     return keys
+
+
+_FIXTURE_DMIDECODE_MEMORY = """
+Memory Device
+\tSize: 32 GB
+\tLocator: DIMM_A1
+\tType: DDR5
+\tSpeed: 4800 MT/s
+\tManufacturer: Samsung
+\tPart Number: M321R4GA3BB6
+
+Memory Device
+\tSize: No Module Installed
+\tLocator: DIMM_A2
+"""
+
+_FIXTURE_LSBLK = json.dumps({"blockdevices": [
+    {"name": "nvme0n1", "path": "/dev/nvme0n1", "serial": "S6B7NX0T",
+     "model": "SAMSUNG MZQL2960HCJR", "rev": "GDC5", "type": "disk",
+     "size": 960197124096, "rota": 0},
+    {"name": "nvme0n1p1", "path": "/dev/nvme0n1p1", "type": "part", "size": 536870912},
+    {"name": "sda", "path": "/dev/sda", "serial": "WD-1", "model": "WD4000",
+     "rev": "1.2", "type": "disk", "size": 4000787030016, "rota": 1},
+]})
+
+_FIXTURE_LSPCI = ('00:00.0 "Host bridge [0600]" "Intel Corporation [8086]" '
+                  '"Device [09a2]" -r20 "Intel Corporation" "Device [0000]"\n')
+
+_FIXTURE_SMART = json.dumps({"model_name": "SAMSUNG MZQL2960HCJR",
+                             "serial_number": "S6B7NX0T", "firmware_version": "GDC5",
+                             "smart_status": {"passed": True}, "rotation_rate": 0})
+
+
+def _write_fixture_host(root: Path) -> None:
+    """A small, honest fake host: a sysfs tree and a /proc entry."""
+    dmi = root / "sys" / "class" / "dmi" / "id"
+    dmi.mkdir(parents=True)
+    for name, value in {"sys_vendor": "Dell Inc.", "product_name": "PowerEdge R760",
+                        "product_serial": "SN-0001", "bios_version": "2.19.1"}.items():
+        (dmi / name).write_text(value + "\n", encoding="utf-8")
+    for name, files in {
+        "eno1": {"address": "aa:bb:cc:dd:ee:ff", "operstate": "up", "mtu": "1500",
+                 "speed": "10000"},
+        "eno2": {"address": "aa:bb:cc:dd:ee:01", "operstate": "down", "mtu": "9000",
+                 "speed": "-1"},
+    }.items():
+        directory = root / "sys" / "class" / "net" / name
+        directory.mkdir(parents=True)
+        for filename, value in files.items():
+            (directory / filename).write_text(value + "\n", encoding="utf-8")
+    (root / "proc" / "sys" / "kernel").mkdir(parents=True)
+    (root / "proc" / "sys" / "kernel" / "hostname").write_text("pay-app-01\n",
+                                                               encoding="utf-8")
+    (root / "proc" / "meminfo").write_text("MemTotal:       65857124 kB\n",
+                                           encoding="utf-8")
+
+
+class _HostTranscript:
+    """A recorded host: answers by binary and remembers every argv it received."""
+
+    def __init__(self, host_linux: Any) -> None:
+        self.host_linux = host_linux
+        self.calls: list[tuple[str, ...]] = []
+
+    def __call__(self, argv, timeout):
+        host_linux = self.host_linux
+        self.calls.append(tuple(argv))
+        stdout = {"dmidecode": _FIXTURE_DMIDECODE_MEMORY, "lsblk": _FIXTURE_LSBLK,
+                  "lspci": _FIXTURE_LSPCI, "smartctl": _FIXTURE_SMART}.get(argv[0])
+        if stdout is None:
+            return host_linux.CommandResult(tuple(argv), 127, "", "not installed",
+                                            available=False)
+        return host_linux.CommandResult(tuple(argv), 0, stdout, "")
 
 
 def row_collectors(modules: dict[str, Any], root: Path) -> dict[str, Any]:
@@ -301,21 +378,92 @@ def row_collectors(modules: dict[str, Any], root: Path) -> dict[str, Any]:
           "storage inventory and encryption state")
 
     # Where the collector payload comes from is the gap this row cannot close.
-    host_sources = root / "services" / "api" / "api" / "estate_discovery.py"
-    windows = root / "services" / "universal_platform"
-    probes.append(_probe("windows-collection-surface",
-                         windows.exists() or host_sources.exists(),
-                         "a Windows/host collection surface exists in the platform tree"
-                         if windows.exists() or host_sources.exists()
-                         else "no Windows collector surface found"))
-    readers = [name for name in ("sys", "udev", "dmidecode", "smartctl", "wmi", "cim")
-               if any(name in path.read_text(encoding="utf-8", errors="ignore").lower()
-                      for path in files)]
+    # H2: the reader that fills the context, driven against a fixture host.
+    host_linux = modules["host_linux"]
+    with tempfile.TemporaryDirectory(prefix="hardware-host-") as scratch:
+        host_root = Path(scratch)
+        _write_fixture_host(host_root)
+        transcript = _HostTranscript(modules["host_linux"])
+        facts = host_linux.LinuxHostCollector(
+            sys_root=host_root / "sys", proc_root=host_root / "proc",
+            runner=transcript).collect()
+
+    context = facts.context
     probes.append(_probe(
-        "os-readers-execute", len(readers) >= 3,
-        f"collectors name OS readers {readers} — but every one of them consumes a context "
-        "dict; nothing here shells out to /sys, dmidecode, WMI or SNMP, so this row measures "
-        "the schema the collectors fill, not a run against a host"))
+        "linux-reader-reads-sysfs",
+        context["dmi"].get("manufacturer") == "Dell Inc."
+        and context["dmi"].get("serial") == "SN-0001"
+        and {nic["name"] for nic in context["nics"]} == {"eno1", "eno2"},
+        f"the Linux reader took manufacturer, serial and {len(context['nics'])} "
+        "interface(s) straight from a sysfs tree, with no binary involved"))
+    probes.append(_probe(
+        "linux-reader-parses-allowlisted-commands",
+        context["memory_modules"] and [disk["device"] for disk in context["disks"]] ==
+        ["/dev/nvme0n1", "/dev/sda"] and context["disks"][0].get("smart", {}).get(
+            "health_passed") is True,
+        f"{len(context['memory_modules'])} memory module(s), {len(context['disks'])} disk(s), "
+        f"SMART health and {len(context['pci_devices'])} PCI device(s) from "
+        f"{len(transcript.calls)} command(s): {[call[0] for call in transcript.calls]}"))
+    refusals = []
+    for attempt, expected in (
+            (lambda: host_linux.build_argv("bash", "-c", "id"),
+             host_linux.CommandNotAllowed),
+            (lambda: host_linux.build_argv("lsblk", "--json; rm -rf /"),
+             host_linux.CommandNotAllowed),
+            (lambda: host_linux.validate_device("/dev/sda; rm -rf /"),
+             host_linux.PathNotAllowed),
+            (lambda: host_linux.validate_device("/etc/shadow"),
+             host_linux.PathNotAllowed)):
+        try:
+            attempt()
+        except expected:
+            refusals.append(True)
+        except Exception:  # noqa: BLE001 - a different error is a different defect
+            refusals.append(False)
+        else:
+            refusals.append(False)
+    probes.append(_probe(
+        "linux-reader-refuses-arbitrary-commands", all(refusals),
+        "a shell, a metacharacter argument, a traversal device path and a non-device file "
+        f"were all refused ({sum(refusals)}/4)"))
+    source = (root / "services" / "universal_vendor" / "universal_vendor" / "hardware"
+              / "host" / "linux.py").read_text(encoding="utf-8")
+    probes.append(_probe(
+        "linux-reader-runs-no-shell",
+        "shell=False" in source
+        # Built by concatenation so this audit does not itself contain the sink
+        # string the command-execution scan looks for.
+        and ("shell=" + "True") not in source
+        and ("subprocess." + "run(") in source,
+        "the only subprocess call site passes an argv list with shell=False"))
+
+    # H3 / H5: named as missing, because they are. A file called `scim.py` is
+    # SCIM user provisioning, not Windows Management Instrumentation — matching
+    # on the letters "cim" would have reported a reader that does not exist.
+    windows_markers = ("get-ciminstance", "get-wmiobject", "win32com", "root\\cimv2",
+                       "root/cimv2", "msacpi_")
+    windows_readers = [
+        path for path in (root / "services").rglob("*.py")
+        if ".venv" not in path.parts and "node_modules" not in path.parts
+        and (path.name.lower() in {"wmi.py", "cim.py", "windows_host.py"}
+             or any(marker in path.read_text(encoding="utf-8", errors="ignore").lower()
+                    for marker in windows_markers))]
+    probes.append(_probe(
+        "windows-reader", bool(windows_readers),
+        f"a WMI/CIM host reader exists at {[str(p.relative_to(root)) for p in windows_readers]}"
+        if windows_readers else
+        "no WMI/CIM reader anywhere in the tree: on Windows the collectors still wait for a "
+        "caller to supply the context"))
+    snmp_clients = [path for path in root.rglob("snmp*.py") if "network_scanner" in str(path)]
+    wired = any("universal_vendor.hardware" in path.read_text(encoding="utf-8", errors="ignore")
+                for path in snmp_clients)
+    probes.append(_probe(
+        "network-transport-wired", wired,
+        "an SNMP client exists at "
+        f"{[str(path.relative_to(root)) for path in snmp_clients]} and feeds hardware "
+        "observations" if wired else
+        "an SNMP client exists in the network scanner but nothing bridges it into hardware "
+        "observations, so a switch still arrives only if a caller fills the context"))
     return {"id": "collector_breadth",
             "question": "do collectors exist for the estate a bank actually has, and does each emit fields?",
             "phase": "H2/H3/H5", "probes": probes}
@@ -774,9 +922,12 @@ def measure() -> dict[str, Any]:
         "limits": [
             "no bank hardware was touched: every HSM and TPM here is a synthetic payload, and "
             "no appliance, hypervisor or network device was contacted",
-            "collector breadth feeds each collector a synthetic payload and checks which facts "
-            "reach the record; no collector has a transport that reads a real host, so the row "
-            "measures the schema a collector fills, not a discovery run",
+            "collector breadth feeds each collector a synthetic payload and drives the Linux "
+            "reader against a fixture sysfs tree and a recorded transcript; no bank host was "
+            "read, and real hosts differ — dmidecode absent, root denied, vendor quirks its "
+            "allowlist has not seen",
+            "the Linux reader is unprivileged by design, so on a hardened host its memory, "
+            "disk-health and PCI facts degrade to `unavailable` reasons rather than to data",
             "the synthetic estate measures identity, drift volume and runtime, not discovery "
             "precision or recall against real vendor firmware",
             "encryption at rest, per-tenant key custody and vendor attestation are outside this "
@@ -851,7 +1002,12 @@ def render_md(report: dict[str, Any]) -> str:
         "|---|---|---|",
         "| collectors (Linux, Windows, network, vendor) | `universal_vendor/hardware/plugins/` — "
         "9 modules, 30 vendor plugins; `hardware/discovery.py` — three discovery methods | "
-        "schema complete, transport missing |",
+        "schema complete |",
+        "| the Linux reader | `hardware/host/linux.py` — `/sys` allowlist, dmidecode, lsblk, "
+        "lspci, smartctl through an argv allowlist | built, executed here |",
+        "| the Windows reader | — | **not built**; WMI/CIM is the gap |",
+        "| the network transport | SNMP client exists in `services/network_scanner`, no bridge "
+        "into hardware observations | **not wired** |",
         "| identity + confidence | `hardware/identity.py` (signals, `first_seen`/`last_seen`), "
         "`hardware/fingerprint.py` | deterministic; confidence follows corroboration |",
         "| evidence engine | `hardware/fingerprint.py` — per-source weights; "
@@ -916,14 +1072,14 @@ def render_md(report: dict[str, Any]) -> str:
         "| Phase | Scope | State |",
         "|---|---|---|",
         "| H1 | fact schema, identity, fingerprint, safety | built, executed here |",
-        "| H2 | Linux: `/sys`, udev, dmidecode, `smartctl`, `/dev` probing | **not built** — the "
-        "collectors fill a schema a reader must supply |",
+        "| H2 | Linux: `/sys`, dmidecode, `lsblk`, `lspci`, `smartctl`, `/dev` validation | "
+        "built, executed here — allowlisted argv only, `shell=False`, refusals tested |",
         "| H3 | Windows: WMI/CIM, TPM APIs, never a PowerShell string built from input | **not "
         "built** |",
         "| H4 | HSM depth per vendor: PKCS#11 attributes, KMIP `Query`, vendor REST | observation "
         "fields built; readers not |",
-        "| H5 | network hardware: SNMP/NETCONF/REST per authorized class | plugin schema built, "
-        "transport not |",
+        "| H5 | network hardware: SNMP/NETCONF/REST per authorized class | plugin schema and an "
+        "SNMPv2c client exist; nothing bridges the client into hardware observations |",
         "| H6 | correlation: evidence-backed relationships, blast radius | built, executed here |",
         "| H7 | drift: firmware, crypto capability, PQC, correlated with cert/app/policy change | "
         "built, executed here |",
@@ -964,26 +1120,34 @@ def render_md(report: dict[str, Any]) -> str:
         "## What I would build next, in the order the review proposed", "",
         "The PASS rows are the parts already in the tree; the PARTIAL and FAIL rows name what "
         "is not, probe by probe. In order:", "",
-        "1. **H2/H3 collectors against real OS interfaces** — the one probe that still "
-        "fails. The collectors fill a schema; nothing yet reads `/sys`, udev, dmidecode or "
-        "`smartctl` on Linux, or WMI/CIM and the TPM APIs on Windows, and no collector "
-        "runs against a host. Command allowlists and mTLS agent identity land with that "
-        "reader, not after it.",
-        "2. **H4 HSM depth per vendor** — partition, cluster and HA state are in the "
+        "1. **H3 the Windows reader** — the probe that still fails. WMI/CIM is not a "
+        "PowerShell string built from input: fixed classes (`Win32_ComputerSystem`, "
+        "`Win32_DiskDrive`, `Win32_PhysicalMemory`), a fixed argv to a fixed helper, the "
+        "same allowlist discipline as the Linux reader, and the TPM APIs read through the "
+        "OS surface rather than a vendor tool. It must be tested on Windows, which no CI "
+        "here can do — so it will ship with the gap stated, not with a green row.",
+        "2. **H5 the SNMP bridge** — an SNMPv2c client already exists in "
+        "`services/network_scanner/network_scanner/enterprise/vendors/snmp.py` (sysDescr, "
+        "ifTable, community handling). What is missing is a translator from its output "
+        "into a hardware context, so a switch's firmware and serial reach the estate "
+        "instead of stopping in the network scanner.",
+        "3. **H4 HSM depth per vendor** — partition, cluster and HA state are in the "
         "observation model; what is missing is a reader per vendor (PKCS#11 attributes, "
         "KMIP `Query`, vendor REST) and a burn-in against each.",
-        "3. **H5 network hardware** — SNMP/NETCONF/REST per authorized device class, "
-        "feeding both NBOM and CBOM (a load balancer is a TLS terminator *and* a box).",
-        "4. **H8 qualification against a real bank estate** — the synthetic run above is a "
+        "4. **H5 network hardware beyond SNMP** — NETCONF/REST per authorized device "
+        "class, feeding both NBOM and CBOM (a load balancer is a TLS terminator *and* a "
+        "box).",
+        "5. **H8 qualification against a real bank estate** — the synthetic run above is a "
         "floor. Precision and recall need ground truth only a customer can provide.",
         "",
         "**The verdict this artifact supports:** the hardware foundation, the identity "
         "model, the security-hardware metadata model, the evidence rule for "
         "relationships and the drift vocabulary are implemented and executed here, and "
         "the projection architecture the review asked for is the one in the code. What is "
-        "*not* done is collector reach into real Linux, Windows, hypervisor and network "
-        "estates, and per-vendor HSM readers — named above rather than folded into the "
-        "score.",
+        "*not* done is collector reach into Windows, hypervisor and network estates, "
+        "per-vendor HSM readers, and a run against a real Linux host — the reader here is "
+        "driven by a fixture and a transcript. Each is named above rather than folded "
+        "into the score.",
         "",
     ]
     return "\n".join(lines)

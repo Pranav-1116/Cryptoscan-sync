@@ -118,9 +118,15 @@
 > that refuses key material raises instead of asserting, so `python -O` no longer
 > deletes it. A hardware relationship without an evidence record is refused
 > (`UnevidencedRelationship`), drift names firmware, crypto capability and PQC as
-> separate events, and a synthetic 600-asset estate projects in 0.02 s. The
-> PARTIAL is the collector row: every collector fills the schema, and none of
-> them yet reads `/sys`, dmidecode, WMI/CIM or SNMP on a real host.
+> separate events, and a synthetic 600-asset estate projects in 0.02 s. This
+> pass also added the reader those collectors were missing — `hardware/host/linux.py`
+> takes DMI, memory, disks, SMART health, PCI and NICs from a sysfs tree and five
+> allowlisted binaries, with `shell=False`, validated device nodes and an argv
+> allowlist that refuses a shell string; a refused command, an unprivileged host
+> and a missing binary are each proven to degrade to a stated reason rather than
+> a crash. The PARTIAL is now precise: no WMI/CIM reader for Windows, and the
+> SNMP client in the network scanner is not yet bridged into hardware
+> observations.
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

@@ -1,6 +1,6 @@
 # Hardware discovery — from collectors to a twin, not to a second inventory
 
-`cryptoscan.hardware-discovery/1` · generated 2026-11-02T11:24:19.162743+00:00 · **6 pass · 1 partial · 0 fail**
+`cryptoscan.hardware-discovery/1` · generated 2026-11-02T11:37:28.336233+00:00 · **6 pass · 1 partial · 0 fail**
 
 The review this answers set one architectural rule above all others: hardware is not an independent scanner that emits an HBOM. Collectors feed an evidence engine; the evidence engine feeds the canonical estate; the estate feeds the digital twin; and HBOM, CBOM, NBOM and TechBOM are **projections of that one truth**. A second inventory per BOM document type is the failure mode, and the `single_source_of_truth` row below fails if one appears.
 
@@ -21,7 +21,7 @@ The review this answers set one architectural rule above all others: hardware is
 | Phase | Question | Verdict | What was measured |
 |---|---|---|---|
 | hardware foundation — identity, fact schema, evidence | **is there a hardware fact schema and a stable identity behind it?** | **PASS** | 9 probe(s), all passing |
-| collectors — Linux, Windows, network | **do collectors exist for the estate a bank actually has, and does each emit fields?** | **PARTIAL** | 10 probe(s), failing: os-readers-execute |
+| collectors — Linux, Windows, network | **do collectors exist for the estate a bank actually has, and does each emit fields?** | **PARTIAL** | 14 probe(s), failing: windows-reader, network-transport-wired |
 | security hardware — HSM and TPM | **is HSM/TPM discovery deep enough to be worth anything, and can it leak a key?** | **PASS** | 5 probe(s), all passing |
 | correlation — evidence-backed relationships | **is a hardware dependency proven by evidence, or assumed because both exist?** | **PASS** | 5 probe(s), all passing |
 | drift — firmware, capability, PQC | **does hardware drift name what moved — firmware, capability, PQC — or just that something did?** | **PASS** | 6 probe(s), all passing |
@@ -34,7 +34,10 @@ Every box in the diagram above is a module, and the mapping is the point: a revi
 
 | Review piece | Where it lives | State |
 |---|---|---|
-| collectors (Linux, Windows, network, vendor) | `universal_vendor/hardware/plugins/` — 9 modules, 30 vendor plugins; `hardware/discovery.py` — three discovery methods | schema complete, transport missing |
+| collectors (Linux, Windows, network, vendor) | `universal_vendor/hardware/plugins/` — 9 modules, 30 vendor plugins; `hardware/discovery.py` — three discovery methods | schema complete |
+| the Linux reader | `hardware/host/linux.py` — `/sys` allowlist, dmidecode, lsblk, lspci, smartctl through an argv allowlist | built, executed here |
+| the Windows reader | — | **not built**; WMI/CIM is the gap |
+| the network transport | SNMP client exists in `services/network_scanner`, no bridge into hardware observations | **not wired** |
 | identity + confidence | `hardware/identity.py` (signals, `first_seen`/`last_seen`), `hardware/fingerprint.py` | deterministic; confidence follows corroboration |
 | evidence engine | `hardware/fingerprint.py` — per-source weights; `universal_vendor/evidence.py` — content-hash chain; `HardwareObservation` keeps `discovery_sources` and `identity_conflicts` | every contributing source stays visible, conflicts are uncertainty not overwrite |
 | canonical estate | `hardware/models.py` — `HardwareObservation`, 32 device types, `CryptoCapability` | one schema for every device class |
@@ -72,10 +75,10 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 | Phase | Scope | State |
 |---|---|---|
 | H1 | fact schema, identity, fingerprint, safety | built, executed here |
-| H2 | Linux: `/sys`, udev, dmidecode, `smartctl`, `/dev` probing | **not built** — the collectors fill a schema a reader must supply |
+| H2 | Linux: `/sys`, dmidecode, `lsblk`, `lspci`, `smartctl`, `/dev` validation | built, executed here — allowlisted argv only, `shell=False`, refusals tested |
 | H3 | Windows: WMI/CIM, TPM APIs, never a PowerShell string built from input | **not built** |
 | H4 | HSM depth per vendor: PKCS#11 attributes, KMIP `Query`, vendor REST | observation fields built; readers not |
-| H5 | network hardware: SNMP/NETCONF/REST per authorized class | plugin schema built, transport not |
+| H5 | network hardware: SNMP/NETCONF/REST per authorized class | plugin schema and an SNMPv2c client exist; nothing bridges the client into hardware observations |
 | H6 | correlation: evidence-backed relationships, blast radius | built, executed here |
 | H7 | drift: firmware, crypto capability, PQC, correlated with cert/app/policy change | built, executed here |
 | H8 | qualification against a real bank estate | synthetic only; precision and recall need ground truth |
@@ -108,8 +111,12 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 - **PASS** `collector-tpm` — TPM metadata reached the record: ['pcr', 'secure_boot']
 - **PASS** `collector-network` — network inventory and TLS posture reached the record: ['serial', 'firmware', 'tls']
 - **PASS** `collector-storage` — storage inventory and encryption state reached the record: ['serial', 'firmware', 'disk_encryption']
-- **PASS** `windows-collection-surface` — a Windows/host collection surface exists in the platform tree
-- **FAIL** `os-readers-execute` — collectors name OS readers ['sys'] — but every one of them consumes a context dict; nothing here shells out to /sys, dmidecode, WMI or SNMP, so this row measures the schema the collectors fill, not a run against a host
+- **PASS** `linux-reader-reads-sysfs` — the Linux reader took manufacturer, serial and 2 interface(s) straight from a sysfs tree, with no binary involved
+- **PASS** `linux-reader-parses-allowlisted-commands` — 1 memory module(s), 2 disk(s), SMART health and 1 PCI device(s) from 5 command(s): ['dmidecode', 'lsblk', 'smartctl', 'smartctl', 'lspci']
+- **PASS** `linux-reader-refuses-arbitrary-commands` — a shell, a metacharacter argument, a traversal device path and a non-device file were all refused (4/4)
+- **PASS** `linux-reader-runs-no-shell` — the only subprocess call site passes an argv list with shell=False
+- **FAIL** `windows-reader` — no WMI/CIM reader anywhere in the tree: on Windows the collectors still wait for a caller to supply the context
+- **FAIL** `network-transport-wired` — an SNMP client exists in the network scanner but nothing bridges it into hardware observations, so a switch still arrives only if a caller fills the context
 
 ### `security_hardware` — PASS
 
@@ -146,12 +153,12 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 
 *does any of it survive a synthetic bank-sized estate?* (phase H8)
 
-- **PASS** `synthetic-estate-projects` — 600 synthetic hardware assets across 4 vendors and 6 device types, projected in 0.02s
+- **PASS** `synthetic-estate-projects` — 600 synthetic hardware assets across 4 vendors and 6 device types, projected in 0.00s
 - **PASS** `identity-does-not-collide` — 600 distinct identities from 600 observations (serial is the key, and it held)
 - **PASS** `drift-scales-with-change-not-with-estate` — 400 change event(s) from 120 upgraded assets in an estate of 600: per-device-type counts {'firewall': 3, 'hsm': 4, 'load_balancer': 3, 'san': 3, 'server': 3, 'tpm': 4}, and no record named an asset that did not change (0 leaked)
 - **PASS** `a-missing-observation-is-not-a-deletion` — identity is retained across observations; an asset that is not re-observed is not silently removed (retirement is its own decision)
 
-Measured: `{"assets": 600, "vendors": 4, "device_types": 6, "changes": 400, "seconds": 0.019}`
+Measured: `{"assets": 600, "vendors": 4, "device_types": 6, "changes": 400, "seconds": 0.004}`
 
 ### `single_source_of_truth` — PASS
 
@@ -176,7 +183,8 @@ Every injected defect was caught.
 ## What this does not prove
 
 - no bank hardware was touched: every HSM and TPM here is a synthetic payload, and no appliance, hypervisor or network device was contacted
-- collector breadth feeds each collector a synthetic payload and checks which facts reach the record; no collector has a transport that reads a real host, so the row measures the schema a collector fills, not a discovery run
+- collector breadth feeds each collector a synthetic payload and drives the Linux reader against a fixture sysfs tree and a recorded transcript; no bank host was read, and real hosts differ — dmidecode absent, root denied, vendor quirks its allowlist has not seen
+- the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data
 - the synthetic estate measures identity, drift volume and runtime, not discovery precision or recall against real vendor firmware
 - encryption at rest, per-tenant key custody and vendor attestation are outside this artifact entirely
 
@@ -184,9 +192,10 @@ Every injected defect was caught.
 
 The PASS rows are the parts already in the tree; the PARTIAL and FAIL rows name what is not, probe by probe. In order:
 
-1. **H2/H3 collectors against real OS interfaces** — the one probe that still fails. The collectors fill a schema; nothing yet reads `/sys`, udev, dmidecode or `smartctl` on Linux, or WMI/CIM and the TPM APIs on Windows, and no collector runs against a host. Command allowlists and mTLS agent identity land with that reader, not after it.
-2. **H4 HSM depth per vendor** — partition, cluster and HA state are in the observation model; what is missing is a reader per vendor (PKCS#11 attributes, KMIP `Query`, vendor REST) and a burn-in against each.
-3. **H5 network hardware** — SNMP/NETCONF/REST per authorized device class, feeding both NBOM and CBOM (a load balancer is a TLS terminator *and* a box).
-4. **H8 qualification against a real bank estate** — the synthetic run above is a floor. Precision and recall need ground truth only a customer can provide.
+1. **H3 the Windows reader** — the probe that still fails. WMI/CIM is not a PowerShell string built from input: fixed classes (`Win32_ComputerSystem`, `Win32_DiskDrive`, `Win32_PhysicalMemory`), a fixed argv to a fixed helper, the same allowlist discipline as the Linux reader, and the TPM APIs read through the OS surface rather than a vendor tool. It must be tested on Windows, which no CI here can do — so it will ship with the gap stated, not with a green row.
+2. **H5 the SNMP bridge** — an SNMPv2c client already exists in `services/network_scanner/network_scanner/enterprise/vendors/snmp.py` (sysDescr, ifTable, community handling). What is missing is a translator from its output into a hardware context, so a switch's firmware and serial reach the estate instead of stopping in the network scanner.
+3. **H4 HSM depth per vendor** — partition, cluster and HA state are in the observation model; what is missing is a reader per vendor (PKCS#11 attributes, KMIP `Query`, vendor REST) and a burn-in against each.
+4. **H5 network hardware beyond SNMP** — NETCONF/REST per authorized device class, feeding both NBOM and CBOM (a load balancer is a TLS terminator *and* a box).
+5. **H8 qualification against a real bank estate** — the synthetic run above is a floor. Precision and recall need ground truth only a customer can provide.
 
-**The verdict this artifact supports:** the hardware foundation, the identity model, the security-hardware metadata model, the evidence rule for relationships and the drift vocabulary are implemented and executed here, and the projection architecture the review asked for is the one in the code. What is *not* done is collector reach into real Linux, Windows, hypervisor and network estates, and per-vendor HSM readers — named above rather than folded into the score.
+**The verdict this artifact supports:** the hardware foundation, the identity model, the security-hardware metadata model, the evidence rule for relationships and the drift vocabulary are implemented and executed here, and the projection architecture the review asked for is the one in the code. What is *not* done is collector reach into Windows, hypervisor and network estates, per-vendor HSM readers, and a run against a real Linux host — the reader here is driven by a fixture and a transcript. Each is named above rather than folded into the score.
