@@ -555,6 +555,27 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [Supported, configured, negotiated: three states, three evidences](154-nbom-tls-states.md)
+> (**5 pass · 0 partial · 0 fail**, 27 probes) closes NBOM review item 7, which is a
+> data-model complaint and a correct one: `TLS 1.2 supported` is not `TLS 1.2 in
+> use`, and `TLS 1.3 negotiated` does not prove it is the only supported protocol —
+> the NBOM only ever recorded the third. `cbom.tls_state` keeps **three evidence sets
+> per endpoint**, each with its own evidence ids: `SUPPORTED` (what the endpoint
+> offered when asked), `CONFIGURED` (what policy says it should do) and `NEGOTIATED`
+> (what one handshake produced), with `ADVERTISED`/`ENABLED`/`SELECTED` accepted as
+> aliases so SSH and IKE fit the same vocabulary. A fact whose state is unknown, or
+> that carries no evidence id, is **refused** rather than sorted into a convenient
+> bucket. Two conclusions get explicit gates: *a protocol is disabled* is
+> `DISABLED_PROVEN` only from a **complete** authorized enumeration in which it is
+> absent (`NOT_ENUMERATED` for a modern handshake, `ENUMERATION_INCOMPLETE` for a
+> partial one, because the ClientHellos that never ran are exactly where the old
+> protocol hides), and *the minimum version* is claimed from `CONFIGURED` first, a
+> complete enumeration second, and **never** from `NEGOTIATED` — the endpoint may
+> simply have agreed to what this client offered. In the document the states become
+> separate `cryptoscan:supported_*` / `configured_*` / `negotiated_*` properties, so
+> no reader can pick up one `tls_version` and guess which of the three it is.
+> `POST /cbom/tls-state` exposes it, typed, behind the reader roles.
+
 > [NBOM coverage: an observed endpoint is not the network](153-nbom-coverage-matrix.md)
 > (**5 pass · 0 partial · 0 fail**, 29 probes) closes NBOM review items 4 and 5, the
 > review's "critical" one: 10,000 endpoints, 6,500 observed must not produce a

@@ -622,3 +622,47 @@ def test_a_capability_never_leads_a_consumer_report(client):
 def test_a_twin_request_that_is_not_an_estate_is_refused(client):
     response = _post(client, "/twin", {"estate": ["not", "an", "estate"]})
     assert response.status_code == 422
+
+
+TLS_FACTS = [
+    {"endpoint": "payments.bank.example:443", "state": "NEGOTIATED", "tls_version": "1.3",
+     "group": "X25519", "evidence_id": "NET-1"},
+    {"endpoint": "payments.bank.example:443", "state": "SUPPORTED", "tls_version": "1.3",
+     "evidence_id": "ENUM-1", "enumeration_complete": True},
+    {"endpoint": "payments.bank.example:443", "state": "SUPPORTED", "tls_version": "1.2",
+     "evidence_id": "ENUM-1", "enumeration_complete": True},
+    {"endpoint": "payments.bank.example:443", "state": "CONFIGURED", "tls_version": "1.2",
+     "evidence_id": "CFG-1"},
+]
+
+
+def test_tls_state_keeps_the_three_states_apart(client):
+    body = _post(client, "/tls-state", {"observations": TLS_FACTS}).json()
+    endpoint = body["endpoints"][0]
+    assert endpoint["supported"]["versions"] == ["TLS1.2", "TLS1.3"]
+    assert endpoint["configured"]["versions"] == ["TLS1.2"]
+    assert endpoint["negotiated"]["versions"] == ["TLS1.3"]
+    assert endpoint["negotiated"]["groups"] == ["X25519"]
+
+
+def test_a_disabled_claim_needs_an_enumeration(client):
+    body = _post(client, "/tls-state", {"observations": TLS_FACTS,
+                                        "endpoint": "payments.bank.example:443",
+                                        "version": "1.1"}).json()
+    assert body["checks"]["disabled"]["state"] == "DISABLED_PROVEN"
+    assert body["checks"]["minimum"]["basis"] == "CONFIGURED"
+
+    partial = _post(client, "/tls-state", {
+        "observations": [{"endpoint": "legacy:443", "state": "NEGOTIATED",
+                          "tls_version": "1.2", "evidence_id": "NET-2"}],
+        "endpoint": "legacy:443", "version": "1.1"}).json()
+    assert partial["checks"]["disabled"]["state"] == "NOT_ENUMERATED"
+    assert partial["checks"]["minimum"]["basis"] == "NEGOTIATED_ONLY"
+
+
+def test_a_fact_with_no_state_is_refused_rather_than_guessed(client):
+    body = _post(client, "/tls-state", {"observations": [
+        {"endpoint": "a:443", "state": "MAYBE", "tls_version": "1.3",
+         "evidence_id": "X-1"}]}).json()
+    assert body["endpoints"] == []
+    assert "cannot be sorted into one" in body["refused"][0]["reason"]

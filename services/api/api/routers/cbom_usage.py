@@ -294,6 +294,27 @@ class CbomTwinResponse(BaseModel):
     summary: dict
 
 
+class CbomTlsStateRequest(BaseModel):
+    observations: list[dict] = Field(default_factory=list, description=(
+        "one fact in one state: endpoint, state (SUPPORTED/CONFIGURED/NEGOTIATED, or "
+        "ADVERTISED/ENABLED/SELECTED), tls_version, cipher_suite, group, "
+        "signature_algorithm, evidence_id, observed_at, enumeration_complete. A fact "
+        "whose state is unknown, or that carries no evidence id, is refused"))
+    endpoint: str | None = Field(None, description=(
+        "endpoint to answer about; with version, 'can we call this protocol disabled?'"))
+    version: str | None = Field(None, description=(
+        "protocol to test for absence, answered only from a complete enumeration"))
+
+
+class CbomTlsStateResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    endpoints: list[dict]
+    refused: list[dict]
+    checks: dict | None = None
+    summary: dict
+    statement: str
+
+
 class CbomHsmRequest(BaseModel):
     kind: str = Field(..., description=(
         "CAPABILITY, CONFIGURED_KEY or OPERATION — the three HSM/KMS answers, only the last "
@@ -466,6 +487,32 @@ def cbom_runtime_traces(body: CbomRuntimeTraceRequest,
         "graph": projection,
         "summary": pt.summary(traced, providers, correlation),
     }
+
+
+@router.post("/tls-state", response_model=CbomTlsStateResponse)
+def cbom_tls_state(body: CbomTlsStateRequest,
+                   user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Supported, configured and negotiated, kept apart per endpoint.
+
+    Review item 7: ``TLS 1.2 supported`` is not ``TLS 1.2 in use``, and
+    ``TLS 1.3 negotiated`` does not prove it is the only supported protocol. The
+    response keeps three evidence sets; ``checks.disabled`` answers "may we call
+    this protocol gone?" only from a complete authorized enumeration, and
+    ``checks.minimum`` names its basis rather than handing back one version.
+    """
+    from cbom import tls_state as ts
+
+    try:
+        result = ts.observe(body.observations)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    checks: dict[str, Any] | None = None
+    if body.endpoint:
+        checks = {"minimum": ts.minimum(result, endpoint=body.endpoint)}
+        if body.version:
+            checks["disabled"] = ts.disabled(result, endpoint=body.endpoint,
+                                             version=body.version)
+    return {**result, "checks": checks, "summary": ts.summary(result)}
 
 
 @router.post("/kms/keys", response_model=CbomKmsResponse)
