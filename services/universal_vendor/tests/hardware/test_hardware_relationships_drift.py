@@ -20,7 +20,9 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[3]
+# The repository root: the subprocess tests below run without pytest's conftest, so the
+# package directory has to be put on sys.path explicitly.
+ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "services" / "universal_vendor"))
 
 from universal_vendor.hardware.drift import (  # noqa: E402

@@ -177,12 +177,21 @@ class ProductMismatch(ValueError):
 
 @dataclass(frozen=True)
 class ProductIdentity:
-    """The triple every vendor document and every bank asset must agree on."""
+    """The identity every vendor document and every bank asset must agree on.
+
+    Four fields are the appliance's identity — vendor, product, version,
+    revision. ``crypto_profile_version`` is a *second axis*: some vendors
+    version their cryptographic profile separately from their firmware, so a
+    document can describe firmware 8.4.0 while being written against crypto
+    profile 3.1. Matching firmware alone would then claim more than the document
+    says.
+    """
 
     vendor: str
     product: str
     version: str | None = None
     revision: str | None = None
+    crypto_profile_version: str | None = None
 
     def __post_init__(self) -> None:
         if not _norm(self.vendor):
@@ -197,7 +206,8 @@ class ProductIdentity:
 
     def to_dict(self) -> dict[str, Any]:
         return {"vendor": self.vendor, "product": self.product,
-                "version": self.version, "revision": self.revision}
+                "version": self.version, "revision": self.revision,
+                "crypto_profile_version": self.crypto_profile_version}
 
 
 def _norm(value: Any) -> str:
@@ -303,6 +313,11 @@ class VendorDeclaration:
     max_age_days: int = 365
     superseded_by: str | None = None
     capabilities: tuple[str, ...] = ()
+    #: How the document reached the estate. A machine-read questionnaire is
+    #: ``IMPORTED`` and flagged for review; it is never ``DECLARED`` (a person
+    #: typing a claim) and never ``OBSERVED`` (reading the machine).
+    evidence_type: str = EvidenceType.DECLARED.value
+    requires_review: bool = False
 
     def __post_init__(self) -> None:
         if not self.document:
@@ -322,6 +337,11 @@ class ApplicabilityResult:
     version_relation: VersionRelation
     reasons: tuple[str, ...]
     declaration_id: str | None = None
+    #: Which identity axis produced the verdict: ``product_version`` or
+    #: ``crypto_profile``. The eight states stay as the review named them; the
+    #: axis says where to look when one of them is not MATCHED.
+    axis: str = "product_version"
+    axes: dict[str, str] | None = None
 
     @property
     def applicable(self) -> bool:
@@ -335,6 +355,8 @@ class ApplicabilityResult:
     def to_dict(self) -> dict[str, Any]:
         return {"applicability": self.state.value,
                 "version_relation": self.version_relation.value,
+                "axis": self.axis,
+                "axes": dict(self.axes or {}),
                 "vendor_capabilities_usable": self.vendor_capabilities_usable,
                 "reasons": list(self.reasons),
                 "declaration_id": self.declaration_id}
@@ -354,6 +376,36 @@ def _expiry(declaration: VendorDeclaration, as_of: date) -> tuple[str, str] | No
             return "EXPIRED", (f"the document was issued {age} days ago, past its "
                                f"{declaration.max_age_days}-day validity")
     return None
+
+
+PROFILE_AXIS_STATES: tuple[str, ...] = ("MATCH", "MISMATCH", "UNVERIFIED", "UNSTATED")
+
+
+def _profile_axis(declared: str | None, observed: str | None) -> dict[str, str]:
+    """The second identity axis: a crypto profile versioned apart from firmware.
+
+    Four answers, and the two middle ones are the interesting ones. A profile the
+    deployment does not report leaves the claim *unverified* rather than matched
+    — that is the partial this model exists to keep, not a rounding error to
+    absorb into a green tick.
+    """
+    if not declared:
+        return {"state": "UNSTATED",
+                "reason": "the declaration names no crypto profile version, so only the "
+                          "firmware axis can be compared"}
+    if not observed:
+        return {"state": "UNVERIFIED",
+                "reason": f"the declaration is written against crypto profile {declared} and "
+                          "the deployment reports no profile version, so that axis is "
+                          "unverified rather than matched"}
+    relation = compare_versions(declared, observed)
+    if relation in {VersionRelation.EXACT, VersionRelation.PATCH_DIFF,
+                    VersionRelation.REVISION_DIFF}:
+        return {"state": "MATCH",
+                "reason": f"crypto profile {declared} against {observed} ({relation.value})"}
+    return {"state": "MISMATCH",
+            "reason": f"declared crypto profile {declared}, deployed {observed}: the "
+                      "firmware versions may agree while the crypto profile does not"}
 
 
 def assess_applicability(declaration: VendorDeclaration, deployment: ProductIdentity, *,
@@ -395,23 +447,110 @@ def assess_applicability(declaration: VendorDeclaration, deployment: ProductIden
         return ApplicabilityResult(Applicability.UNKNOWN, relation, tuple(reasons),
                                    declaration.declaration_id)
 
+    profile = _profile_axis(declaration.identity.crypto_profile_version,
+                            deployment.crypto_profile_version)
+    axes = {"product_version": relation.value, "crypto_profile": profile["state"]}
+
     if relation is VersionRelation.EXACT:
+        if profile["state"] == "MISMATCH":
+            reasons.append(profile["reason"])
+            return ApplicabilityResult(Applicability.VERSION_MISMATCH, relation,
+                                       tuple(reasons), declaration.declaration_id,
+                                       axis="crypto_profile", axes=axes)
+        if profile["state"] == "UNVERIFIED":
+            reasons.append(profile["reason"])
+            return ApplicabilityResult(Applicability.PARTIAL_MATCH, relation,
+                                       tuple(reasons), declaration.declaration_id,
+                                       axis="crypto_profile", axes=axes)
         reasons.append(f"declared and deployed version are both "
                        f"{declaration.identity.version}")
         return ApplicabilityResult(Applicability.MATCHED, relation, tuple(reasons),
-                                   declaration.declaration_id)
+                                   declaration.declaration_id, axes=axes)
     if relation in {VersionRelation.PATCH_DIFF, VersionRelation.REVISION_DIFF}:
+        if profile["state"] == "MISMATCH":
+            reasons.append(profile["reason"])
+            return ApplicabilityResult(Applicability.VERSION_MISMATCH, relation,
+                                       tuple(reasons), declaration.declaration_id,
+                                       axis="crypto_profile", axes=axes)
         reasons.append(
             f"declared {declaration.identity.version}, deployed {deployment.version}: "
             "same generation, different build — the vendor's own advisory decides whether "
             "the difference matters")
+        if profile["state"] == "UNVERIFIED":
+            reasons.append(profile["reason"])
         return ApplicabilityResult(Applicability.PARTIAL_MATCH, relation, tuple(reasons),
-                                   declaration.declaration_id)
+                                   declaration.declaration_id, axes=axes)
     reasons.append(
         f"declared {declaration.identity.version}, deployed {deployment.version}: a "
         "different generation, so the declared crypto inventory does not travel")
     return ApplicabilityResult(Applicability.VERSION_MISMATCH, relation, tuple(reasons),
-                               declaration.declaration_id)
+                               declaration.declaration_id, axes=axes)
+
+
+#: The two "some, but not all" states. They are not failures and not passes, and
+#: the point of :func:`partial_ledger` is that they cannot be rounded either way.
+PARTIAL_STATES: frozenset[str] = frozenset({
+    Applicability.PARTIAL_MATCH.value,  # a document for a different build
+    "PARTIAL",                         # one source says less than another
+})
+
+
+def partial_ledger(entries: Iterable[Any]) -> dict[str, Any]:
+    """Collect every partial answer, with its reason, and prove none was dropped.
+
+    A partial is the easiest thing in a VBOM to lose: it is not a failure, so it
+    does not raise; it is not a pass, so it should not be counted as one. This
+    function is the only place partials are counted, and it returns them
+    *enumerated* rather than summarised, so a report can print them and a test
+    can count them.
+
+    Each entry may be an :class:`ApplicabilityResult`, a :class:`CapabilityClaim`,
+    a bare state string, or a mapping with ``state``/``applicability``/``verdict``
+    and ``subject``/``reasons``.
+    """
+    subjects: list[dict[str, Any]] = []
+    counts: dict[str, int] = {}
+    for index, entry in enumerate(entries):
+        state, subject, reasons = _partial_parts(entry, index)
+        if not state:
+            continue
+        counts[state] = counts.get(state, 0) + 1
+        if state not in PARTIAL_STATES:
+            continue
+        subjects.append({"subject": subject, "state": state, "reasons": reasons,
+                         "renderable_as_pass": False})
+    total = sum(counts.values())
+    partial = len(subjects)
+    return {
+        "counts": dict(sorted(counts.items())),
+        "total": total,
+        "partial_count": partial,
+        "entries": subjects,
+        "dropped": 0,
+        "statement": (
+            f"{partial} of {total} answer(s) are partial and are listed individually; none is "
+            "counted as a pass and none is dropped"
+            if partial else f"none of {total} answer(s) is partial"),
+    }
+
+
+def _partial_parts(entry: Any, index: int) -> tuple[str, str, list[str]]:
+    if isinstance(entry, ApplicabilityResult):
+        return entry.state.value, entry.declaration_id or f"row-{index}", list(entry.reasons)
+    if isinstance(entry, CapabilityClaim):
+        if entry.applicability is None:
+            return "", entry.asset_id, []
+        return (entry.applicability.state.value,
+                f"{entry.asset_id}/{entry.algorithm}", list(entry.applicability.reasons))
+    if isinstance(entry, str):
+        return entry, f"row-{index}", []
+    if isinstance(entry, Mapping):
+        state = str(entry.get("state") or entry.get("applicability") or entry.get("verdict") or "")
+        subject = str(entry.get("subject") or entry.get("attribute") or entry.get("id")
+                      or f"row-{index}")
+        reasons = [str(reason) for reason in entry.get("reasons") or ()]
+        return state, subject, reasons
+    return "", f"row-{index}", []
 
 
 # --------------------------------------------------------------------------- #
@@ -470,6 +609,7 @@ class VerificationStatus(str, Enum):
     CORROBORATED = "CORROBORATED"              # declared and observed at runtime or network
     DECLARED_ONLY = "DECLARED_ONLY"            # the vendor says so and nothing else does
     BANK_OBSERVED_ONLY = "BANK_OBSERVED_ONLY"  # the bank sees it; the vendor never said so
+    RUNTIME_OBSERVED_ONLY = "RUNTIME_OBSERVED_ONLY"  # a session exercised it; nothing declared it
     CONFIGURED_ONLY = "CONFIGURED_ONLY"        # a bank config names it, nothing exercises it
     CONFLICTED = "CONFLICTED"
     STALE = "STALE"
@@ -567,8 +707,12 @@ class CapabilityClaim:
             return VerificationStatus.CORROBORATED
         if self.vendor_declared and self.bank_observed:
             return VerificationStatus.CONFIRMED
-        if self.runtime_observed or self.bank_observed:
+        if self.bank_observed:
             return VerificationStatus.BANK_OBSERVED_ONLY
+        if self.runtime_observed:
+            # A session is evidence in its own right, and the status says where it
+            # came from: observed use, and no document agreeing or disagreeing.
+            return VerificationStatus.RUNTIME_OBSERVED_ONLY
         if self.production_usage:
             return VerificationStatus.CONFIGURED_ONLY
         if self.vendor_declared:
@@ -621,7 +765,7 @@ class CapabilityClaim:
             return "UNKNOWN"
         if self.runtime_observed and self.bank_observed:
             return "HIGH"
-        if self.bank_observed or self.production_usage:
+        if self.bank_observed or self.runtime_observed or self.production_usage:
             return "MEDIUM"
         return "LOW"
 
@@ -674,6 +818,20 @@ def _less_specific(shorter: str, longer: str) -> bool:
     return longer[len(shorter)] in ".-_ ,"
 
 
+def _evidence_rows(observations: Mapping[Any, Any],
+                   sources: Mapping[Any, EvidenceType] | None) -> list[dict[str, Any]]:
+    """One row per source, marked with how strong that source's word is."""
+    sources = dict(sources or {})
+    rows = []
+    for label, value in observations.items():
+        kind = sources.get(label, EvidenceType.UNKNOWN)
+        if not isinstance(kind, EvidenceType):
+            kind = EvidenceType(kind)
+        rows.append({"source": str(label), "value": value, "evidence_type": kind.value,
+                     "evidence_rank": EVIDENCE_RANK[kind.value]})
+    return rows
+
+
 def reconcile(attribute: str, observations: Mapping[Any, Any], *,
               sources: Mapping[Any, EvidenceType] | None = None) -> dict[str, Any]:
     """Compare one attribute as several sources see it — and never average them.
@@ -683,14 +841,7 @@ def reconcile(attribute: str, observations: Mapping[Any, Any], *,
     prints OpenSSL 3.0.13 because the vendor said so, while the SBOM and the
     runtime both say 3.0.11, is not a summary — it is a false statement.
     """
-    sources = dict(sources or {})
-    rows = []
-    for label, value in observations.items():
-        kind = sources.get(label, EvidenceType.UNKNOWN)
-        if not isinstance(kind, EvidenceType):
-            kind = EvidenceType(kind)
-        rows.append({"source": str(label), "value": value, "evidence_type": kind.value,
-                     "evidence_rank": EVIDENCE_RANK[kind.value]})
+    rows = _evidence_rows(observations, sources)
     stated = [row for row in rows if row["value"] not in (None, "")]
     if not stated:
         state = ReconciliationState.UNKNOWN
@@ -719,6 +870,93 @@ def reconcile(attribute: str, observations: Mapping[Any, Any], *,
         "rows": rows,
         "statement": _reconcile_statement(attribute, state, stated),
     }
+
+
+def reconcile_algorithms(attribute: str, observations: Mapping[Any, Any], *,
+                         sources: Mapping[Any, EvidenceType] | None = None) -> dict[str, Any]:
+    """Reconcile an *algorithm* attribute, where spelling is not a disagreement.
+
+    The plain :func:`reconcile` compares strings, because ``3.0.13`` and
+    ``3.0.11`` are different versions and must stay so. For algorithms the same
+    rule would report ``AES256`` against ``AES-256`` as a conflict — two sources
+    saying the identical thing in two spellings — while under-reporting the one
+    difference that matters: a size or a mode.
+
+    So this comparison is structural: ``AES256``/``AES-256`` are one identity
+    (reported as AGREE, with the normalisation recorded on the row), ``AES-256``
+    against ``AES-256-GCM`` is PARTIAL because one source says less, and
+    ``AES-128`` against ``AES-256`` is a CONFLICT with the difference named.
+    """
+    from vendor_intel.algorithm_names import compare_algorithms  # noqa: PLC0415
+
+    rows = _evidence_rows(observations, sources)
+    for row in rows:
+        try:
+            identity = compare_algorithms(row["value"], row["value"])["left"]
+        except (TypeError, ValueError):  # pragma: no cover - defensive
+            identity = None
+        row["canonical"] = identity["canonical"] if identity else None
+        row["normalised"] = bool(identity and identity["normalised"])
+        row["recognised"] = bool(identity and identity["recognised"])
+    stated = [row for row in rows if row["value"] not in (None, "")]
+    relations = []
+    for index, left in enumerate(stated):
+        for right in stated[index + 1:]:
+            relations.append(compare_algorithms(left["value"], right["value"]) |
+                             {"sources": [left["source"], right["source"]]})
+    relation_names = {item["relation"] for item in relations}
+    if not stated:
+        state = ReconciliationState.UNKNOWN
+    elif len(stated) == 1:
+        state = ReconciliationState.SINGLE_SOURCE
+    elif relation_names <= {"SAME_IDENTITY"}:
+        state = ReconciliationState.AGREE
+    elif relation_names <= {"SAME_IDENTITY", "LESS_SPECIFIC"}:
+        state = ReconciliationState.PARTIAL
+    else:
+        state = ReconciliationState.CONFLICT
+    canonical = sorted({row["canonical"] for row in stated if row["canonical"]})
+    return {
+        "attribute": attribute,
+        "state": state.value,
+        "row_count": len(stated),
+        "distinct_values": sorted({str(row["value"]) for row in stated}),
+        "canonical": canonical,
+        "normalisation_applied": any(row["normalised"] for row in stated),
+        "unrecognised": sorted({str(row["value"]) for row in stated if not row["recognised"]}),
+        "relations": [{"sources": item["sources"], "relation": item["relation"],
+                       "reason": item["reason"]} for item in relations],
+        "strongest_evidence_type": (max(stated, key=lambda row: row["evidence_rank"])
+                                    ["evidence_type"] if stated else None),
+        "rows": rows,
+        "statement": _algorithm_statement(attribute, state, stated, relations),
+    }
+
+
+def _algorithm_statement(attribute: str, state: ReconciliationState,
+                         stated: Sequence[Mapping[str, Any]],
+                         relations: Sequence[Mapping[str, Any]]) -> str:
+    if state is ReconciliationState.UNKNOWN:
+        return f"no source states {attribute}, so its identity is unknown rather than defaulted"
+    if state is ReconciliationState.SINGLE_SOURCE:
+        return (f"only {stated[0]['source']} names {attribute} ({stated[0]['value']}); one source "
+                "is not corroboration")
+    if state is ReconciliationState.AGREE:
+        normalised = [row for row in stated if row["normalised"]]
+        text = (f"{len(stated)} source(s) name the same algorithm for {attribute} "
+                f"({stated[0]['canonical']})")
+        if normalised:
+            text += ("; the spellings differed (" +
+                     ", ".join(f"{row['source']}={row['value']}" for row in normalised) +
+                     ") and were normalised, not rewritten")
+        return text
+    if state is ReconciliationState.PARTIAL:
+        return (f"one source says less about {attribute}: " +
+                "; ".join(item["reason"] for item in relations) +
+                " — reported as PARTIAL, because precision is the only difference")
+    return ("CONFLICT on " + attribute + ": " +
+            "; ".join(item["reason"] for item in relations) +
+            " — every row is kept and the difference is named")
 
 
 def _reconcile_statement(attribute: str, state: ReconciliationState,
@@ -788,8 +1026,12 @@ def _group_status(group: Sequence[CapabilityClaim], *, as_of: date | None) -> st
         return VerificationStatus.CORROBORATED.value
     if declared and observed:
         return VerificationStatus.CONFIRMED.value
-    if observed or runtime:
+    if observed:
         return VerificationStatus.BANK_OBSERVED_ONLY.value
+    if runtime:
+        # A grouped answer whose only evidence is a session keeps saying so, rather
+        # than borrowing the name for a configuration observation.
+        return VerificationStatus.RUNTIME_OBSERVED_ONLY.value
     if configured:
         return VerificationStatus.CONFIGURED_ONLY.value
     if declared:
@@ -1014,6 +1256,132 @@ def software_impact(component: str, dependencies: Iterable[SoftwareDependency], 
 # --------------------------------------------------------------------------- #
 # 16. evidence-based risk
 # --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class SubVendorEdge:
+    """A vendor whose product ships inside another vendor's product.
+
+    A cryptography SDK that embeds a second vendor's library means a bank has
+    two suppliers it never contracted with directly. The edge carries its own
+    evidence, because "everyone knows X uses OpenSSL" is not a dependency record.
+    """
+
+    parent_vendor: str
+    parent_product: str
+    child_vendor: str
+    child_product: str
+    relationship: str = "EMBEDDED_COMPONENT"
+    evidence: Evidence | None = None
+
+    def __post_init__(self) -> None:
+        if _norm(self.parent_vendor) == _norm(self.child_vendor):
+            raise ValueError("a vendor cannot be its own sub-vendor")
+        if not _norm(self.parent_product) or not _norm(self.child_product):
+            raise ValueError("a sub-vendor edge needs both products; a vendor-wide edge is not a "
+                             "dependency")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"parent_vendor": self.parent_vendor, "parent_product": self.parent_product,
+                "child_vendor": self.child_vendor, "child_product": self.child_product,
+                "relationship": self.relationship,
+                "evidence": self.evidence.to_dict() if self.evidence else None}
+
+
+def sub_vendor_chain(vendor: str, edges: Iterable[SubVendorEdge], *,
+                     max_depth: int = 8) -> dict[str, Any]:
+    """Every vendor reachable *below* ``vendor``, with the path that got there.
+
+    Cycles are detected and reported rather than followed: two vendors that each
+    embed the other is a finding about the supply chain, and an infinite loop
+    dressed as a dependency graph is not.
+    """
+    edges = list(edges)
+    frontier = [(_norm(vendor), vendor, [vendor], 0)]
+    visited = {_norm(vendor)}
+    nodes: list[dict[str, Any]] = []
+    cycles: list[dict[str, Any]] = []
+    while frontier:
+        key, name, path, depth = frontier.pop(0)
+        if depth >= max_depth:
+            continue
+        for edge in edges:
+            if _norm(edge.parent_vendor) != key:
+                continue
+            child_key = _norm(edge.child_vendor)
+            if child_key in {_norm(item) for item in path}:
+                cycles.append({"path": path + [edge.child_vendor],
+                               "reason": "the chain returns to a vendor already in the path"})
+                continue
+            if child_key in visited:
+                continue
+            visited.add(child_key)
+            nodes.append({"vendor": edge.child_vendor, "product": edge.child_product,
+                          "parent": edge.parent_vendor, "depth": depth + 1,
+                          "path": path + [edge.child_vendor],
+                          "relationship": edge.relationship,
+                          "evidence_id": edge.evidence.evidence_id if edge.evidence else None})
+            frontier.append((child_key, edge.child_vendor, path + [edge.child_vendor], depth + 1))
+    return {
+        "vendor": vendor,
+        "depth": max((node["depth"] for node in nodes), default=0),
+        "vendors": nodes,
+        "vendor_names": [node["vendor"] for node in nodes],
+        "cycles": cycles,
+        "statement": (
+            f"{vendor} has {len(nodes)} sub-vendor(s) reachable in {max((node['depth'] for node in nodes), default=0)} hop(s)"
+            + (f", and {len(cycles)} cycle(s) were refused rather than followed" if cycles else "")
+            if nodes else f"{vendor} has no recorded sub-vendor edges; that is an absence of "
+                          "evidence, not an absence of sub-vendors"),
+    }
+
+
+def vendor_footprint(vendor: str, *, edges: Iterable[SubVendorEdge] = (),
+                     assets: Iterable[HardwareDependency] = (),
+                     software: Iterable[SoftwareDependency] = ()) -> dict[str, Any]:
+    """The estate that depends on ``vendor`` *including through its sub-vendors*.
+
+    Direct exposure and indirect exposure are counted separately: an appliance
+    the bank bought from Vendor-X and an application that inherits Vendor-Y's
+    library because Vendor-X embedded it are different conversations with
+    different contracts.
+    """
+    chain = sub_vendor_chain(vendor, edges)
+    family = {_norm(vendor)} | {_norm(name) for name in chain["vendor_names"]}
+    assets = list(assets)
+    direct = [asset for asset in assets if _norm(asset.product.vendor) == _norm(vendor)]
+    indirect = [asset for asset in assets
+                if _norm(asset.product.vendor) in family
+                and _norm(asset.product.vendor) != _norm(vendor)]
+    software = list(software)
+    software_direct = [row for row in software if _norm(row.vendor) == _norm(vendor)]
+    software_indirect = [row for row in software
+                         if _norm(row.vendor) in family and _norm(row.vendor) != _norm(vendor)]
+
+    def systems(rows: Iterable[HardwareDependency]) -> list[str]:
+        return sorted({name for row in rows for name in row.business_systems})
+
+    def critical(rows: Iterable[HardwareDependency]) -> list[str]:
+        return sorted({name for row in rows for name in row.critical_systems})
+
+    return {
+        "vendor": vendor,
+        "sub_vendors": chain["vendor_names"],
+        "cycles": chain["cycles"],
+        "direct": {"assets": sorted({row.asset_id for row in direct}),
+                   "systems": systems(direct), "critical_systems": critical(direct)},
+        "indirect": {"assets": sorted({row.asset_id for row in indirect}),
+                     "systems": systems(indirect), "critical_systems": critical(indirect),
+                     "vendors": sorted({row.product.vendor for row in indirect})},
+        "software": {"direct": sorted({row.component for row in software_direct}),
+                     "indirect": sorted({row.component for row in software_indirect})},
+        "statement": (
+            f"{vendor}: {len({row.asset_id for row in direct})} appliance(s) bought directly, "
+            f"{len({row.asset_id for row in indirect})} more reached through "
+            f"{len(chain['vendor_names'])} sub-vendor(s); "
+            f"{len(systems(direct + indirect))} system(s) in total, of which "
+            f"{len(critical(direct + indirect))} critical"),
+    }
 
 
 @dataclass(frozen=True)
@@ -1244,6 +1612,80 @@ def to_vbom_row(claim: CapabilityClaim) -> dict[str, Any]:
         "applicability": (claim.applicability.state.value if claim.applicability
                           else Applicability.UNKNOWN.value),
         "verification_status": claim.verification_status.value,
+    }
+
+
+def to_vbom_rows(claims: Iterable[CapabilityClaim]) -> list[dict[str, Any]]:
+    """Every claim as a ``vendor_crypto_inventory`` row, ready for ``VbomGenerator``."""
+    return [to_vbom_row(claim) for claim in claims]
+
+
+def add_claims(generator: Any, vendor: Mapping[str, Any],
+               claims: Iterable[CapabilityClaim], **kwargs: Any) -> dict[str, Any]:
+    """Feed evidence-bearing claims into an existing ``VbomGenerator``.
+
+    The generator already accepts arbitrary row keys, so the evidence fields ride
+    along untouched; what changes is that the document it prints can be defended
+    one row at a time. Keyword arguments (``systems``, ``profile``) pass through.
+    """
+    return generator.add_vendor(vendor, inventory=to_vbom_rows(claims), **kwargs)
+
+
+#: Verification states in which a PQC tick has been *earned* rather than quoted.
+EVIDENCE_BACKED_STATUSES = frozenset({
+    VerificationStatus.CONFIRMED.value,
+    VerificationStatus.CORROBORATED.value,
+    VerificationStatus.BANK_OBSERVED_ONLY.value,
+    VerificationStatus.RUNTIME_OBSERVED_ONLY.value,
+})
+
+#: Verification states in which the row is a statement by the vendor alone, or a
+#: statement that does not apply to the deployed product.
+DECLARED_ONLY_STATUSES = frozenset({
+    VerificationStatus.DECLARED_ONLY.value,
+    VerificationStatus.CONFIGURED_ONLY.value,
+    VerificationStatus.STALE.value,
+    VerificationStatus.INAPPLICABLE.value,
+    VerificationStatus.UNKNOWN.value,
+})
+
+
+def evidence_backed_pqc_coverage(vendors: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """Why ``pqc_coverage`` in a VBOM is not a readiness number.
+
+    ``VbomGenerator.summary()`` counts rows with ``pqc_ready`` true — including
+    the row that says *the vendor declares ML-DSA and nobody has checked*. Those
+    two numbers answer different questions, so this function returns both, names
+    the difference, and never merges them.
+    """
+    blocks = list(vendors)
+    rows = [dict(row) for block in blocks for row in block.get("crypto") or ()]
+    ready = [row for row in rows if row.get("pqc_ready")]
+    backed = [row for row in ready
+              if str(row.get("verification_status") or "") in EVIDENCE_BACKED_STATUSES]
+    declared = [row for row in ready
+                if str(row.get("verification_status") or "") in DECLARED_ONLY_STATUSES]
+    conflicted = [row for row in ready
+                  if str(row.get("verification_status") or "") == VerificationStatus.CONFLICTED.value]
+    unclassified = [row for row in ready
+                    if str(row.get("verification_status") or "") not in
+                    EVIDENCE_BACKED_STATUSES | DECLARED_ONLY_STATUSES
+                    | {VerificationStatus.CONFLICTED.value}]
+    return {
+        "rows": len(rows),
+        "pqc_ready": len(ready),
+        "pqc_evidence_backed": len(backed),
+        "pqc_declared_only": len(declared),
+        "pqc_conflicted": len(conflicted),
+        "pqc_unclassified": len(unclassified),
+        "backed_algorithms": sorted({str(row.get("algorithm")) for row in backed}),
+        "declared_only_algorithms": sorted({str(row.get("algorithm")) for row in declared}),
+        "statement": (
+            f"{len(rows)} row(s): {len(ready)} carry a post-quantum tick, of which "
+            f"{len(backed)} are backed by a bank observation or an observed session and "
+            f"{len(declared)} rest on the vendor's declaration alone"
+            + (f"; {len(conflicted)} are conflicted and must be resolved before either count "
+               "is quoted" if conflicted else "")),
     }
 
 

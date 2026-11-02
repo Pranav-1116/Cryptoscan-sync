@@ -308,6 +308,37 @@
 > reasoned factors — a probe asserts two runs with the same inputs are identical,
 > so a rating can be reproduced in front of a regulator.
 
+> [Second pass](131-vendor-evidence-deep.md) (**7 pass · 0 partial · 0 fail**) then
+> closes the five gaps that artifact named against itself, because a list of what
+> is missing is only useful if somebody works through it. **Vendor paperwork is
+> read, not fabricated**: a questionnaire — text, Markdown table, or the text layer
+> of a PDF — is parsed field by field, each value citing the line it came from and
+> that line's hash; an encrypted file, a scanned page or a document with no vendor
+> is refused with a reason instead of yielding an empty declaration, and everything
+> extracted is `IMPORTED` and `requires_review`. **Identity has two axes**:
+> `crypto_profile_version` sits beside the firmware version, so a document written
+> against crypto profile 3.0 is `VERSION_MISMATCH` on an appliance running 3.1 even
+> when both report firmware 8.4.0 — and a profile the deployment never reports
+> leaves the answer `PARTIAL_MATCH`, not `MATCHED`. **Algorithm names are resolved,
+> not compared as strings**: `AES256`, `aes_256` and `AES-256` are one identity,
+> `AES-256` against `AES-256-GCM` is `PARTIAL` because one source says less, and
+> `AES-128` against `AES-256` is a `CONFLICT` with the size named; a name outside
+> the alias table is carried verbatim and flagged, never guessed. **`USAGE_OBSERVED`
+> is evidence**: a metadata-only session transcript is decoded into primitives —
+> `TLS_AES_256_GCM_SHA384` into `AES-256-GCM` and `SHA-384`, a hybrid
+> `x25519mlkem768` group into `X25519` plus `ML-KEM-768`, which is post-quantum key
+> establishment observed rather than declared — with one citation per session, a
+> record carrying `payload` or `premaster_secret` refused by name, and an
+> undecodable suite reported instead of guessed. **Vendor→vendor edges exist**:
+> a sub-vendor chain with depth, path and evidence, cycles refused rather than
+> followed, and the estate reached through an embedded vendor counted apart from
+> the estate bought directly. Two further rows make the evidence reach the
+> document: the existing `VbomGenerator` now accepts the evidence-bearing rows, and
+> `pqc_coverage` is printed beside `pqc_evidence_backed` so a post-quantum tick
+> cannot be quoted without saying whether a session backs it. Every `PARTIAL` is
+> enumerated in a ledger that cannot render it as a pass, and `--check` exits
+> non-zero on a partial as well as on a failure.
+
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

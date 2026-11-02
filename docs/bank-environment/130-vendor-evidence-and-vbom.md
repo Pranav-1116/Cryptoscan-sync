@@ -1,6 +1,6 @@
 # Vendor evidence: a declaration is not a deployment
 
-`cryptoscan.vendor-evidence-guide/1` · generated 2026-11-02T13:44:09.511747+00:00 · as of 2026-11-02 · **9 pass · 0 partial · 0 fail**
+`cryptoscan.vendor-evidence-guide/1` · generated 2026-11-02T14:02:02.900764+00:00 · as of 2026-11-02 · **9 pass · 0 partial · 0 fail**
 
 The VBOM's dangerous shortcut is one sentence long: *the vendor says product X supports ML-DSA, therefore the payment system uses ML-DSA*. It is wrong in three separate ways, and this artifact is the answer to each of them.
 
@@ -121,6 +121,8 @@ The module under test is `services/vendor_intel/vendor_intel/vendor_evidence.py`
 - risk weights are this artifact's stated weights, visible in the module; a bank with its own risk framework can read the factors and reweight them without changing the evidence
 
 ## What is still missing, in the review's own order
+
+All five items below were closed in the second pass, `131-vendor-evidence-deep.md`. The list is kept exactly as it was written so the record shows what changed, and the second-pass artifact carries the probes that grade each closure.
 
 1. **Vendor documents are fixtures.** Nothing here parses a vendor's PDF or questionnaire; the extraction step is `vendor_intel/docs_extract.py`, and a real procurement run needs a reviewer to confirm what was extracted.
 2. **One identity axis.** Product/version/revision covers an appliance whose crypto profile follows its firmware. A vendor that versions the profile separately needs `profile_version` as a second axis, which is a schema change, not a parser tweak.

@@ -1,0 +1,268 @@
+{
+  "schema": "cryptoscan.vendor-evidence-guide/2",
+  "generated_at": "2026-11-02T14:02:05.707293+00:00",
+  "as_of": "2026-11-02",
+  "counts": {
+    "PASS": 7,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "rows": [
+    {
+      "id": "algorithm_identity",
+      "question": "does the VBOM tell two spellings of one algorithm from two algorithms?",
+      "phase": "15",
+      "probes": [
+        {
+          "probe": "one-algorithm-four-spellings",
+          "ok": true,
+          "observed": "4 spellings -> ['AES-256']; 'AES256' normalised=True"
+        },
+        {
+          "probe": "a-size-is-not-a-spelling",
+          "ok": true,
+          "observed": "AES-128 against AES-256 -> DIFFERENT_PARAMETER: same family, 128 against 256 bits"
+        },
+        {
+          "probe": "a-missing-mode-is-less-specific-not-wrong",
+          "ok": true,
+          "observed": "AES-256 against AES-256-GCM -> LESS_SPECIFIC, so it reconciles PARTIAL, not CONFLICT"
+        },
+        {
+          "probe": "two-families-and-two-modes-are-never-merged",
+          "ok": true,
+          "observed": "3DES/AES-256 -> DIFFERENT_ALGORITHM, AES-256-GCM/AES-256-CBC -> DIFFERENT_MODE"
+        },
+        {
+          "probe": "the-pre-standard-pqc-name-resolves",
+          "ok": true,
+          "observed": "Dilithium3 -> ML-DSA-65 (pqc=True); KYBER768 -> ML-KEM-768"
+        },
+        {
+          "probe": "an-unknown-name-is-flagged-not-invented",
+          "ok": true,
+          "observed": "FOO-256 parses by shape with recognised=False; summary names ['FOO-256'] as outside the alias table"
+        },
+        {
+          "probe": "the-reconciler-uses-the-table-and-records-it",
+          "ok": true,
+          "observed": "vendor=AES256 runtime=AES-256 -> AGREE on ['AES-256'], normalisation recorded=True"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "profile_axis",
+      "question": "when a vendor versions its crypto profile apart from its firmware, does the gate still hold?",
+      "phase": "7/8",
+      "probes": [
+        {
+          "probe": "firmware-agrees-and-the-profile-does-not",
+          "ok": true,
+          "observed": "firmware 8.4.0/8.4.0 but profile 3.0/3.1 -> VERSION_MISMATCH on axis crypto_profile: declared crypto profile 3.0, deployed 3.1: the firmware versions may agree while the crypto profile does not"
+        },
+        {
+          "probe": "an-unobserved-profile-leaves-the-answer-partial",
+          "ok": true,
+          "observed": "profile 3.1 declared, none observed -> PARTIAL_MATCH ({'product_version': 'EXACT', 'crypto_profile': 'UNVERIFIED'}); the declaration cannot be quoted as a full match"
+        },
+        {
+          "probe": "matched-needs-both-axes",
+          "ok": true,
+          "observed": "both axes agree -> MATCHED {'product_version': 'EXACT', 'crypto_profile': 'MATCH'}"
+        },
+        {
+          "probe": "a-firmware-mismatch-is-not-blamed-on-the-profile",
+          "ok": true,
+          "observed": "declared 8.2.1 profile 3.0 against deployed 8.4.0 profile 3.1 -> VERSION_MISMATCH on axis product_version"
+        },
+        {
+          "probe": "the-axis-is-what-withholds-the-capability",
+          "ok": true,
+          "observed": "with the profile axis replaced by a constant MATCH the same document lights 3 capability(ies) (AES-256, RSA-3072, ML-DSA-65) on an appliance whose profile differs \u2014 so the refusal is the gate, not this paragraph"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "document_extraction",
+      "question": "is a vendor questionnaire read, or still a fixture?",
+      "phase": "9",
+      "probes": [
+        {
+          "probe": "a-questionnaire-is-read-with-a-citation-per-field",
+          "ok": true,
+          "observed": "8 field(s) with line numbers and line hashes; version from line 3, profile 3.1"
+        },
+        {
+          "probe": "a-pdf-text-layer-is-read",
+          "ok": true,
+          "observed": "322 bytes of PDF -> version 8.4.0, 3 canonical algorithm(s)"
+        },
+        {
+          "probe": "an-encrypted-or-scanned-document-is-refused-with-its-reason",
+          "ok": true,
+          "observed": "three refusals rather than an empty string: encrypted (no text layer), scanned (no text layer, OCR or a text copy needed), not-a-PDF"
+        },
+        {
+          "probe": "a-missing-version-stays-unknown",
+          "ok": true,
+          "observed": "missing=['version'] -> applicability UNKNOWN, so the document is filed and cannot be quoted"
+        },
+        {
+          "probe": "extraction-is-not-approval",
+          "ok": true,
+          "observed": "evidence_type=IMPORTED, requires_review=True \u2014 a machine read it, a person has not confirmed it"
+        },
+        {
+          "probe": "a-document-with-no-vendor-cannot-become-a-declaration",
+          "ok": true,
+          "observed": "no vendor -> refused rather than attached to whatever supplier is nearest"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "runtime_usage",
+      "question": "does USAGE_OBSERVED exist as evidence, or only as a word?",
+      "phase": "6",
+      "probes": [
+        {
+          "probe": "a-session-becomes-a-claim-with-one-citation-per-session",
+          "ok": true,
+          "observed": "12 sessions -> AES-256-GCM with 12 citation(s), status RUNTIME_OBSERVED_ONLY, confidence MEDIUM"
+        },
+        {
+          "probe": "a-hybrid-group-means-post-quantum-was-actually-used",
+          "ok": true,
+          "observed": "group x25519mlkem768 -> ['ML-KEM-768']: key establishment, observed, not declared"
+        },
+        {
+          "probe": "an-unknown-suite-is-named-not-guessed",
+          "ok": true,
+          "observed": "TLS_MYSTERY_SHA256 -> known=False, primitives=[], reason: only a hash name was recognised, which does not identify the suite"
+        },
+        {
+          "probe": "payload-and-key-material-are-refused-by-name",
+          "ok": true,
+          "observed": "a record carrying 'payload' or 'premaster_secret' is refused at ingestion \u2014 this reader holds metadata only"
+        },
+        {
+          "probe": "one-session-and-forty-sessions-are-different-statements",
+          "ok": true,
+          "observed": "1 session -> LOW, 40 -> HIGH for the same algorithm"
+        },
+        {
+          "probe": "an-empty-transcript-is-not-an-all-clear",
+          "ok": true,
+          "observed": "no sessions were observed, so nothing is known about production use \u2014 an empty transcript is not evidence of absence"
+        },
+        {
+          "probe": "runtime-evidence-reaches-the-claim-flags",
+          "ok": true,
+          "observed": "the grouped capability reports RUNTIME_OBSERVED_ONLY: observed at runtime, declared by nobody \u2014 a finding about the estate"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "sub_vendor_chains",
+      "question": "can the estate answer 'which systems depend on Vendor-X, including through the vendors it embeds?'",
+      "phase": "11/12",
+      "probes": [
+        {
+          "probe": "a-sub-vendor-edge-carries-its-path-and-evidence",
+          "ok": true,
+          "observed": "Vendor-X -> Vendor-Z at depth 1, cited by VE-8af66ef1f9ee"
+        },
+        {
+          "probe": "a-cycle-is-refused-rather-than-followed",
+          "ok": true,
+          "observed": "two vendors that embed each other -> 1 cycle reported, expansion stops at ['Vendor-Z']"
+        },
+        {
+          "probe": "direct-and-indirect-exposure-are-counted-separately",
+          "ok": true,
+          "observed": "1 appliance bought directly, 1 reached through Vendor-Z; Vendor-X: 1 appliance(s) bought directly, 1 more reached through 1 sub-vendor(s); 2 system(s) in total, of which 1 critical"
+        },
+        {
+          "probe": "a-vendor-cannot-embed-itself",
+          "ok": true,
+          "observed": "a self-edge is refused at construction rather than producing a depth-2 chain back to the same supplier"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "vbom_integration",
+      "question": "does the evidence reach the VBOM document, and does the PQC tick keep its qualification?",
+      "phase": "13",
+      "probes": [
+        {
+          "probe": "claims-feed-the-existing-generator-with-their-evidence",
+          "ok": true,
+          "observed": "7 row(s) in the vendor block; the first carries applicability MATCHED, status DECLARED_ONLY and 1 evidence id(s)"
+        },
+        {
+          "probe": "pqc-coverage-and-evidence-backed-coverage-are-different-numbers",
+          "ok": true,
+          "observed": "2 post-quantum tick(s), 1 backed by observation (['ML-KEM-768']), 1 resting on a declaration (['ML-DSA-65'])"
+        },
+        {
+          "probe": "the-document-cannot-print-one-green-number",
+          "ok": true,
+          "observed": "the generator's own summary reports 2 of 7 row(s) post-quantum ready (28.6%); the evidence-backed count is 1 \u2014 both numbers stay in the output on purpose"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "partial_ledger",
+      "question": "is 'some, but not all' a state, or a rounding error?",
+      "phase": "8/15",
+      "probes": [
+        {
+          "probe": "partials-are-enumerated-not-summarised",
+          "ok": true,
+          "observed": "2 of 3 answers are partial and each appears with its reason; counts {'MATCHED': 1, 'PARTIAL': 1, 'PARTIAL_MATCH': 1}"
+        },
+        {
+          "probe": "no-partial-can-be-rendered-as-a-pass",
+          "ok": true,
+          "observed": "every entry carries renderable_as_pass=False and dropped=0 \u2014 a partial is neither rounded up to green nor deleted"
+        },
+        {
+          "probe": "a-clean-run-says-that-nothing-is-partial",
+          "ok": true,
+          "observed": "none of 2 answer(s) is partial"
+        },
+        {
+          "probe": "the-check-fails-on-a-partial-as-well-as-on-a-failure",
+          "ok": true,
+          "observed": "this artifact's --check exits 2 on FAIL and 1 on PARTIAL, so a partial row cannot be mistaken for a green artefact"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "check_policy": {
+    "pass": 0,
+    "partial": 1,
+    "fail": 2
+  },
+  "limits": [
+    "no vendor was contacted. The questionnaire is written by this file and the PDF is built by this file, so what is graded is the reader, not a vendor's paperwork",
+    "the PDF reader handles text layers only: encrypted files and scanned pages are refused with a reason, and object-stream or font-encoding edge cases are not implemented",
+    "the alias table is finite and hand-written. A name outside it is carried verbatim and flagged; nothing is guessed, and a bank's own spelling has to be added deliberately",
+    "the session transcript is a fixture shaped like a TLS session log. A live connector (a tap on the payment path, a PKCS#11 audit log) is still required to produce it, and that connector is where the metadata-only rule has to be enforced a second time",
+    "sub-vendor edges are supplied by the bank from SBOMs and contracts; nothing here discovers that a vendor embeds another vendor's library",
+    "runtime claims prove a primitive was exercised. They do not prove which application did it: application attribution still comes from the dependency records in guide 130"
+  ]
+}

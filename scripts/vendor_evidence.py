@@ -763,6 +763,11 @@ def render_md(report: dict[str, Any]) -> str:
         "",
         "## What is still missing, in the review's own order",
         "",
+        "All five items below were closed in the second pass, "
+        "`131-vendor-evidence-deep.md`. The list is kept exactly as it was written so the "
+        "record shows what changed, and the second-pass artifact carries the probes that "
+        "grade each closure.",
+        "",
         "1. **Vendor documents are fixtures.** Nothing here parses a vendor's PDF or "
         "questionnaire; the extraction step is `vendor_intel/docs_extract.py`, and a real "
         "procurement run needs a reviewer to confirm what was extracted.",
