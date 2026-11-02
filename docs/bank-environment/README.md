@@ -100,12 +100,15 @@
 > and `socket.socket.connect` wrapped. Two ways around the guard were found and
 > closed while writing the drill.
 >
-> [Multi-tenant isolation](126-tenant-isolation.md) (**6 pass · 1 partial · 0
+> [Multi-tenant isolation](126-tenant-isolation.md) (**7 pass · 1 partial · 0
 > fail**): two real tenants cannot read, write or mutate each other's rows, a query
 > that forgets its predicate fails closed, and a spoofed `X-Tenant-ID` with a valid
-> session buys nothing. The PARTIAL is deliberate — reading the store file directly
-> returns every tenant's rows in plaintext, so the isolation is **logical, not
-> cryptographic**, and no test can change that. Evidence tampering is covered by
+> session buys nothing. This pass added the database's own half — migration `0132`
+> puts a **forced** row-level policy on all 157 tenant tables, measured on a real
+> PostgreSQL 16.2 as a non-owner role: no setting reads **nothing**, a foreign
+> `INSERT` is refused, and the owner control shows `FORCE` is what binds the owner
+> itself. The PARTIAL is deliberate — the store file is still plaintext, so this is
+> enforcement, **not encryption**, and no test can change that. Evidence tampering is covered by
 > [guide 112](112-evidence-integrity.md).
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**

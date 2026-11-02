@@ -1,11 +1,12 @@
 {
-  "schema": "cryptoscan.tenant-isolation/1",
-  "version": "tenant-isolation/1.0",
-  "generated_at": "2026-11-01T04:59:56.850390+00:00",
+  "schema": "cryptoscan.tenant-isolation/2",
+  "version": "tenant-isolation/2.0",
+  "generated_at": "2026-11-02T10:56:05.172688+00:00",
   "counts": {
-    "PASS": 6,
+    "PASS": 7,
     "PARTIAL": 1,
-    "FAIL": 0
+    "FAIL": 0,
+    "SKIP": 0
   },
   "rows": [
     {
@@ -50,12 +51,12 @@
         {
           "probe": "new-row-stamped-with-the-active-tenant",
           "ok": true,
-          "observed": "a row created without a tenant_id was stamped 35da616b-e242-432b-98eb-cd265ee4e49d"
+          "observed": "a row created without a tenant_id was stamped 9770632e-2b62-49c2-be91-3bafdcb17726"
         },
         {
           "probe": "explicit-foreign-tenant-id-refused",
           "ok": true,
-          "observed": "refused: row is attributed to tenant '3512111c-5a24-457f-b3c0-0ae484d0c718', but active scope is '35da616b-e242-432b-98eb-cd265ee4e49d'"
+          "observed": "refused: row is attributed to tenant 'a0947665-4765-49dd-bda2-f30336b1960e', but active scope is '9770632e-2b62-49c2-be91-3bafdcb17726'"
         },
         {
           "probe": "control-forged-row-absent-from-the-store",
@@ -112,7 +113,7 @@
         {
           "probe": "member-resolves-own-tenant",
           "ok": true,
-          "observed": "A's session resolved to 35da616b-e242-432b-98eb-cd265ee4e49d"
+          "observed": "A's session resolved to 9770632e-2b62-49c2-be91-3bafdcb17726"
         },
         {
           "probe": "header-for-another-tenant-does-not-scope",
@@ -122,7 +123,7 @@
         {
           "probe": "control-own-header-still-works",
           "ok": true,
-          "observed": "B's own session with B's header resolved to 3512111c-5a24-457f-b3c0-0ae484d0c718"
+          "observed": "B's own session with B's header resolved to a0947665-4765-49dd-bda2-f30336b1960e"
         },
         {
           "probe": "no-session-no-scope",
@@ -153,6 +154,57 @@
       "limits": []
     },
     {
+      "id": "database_enforcement",
+      "question": "does PostgreSQL enforce the boundary, or only the Python scope?",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "policy-exists-on-every-tenant-table",
+          "ok": true,
+          "observed": "PostgreSQL 16.2: 157 of 157 table(s) with a tenant_id have RLS enabled and forced, with 157 policy row(s)"
+        },
+        {
+          "probe": "no-setting-reads-nothing",
+          "ok": true,
+          "observed": "a connection carrying no tenant setting reads 0 of the two rows \u2014 the policy fails closed instead of defaulting to everything"
+        },
+        {
+          "probe": "setting-scopes-to-one-tenant",
+          "ok": true,
+          "observed": "with the setting bound to tenant A the same unqualified query returns 1 row(s)"
+        },
+        {
+          "probe": "platform-wildcard-is-explicit",
+          "ok": true,
+          "observed": "the platform wildcard returns 2 rows \u2014 a cross-tenant read is a deliberate setting, not the default"
+        },
+        {
+          "probe": "cross-tenant-insert-refused",
+          "ok": true,
+          "observed": "an INSERT naming tenant B from a tenant-A setting is refused: (psycopg2.errors.InsufficientPrivilege) new row violates row-level security policy for table \"tenant_usage_events\""
+        },
+        {
+          "probe": "cross-tenant-update-affects-nothing",
+          "ok": true,
+          "observed": "an UPDATE aimed at tenant B's row from a tenant-A setting touched 0 row(s)"
+        },
+        {
+          "probe": "force-is-what-binds-the-owner",
+          "ok": true,
+          "observed": "the table's own owner reads 2 row(s) with RLS enabled but not forced, and 1 with it forced \u2014 which is why the migration forces it"
+        },
+        {
+          "probe": "superuser-reads-across-tenants",
+          "ok": true,
+          "observed": "a superuser reads all 2 row(s): RLS binds roles, not privileges above it \u2014 and a stolen data file is still plaintext"
+        }
+      ],
+      "unproven": [],
+      "limits": [
+        "the policy binds roles, not privilege: a superuser or a role granted BYPASSRLS reads across tenants, and a stolen data file is still plaintext \u2014 this is enforcement, not encryption"
+      ]
+    },
+    {
       "id": "at_rest",
       "question": "is the isolation cryptographic, or logical and enforced by code?",
       "verdict": "PARTIAL",
@@ -160,19 +212,32 @@
         {
           "probe": "stolen-store-reveals-every-tenant",
           "ok": true,
-          "observed": "reading the database file directly returns both tenants' rows in plaintext: ['drill-alpha-only', 'drill-beta-only'] \u2014 the isolation is logical (a scope applied by code), not cryptographic (a key the tenant holds)"
+          "observed": "reading the database file directly returns both tenants' rows in plaintext: ['drill-alpha-only', 'drill-beta-only'] \u2014 the isolation is enforced by a scope in code and, on PostgreSQL, by row-level policies, but it is not cryptographic: the file has no key"
         }
       ],
       "unproven": [
-        "this is logical isolation, not cryptographic isolation: the store is shared and unencrypted per tenant, so a database dump \u2014 or a backup, or a stolen disk \u2014 contains every tenant's rows in plaintext. Logical isolation stops a *request*; it does not stop a reader of the file",
-        "closing this needs per-tenant keys or a database that enforces row-level security with distinct roles per tenant; neither is in place, and no test can substitute for it"
+        "this is not encryption: the store is shared and unencrypted per tenant, so a database dump \u2014 or a backup, or a stolen disk \u2014 still contains every tenant's rows in plaintext. Isolation stops a *reader through the database*; it does not stop a reader of the file",
+        "the `database_enforcement` row above closes the part that could be closed here: PostgreSQL's policies bind a role that forgets its predicate. Closing the rest needs per-tenant keys (or per-tenant databases) held by the tenant, which no row in this drill can substitute for"
       ],
       "limits": []
     }
   ],
+  "database_enforcement": {
+    "supported": true,
+    "role": "postgres",
+    "superuser": true,
+    "bypassrls": true,
+    "tenant_tables": 159,
+    "tables_with_rls_enabled": 159,
+    "tables_with_rls_forced": 158,
+    "policies": 159,
+    "owner_would_be_exempt_without_force": 0,
+    "binds_this_role": false,
+    "scope": "*"
+  },
   "tenants": 2,
   "limits": [
-    "executed against SQLite with the same ORM guard and the same tenancy module the API uses; PostgreSQL row-level security is not exercised here because the deployment does not use it",
+    "the read/write rows are executed against SQLite with the same ORM guard and the same tenancy module the API uses; the `database_enforcement` row is the PostgreSQL half, and it says SKIP rather than PASS when no server is available",
     "the drill covers the data layer and the tenant resolution the middleware calls; guide 121 covers the per-route declarations"
   ]
 }

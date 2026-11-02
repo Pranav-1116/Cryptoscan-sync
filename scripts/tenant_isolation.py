@@ -30,12 +30,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-SCHEMA = "cryptoscan.tenant-isolation/1"
-VERSION = "tenant-isolation/1.0"
+SCHEMA = "cryptoscan.tenant-isolation/2"
+VERSION = "tenant-isolation/2.0"
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-PASS, PARTIAL, FAIL = "PASS", "PARTIAL", "FAIL"
+PASS, PARTIAL, FAIL, SKIP = "PASS", "PARTIAL", "FAIL", "SKIP"
 
 TENANT_A = "tenant-alpha"
 TENANT_B = "tenant-beta"
@@ -432,10 +432,197 @@ def probe_at_rest(world: World, ids: dict[str, str]) -> list[Probe]:
         "stolen-store-reveals-every-tenant",
         plaintext == [MARKER_A, MARKER_B] or plaintext == sorted([MARKER_B, MARKER_A]),
         ("reading the database file directly returns both tenants' rows in plaintext: "
-         f"{plaintext} — the isolation is logical (a scope applied by code), not "
-         "cryptographic (a key the tenant holds)")
+         f"{plaintext} — the isolation is enforced by a scope in code and, on PostgreSQL, "
+         "by row-level policies, but it is not cryptographic: the file has no key")
         if len(plaintext) == 2 else
         f"the direct read returned {plaintext}, which needs explaining")]
+
+
+# --------------------------------------------------------------------------- #
+# the database's own enforcement (PostgreSQL)
+# --------------------------------------------------------------------------- #
+
+def probe_database_enforcement() -> tuple[list[Probe], dict[str, Any]] | None:
+    """Ask PostgreSQL itself to enforce the boundary, then try to break it.
+
+    The SQLite rows above measure a scope applied by code. This one measures
+    migration 0132's policies on a real server: two tenants, a role that is not
+    the table owner, and queries written the way an attacker would write them —
+    no predicate, a foreign primary key, a foreign INSERT.
+
+    Every probe runs in its own transaction, because that is the only way the
+    test means anything: ``set_config(..., true)`` is transaction-local, and a
+    probe that reused the setup transaction would be reading its own uncommitted
+    rows rather than what the policy shows a stranger.
+
+    Returns ``None`` when this checkout has no PostgreSQL, so the row says SKIP
+    rather than quietly disappearing from the report.
+    """
+    import subprocess
+
+    sys.path.insert(0, str(REPO_ROOT / "scripts"))
+    try:
+        from pg_qualification import postgres_server  # noqa: PLC0415
+    except Exception:  # pragma: no cover - import guard
+        return None
+
+    from sqlalchemy import create_engine, text
+
+    tenant_a = "11111111-1111-1111-1111-111111111111"
+    tenant_b = "22222222-2222-2222-2222-222222222222"
+    setting = "cryptoscan.tenant_id"
+
+    with postgres_server() as server:
+        if server is None:
+            return None
+        url = server["url"]
+        env = dict(os.environ)
+        env["DATABASE_URL"] = url
+        env["PYTHONPATH"] = os.pathsep.join(str(REPO_ROOT / part) for part in (
+            "services/api", "services/database", "shared/shared_models",
+            "shared/shared_config", "shared/shared_logging"))
+        applied = subprocess.run(
+            [sys.executable, "-m", "alembic", "-c", "migrations/alembic.ini", "upgrade", "head"],
+            cwd=REPO_ROOT / "services" / "database", env=env,
+            capture_output=True, text=True, timeout=900)
+        if applied.returncode != 0:
+            return [Probe("migrations-apply", False,
+                          "alembic upgrade head failed: "
+                          f"{(applied.stderr or applied.stdout)[-400:]}")], {}
+
+        engine = create_engine(url, future=True)
+        probes: list[Probe] = []
+        try:
+            # ---- setup, committed before anything is measured -----------------
+            with engine.begin() as setup:
+                version = setup.execute(text("SHOW server_version")).scalar()
+                tables = int(setup.execute(text(
+                    "SELECT count(*) FROM information_schema.columns "
+                    "WHERE table_schema = current_schema() AND column_name = 'tenant_id'"
+                )).scalar() or 0)
+                forced = int(setup.execute(text(
+                    "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE n.nspname = current_schema() AND c.relrowsecurity AND c.relforcerowsecurity"
+                )).scalar() or 0)
+                policies = int(setup.execute(text(
+                    "SELECT count(*) FROM pg_policies WHERE schemaname = current_schema()"
+                )).scalar() or 0)
+                for tenant_id, marker in ((tenant_a, MARKER_A), (tenant_b, MARKER_B)):
+                    setup.execute(text(
+                        "INSERT INTO tenant_usage_events (id, created_at, updated_at, tenant_id, "
+                        "kind, amount, detail) VALUES (gen_random_uuid(), now(), now(), :tenant, "
+                        "'drill', 1, :detail)"), {"tenant": tenant_id, "detail": marker})
+                # A plain role to own the control tables: `cryptoscan_platform`
+                # carries BYPASSRLS, so it cannot demonstrate what FORCE does.
+                setup.execute(text(
+                    "DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='drill_owner') "
+                    "THEN CREATE ROLE drill_owner NOLOGIN NOBYPASSRLS; END IF; END $$"))
+
+            probes.append(Probe(
+                "policy-exists-on-every-tenant-table", tables > 0 and forced >= tables and policies >= tables,
+                f"PostgreSQL {version}: {forced} of {tables} table(s) with a tenant_id have RLS "
+                f"enabled and forced, with {policies} policy row(s)"))
+
+            # ---- the policy, measured as a role that is not the owner ----------
+            def count_as(role: str, value: str | None) -> int:
+                """Rows ``role`` sees with the setting bound for this transaction."""
+                with engine.begin() as scope:
+                    # SET LOCAL: a role left set on a pooled connection is exactly
+                    # the leak this drill exists to catch.
+                    scope.execute(text(f"SET LOCAL ROLE {role}"))
+                    if value is not None:
+                        scope.execute(text(f"SELECT set_config('{setting}', :v, true)"), {"v": value})
+                    return int(scope.execute(text(
+                        "SELECT count(*) FROM tenant_usage_events WHERE detail IN (:a, :b)"),
+                        {"a": MARKER_A, "b": MARKER_B}).scalar() or 0)
+
+            unset = count_as("cryptoscan_tenant", None)
+            scoped = count_as("cryptoscan_tenant", tenant_a)
+            wildcard = count_as("cryptoscan_tenant", "*")
+            probes.append(Probe(
+                "no-setting-reads-nothing", unset == 0,
+                f"a connection carrying no tenant setting reads {unset} of the two rows — the "
+                "policy fails closed instead of defaulting to everything"))
+            probes.append(Probe(
+                "setting-scopes-to-one-tenant", scoped == 1,
+                f"with the setting bound to tenant A the same unqualified query returns {scoped} row(s)"))
+            probes.append(Probe(
+                "platform-wildcard-is-explicit", wildcard == 2,
+                f"the platform wildcard returns {wildcard} rows — a cross-tenant read is a "
+                "deliberate setting, not the default"))
+
+            refused = ""
+            try:
+                with engine.begin() as scope:
+                    scope.execute(text("SET LOCAL ROLE cryptoscan_tenant"))
+                    scope.execute(text(f"SELECT set_config('{setting}', :v, true)"), {"v": tenant_a})
+                    scope.execute(text(
+                        "INSERT INTO tenant_usage_events (id, created_at, updated_at, tenant_id, "
+                        "kind, amount, detail) VALUES (gen_random_uuid(), now(), now(), :tenant, "
+                        "'drill', 1, 'drill-cross-tenant-write')"), {"tenant": tenant_b})
+            except Exception as error:  # noqa: BLE001 - the refusal is the evidence
+                refused = str(error).splitlines()[0]
+            probes.append(Probe(
+                "cross-tenant-insert-refused", "row-level security" in refused.lower(),
+                f"an INSERT naming tenant B from a tenant-A setting is refused: {refused}"
+                if refused else "the INSERT landed — the policy's WITH CHECK is not binding"))
+
+            with engine.begin() as scope:
+                scope.execute(text("SET LOCAL ROLE cryptoscan_tenant"))
+                scope.execute(text(f"SELECT set_config('{setting}', :v, true)"), {"v": tenant_a})
+                updated = scope.execute(text(
+                    "UPDATE tenant_usage_events SET amount = 99 WHERE detail = :detail"),
+                    {"detail": MARKER_B}).rowcount
+            probes.append(Probe(
+                "cross-tenant-update-affects-nothing", updated == 0,
+                f"an UPDATE aimed at tenant B's row from a tenant-A setting touched {updated} row(s)"))
+
+            # ---- FORCE: the half that binds the table's own owner -------------
+            for table, force in (("drill_owner_unforced", False), ("drill_owner_forced", True)):
+                with engine.begin() as setup:
+                    setup.execute(text(f"DROP TABLE IF EXISTS {table}"))
+                    setup.execute(text(
+                        f"CREATE TABLE {table} (id serial PRIMARY KEY, tenant_id text, detail text)"))
+                    setup.execute(text(f"ALTER TABLE {table} OWNER TO drill_owner"))
+                    setup.execute(text(f"INSERT INTO {table} (tenant_id, detail) VALUES "
+                                       f"(:a, :ma), (:b, :mb)"),
+                                  {"a": tenant_a, "b": tenant_b, "ma": MARKER_A, "mb": MARKER_B})
+                    setup.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
+                    if force:
+                        setup.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+                    setup.execute(text(
+                        f"CREATE POLICY tenant_isolation ON {table} "
+                        f"USING (tenant_id::text = cryptoscan_current_tenant())"))
+
+            def owner_sees(table: str) -> int:
+                with engine.begin() as scope:
+                    scope.execute(text("SET LOCAL ROLE drill_owner"))
+                    scope.execute(text(f"SELECT set_config('{setting}', :v, true)"), {"v": tenant_a})
+                    return int(scope.execute(text(f"SELECT count(*) FROM {table}")).scalar() or 0)
+
+            unforced, forced_owner = owner_sees("drill_owner_unforced"), owner_sees("drill_owner_forced")
+            probes.append(Probe(
+                "force-is-what-binds-the-owner", unforced == 2 and forced_owner == 1,
+                f"the table's own owner reads {unforced} row(s) with RLS enabled but not forced, "
+                f"and {forced_owner} with it forced — which is why the migration forces it"))
+
+            # ---- the honest half ----------------------------------------------
+            with engine.begin() as scope:
+                as_superuser = int(scope.execute(text(
+                    "SELECT count(*) FROM tenant_usage_events WHERE detail IN (:a, :b)"),
+                    {"a": MARKER_A, "b": MARKER_B}).scalar() or 0)
+            probes.append(Probe(
+                "superuser-reads-across-tenants", as_superuser == 2,
+                f"a superuser reads all {as_superuser} row(s): RLS binds roles, not privileges "
+                "above it — and a stolen data file is still plaintext"))
+
+            from db.rls import enforcement  # noqa: PLC0415 — after DATABASE_URL is set
+
+            with engine.connect() as report_connection:
+                summary = enforcement(report_connection)
+        finally:
+            engine.dispose()
+        return probes, summary
 
 
 # --------------------------------------------------------------------------- #
@@ -446,6 +633,8 @@ def measure() -> dict[str, Any]:
     world = build_world()
     try:
         ids = _seed(world)
+
+        rls_probes, rls_summary = probe_database_enforcement() or ([], {})
 
         def row(row_id: str, question: str, probes: list[Probe], *,
                 unproven: list[str] | None = None,
@@ -478,35 +667,49 @@ def measure() -> dict[str, Any]:
                 probe_membership_resolution(world, ids)),
             row("controls", "is the isolation the filter's doing, or the data's?",
                 probe_controls(world, ids)),
+            row("database_enforcement",
+                "does PostgreSQL enforce the boundary, or only the Python scope?",
+                rls_probes,
+                verdict=None if rls_probes else SKIP,
+                unproven=[] if rls_probes else [
+                    "no PostgreSQL distribution is available in this checkout, so migration "
+                    "0132's policies were not executed here — SKIP is not a pass"],
+                limits=["the policy binds roles, not privilege: a superuser or a role "
+                        "granted BYPASSRLS reads across tenants, and a stolen data file is "
+                        "still plaintext — this is enforcement, not encryption"],
+                ),
             row("at_rest",
                 "is the isolation cryptographic, or logical and enforced by code?",
                 probe_at_rest(world, ids),
                 verdict=PARTIAL,
                 unproven=[
-                    "this is logical isolation, not cryptographic isolation: the store is "
-                    "shared and unencrypted per tenant, so a database dump "
-                    "— or a backup, or a stolen disk — contains every tenant's rows in "
-                    "plaintext. Logical isolation stops a *request*; it does not stop a "
-                    "reader of the file",
-                    "closing this needs per-tenant keys or a database that enforces "
-                    "row-level security with distinct roles per tenant; neither is in "
-                    "place, and no test can substitute for it",
+                    "this is not encryption: the store is shared and unencrypted per "
+                    "tenant, so a database dump — or a backup, or a stolen disk — still "
+                    "contains every tenant's rows in plaintext. Isolation stops a *reader "
+                    "through the database*; it does not stop a reader of the file",
+                    "the `database_enforcement` row above closes the part that could be "
+                    "closed here: PostgreSQL's policies bind a role that forgets its "
+                    "predicate. Closing the rest needs per-tenant keys (or per-tenant "
+                    "databases) held by the tenant, which no row in this drill can "
+                    "substitute for",
                 ]),
         ]
 
         counts = {verdict: sum(1 for row in rows if row["verdict"] == verdict)
-                  for verdict in (PASS, PARTIAL, FAIL)}
+                  for verdict in (PASS, PARTIAL, FAIL, SKIP)}
         return {
             "schema": SCHEMA,
             "version": VERSION,
             "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
             "counts": counts,
             "rows": rows,
+            "database_enforcement": rls_summary,
             "tenants": 2,
             "limits": [
-                "executed against SQLite with the same ORM guard and the same tenancy "
-                "module the API uses; PostgreSQL row-level security is not exercised "
-                "here because the deployment does not use it",
+                "the read/write rows are executed against SQLite with the same ORM guard "
+                "and the same tenancy module the API uses; the `database_enforcement` row "
+                "is the PostgreSQL half, and it says SKIP rather than PASS when no server "
+                "is available",
                 "the drill covers the data layer and the tenant resolution the "
                 "middleware calls; guide 121 covers the per-route declarations",
             ],
@@ -525,7 +728,8 @@ def render_md(report: dict[str, Any]) -> str:
         "# Multi-tenant isolation — two tenants, every direction",
         "",
         f"`{report['schema']}` · generated {report['generated_at']} · "
-        f"**{counts[PASS]} pass · {counts[PARTIAL]} partial · {counts[FAIL]} fail**",
+        f"**{counts[PASS]} pass · {counts[PARTIAL]} partial · {counts[FAIL]} fail"
+        + (f" · {counts[SKIP]} skip**" if counts.get(SKIP) else "**"),
         "",
         "| Question | Verdict | Evidence |",
         "|---|---|---|",
@@ -552,14 +756,22 @@ def render_md(report: dict[str, Any]) -> str:
     lines += ["## What this does not prove", ""]
     for limit in report["limits"]:
         lines.append(f"- {limit}")
+    enforcement = report.get("database_enforcement") or {}
     lines += [
         "",
         "**The verdict this drill supports:** two tenants cannot read, write or mutate "
         "each other's rows, a query that forgets its predicate fails closed, a spoofed "
         "`X-Tenant-ID` with a valid session buys nothing, and a foreign primary key is "
-        "not readable. The isolation is **logical** — one store, one schema, a scope "
-        "applied by code — and the last row says plainly that this is not cryptographic "
-        "isolation and must not be sold as such.",
+        "not readable — and on PostgreSQL the boundary is enforced a second time by the "
+        "database itself: a role that carries no tenant setting reads nothing, a foreign "
+        "INSERT is refused by the policy, and `FORCE ROW LEVEL SECURITY` binds even the "
+        "table's owner. What it is **not** is encryption: one store, one schema, "
+        "plaintext at rest, and a superuser reads across tenants by design. The last two "
+        "rows say so where a reader cannot miss it."
+        + (f" The applying role in this run (`{enforcement.get('role')}`) is itself a "
+           f"superuser, so `binds_this_role` is {enforcement.get('binds_this_role')} — the "
+           "policy was measured through the `cryptoscan_tenant` and `drill_owner` roles, "
+           "not through it." if enforcement.get("supported") else ""),
         "",
     ]
     return "\n".join(lines)

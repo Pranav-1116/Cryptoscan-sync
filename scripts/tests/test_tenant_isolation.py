@@ -83,7 +83,9 @@ def test_at_rest_row_stays_honest(report: dict) -> None:
     row = _row(report, "at_rest")
     assert row["verdict"] == "PARTIAL", "logical isolation must never be graded PASS"
     assert row["probes"][0]["ok"] is True, "the drill must actually read the store"
-    assert any("cryptograph" in gap for gap in row["unproven"])
+    # the row's own words: enforced by code and by policy, but not encrypted
+    assert any("not encryption" in gap for gap in row["unproven"])
+    assert any("per-tenant keys" in gap for gap in row["unproven"])
 
 
 def test_the_guard_really_separates_rows() -> None:
@@ -128,3 +130,36 @@ def test_cli_writes_reports(tmp_path) -> None:
     payload = json.loads(json_path.read_text())
     assert payload["schema"] == ti.SCHEMA
     assert "Multi-tenant isolation" in md_path.read_text()
+
+
+def test_the_database_enforces_the_boundary_too(report: dict) -> None:
+    """The PostgreSQL row is either executed or explicitly SKIP, never absent."""
+    row = _row(report, "database_enforcement")
+    assert row["verdict"] in {"PASS", "FAIL", "SKIP"}, row["verdict"]
+    if row["verdict"] == "SKIP":
+        # No PostgreSQL here: the row must say so rather than pass quietly.
+        assert row["unproven"], "a skipped row must state what was not measured"
+        assert row["probes"] == []
+        return
+    probes = {probe["probe"]: probe for probe in row["probes"]}
+    assert probes["policy-exists-on-every-tenant-table"]["ok"] is True
+    assert probes["no-setting-reads-nothing"]["ok"] is True, (
+        "a policy that defaults to everything is worse than no policy")
+    assert probes["setting-scopes-to-one-tenant"]["ok"] is True
+    assert probes["cross-tenant-insert-refused"]["ok"] is True
+    assert probes["cross-tenant-update-affects-nothing"]["ok"] is True
+    # the control: FORCE is what binds the owner, so both halves must be observed
+    assert probes["force-is-what-binds-the-owner"]["ok"] is True
+    # and the honest half: a superuser still reads across tenants
+    assert probes["superuser-reads-across-tenants"]["ok"] is True
+    assert row["verdict"] == "PASS"
+
+
+def test_isolation_is_still_not_claimed_as_encryption(report: dict) -> None:
+    """Database enforcement does not turn logical isolation into cryptography."""
+    row = _row(report, "at_rest")
+    assert row["verdict"] == "PARTIAL"
+    text = " ".join(row["unproven"])
+    assert "not encryption" in text
+    assert "per-tenant keys" in text
+    assert report["schema"] == "cryptoscan.tenant-isolation/2"

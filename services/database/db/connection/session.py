@@ -34,6 +34,14 @@ def configure_session(engine=None) -> None:
     from db.tenancy import install_tenant_guard
 
     install_tenant_guard()
+    # The second lock, on PostgreSQL only: every transaction carries the tenant
+    # setting migration 0132's policy reads, so a connection this process does not
+    # own — a psql prompt, a BI tool — reads no tenant's rows at all. Inert on
+    # SQLite, and inert here until the policy exists, which is the same silence
+    # the ORM guard has outside a scope.
+    from db.rls import install_rls_binder
+
+    install_rls_binder()
 
 
 def init_db(engine=None) -> None:
