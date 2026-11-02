@@ -58,7 +58,12 @@
 > (**8 pass · 1 partial · 0 fail**) with a negative control that strips the console
 > and makes every pass disappear — and this pass gave the audit trail an actual
 > **page** that shows the hash chain's verdict, never a green badge for a chain it
-> did not read.
+> did not read.; and
+> [the monitoring bundle](127-monitoring-bundle.md) (**3 pass · 0 partial · 0
+> fail**) closes the last gap guide 117 named: the stack now *runs* Prometheus and
+> Alertmanager, pointed at each other and at a route the API serves, with the token
+> path executed through the API's own dependency and five injected defects proving
+> the checks can fail.
 >
 > **Security, executed rather than asserted** — [guide 119](119-security-blockers.md)
 > grades the eight security blockers a bank asks about. All eight are now

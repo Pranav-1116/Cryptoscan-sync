@@ -81,3 +81,6 @@ build/
 
 # local dev stack runtime (scripts/run_local_stack.sh)
 .local-stack/
+# monitoring secrets are rendered, never committed (see README.md)
+infra/monitoring/secrets/*
+!infra/monitoring/secrets/README.md

@@ -109,6 +109,20 @@ docker-logs:
 docker-ps:
 	$(COMPOSE) ps
 
+# ── Monitoring sidecar ───────────────────────────────────────────────
+# Prometheus + Alertmanager beside the API, so a rule that fires has somewhere
+# to go. `monitoring-check` grades the bundle without starting anything.
+MONITORING_COMPOSE = $(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.monitoring.yml
+
+monitoring-secrets:
+	$(PY) $(ROOT)/scripts/render_monitoring_secrets.py
+
+monitoring-up: monitoring-secrets
+	$(MONITORING_COMPOSE) up -d prometheus alertmanager
+
+monitoring-check:
+	$(PY) $(ROOT)/scripts/monitoring_bundle.py
+
 # production stack (uses .env with strong secrets; see docker-compose.prod.yml)
 docker-up-prod:
 	$(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml up --build -d

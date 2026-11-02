@@ -1,0 +1,308 @@
+{
+  "schema": "cryptoscan.monitoring-bundle/1",
+  "generated_at": "2026-11-02T10:49:46.198303+00:00",
+  "counts": {
+    "PASS": 3,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "rows": [
+    {
+      "id": "compose_wiring",
+      "question": "does the stack that ships start the processes its configs describe?",
+      "probes": [
+        {
+          "probe": "service-prometheus-exists",
+          "ok": true,
+          "observed": "the overlay defines `prometheus`"
+        },
+        {
+          "probe": "prometheus-image-pinned",
+          "ok": true,
+          "observed": "image is ${PROMETHEUS_IMAGE:-prometheus/prometheus:v2.53.2}"
+        },
+        {
+          "probe": "prometheus-no-host-port",
+          "ok": true,
+          "observed": "publishes no host port; reach it through the bank's proxy"
+        },
+        {
+          "probe": "prometheus-no-new-privileges",
+          "ok": true,
+          "observed": "security_opt=['no-new-privileges:true']"
+        },
+        {
+          "probe": "prometheus-has-healthcheck",
+          "ok": true,
+          "observed": "healthcheck present"
+        },
+        {
+          "probe": "prometheus-restart-policy",
+          "ok": true,
+          "observed": "restart='unless-stopped'"
+        },
+        {
+          "probe": "service-alertmanager-exists",
+          "ok": true,
+          "observed": "the overlay defines `alertmanager`"
+        },
+        {
+          "probe": "alertmanager-image-pinned",
+          "ok": true,
+          "observed": "image is ${ALERTMANAGER_IMAGE:-prometheus/alertmanager:v0.27.0}"
+        },
+        {
+          "probe": "alertmanager-no-host-port",
+          "ok": true,
+          "observed": "publishes no host port; reach it through the bank's proxy"
+        },
+        {
+          "probe": "alertmanager-no-new-privileges",
+          "ok": true,
+          "observed": "security_opt=['no-new-privileges:true']"
+        },
+        {
+          "probe": "alertmanager-has-healthcheck",
+          "ok": true,
+          "observed": "healthcheck present"
+        },
+        {
+          "probe": "alertmanager-restart-policy",
+          "ok": true,
+          "observed": "restart='unless-stopped'"
+        },
+        {
+          "probe": "prometheus-config-mounted",
+          "ok": true,
+          "observed": "mounted at /etc/prometheus/prometheus.yml"
+        },
+        {
+          "probe": "prometheus-config-read-only",
+          "ok": true,
+          "observed": "mount mode is ro"
+        },
+        {
+          "probe": "rules-mounted",
+          "ok": true,
+          "observed": "mounted at /etc/prometheus/rules/alerts.yml"
+        },
+        {
+          "probe": "rules-read-only",
+          "ok": true,
+          "observed": "mount mode is ro"
+        },
+        {
+          "probe": "alertmanager-config-mounted",
+          "ok": true,
+          "observed": "mounted at /etc/alertmanager/alertmanager.yml"
+        },
+        {
+          "probe": "alertmanager-config-read-only",
+          "ok": true,
+          "observed": "mount mode is ro"
+        },
+        {
+          "probe": "rule_files-match-the-mount",
+          "ok": true,
+          "observed": "every rule_files entry is a mounted path"
+        },
+        {
+          "probe": "receiver-credential-file-mounted",
+          "ok": true,
+          "observed": "credentials_file ['/etc/alertmanager/secrets/webhook_token'] is mounted"
+        },
+        {
+          "probe": "metrics-token-file-mounted",
+          "ok": true,
+          "observed": "bearer_token_file ['/etc/prometheus/secrets/metrics_token'] is mounted"
+        },
+        {
+          "probe": "secrets-from-one-directory",
+          "ok": true,
+          "observed": "both services read their token from ${MONITORING_SECRETS_DIR}, one source"
+        }
+      ],
+      "verdict": "PASS"
+    },
+    {
+      "id": "config_chain",
+      "question": "does Prometheus reach Alertmanager, and Alertmanager reach a route the API serves?",
+      "probes": [
+        {
+          "probe": "alertmanager-listens-on-a-known-port",
+          "ok": true,
+          "observed": "--web.listen-address=0.0.0.0:9093"
+        },
+        {
+          "probe": "prometheus-alerting-target",
+          "ok": true,
+          "observed": "Prometheus sends to ['alertmanager:9093']"
+        },
+        {
+          "probe": "prometheus-depends-on-alertmanager",
+          "ok": true,
+          "observed": "depends_on={'api': {'condition': 'service_started'}, 'alertmanager': {'condition': 'service_started'}}"
+        },
+        {
+          "probe": "receiver-url-is-a-served-route",
+          "ok": true,
+          "observed": "receiver URL(s) resolve: ['/api/v1/ops/alerts/alertmanager']"
+        },
+        {
+          "probe": "every-route-names-a-real-receiver",
+          "ok": true,
+          "observed": "every route receiver is defined"
+        },
+        {
+          "probe": "every-rule-severity-resolves-to-a-receiver",
+          "ok": true,
+          "observed": "each rule severity resolves: critical->cryptoscan-platform, high->cryptoscan-platform, medium->cryptoscan-platform"
+        },
+        {
+          "probe": "no-paging-severity-is-silenced",
+          "ok": true,
+          "observed": "informational alerts are routed to the null receiver; nothing that should page is"
+        },
+        {
+          "probe": "rules-file-has-rules",
+          "ok": true,
+          "observed": "15 rule(s) in alerts.yml"
+        }
+      ],
+      "rule_count": 15,
+      "targets": [
+        "alertmanager:9093"
+      ],
+      "receiver_urls": [
+        "http://api:8010/api/v1/ops/alerts/alertmanager"
+      ],
+      "verdict": "PASS"
+    },
+    {
+      "id": "secret_wiring",
+      "question": "is the token Alertmanager sends the token the API validates?",
+      "probes": [
+        {
+          "probe": "token-file-is-rendered",
+          "ok": true,
+          "observed": "webhook_token exists with 64 character(s)"
+        },
+        {
+          "probe": "token-length-meets-the-api-floor",
+          "ok": true,
+          "observed": "64 character(s); the API requires 32"
+        },
+        {
+          "probe": "token-is-documented-in-the-production-template",
+          "ok": true,
+          "observed": "ALERTMANAGER_WEBHOOK_TOKEN is in .env.production.example"
+        },
+        {
+          "probe": "production-template-keeps-the-two-tokens-apart",
+          "ok": true,
+          "observed": "the template leaves both blank; one read-only scrape credential and one inbound write credential must never be the same value"
+        },
+        {
+          "probe": "right-token-is-accepted",
+          "ok": true,
+          "observed": "a notification carrying the rendered token answers 200"
+        },
+        {
+          "probe": "wrong-token-is-refused",
+          "ok": true,
+          "observed": "a token one character off answers 401"
+        },
+        {
+          "probe": "missing-token-is-refused",
+          "ok": true,
+          "observed": "no Authorization header answers 401"
+        },
+        {
+          "probe": "unset-token-fails-closed",
+          "ok": true,
+          "observed": "a production process with no token configured answers 503 rather than accepting the notification"
+        }
+      ],
+      "credential_file": "/etc/alertmanager/secrets/webhook_token",
+      "token_length": 64,
+      "statuses": {
+        "right": 200,
+        "wrong": 401,
+        "missing": 401,
+        "unconfigured": 503
+      },
+      "verdict": "PASS"
+    }
+  ],
+  "negative_control": {
+    "injections": {
+      "prometheus-targets-localhost": {
+        "description": "prometheus.yml points at localhost instead of the Alertmanager service",
+        "affected_rows": [
+          "config_chain"
+        ],
+        "verdicts": {
+          "compose_wiring": "PASS",
+          "config_chain": "FAIL",
+          "secret_wiring": "PASS"
+        },
+        "caught": true
+      },
+      "receiver-url-not-served": {
+        "description": "alertmanager.yml posts to a path the API does not serve",
+        "affected_rows": [
+          "config_chain"
+        ],
+        "verdicts": {
+          "compose_wiring": "PASS",
+          "config_chain": "FAIL",
+          "secret_wiring": "PASS"
+        },
+        "caught": true
+      },
+      "alertmanager-config-not-mounted": {
+        "description": "the overlay stops mounting alertmanager.yml",
+        "affected_rows": [
+          "compose_wiring"
+        ],
+        "verdicts": {
+          "compose_wiring": "FAIL",
+          "config_chain": "PASS",
+          "secret_wiring": "PASS"
+        },
+        "caught": true
+      },
+      "short-token": {
+        "description": "the rendered token is below the API's 32-character floor",
+        "affected_rows": [
+          "secret_wiring"
+        ],
+        "verdicts": {
+          "compose_wiring": "PASS",
+          "config_chain": "PASS",
+          "secret_wiring": "FAIL"
+        },
+        "caught": true
+      },
+      "paging-severity-silenced": {
+        "description": "the critical sub-route sends paging alerts to the null receiver",
+        "affected_rows": [
+          "config_chain"
+        ],
+        "verdicts": {
+          "compose_wiring": "PASS",
+          "config_chain": "FAIL",
+          "secret_wiring": "PASS"
+        },
+        "caught": true
+      }
+    },
+    "caught_every_injection": true
+  },
+  "overlay": "docker-compose.monitoring.yml",
+  "limits": [
+    "no Prometheus or Alertmanager process is started here: the bundle is read, cross-checked and its token path executed through the API's own dependency, but container start-up, scrape timing, rule evaluation and Alertmanager grouping are the bank's to observe",
+    "image tags are pinned but their contents were not audited; a bank that requires signed images substitutes its own registry",
+    "the healthcheck command was not executed inside the upstream images"
+  ]
+}

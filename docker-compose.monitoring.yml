@@ -1,0 +1,94 @@
+# Monitoring overlay: Prometheus + Alertmanager, running beside the API.
+#
+# Why this file exists: `infra/monitoring/prometheus/prometheus.yml` carried an
+# `alerting:` stanza and `alerts.yml` carried rules, but nothing in the compose
+# bundle ran either process. The rules were correct and they evaluated nowhere —
+# a rule that fires with no Alertmanager is a rule that pages nobody, and it
+# looks exactly like a healthy stack. This overlay is the missing half.
+#
+#   python3 scripts/render_monitoring_secrets.py        # writes the two token files
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml \
+#                  -f docker-compose.monitoring.yml up -d
+#
+# Neither service publishes a host port: Prometheus and Alertmanager are reached
+# by the API-side network only, and a bank that wants the UI exposes it through
+# its own reverse proxy. `scripts/monitoring_bundle.py` checks that this file, the
+# two configs it mounts and the secrets it mounts still agree — because a mount
+# path that drifts from the path inside a config fails at container start, not at
+# review time.
+#
+# Image tags are pinned. `latest` on a monitoring image is a supply-chain change
+# nobody reviewed, and Alertmanager's config schema has broken across minors.
+
+services:
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prometheus/prometheus:v2.53.2}
+    container_name: cryptoscan-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-15d}
+      - --web.listen-address=0.0.0.0:9090
+      # Prometheus needs to know its own external URL to build links in
+      # notifications; without it a page says "localhost:9090".
+      - --web.external-url=${PROMETHEUS_EXTERNAL_URL:-http://prometheus:9090}
+    volumes:
+      - ./infra/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # The rules land at the path prometheus.yml's own rule_files names. The
+      # bundle check reads both files and fails if these two drift apart.
+      - ./infra/monitoring/prometheus/alerts.yml:/etc/prometheus/rules/alerts.yml:ro
+      - ${MONITORING_SECRETS_DIR:-./infra/monitoring/secrets}/metrics_token:/etc/prometheus/secrets/metrics_token:ro
+      - prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:9090/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      api:
+        condition: service_started
+      alertmanager:
+        condition: service_started
+    networks: [cryptoscan-net]
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    logging: &json-log
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    mem_limit: 1g
+
+  alertmanager:
+    image: ${ALERTMANAGER_IMAGE:-prometheus/alertmanager:v0.27.0}
+    container_name: cryptoscan-alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.listen-address=0.0.0.0:9093
+    volumes:
+      - ./infra/monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # alertmanager.yml reads its bearer token from this path via
+      # credentials_file; the same token is the API's
+      # ALERTMANAGER_WEBHOOK_TOKEN, and scripts/render_monitoring_secrets.py
+      # writes both files from the one env var so they cannot disagree.
+      - ${MONITORING_SECRETS_DIR:-./infra/monitoring/secrets}/webhook_token:/etc/alertmanager/secrets/webhook_token:ro
+      - alertmanager_data:/alertmanager
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:9093/-/healthy || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks: [cryptoscan-net]
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    logging: *json-log
+    mem_limit: 256m
+
+volumes:
+  prometheus_data:
+  alertmanager_data:

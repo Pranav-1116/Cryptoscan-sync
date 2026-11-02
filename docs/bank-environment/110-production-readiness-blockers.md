@@ -433,11 +433,36 @@ because a pager has no cookie jar and a rule that fires must not be refused with
 platform now proves is that it was told, and that a receiver which goes quiet is a
 series that stops moving.
 
+**The bundle that ships them** — [guide 127](127-monitoring-bundle.md)
+(**3 pass · 0 partial · 0 fail**). This drill delivered a notification by hand;
+`docker-compose.monitoring.yml` now runs Prometheus and Alertmanager beside the
+API, and `scripts/monitoring_bundle.py` grades the bundle as a bundle:
+
+- every config lands inside its container at the path the config itself names, and
+  the secrets they read are mounted read-only from one `${MONITORING_SECRETS_DIR}`
+  — a mount that drifts from a `credentials_file` or a `rule_files` entry is a
+  container that refuses to start, not a review finding;
+- Prometheus's alerting target is derived from the Alertmanager service and the
+  port its own command line listens on, and every receiver URL is looked up in the
+  API's OpenAPI document, so a renamed route is caught rather than retried 404;
+- the routing tree is resolved per rule severity. Two real defects were found
+  here: a severity that matches no sub-route is *not* unrouted — it lands on the
+  default receiver — and the check now asks the question that matters, whether a
+  paging severity resolves to the null receiver;
+- the token path is **executed**, not read: the real `require_alertmanager_token`
+  dependency is called with the rendered token (200), one character off (401), no
+  header (401) and no configured token in production (503). Five injected defects
+  — a localhost target, an unserved receiver URL, an unmounted config, a short
+  token and a silenced critical route — each make the row that watches for them
+  fail.
+
 **Not proven.** No Prometheus scraped these rules and no Alertmanager process ran
 in this drill: evaluation, grouping, inhibition and retry are their layers, and
-what is proven is the delivery half. The span payload went to a local sink, not an
-APM collector. Log shipping is graded READ: structured logging and redaction
-exist in the checkout, and what leaves the host is a deployment question.
+what is proven is the delivery half and that the stack wires the delivery. The
+images' healthcheck command was not executed, and their tags are pinned but not
+audited. The span payload went to a local sink, not an APM collector. Log shipping
+is graded READ: structured logging and redaction exist in the checkout, and what
+leaves the host is a deployment question.
 
 ## 8. Frontend production hardening — **PASS, one row partial** (re-audited this pass)
 
@@ -569,8 +594,10 @@ and an explicit "API-only" register for the 604 uncovered endpoints.
 7. ~~**Observability gaps (#7)**~~ — **done this pass** (guide 117, second pass
    on it): coverage, queue, evidence and agent families exported; the worker
    probe, span export and Alertmanager receiver all built **and executed** —
-   10 of 10 surfaces answer, 0 partial. Remaining in #7: nothing in code; a bank
-   points the bundled Alertmanager at its own pager.
+   10 of 10 surfaces answer, 0 partial. Follow-up done: the stack now runs
+   Prometheus and Alertmanager (guide 127, 3/0/0), so a fired rule has
+   somewhere to go. Remaining in #7: a bank points the bundled Alertmanager at
+   its own pager, and no process was started here.
 8. ~~**Frontend audit (#8)**~~ — **done this pass** (guide 118, second pass on
    it): the audit trail is a page with the chain verdict and an honest unverified
    state, fifteen pages gained rendered tests (49% → 63.7%), a panel that hung on
