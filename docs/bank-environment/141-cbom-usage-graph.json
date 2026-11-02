@@ -1,0 +1,180 @@
+{
+  "schema": "cryptoscan.cbom-usage-graph-guide/1",
+  "generated_at": "2026-11-02T17:49:04.891050+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 23,
+  "rows": [
+    {
+      "id": "usage_edges",
+      "question": "does an algorithm edge say how it is known?",
+      "phase": "review 20",
+      "probes": [
+        {
+          "probe": "an-observed-algorithm-is-an-observed-edge",
+          "ok": true,
+          "observed": "OBSERVED from NET-9281, RUNTIME-92821"
+        },
+        {
+          "probe": "an-sbom-only-algorithm-is-a-declared-edge",
+          "ok": true,
+          "observed": "the graph shows the algorithm and says the claim is a declaration"
+        },
+        {
+          "probe": "an-algorithm-with-no-evidence-gets-no-edge",
+          "ok": true,
+          "observed": "0 USES_CRYPTO edge(s) from system:payments-api; 1 algorithm(s) had no evidence and got no edge"
+        },
+        {
+          "probe": "the-subject-is-explicit",
+          "ok": true,
+          "observed": "system / application / component, never an implicit one"
+        },
+        {
+          "probe": "a-usage-graph-with-no-subject-is-refused",
+          "ok": true,
+          "observed": "an edge with no owner is not drawn"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "conflict_edges",
+      "question": "can a disagreement survive the move into the graph?",
+      "phase": "review 16 / 20",
+      "probes": [
+        {
+          "probe": "a-conflict-becomes-an-edge-with-both-evidence-ids",
+          "ok": true,
+          "observed": "1 CONFLICTS_WITH edge(s) across 1 field(s); no conflict is resolved into an edge"
+        },
+        {
+          "probe": "the-edge-names-the-field-and-both-values",
+          "ok": true,
+          "observed": "version: 3.0.13 vs 3.0.11"
+        },
+        {
+          "probe": "a-conflict-is-never-resolved-into-an-edge",
+          "ok": true,
+          "observed": "the disagreement survives the projection"
+        },
+        {
+          "probe": "agreeing-sources-produce-no-edge",
+          "ok": true,
+          "observed": "0 CONFLICTS_WITH edge(s); the sources agree"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "tls_edges",
+      "question": "does a load balancer's TLS become the application's property?",
+      "phase": "review 8 / 9",
+      "probes": [
+        {
+          "probe": "a-terminator-owns-the-algorithms-it-negotiated",
+          "ok": true,
+          "observed": "4 edge(s) from 1 endpoint(s); a terminator's algorithms belong to the terminator"
+        },
+        {
+          "probe": "a-terminator-edges-to-its-certificate",
+          "ok": true,
+          "observed": "the certificate belongs to the endpoint, not to the application"
+        },
+        {
+          "probe": "a-hop-with-no-endpoint-is-skipped",
+          "ok": true,
+          "observed": "no endpoint, no edge"
+        },
+        {
+          "probe": "suite-parsing-is-the-collectors-table-not-a-copy",
+          "ok": true,
+          "observed": "one contract with guide 140's cipher-suite table"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "write_and_refuse",
+      "question": "is the graph a faithful projection or a tidy one?",
+      "phase": "review 16 / 20 / 21",
+      "probes": [
+        {
+          "probe": "every-edge-with-evidence-is-written",
+          "ok": true,
+          "observed": "7 edge(s) written across 9 node(s)"
+        },
+        {
+          "probe": "the-provenance-classes-survive-into-the-graph",
+          "ok": true,
+          "observed": "{\"DECLARED\": 1, \"OBSERVED\": 6}"
+        },
+        {
+          "probe": "a-edge-with-no-evidence-is-refused",
+          "ok": true,
+          "observed": "an unattributable crypto relationship is a guess drawn on a diagram"
+        },
+        {
+          "probe": "the-nodes-are-typed-by-what-they-are",
+          "ok": true,
+          "observed": "CERTIFICATE, CRYPTO_ALGORITHM, ENDPOINT, EVIDENCE_SOURCE, SYSTEM"
+        },
+        {
+          "probe": "the-graph-exposes-which-algorithms-had-no-evidence",
+          "ok": true,
+          "observed": "families {\"conflicts\": 1, \"tls\": 4, \"usage\": 2}"
+        },
+        {
+          "probe": "coverage-travels-with-the-graph",
+          "ok": true,
+          "observed": "a partial estate cannot be read as the whole graph"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "api_exposure",
+      "question": "can a caller reach the graph without a test harness?",
+      "phase": "review 20",
+      "probes": [
+        {
+          "probe": "the-graph-route-exists-and-is-typed",
+          "ok": true,
+          "observed": "POST /cbom/usage/graph"
+        },
+        {
+          "probe": "the-route-uses-the-real-graph-engine",
+          "ok": true,
+          "observed": "the response carries the graph the engine would render"
+        },
+        {
+          "probe": "the-route-accepts-all-three-families",
+          "ok": true,
+          "observed": "usage, conflicts and TLS in one call"
+        },
+        {
+          "probe": "a-missing-subject-is-a-validation-error",
+          "ok": true,
+          "observed": "the edge with no owner is refused at the API too"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the graph is built from profiles and conflicts a caller passes in. It does not fetch them, so an out-of-date profile produces an out-of-date graph and nothing here notices",
+    "a CONFLICTS_WITH edge names two sources and a field. It does not say which one is right \u2014 deliberately \u2014 so a consumer that needs one value must apply a precedence rule of its own, and the graph cannot stop it choosing badly",
+    "USES_CRYPTO edges are per (subject, algorithm), not per call site. Two applications in one process using AES-256-GCM differently share an edge unless the caller separates the subjects",
+    "termination is modelled, hop chaining is not: the graph does not assert that the traffic on both sides of a terminator is the same connection",
+    "coverage is an annotation. A graph rendered without reading coverage_note looks complete even when most of the estate was never inspected",
+    "certificate edges reference the certificate, not its parsed properties \u2014 the certificate's own public key and signature algorithm live in the certificate record, not on the edge"
+  ]
+}

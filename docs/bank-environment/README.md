@@ -537,6 +537,24 @@
 > (reads stored `NetworkScanRun` probes, so the network half is real data, not a
 > request body).
 
+> [Conflicts enter the graph, and a terminator owns its algorithms](141-cbom-usage-graph.md)
+> (**5 pass · 0 partial · 0 fail**, 23 probes) projects the CBOM into edges, because
+> the questions a bank asks are relational: *which systems use RSA-2048*, *which
+> endpoints terminate with an ECDSA certificate*, *which sources disagree*. Three
+> families, each refusing to smooth something away. **`USES_CRYPTO`** takes its
+> provenance from the strongest evidence class — an algorithm only an SBOM names is
+> `DECLARED`, so the graph shows it and nothing may read it as use; an algorithm
+> with no evidence id gets **no edge** and is listed as undeclared. **`CONFLICTS_WITH`**
+> turns each `reconcile` conflict into an edge carrying *both* evidence ids: a
+> CycloneDX document has to choose one version to stay valid, a graph does not, so
+> the disagreement survives — the resolved value is deliberately ignored.
+> **`NEGOTIATES`/`TERMINATES`** attach an endpoint's suites and certificate to the
+> endpoint, so a load balancer's TLS 1.3 never becomes the application's property,
+> and suite parsing goes through guide 140's table rather than a second copy.
+> `apply_graph` writes the edges into the real engine and refuses any without
+> evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
+> `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
+
 > [Durability, archives, obligations, deployment](136-sbom-durability-archives-obligations-deployment.md)
 > (**5 pass · 0 partial · 0 fail**, 68 probes, 4 placement, 9 archive and 13
 > licence-model cases) takes the four limits guide 135 named and makes each one

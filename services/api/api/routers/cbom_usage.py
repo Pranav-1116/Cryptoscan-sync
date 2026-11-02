@@ -100,6 +100,27 @@ class CbomNetworkUsageResponse(BaseModel):
     scan_runs: int
 
 
+class CbomGraphRequest(BaseModel):
+    profiles: list[dict] | None = Field(None, description=(
+        "usage profiles (as returned by /cbom/usage or /cbom/usage/collect); one "
+        "USES_CRYPTO edge per algorithm, classified by the strongest evidence class"))
+    reconciled: dict | None = Field(None, description=(
+        "output of /cbom/reconcile; each conflict becomes a CONFLICTS_WITH edge with both "
+        "sides' evidence — no conflict is ever resolved into an edge"))
+    paths: dict | None = Field(None, description=(
+        "output of /cbom/tls-paths; endpoints negotiate algorithms and terminate with "
+        "certificates, and a terminator's algorithms never become the application's"))
+    system: str | None = None
+    application: str | None = None
+    component: str | None = None
+
+
+class CbomGraphResponse(BaseModel):
+    edges: dict
+    applied: dict
+    graph: dict
+
+
 class CbomHsmRequest(BaseModel):
     kind: str = Field(..., description=(
         "CAPABILITY, CONFIGURED_KEY or OPERATION — the three HSM/KMS answers, only the last "
@@ -197,6 +218,31 @@ def cbom_usage_network(db: Session = Depends(get_db_session),
             "hops": {"schema": collected["schema"], "paths": collected["hops"],
                      "statement": collected["statement"]},
             "source": "live" if probes else "empty", "scan_runs": len(runs)}
+
+
+@router.post("/usage/graph", response_model=CbomGraphResponse)
+def cbom_usage_graph(body: CbomGraphRequest,
+                     user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """CBOM relationships as graph edges, written with their evidence attached.
+
+    Three families: ``USES_CRYPTO`` (classified by the strongest evidence class —
+    an SBOM-only algorithm is ``DECLARED``), ``CONFLICTS_WITH`` (two sources
+    disagreeing, both evidence ids kept, never resolved into a chosen value) and
+    ``NEGOTIATES``/``TERMINATES`` (a terminator's algorithms belong to the
+    terminator). An edge without evidence is refused rather than drawn.
+    """
+    from cbom import usage_graph as ug
+    from graph_engine.core.engine import GraphEngine
+
+    try:
+        edges = ug.build_graph(body.profiles, reconciled=body.reconciled, paths=body.paths,
+                               system=body.system, application=body.application,
+                               component=body.component)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    engine = GraphEngine()
+    applied = ug.apply_graph(engine, edges["edges"])
+    return {"edges": edges, "applied": applied, "graph": engine.to_vis()}
 
 
 @router.post("/hsm-evidence")

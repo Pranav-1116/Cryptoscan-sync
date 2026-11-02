@@ -201,6 +201,46 @@ def test_network_usage_is_empty_until_a_scan_ran(client):
     assert body["source"] == "empty" and body["profiles"]["profiles"] == []
 
 
+def test_the_graph_keeps_conflicts_as_edges(client):
+    body = _post(client, "/usage/graph", {
+        "system": "payments-api",
+        "profiles": [{
+            "asset": {"algorithm": "AES-256-GCM", "purpose": "TLS"},
+            "observed_classes": ["RUNTIME_OBSERVED"], "evidence_ids": ["RUNTIME-92821"],
+            "confidence": "HIGH", "usage": "OBSERVED"}],
+        "reconciled": {"conflicts": [{
+            "field": "version", "kind": "VERSION_CONFLICT",
+            "values": {"container": "3.0.13", "runtime": "3.0.11"},
+            "evidence": {"container": "C-1", "runtime": "R-1"},
+            "statement": "version has 2 observed values"}]},
+        "paths": {"paths": [{
+            "endpoint": "payments.bank.example:443", "evidence_id": "NET-1",
+            "class": "NETWORK_OBSERVED", "tls_version": "TLS1.3",
+            "cipher_suite": "TLS_AES_256_GCM_SHA384", "certificate_ref": "cert-9281"}]},
+    }).json()
+    conflicts = [edge for edge in body["edges"]["edges"] if edge["kind"] == "CONFLICTS_WITH"]
+    assert conflicts and conflicts[0]["evidence_ids"] == ["C-1", "R-1"]
+    assert body["applied"]["refused"] == []
+    assert body["applied"]["by_provenance"]["OBSERVED"] >= 4
+    labels = {edge["label"] for edge in body["graph"]["edges"]}
+    assert {"USES_CRYPTO", "CONFLICTS_WITH", "NEGOTIATES"} <= labels
+
+
+def test_the_graph_refuses_an_edge_without_evidence(client):
+    body = _post(client, "/usage/graph", {
+        "system": "payments-api",
+        "profiles": [{"asset": {"algorithm": "AES-128"}, "evidence_ids": []}],
+    }).json()
+    assert body["edges"]["edges"] == []
+    assert body["edges"]["undeclared"] == ["AES-128"]
+    assert body["applied"]["written"] == 0
+
+
+def test_the_graph_needs_a_subject(client):
+    resp = _post(client, "/usage/graph", {"profiles": [{"asset": {"algorithm": "AES"}}]})
+    assert resp.status_code == 422
+
+
 def test_hsm_capability_is_not_an_operation(client):
     capability = _post(client, "/hsm-evidence", {"kind": "CAPABILITY"}).json()
     assert capability["class"] == "VENDOR_DECLARED" and capability["observed"] is False
