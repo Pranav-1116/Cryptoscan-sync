@@ -194,7 +194,7 @@ is a `CRYPTOGRAPHIC_REGRESSION` — a strong signal, not a conclusion.
 | 15 passive observation | not implemented | open (privacy contract required) |
 | 16 NBOM → CBOM | implemented | guide 148 |
 | 17 NBOM → twin | implemented | guide 152 |
-| 18, 21 change and snapshots | **missing** for network state | open |
+| 18, 21 change and snapshots | **done in this round** | guide 155 (`cbom.nbom_history`) |
 | 19 correlated pattern | **missing** | open |
 | 20 network asset identity | **missing** | open |
 

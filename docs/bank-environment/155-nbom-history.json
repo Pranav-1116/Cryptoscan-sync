@@ -1,0 +1,309 @@
+{
+  "schema": "cryptoscan.nbom-history-guide/1",
+  "generated_at": "2026-11-02T19:09:26.040391+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 31,
+  "change_kinds": [
+    "ENDPOINT_ADDED",
+    "ENDPOINT_REMOVED",
+    "PORT_CHANGED",
+    "TLS_VERSION_CHANGED",
+    "CIPHER_SUITE_CHANGED",
+    "CERTIFICATE_CHANGED",
+    "TRUST_PATH_CHANGED",
+    "SNI_CHANGED",
+    "ALPN_CHANGED",
+    "COLLECTION_STATUS_CHANGED"
+  ],
+  "regression_kinds": [
+    "TLS_VERSION_CHANGED",
+    "CIPHER_SUITE_CHANGED",
+    "CERTIFICATE_CHANGED",
+    "TRUST_PATH_CHANGED"
+  ],
+  "before": {
+    "taken_at": "2026-11-01T00:00:00Z",
+    "hash": "0ec0541fe0667cfba7c605cf1ee742e5abb5e200ddacae466a4f73a0b23b9018"
+  },
+  "after": {
+    "taken_at": "2026-11-02T00:00:00Z",
+    "hash": "926aa9d6e9d450ba5d59cea97e6ad23bf314c47436f7cc44f32ca543be410429"
+  },
+  "comparison": {
+    "identical": false,
+    "counts": {
+      "CERTIFICATE_CHANGED": 1,
+      "CIPHER_SUITE_CHANGED": 1,
+      "TLS_VERSION_CHANGED": 1,
+      "TRUST_PATH_CHANGED": 1
+    },
+    "downgrades": 2,
+    "unchanged": 1,
+    "statement": "4 change(s) across 4 kind(s) between 2026-11-01T00:00:00Z and 2026-11-02T00:00:00Z: CERTIFICATE_CHANGED, CIPHER_SUITE_CHANGED, TLS_VERSION_CHANGED, TRUST_PATH_CHANGED; 1 endpoint(s) unchanged"
+  },
+  "regression": {
+    "schema": "cryptoscan.nbom-history/1",
+    "findings": [
+      {
+        "finding": "NETWORK_CRYPTO_REGRESSION",
+        "endpoint": "payments.bank.example:443",
+        "severity": "HIGH",
+        "signals": [
+          "TLS_VERSION_CHANGED",
+          "CIPHER_SUITE_CHANGED",
+          "CERTIFICATE_CHANGED",
+          "TRUST_PATH_CHANGED"
+        ],
+        "before": {
+          "TLS_VERSION_CHANGED": "TLS1.3",
+          "CIPHER_SUITE_CHANGED": "TLS_AES_256_GCM_SHA384",
+          "CERTIFICATE_CHANGED": "aa11",
+          "TRUST_PATH_CHANGED": "BANK-ICA-01"
+        },
+        "after": {
+          "TLS_VERSION_CHANGED": "TLS1.2",
+          "CIPHER_SUITE_CHANGED": "ECDHE-RSA-AES128-GCM-SHA256",
+          "CERTIFICATE_CHANGED": "cc33",
+          "TRUST_PATH_CHANGED": "BANK-ICA-02"
+        },
+        "detail": "the negotiated protocol went from TLS1.3 to TLS1.2; the negotiated suite went from TLS_AES_256_GCM_SHA384 to ECDHE-RSA-AES128-GCM-SHA256 (weaker: smaller key); the served certificate changed; a rotation is ordinary and an unexplained replacement is not; the issuing authority changed, which moves the trust anchor",
+        "evidence_before": [
+          "NET-1"
+        ],
+        "evidence_after": [
+          "NET-9"
+        ],
+        "observed_at": "2026-11-02T00:00:00Z",
+        "affected_systems": [
+          "Payments API",
+          "Payments System"
+        ],
+        "next_action": "confirm the protocol policy on the terminating device and whether the weaker version was intended",
+        "not_proven": [
+          "that the change was malicious",
+          "that the endpoint is compromised",
+          "who made the change"
+        ],
+        "statement": "payments.bank.example:443 weakened between the two snapshots: TLS_VERSION_CHANGED, CIPHER_SUITE_CHANGED, CERTIFICATE_CHANGED, TRUST_PATH_CHANGED. This is a reason to investigate, not a conclusion"
+      }
+    ],
+    "counts": {
+      "HIGH": 1
+    },
+    "statement": "1 NETWORK_CRYPTO_REGRESSION finding(s), worst HIGH; each names what is not proven"
+  },
+  "rows": [
+    {
+      "id": "snapshot_is_a_state",
+      "question": "is a snapshot a state, or a record of one collection run?",
+      "phase": "review 18 / 21",
+      "probes": [
+        {
+          "probe": "the-hash-covers-state-not-the-run",
+          "ok": true,
+          "observed": "0ec0541fe066 for three runs of the same state"
+        },
+        {
+          "probe": "a-different-spelling-of-the-same-endpoint-is-the-same-endpoint",
+          "ok": true,
+          "observed": "payments.bank.example:443 from the endpoint form"
+        },
+        {
+          "probe": "re-collecting-the-same-fact-does-not-read-as-a-change",
+          "ok": true,
+          "observed": "the two snapshots are identical (2 endpoint(s), same hash), so nothing changed"
+        },
+        {
+          "probe": "two-observations-of-one-endpoint-are-refused-not-merged",
+          "ok": true,
+          "observed": "payments.bank.example:443 appears twice in one snapshot: two observations of one endpoint must be merged by the collector, not by the diff"
+        },
+        {
+          "probe": "an-endpoint-with-no-host-cannot-be-identified",
+          "ok": true,
+          "observed": "a network endpoint needs a host before it can be identified"
+        },
+        {
+          "probe": "the-evidence-ids-travel-outside-the-digest",
+          "ok": true,
+          "observed": "evidence is provenance, not state"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_change_list",
+      "question": "is every kind of network change reported, with its evidence?",
+      "phase": "review 21",
+      "probes": [
+        {
+          "probe": "a-listener-that-moved-port-is-one-change-not-two",
+          "ok": true,
+          "observed": "ALPN_CHANGED, CERTIFICATE_CHANGED, ENDPOINT_ADDED, PORT_CHANGED, SNI_CHANGED, TRUST_PATH_CHANGED (one arrival is the genuinely new host)"
+        },
+        {
+          "probe": "a-new-listener-is-named-as-a-change-that-needs-an-owner",
+          "ok": true,
+          "observed": "a new listener is a change that needs an owner, not a finding about its cryptography"
+        },
+        {
+          "probe": "a-changed-certificate-and-issuer-are-both-reported",
+          "ok": true,
+          "observed": "two facts, because a rotation and a new trust anchor are different"
+        },
+        {
+          "probe": "sni-and-alpn-changes-are-low-severity-but-never-silent",
+          "ok": true,
+          "observed": "both kept, both LOW"
+        },
+        {
+          "probe": "every-change-carries-the-evidence-from-both-sides",
+          "ok": true,
+          "observed": "before and after evidence ids on every row"
+        },
+        {
+          "probe": "two-identical-snapshots-say-so-instead-of-listing-nothing",
+          "ok": true,
+          "observed": "the two snapshots are identical (2 endpoint(s), same hash), so nothing changed"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "downgrade_is_not_any_change",
+      "question": "which changes are weakenings, and which are just changes?",
+      "phase": "review 18",
+      "probes": [
+        {
+          "probe": "the-review-s-example-downgrades-the-protocol",
+          "ok": true,
+          "observed": "the negotiated protocol went from TLS1.3 to TLS1.2"
+        },
+        {
+          "probe": "aes-256-to-aes-128-is-a-downgrade-even-on-the-same-version",
+          "ok": true,
+          "observed": "the negotiated suite went from TLS_AES_256_GCM_SHA384 to ECDHE-RSA-AES128-GCM-SHA256 (weaker: smaller key)"
+        },
+        {
+          "probe": "the-hash-in-a-suite-name-is-not-a-key-size",
+          "ok": true,
+          "observed": "AES128\u2026SHA256 is a 128-bit bulk cipher"
+        },
+        {
+          "probe": "a-move-into-a-classically-weak-class-is-a-downgrade",
+          "ok": true,
+          "observed": "the negotiated suite went from TLS_AES_256_GCM_SHA384 to ECDHE-RSA-AES128-SHA (weaker: SHA1)"
+        },
+        {
+          "probe": "an-upgrade-is-a-change-and-not-a-regression",
+          "ok": true,
+          "observed": "TLS1.2 \u2192 TLS1.3 produces no finding"
+        },
+        {
+          "probe": "collection-status-loss-is-a-gap-not-a-crypto-finding",
+          "ok": true,
+          "observed": "an endpoint that stopped answering is reported as a collection gap"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_finding",
+      "question": "what does a NETWORK_CRYPTO_REGRESSION say, and refuse to say?",
+      "phase": "review 18 / 19",
+      "probes": [
+        {
+          "probe": "the-finding-is-one-row-per-endpoint-not-one-per-symptom",
+          "ok": true,
+          "observed": "TLS_VERSION_CHANGED, CIPHER_SUITE_CHANGED, CERTIFICATE_CHANGED, TRUST_PATH_CHANGED"
+        },
+        {
+          "probe": "the-severity-is-the-worst-of-its-signals",
+          "ok": true,
+          "observed": "HIGH"
+        },
+        {
+          "probe": "both-sides-of-the-evidence-are-kept",
+          "ok": true,
+          "observed": "NET-1 \u2192 NET-9"
+        },
+        {
+          "probe": "the-finding-is-timestamped-by-the-observation-that-found-it",
+          "ok": true,
+          "observed": "2026-11-02T00:00:00Z"
+        },
+        {
+          "probe": "affected-systems-travel-when-the-mapping-exists",
+          "ok": true,
+          "observed": "Payments API, Payments System"
+        },
+        {
+          "probe": "the-finding-states-what-it-does-not-prove",
+          "ok": true,
+          "observed": "payments.bank.example:443 weakened between the two snapshots: TLS_VERSION_CHANGED, CIPHER_SUITE_CHANGED, CERTIFICATE_CHANGED, TRUST_PATH_CHANGED. This is a reason to investigate, not a conclusion"
+        },
+        {
+          "probe": "nothing-here-calls-it-an-attack",
+          "ok": true,
+          "observed": "a downgrade is a reason to investigate"
+        },
+        {
+          "probe": "the-next-action-is-specific-to-the-signal",
+          "ok": true,
+          "observed": "confirm the protocol policy on the terminating device and whether the weaker version was intended"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "history",
+      "question": "does the NBOM keep enough history to answer what changed?",
+      "phase": "review 21",
+      "probes": [
+        {
+          "probe": "a-timeline-compares-each-consecutive-pair",
+          "ok": true,
+          "observed": "4 snapshot(s), 3 period(s), 2 with changes; 1 NETWORK_CRYPTO_REGRESSION finding(s)"
+        },
+        {
+          "probe": "a-period-with-no-change-is-marked-identical",
+          "ok": true,
+          "observed": "day 2 \u2192 day 3 changed nothing"
+        },
+        {
+          "probe": "regressions-are-counted-across-the-history",
+          "ok": true,
+          "observed": "1 finding(s), worst HIGH"
+        },
+        {
+          "probe": "a-restoration-is-not-silently-a-regression",
+          "ok": true,
+          "observed": "day 3 \u2192 day 4 recovered the protocol and produced no finding"
+        },
+        {
+          "probe": "the-summary-says-whether-anything-moved-the-wrong-way",
+          "ok": true,
+          "observed": "2 change(s) across 2 kind(s) between 2026-11-01T00:00:00Z and 2026-11-02T00:00:00Z: CIPHER_SUITE_CHANGED, TLS_VERSION_CHANGED; 0 endpoint(s) unchanged; 1 NETWORK_CRYPTO_REGRESSION finding(s), worst HIGH; each names what is not proven"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "a snapshot is what the collector saw. An endpoint that was not probed is absent from both snapshots, so its absence is not a change \u2014 the coverage matrix from guide 153 says whether the two runs are comparable",
+    "the digest covers negotiated state, not the endpoint's capability set. A device that started offering TLS 1.0 while still negotiating TLS 1.3 produces no change here until something enumerates it (guide 154)",
+    "a certificate change is reported as a change with medium severity, because rotations are ordinary. The finding says to confirm it with the PKI owner rather than deciding that it is suspicious",
+    "affected systems come from a mapping somebody supplied. Without it the finding names the endpoint and nothing else, which is the honest bound",
+    "two snapshots do not make a baseline. A change between the first two runs of a new collector is as likely to be collector configuration as device configuration",
+    "the severity ladder is a heuristic over protocol order, bulk key size and a list of weak suite tokens. It is deliberately explainable rather than scored, so a reviewer can disagree with one row without distrusting the rest"
+  ]
+}

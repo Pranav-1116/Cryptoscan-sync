@@ -315,6 +315,29 @@ class CbomTlsStateResponse(BaseModel):
     statement: str
 
 
+class CbomHistoryRequest(BaseModel):
+    before: dict = Field(..., description=(
+        "an earlier cryptoscan.nbom-history/1 snapshot, as built by "
+        "cbom.nbom_history.snapshot from a collection run"))
+    after: dict = Field(..., description="a later snapshot of the same estate")
+    systems: dict[str, list[str]] | None = Field(None, description=(
+        "endpoint -> affected systems, used only to name owners on a finding"))
+
+
+class CbomHistoryResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    before: dict
+    after: dict
+    identical: bool
+    changes: list[dict]
+    counts: dict
+    unchanged: int
+    downgrades: int
+    statement: str
+    regression: dict
+    summary: dict
+
+
 class CbomHsmRequest(BaseModel):
     kind: str = Field(..., description=(
         "CAPABILITY, CONFIGURED_KEY or OPERATION — the three HSM/KMS answers, only the last "
@@ -513,6 +536,28 @@ def cbom_tls_state(body: CbomTlsStateRequest,
             checks["disabled"] = ts.disabled(result, endpoint=body.endpoint,
                                              version=body.version)
     return {**result, "checks": checks, "summary": ts.summary(result)}
+
+
+@router.post("/history/compare", response_model=CbomHistoryResponse)
+def cbom_history_compare(body: CbomHistoryRequest,
+                         user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Two NBOM snapshots in, every change out, and the weakenings as a finding.
+
+    Review items 18 and 21: the point-in-time NBOM gains a memory. ``changes`` is the
+    complete list, ``downgrades`` counts the subset that moved the wrong way, and
+    ``regression`` carries one ``NETWORK_CRYPTO_REGRESSION`` per weakened endpoint with
+    the evidence from both sides. An upgrade, an added listener and an endpoint that
+    stopped answering are changes and are not regressions.
+    """
+    from cbom import nbom_history as nh
+
+    try:
+        comparison = nh.compare(body.before, body.after, systems=body.systems)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    regressed = nh.regression(comparison)
+    return {**comparison, "regression": regressed,
+            "summary": nh.summary(comparison, regressed)}
 
 
 @router.post("/kms/keys", response_model=CbomKmsResponse)

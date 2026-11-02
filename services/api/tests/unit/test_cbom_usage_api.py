@@ -666,3 +666,52 @@ def test_a_fact_with_no_state_is_refused_rather_than_guessed(client):
          "evidence_id": "X-1"}]}).json()
     assert body["endpoints"] == []
     assert "cannot be sorted into one" in body["refused"][0]["reason"]
+
+
+def test_history_compare_turns_a_downgrade_into_a_regression(client):
+    from cbom import nbom_history as nh
+
+    before = nh.snapshot([{"host": "payments.bank.example", "port": 443,
+                           "tls_version": "1.3", "cipher_suite": "TLS_AES_256_GCM_SHA384",
+                           "evidence_id": "NET-1"}], taken_at="2026-11-01T00:00:00Z")
+    after = nh.snapshot([{"host": "payments.bank.example", "port": 443,
+                          "tls_version": "1.2",
+                          "cipher_suite": "ECDHE-RSA-AES128-GCM-SHA256",
+                          "evidence_id": "NET-9"}], taken_at="2026-11-02T00:00:00Z")
+    body = _post(client, "/history/compare", {"before": before, "after": after,
+                                              "systems": {"payments.bank.example:443":
+                                                          ["Payments API"]}}).json()
+    assert body["identical"] is False
+    assert body["downgrades"] == 2
+    finding = body["regression"]["findings"][0]
+    assert finding["finding"] == "NETWORK_CRYPTO_REGRESSION"
+    assert finding["severity"] == "HIGH"
+    assert finding["evidence_before"] == ["NET-1"]
+    assert finding["evidence_after"] == ["NET-9"]
+    assert finding["affected_systems"] == ["Payments API"]
+    assert "not a conclusion" in finding["statement"]
+    assert body["summary"]["regressions"] == 1
+
+
+def test_history_compare_keeps_ordinary_changes_out_of_the_finding(client):
+    from cbom import nbom_history as nh
+
+    before = nh.snapshot([{"host": "partner.bank.example", "port": 443,
+                           "tls_version": "1.2", "evidence_id": "NET-2"}],
+                         taken_at="2026-11-01T00:00:00Z")
+    after = nh.snapshot([{"host": "partner.bank.example", "port": 443,
+                          "tls_version": "1.3", "evidence_id": "NET-3"},
+                         {"host": "new.bank.example", "port": 9443,
+                          "tls_version": "1.3", "evidence_id": "NET-4"}],
+                        taken_at="2026-11-02T00:00:00Z")
+    body = _post(client, "/history/compare", {"before": before, "after": after}).json()
+    assert {"TLS_VERSION_CHANGED", "ENDPOINT_ADDED"} <= set(body["counts"])
+    assert body["regression"]["findings"] == []
+    assert body["summary"]["worst"] is None
+
+
+def test_history_compare_refuses_two_documents_that_are_not_snapshots(client):
+    response = _post(client, "/history/compare", {"before": {"endpoints": []},
+                                                  "after": {"endpoints": []}})
+    assert response.status_code == 422
+    assert "not a" in response.json()["detail"]

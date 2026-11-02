@@ -555,6 +555,35 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [NBOM history: what changed, and what moved the wrong way](155-nbom-history.md)
+> (**5 pass · 0 partial · 0 fail**, 31 probes) closes NBOM review items 18 and 21,
+> whose complaint is that the NBOM has no memory: a snapshot is point-in-time, so
+> *nothing changed* and *this weakened* both need a comparison somebody has to have
+> kept. `cbom.nbom_history` keeps the snapshot. `normalise()` reduces an endpoint to
+> the state that matters — identity, host, port, protocol, suite, SNI, ALPN, the
+> certificate's fingerprint/issuer/subject/validity/public key, and whether it was
+> observed at all — and `snapshot()` hashes **that**, not the run: reordering the
+> endpoints, re-collecting the same fact an hour later, or re-issuing the evidence id
+> gives the **same digest**, so a re-run cannot invent a change, while the evidence ids
+> travel next to the digest instead of inside it. `compare()` returns the complete
+> change list of item 21 — `ENDPOINT_ADDED/REMOVED`, `PORT_CHANGED`,
+> `TLS_VERSION_CHANGED`, `CIPHER_SUITE_CHANGED`, `CERTIFICATE_CHANGED`,
+> `TRUST_PATH_CHANGED`, `SNI_CHANGED`, `ALPN_CHANGED`,
+> `COLLECTION_STATUS_CHANGED` — each with a severity, a **direction**, and the
+> evidence from *both* sides. A listener that moved port is one paired
+> `PORT_CHANGED`, not a disappearance plus an arrival. Only the weakenings become
+> **`NETWORK_CRYPTO_REGRESSION`**, one finding per endpoint rather than one per
+> symptom, carrying the review's own example: `TLS 1.3 / AES-256-GCM` on 2026-11-01
+> against `TLS 1.2 / AES-128` on 2026-11-02 is a `HIGH` regression with
+> `evidence_before`/`evidence_after`, the affected systems when a mapping exists, and
+> a `not_proven` list — *not* "attack detected". An upgrade, a new listener, a
+> restored protocol and an endpoint that stopped answering are changes and are none of
+> them regressions; the last is a **collection gap**. `timeline()` compares
+> consecutive snapshots so a history answers *when* it moved, and the suite strength
+> reads the bulk cipher, so `AES128…SHA256` is 128 bits and a drop is a downgrade
+> while the `SHA1` in a name is flagged separately. `POST /cbom/history/compare`
+> exposes it, typed, behind the reader roles.
+
 > [Supported, configured, negotiated: three states, three evidences](154-nbom-tls-states.md)
 > (**5 pass · 0 partial · 0 fail**, 27 probes) closes NBOM review item 7, which is a
 > data-model complaint and a correct one: `TLS 1.2 supported` is not `TLS 1.2 in
