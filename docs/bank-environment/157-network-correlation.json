@@ -1,0 +1,663 @@
+{
+  "schema": "cryptoscan.nbom-patterns-guide/1",
+  "generated_at": "2026-11-02T19:19:16.007830+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 27,
+  "signals": [
+    "TLS_DOWNGRADE",
+    "CIPHER_DOWNGRADE",
+    "CERTIFICATE_MUTATION",
+    "TRUST_PATH_CHANGE",
+    "NEW_ENDPOINT",
+    "ENDPOINT_LOST",
+    "NEW_PROCESS",
+    "ALPN_CHANGE",
+    "SNI_CHANGE",
+    "PORT_CHANGE"
+  ],
+  "patterns": [
+    "NETWORK_CRYPTO_REGRESSION",
+    "TRUST_PATH_SHIFT",
+    "NEW_EXPOSURE",
+    "DISAPPEARANCE",
+    "CORRELATED_PATTERN"
+  ],
+  "max_level": 2,
+  "window": {
+    "schema": "cryptoscan.nbom-patterns/1",
+    "signals": [
+      {
+        "signal": "NEW_ENDPOINT",
+        "change_kind": "ENDPOINT_ADDED",
+        "endpoint": "new.bank.example:9443",
+        "subject": "new.bank.example:9443",
+        "before": null,
+        "after": {
+          "tls_version": "TLS1.3",
+          "cipher_suite": null,
+          "certificate": null,
+          "observed": true
+        },
+        "severity": "INFO",
+        "at": "2026-11-02T00:00:00Z",
+        "evidence_ids": [
+          "NET-10"
+        ],
+        "source": "NETWORK"
+      },
+      {
+        "signal": "TLS_DOWNGRADE",
+        "change_kind": "TLS_VERSION_CHANGED",
+        "endpoint": "payments.bank.example:443",
+        "subject": "payments.bank.example:443",
+        "before": "TLS1.3",
+        "after": "TLS1.2",
+        "severity": "HIGH",
+        "at": "2026-11-02T00:00:00Z",
+        "evidence_ids": [
+          "NET-1",
+          "NET-9"
+        ],
+        "source": "NETWORK"
+      },
+      {
+        "signal": "CIPHER_DOWNGRADE",
+        "change_kind": "CIPHER_SUITE_CHANGED",
+        "endpoint": "payments.bank.example:443",
+        "subject": "payments.bank.example:443",
+        "before": "TLS_AES_256_GCM_SHA384",
+        "after": "ECDHE-RSA-AES128-GCM-SHA256",
+        "severity": "HIGH",
+        "at": "2026-11-02T00:00:00Z",
+        "evidence_ids": [
+          "NET-1",
+          "NET-9"
+        ],
+        "source": "NETWORK"
+      },
+      {
+        "signal": "CERTIFICATE_MUTATION",
+        "change_kind": "CERTIFICATE_CHANGED",
+        "endpoint": "payments.bank.example:443",
+        "subject": "payments.bank.example:443",
+        "before": "aa11",
+        "after": "cc33",
+        "severity": "MEDIUM",
+        "at": "2026-11-02T00:00:00Z",
+        "evidence_ids": [
+          "NET-1",
+          "NET-9"
+        ],
+        "source": "NETWORK"
+      },
+      {
+        "signal": "TRUST_PATH_CHANGE",
+        "change_kind": "TRUST_PATH_CHANGED",
+        "endpoint": "payments.bank.example:443",
+        "subject": "payments.bank.example:443",
+        "before": "BANK-ICA-01",
+        "after": "BANK-ICA-09",
+        "severity": "MEDIUM",
+        "at": "2026-11-02T00:00:00Z",
+        "evidence_ids": [
+          "NET-1",
+          "NET-9"
+        ],
+        "source": "NETWORK"
+      },
+      {
+        "signal": "NEW_PROCESS",
+        "change_kind": "ASSET_ADDED",
+        "endpoint": "payments.bank.example",
+        "subject": "payments.bank.example",
+        "before": null,
+        "after": "/usr/local/bin/openssl (pid 9182)",
+        "severity": "INFO",
+        "at": "2026-11-02T00:00:00Z",
+        "evidence_ids": [
+          "RT-1"
+        ],
+        "source": "RUNTIME"
+      }
+    ],
+    "out_of_window": 0,
+    "undated": 0,
+    "skipped": [],
+    "blind_spots": [],
+    "window": {
+      "from": "2026-11-01T23:00:00+00:00",
+      "to": "2026-11-02T00:00:00+00:00",
+      "seconds": 3600
+    },
+    "counts": {
+      "TLS_DOWNGRADE": 1,
+      "CIPHER_DOWNGRADE": 1,
+      "CERTIFICATE_MUTATION": 1,
+      "TRUST_PATH_CHANGE": 1,
+      "NEW_ENDPOINT": 1,
+      "NEW_PROCESS": 1
+    },
+    "statement": "6 network crypto signal(s) in one 3600s window ending 2026-11-02T00:00:00+00:00"
+  },
+  "result": {
+    "schema": "cryptoscan.nbom-patterns/1",
+    "patterns": [
+      {
+        "pattern_id": "NPAT-033de9111dcf2bf1",
+        "name": "NETWORK_CRYPTO_REGRESSION",
+        "level": 2,
+        "level_name": "SUSPICIOUS_ACTIVITY",
+        "level_meaning": "several related changes in one window that a single change cannot explain",
+        "classification": "SUSPICIOUS_ACTIVITY",
+        "why": "negotiated cryptography weakened on an endpoint: a lower protocol, a weaker suite, a replaced certificate or a moved trust anchor",
+        "subjects": [
+          "payments.bank.example:443"
+        ],
+        "signals": [
+          {
+            "signal": "TLS_DOWNGRADE",
+            "change_kind": "TLS_VERSION_CHANGED",
+            "subject": "payments.bank.example:443",
+            "before": "TLS1.3",
+            "after": "TLS1.2",
+            "at": "2026-11-02T00:00:00Z",
+            "evidence_ids": [
+              "NET-1",
+              "NET-9"
+            ],
+            "source": "NETWORK"
+          },
+          {
+            "signal": "CIPHER_DOWNGRADE",
+            "change_kind": "CIPHER_SUITE_CHANGED",
+            "subject": "payments.bank.example:443",
+            "before": "TLS_AES_256_GCM_SHA384",
+            "after": "ECDHE-RSA-AES128-GCM-SHA256",
+            "at": "2026-11-02T00:00:00Z",
+            "evidence_ids": [
+              "NET-1",
+              "NET-9"
+            ],
+            "source": "NETWORK"
+          },
+          {
+            "signal": "CERTIFICATE_MUTATION",
+            "change_kind": "CERTIFICATE_CHANGED",
+            "subject": "payments.bank.example:443",
+            "before": "aa11",
+            "after": "cc33",
+            "at": "2026-11-02T00:00:00Z",
+            "evidence_ids": [
+              "NET-1",
+              "NET-9"
+            ],
+            "source": "NETWORK"
+          },
+          {
+            "signal": "TRUST_PATH_CHANGE",
+            "change_kind": "TRUST_PATH_CHANGED",
+            "subject": "payments.bank.example:443",
+            "before": "BANK-ICA-01",
+            "after": "BANK-ICA-09",
+            "at": "2026-11-02T00:00:00Z",
+            "evidence_ids": [
+              "NET-1",
+              "NET-9"
+            ],
+            "source": "NETWORK"
+          }
+        ],
+        "first_seen": "2026-11-02T00:00:00+00:00",
+        "last_seen": "2026-11-02T00:00:00+00:00",
+        "not_proven": [
+          "that anything was attacked: a downgrade, a replacement certificate, a new listener and a new process are facts about configuration and timing, and the combination raises review priority rather than establishing a cause",
+          "that the endpoint is compromised, or that its cryptography was intercepted",
+          "who did it, or whether it was done at all: no actor, no motive and no external intelligence take part in this correlation",
+          "that the window is complete: changes outside it, or inside a plane nobody collected, are invisible here",
+          "the endpoint may be serving the same policy as before; what moved is what the handshake showed"
+        ],
+        "next_action": "compare against the change record for the terminating device and confirm the weaker setting was intended"
+      },
+      {
+        "pattern_id": "NPAT-704138fce867e17a",
+        "name": "TRUST_PATH_SHIFT",
+        "level": 2,
+        "level_name": "SUSPICIOUS_ACTIVITY",
+        "level_meaning": "several related changes in one window that a single change cannot explain",
+        "classification": "SUSPICIOUS_ACTIVITY",
+        "why": "the protocol or suite weakened and the certificate was replaced on the same endpoint inside one window \u2014 the two facts that together describe a trust path",
+        "subjects": [
+          "payments.bank.example:443"
+        ],
+        "signals": [
+          {
+            "signal": "TLS_DOWNGRADE",
+            "change_kind": "TLS_VERSION_CHANGED",
+            "subject": "payments.bank.example:443",
+            "before": "TLS1.3",
+            "after": "TLS1.2",
+            "at": "2026-11-02T00:00:00Z",
+            "evidence_ids": [
+              "NET-1",
+              "NET-9"
+            ],
+            "source": "NETWORK"
+          },
+          {
+            "signal": "CIPHER_DOWNGRADE",
+            "change_kind": "CIPHER_SUITE_CHANGED",
+            "subject": "payments.bank.example:443",
+            "before": "TLS_AES_256_GCM_SHA384",
+            "after": "ECDHE-RSA-AES128-GCM-SHA256",
+            "at": "2026-11-02T00:00:00Z",
+            "evidence_ids": [
+              "NET-1",
+              "NET-9"
+            ],
+            "source": "NETWORK"
+          },
+          {
+            "signal": "CERTIFICATE_MUTATION",
+            "change_kind": "CERTIFICATE_CHANGED",
+            "subject": "payments.bank.example:443",
+            "before": "aa11",
+            "after": "cc33",
+            "at": "2026-11-02T00:00:00Z",
+            "evidence_ids": [
+              "NET-1",
+              "NET-9"
+            ],
+            "source": "NETWORK"
+          },
+          {
+            "signal": "TRUST_PATH_CHANGE",
+            "change_kind": "TRUST_PATH_CHANGED",
+            "subject": "payments.bank.example:443",
+            "before": "BANK-ICA-01",
+            "after": "BANK-ICA-09",
+            "at": "2026-11-02T00:00:00Z",
+            "evidence_ids": [
+              "NET-1",
+              "NET-9"
+            ],
+            "source": "NETWORK"
+          }
+        ],
+        "first_seen": "2026-11-02T00:00:00+00:00",
+        "last_seen": "2026-11-02T00:00:00+00:00",
+        "not_proven": [
+          "that anything was attacked: a downgrade, a replacement certificate, a new listener and a new process are facts about configuration and timing, and the combination raises review priority rather than establishing a cause",
+          "that the endpoint is compromised, or that its cryptography was intercepted",
+          "who did it, or whether it was done at all: no actor, no motive and no external intelligence take part in this correlation",
+          "that the window is complete: changes outside it, or inside a plane nobody collected, are invisible here",
+          "a renewal and an interception look the same from outside; only the PKI and the device logs separate them"
+        ],
+        "next_action": "confirm with the PKI owner that the certificate was renewed, and with the platform owner that the weaker protocol is a deliberate fallback"
+      },
+      {
+        "pattern_id": "NPAT-7ccacdff45e218ce",
+        "name": "NEW_EXPOSURE",
+        "level": 1,
+        "level_name": "UNEXPECTED_CHANGE",
+        "level_meaning": "a change worth a look: it weakened evidence, appeared unexpectedly, or lost coverage",
+        "classification": "UNEXPECTED_CHANGE",
+        "why": "a listener appeared that no earlier snapshot contained; a new listener needs an owner before it needs a verdict",
+        "subjects": [
+          "new.bank.example:9443"
+        ],
+        "signals": [
+          {
+            "signal": "NEW_ENDPOINT",
+            "change_kind": "ENDPOINT_ADDED",
+            "subject": "new.bank.example:9443",
+            "before": null,
+            "after": {
+              "tls_version": "TLS1.3",
+              "cipher_suite": null,
+              "certificate": null,
+              "observed": true
+            },
+            "at": "2026-11-02T00:00:00Z",
+            "evidence_ids": [
+              "NET-10"
+            ],
+            "source": "NETWORK"
+          }
+        ],
+        "first_seen": "2026-11-02T00:00:00+00:00",
+        "last_seen": "2026-11-02T00:00:00+00:00",
+        "not_proven": [
+          "that anything was attacked: a downgrade, a replacement certificate, a new listener and a new process are facts about configuration and timing, and the combination raises review priority rather than establishing a cause",
+          "that the endpoint is compromised, or that its cryptography was intercepted",
+          "who did it, or whether it was done at all: no actor, no motive and no external intelligence take part in this correlation",
+          "that the window is complete: changes outside it, or inside a plane nobody collected, are invisible here",
+          "a listener can be a collector seeing an endpoint it missed before, rather than a new service"
+        ],
+        "next_action": "assign the listener to an owner and confirm it was provisioned"
+      },
+      {
+        "pattern_id": "NPAT-4f03963f54d3d5f3",
+        "name": "CORRELATED_PATTERN",
+        "level": 2,
+        "level_name": "SUSPICIOUS_ACTIVITY",
+        "level_meaning": "several related changes in one window that a single change cannot explain",
+        "classification": "SUSPICIOUS_ACTIVITY",
+        "why": "several independent network signals coincide in one window: CERTIFICATE_MUTATION, NEW_ENDPOINT, NEW_PROCESS, TLS_DOWNGRADE. A downgrade alone is a fact, and a new process alone is a fact; together they describe one event rather than four",
+        "subjects": [
+          "new.bank.example:9443",
+          "payments.bank.example",
+          "payments.bank.example:443"
+        ],
+        "signals": [
+          {
+            "signal": "NEW_ENDPOINT",
+            "change_kind": "ENDPOINT_ADDED",
+            "subject": "new.bank.example:9443",
+            "before": null,
+            "after": {
+              "tls_version": "TLS1.3",
+              "cipher_suite": null,
+              "certificate": null,
+              "observed": true
+            },
+            "at": "2026-11-02T00:00:00Z",
+            "evidence_ids": [
+              "NET-10"
+            ],
+            "source": "NETWORK"
+          },
+          {
+            "signal": "TLS_DOWNGRADE",
+            "change_kind": "TLS_VERSION_CHANGED",
+            "subject": "payments.bank.example:443",
+            "before": "TLS1.3",
+            "after": "TLS1.2",
+            "at": "2026-11-02T00:00:00Z",
+            "evidence_ids": [
+              "NET-1",
+              "NET-9"
+            ],
+            "source": "NETWORK"
+          },
+          {
+            "signal": "CERTIFICATE_MUTATION",
+            "change_kind": "CERTIFICATE_CHANGED",
+            "subject": "payments.bank.example:443",
+            "before": "aa11",
+            "after": "cc33",
+            "at": "2026-11-02T00:00:00Z",
+            "evidence_ids": [
+              "NET-1",
+              "NET-9"
+            ],
+            "source": "NETWORK"
+          },
+          {
+            "signal": "NEW_PROCESS",
+            "change_kind": "ASSET_ADDED",
+            "subject": "payments.bank.example",
+            "before": null,
+            "after": "/usr/local/bin/openssl (pid 9182)",
+            "at": "2026-11-02T00:00:00Z",
+            "evidence_ids": [
+              "RT-1"
+            ],
+            "source": "RUNTIME"
+          }
+        ],
+        "first_seen": "2026-11-02T00:00:00+00:00",
+        "last_seen": "2026-11-02T00:00:00+00:00",
+        "not_proven": [
+          "that anything was attacked: a downgrade, a replacement certificate, a new listener and a new process are facts about configuration and timing, and the combination raises review priority rather than establishing a cause",
+          "that the endpoint is compromised, or that its cryptography was intercepted",
+          "who did it, or whether it was done at all: no actor, no motive and no external intelligence take part in this correlation",
+          "that the window is complete: changes outside it, or inside a plane nobody collected, are invisible here",
+          "coincidence in one window is also what a maintenance window, a failover and a certificate renewal look like"
+        ],
+        "next_action": "open one investigation covering the listed subjects and evidence ids, and confirm or dismiss each signal separately \u2014 do not treat the combination as a single finding",
+        "coinciding_signals": [
+          "CERTIFICATE_MUTATION",
+          "NEW_ENDPOINT",
+          "NEW_PROCESS",
+          "TLS_DOWNGRADE"
+        ]
+      }
+    ],
+    "counts": {
+      "SUSPICIOUS_ACTIVITY": 3,
+      "UNEXPECTED_CHANGE": 1
+    },
+    "levels": {
+      "UNEXPECTED_CHANGE": 1,
+      "SUSPICIOUS_ACTIVITY": 3
+    },
+    "worst": "SUSPICIOUS_ACTIVITY",
+    "blind_spots": [],
+    "statement": "4 pattern(s) in one window; the strongest is SUSPICIOUS_ACTIVITY (CORRELATED_PATTERN, NETWORK_CRYPTO_REGRESSION, TRUST_PATH_SHIFT). This is a reason to investigate, not a finding of compromise",
+    "not_proven": [
+      "that anything was attacked: a downgrade, a replacement certificate, a new listener and a new process are facts about configuration and timing, and the combination raises review priority rather than establishing a cause",
+      "that the endpoint is compromised, or that its cryptography was intercepted",
+      "who did it, or whether it was done at all: no actor, no motive and no external intelligence take part in this correlation",
+      "that the window is complete: changes outside it, or inside a plane nobody collected, are invisible here"
+    ],
+    "never": [
+      "attack detected",
+      "compromise confirmed",
+      "attacker identified",
+      "SECURITY_INCIDENT"
+    ]
+  },
+  "summary": {
+    "schema": "cryptoscan.nbom-patterns/1",
+    "patterns": 4,
+    "by_name": {
+      "NETWORK_CRYPTO_REGRESSION": 1,
+      "TRUST_PATH_SHIFT": 1,
+      "NEW_EXPOSURE": 1,
+      "CORRELATED_PATTERN": 1
+    },
+    "worst": "SUSPICIOUS_ACTIVITY",
+    "blind_spots": [],
+    "statement": "4 pattern(s) in one window; the strongest is SUSPICIOUS_ACTIVITY (CORRELATED_PATTERN, NETWORK_CRYPTO_REGRESSION, TRUST_PATH_SHIFT). This is a reason to investigate, not a finding of compromise",
+    "not_proven": [
+      "that anything was attacked: a downgrade, a replacement certificate, a new listener and a new process are facts about configuration and timing, and the combination raises review priority rather than establishing a cause",
+      "that the endpoint is compromised, or that its cryptography was intercepted",
+      "who did it, or whether it was done at all: no actor, no motive and no external intelligence take part in this correlation",
+      "that the window is complete: changes outside it, or inside a plane nobody collected, are invisible here"
+    ]
+  },
+  "rows": [
+    {
+      "id": "the_signals",
+      "question": "which changes are signals, and in what window?",
+      "phase": "review 19",
+      "probes": [
+        {
+          "probe": "the-review-s-four-changes-become-four-signals",
+          "ok": true,
+          "observed": "CERTIFICATE_MUTATION, CIPHER_DOWNGRADE, NEW_ENDPOINT, NEW_PROCESS, TLS_DOWNGRADE, TRUST_PATH_CHANGE"
+        },
+        {
+          "probe": "the-window-is-stated-in-the-answer",
+          "ok": true,
+          "observed": "3600s ending 2026-11-02T00:00:00+00:00"
+        },
+        {
+          "probe": "an-upgrade-is-a-change-and-not-a-signal",
+          "ok": true,
+          "observed": "TLS1.2 \u2192 TLS1.3 produced no signal"
+        },
+        {
+          "probe": "a-signal-with-no-timestamp-is-not-correlated",
+          "ok": true,
+          "observed": "an undated change cannot sit in a window"
+        },
+        {
+          "probe": "a-new-process-is-bound-to-the-host-it-was-seen-on",
+          "ok": true,
+          "observed": "the process is attributed to its host, not to an application"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "one_pattern",
+      "question": "what does the coincidence of these changes amount to?",
+      "phase": "review 19",
+      "probes": [
+        {
+          "probe": "the-four-signals-become-one-correlated-pattern",
+          "ok": true,
+          "observed": "CERTIFICATE_MUTATION, NEW_ENDPOINT, NEW_PROCESS, TLS_DOWNGRADE"
+        },
+        {
+          "probe": "the-pattern-is-classified-suspicious-activity",
+          "ok": true,
+          "observed": "level 2 \u00b7 SUSPICIOUS_ACTIVITY"
+        },
+        {
+          "probe": "the-pattern-names-its-subjects-and-both-sides-of-the-evidence",
+          "ok": true,
+          "observed": "new.bank.example:9443, payments.bank.example, payments.bank.example:443"
+        },
+        {
+          "probe": "each-participating-signal-is-still-listed-separately",
+          "ok": true,
+          "observed": "4 signal(s) inside one pattern"
+        },
+        {
+          "probe": "the-next-action-is-an-investigation-not-a-containment",
+          "ok": true,
+          "observed": "open one investigation covering the listed subjects and evidence ids, and confirm or dismiss each signal separately \u2014 do not treat the combination as a single finding"
+        },
+        {
+          "probe": "the-strongest-thing-said-is-suspicious-activity",
+          "ok": true,
+          "observed": "4 pattern(s) in one window; the strongest is SUSPICIOUS_ACTIVITY (CORRELATED_PATTERN, NETWORK_CRYPTO_REGRESSION, TRUST_PATH_SHIFT). This is a reason to investigate, not a finding of compromise"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "what_it_refuses",
+      "question": "what does the answer refuse to claim, and does it say so?",
+      "phase": "review 19",
+      "probes": [
+        {
+          "probe": "no-pattern-contains-a-verdict-phrase",
+          "ok": true,
+          "observed": "a downgrade plus a new process is not an attack"
+        },
+        {
+          "probe": "security-incident-is-named-as-something-this-never-returns",
+          "ok": true,
+          "observed": "attack detected, compromise confirmed, attacker identified, SECURITY_INCIDENT"
+        },
+        {
+          "probe": "every-pattern-carries-what-it-does-not-prove",
+          "ok": true,
+          "observed": "4 pattern(s), all with not_proven"
+        },
+        {
+          "probe": "attribution-and-intent-are-explicitly-absent",
+          "ok": true,
+          "observed": "who did it, or whether it was done at all: no actor, no motive and no external intelligence take part in this correlation"
+        },
+        {
+          "probe": "the-statement-ends-with-not-a-finding-of-compromise",
+          "ok": true,
+          "observed": "This is a reason to investigate, not a finding of compromise"
+        },
+        {
+          "probe": "a-collection-gap-is-carried-as-a-blind-spot",
+          "ok": true,
+          "observed": "an endpoint that stopped answering narrows what the window means"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_guards",
+      "question": "what keeps a maintenance window out of the suspicious bucket?",
+      "phase": "review 19",
+      "probes": [
+        {
+          "probe": "a-new-endpoint-and-a-new-process-alone-stay-at-level-one",
+          "ok": true,
+          "observed": "1 pattern(s) in one window; the strongest is UNEXPECTED_CHANGE (NEW_EXPOSURE). This is a reason to investigate, not a finding of compromise"
+        },
+        {
+          "probe": "a-lone-certificate-replacement-is-a-regression-not-a-combination",
+          "ok": true,
+          "observed": "NETWORK_CRYPTO_REGRESSION"
+        },
+        {
+          "probe": "a-disappeared-listener-is-reported-as-ambiguous",
+          "ok": true,
+          "observed": "DISAPPEARANCE at level 1"
+        },
+        {
+          "probe": "a-window-that-is-not-a-window-is-refused",
+          "ok": true,
+          "observed": "a foreign document is rejected, not correlated"
+        },
+        {
+          "probe": "the-signal-set-is-fixed-so-a-reviewer-can-see-what-is-modelled",
+          "ok": true,
+          "observed": "10 signal(s), ceiling level 2"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_shape",
+      "question": "does the pattern read like every other finding in the platform?",
+      "phase": "review 19",
+      "probes": [
+        {
+          "probe": "patterns-carry-the-shared-vocabulary-s-level-and-meaning",
+          "ok": true,
+          "observed": "SUSPICIOUS_ACTIVITY: several related changes in one window that a sin\u2026"
+        },
+        {
+          "probe": "the-pattern-id-is-stable-for-the-same-participants",
+          "ok": true,
+          "observed": "NPAT-4f03963f54d3d5f3"
+        },
+        {
+          "probe": "first-and-last-seen-bound-the-pattern",
+          "ok": true,
+          "observed": "2026-11-02T00:00:00+00:00 \u2192 2026-11-02T00:00:00+00:00"
+        },
+        {
+          "probe": "the-summary-counts-patterns-by-name-and-carries-the-blind-spots",
+          "ok": true,
+          "observed": "4 pattern(s) in one window; the strongest is SUSPICIOUS_ACTIVITY (CORRELATED_PATTERN, NE\u2026"
+        },
+        {
+          "probe": "nothing-in-the-summary-invents-a-score",
+          "ok": true,
+          "observed": "blind_spots, by_name, not_proven, patterns, schema, statement, worst"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "one window is one comparison. An attacker who waits longer than the window, or who changes nothing a collector can see, produces no pattern \u2014 an empty result is not a clean estate",
+    "the window is anchored on the newest signal in the set, so the same stored changes always correlate the same way; widening it finds more coincidence as well as more pattern",
+    "a certificate replacement is indistinguishable from an interception without the PKI's own record, so the pattern points at the PKI owner instead of deciding",
+    "a new process is attributed to the host it was observed on, not to the application that started it; process-level evidence is guide 146's job",
+    "the ceiling is level 2. The platform reserves level 4 for combinations it can corroborate across independent planes, and one network window is one plane",
+    "no external intelligence, no actor and no motive take part. The output is a review queue with evidence ids, not an incident"
+  ]
+}

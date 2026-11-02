@@ -337,6 +337,31 @@ class CbomTlsStateResponse(BaseModel):
     statement: str
 
 
+class CbomCorrelateRequest(BaseModel):
+    before: dict = Field(..., description="an earlier cryptoscan.nbom-history/1 snapshot")
+    after: dict = Field(..., description="a later snapshot of the same estate")
+    processes: list[dict] = Field(default_factory=list, description=(
+        "runtime traces in the same window: process, pid, host, evidence_id, "
+        "observed_at. A process is bound to the host it was seen on"))
+    window_seconds: int = Field(3600, description=(
+        "the window the correlation is allowed to look across"))
+
+
+class CbomCorrelateResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    signals: list[dict]
+    window: dict
+    patterns: list[dict]
+    counts: dict
+    levels: dict
+    worst: str | None
+    blind_spots: list[str]
+    statement: str
+    not_proven: list[str]
+    never: list[str]
+    summary: dict
+
+
 class CbomHistoryRequest(BaseModel):
     before: dict = Field(..., description=(
         "an earlier cryptoscan.nbom-history/1 snapshot, as built by "
@@ -737,6 +762,30 @@ def cbom_estate_chain(body: CbomEstateChainRequest,
         raise HTTPException(status_code=422, detail=str(exc))
     result["summary"] = ec.summary(result)
     return result
+
+
+@router.post("/history/correlate", response_model=CbomCorrelateResponse)
+def cbom_history_correlate(body: CbomCorrelateRequest,
+                           user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Two snapshots and a window in, network patterns out — never an incident.
+
+    Review item 19: a TLS downgrade, a certificate mutation, a new endpoint and a new
+    process in one window are a ``CORRELATED_PATTERN`` classified
+    ``SUSPICIOUS_ACTIVITY``. The ceiling is deliberate — the shared attack-pattern
+    engine reserves level 4 for combinations corroborated across independent planes —
+    so ``SECURITY_INCIDENT`` is only ever named in ``never``.
+    """
+    from cbom import nbom_history as nh
+    from cbom import network_patterns as npat
+
+    try:
+        comparison = nh.compare(body.before, body.after)
+        window = npat.signals(comparison, processes=body.processes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    result = npat.correlate(window)
+    return {**result, "signals": window["signals"], "window": window["window"],
+            "summary": npat.summary(result)}
 
 
 @router.post("/twin", response_model=CbomTwinResponse)

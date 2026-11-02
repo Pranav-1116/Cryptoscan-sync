@@ -756,3 +756,55 @@ def test_network_identity_never_names_an_application_without_a_mapping(client):
             "source": "CMDB"}}}).json()
     assert linked["links"]["links"][0]["inference"] == "PROVEN"
     assert linked["links"]["links"][0]["evidence_id"] == "CMDB-7"
+
+
+def test_history_correlate_calls_the_four_signals_one_suspicious_pattern(client):
+    from cbom import nbom_history as nh
+
+    before = nh.snapshot([{"host": "payments.bank.example", "port": 443,
+                           "tls_version": "1.3",
+                           "cipher_suite": "TLS_AES_256_GCM_SHA384",
+                           "evidence_id": "NET-1",
+                           "certificate": {"fingerprint_sha256": "aa11",
+                                           "issuer": "BANK-ICA-01"}}],
+                         taken_at="2026-11-01T00:00:00Z")
+    after = nh.snapshot([
+        {"host": "payments.bank.example", "port": 443, "tls_version": "1.2",
+         "cipher_suite": "ECDHE-RSA-AES128-GCM-SHA256", "evidence_id": "NET-9",
+         "certificate": {"fingerprint_sha256": "cc33", "issuer": "BANK-ICA-09"}},
+        {"host": "new.bank.example", "port": 9443, "tls_version": "1.3",
+         "evidence_id": "NET-10"}], taken_at="2026-11-02T00:00:00Z")
+    body = _post(client, "/history/correlate", {
+        "before": before, "after": after,
+        "processes": [{"process": "/usr/local/bin/openssl", "pid": 9182,
+                       "host": "payments.bank.example", "evidence_id": "RT-1",
+                       "observed_at": "2026-11-02T00:00:00Z"}]}).json()
+    assert {"TLS_DOWNGRADE", "CERTIFICATE_MUTATION", "NEW_ENDPOINT",
+            "NEW_PROCESS"} <= {signal["signal"] for signal in body["signals"]}
+    combined = [pattern for pattern in body["patterns"]
+                if pattern["name"] == "CORRELATED_PATTERN"]
+    assert combined and combined[0]["classification"] == "SUSPICIOUS_ACTIVITY"
+    assert body["worst"] == "SUSPICIOUS_ACTIVITY"
+    assert "SECURITY_INCIDENT" in body["never"]
+    assert "not a finding of compromise" in body["statement"]
+
+
+def test_history_correlate_never_reaches_an_incident_even_when_it_correlates(client):
+    from cbom import nbom_history as nh
+
+    before = nh.snapshot([{"host": "a.bank.example", "port": 443,
+                           "tls_version": "1.3", "evidence_id": "NET-1"}],
+                         taken_at="2026-11-01T00:00:00Z")
+    after = nh.snapshot([{"host": "a.bank.example", "port": 443,
+                          "tls_version": "1.2", "evidence_id": "NET-2"}],
+                        taken_at="2026-11-02T00:00:00Z")
+    body = _post(client, "/history/correlate",
+                 {"before": before, "after": after}).json()
+    assert body["patterns"]
+    assert all(pattern["level"] <= 2 for pattern in body["patterns"])
+    assert all(pattern["not_proven"] for pattern in body["patterns"])
+
+
+def test_history_correlate_refuses_a_document_that_is_not_a_snapshot(client):
+    response = _post(client, "/history/correlate", {"before": {}, "after": {}})
+    assert response.status_code == 422

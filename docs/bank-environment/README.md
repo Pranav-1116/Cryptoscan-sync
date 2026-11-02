@@ -555,6 +555,27 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [Network crypto correlation: several changes, one pattern, no verdict](157-network-correlation.md)
+> (**5 pass · 0 partial · 0 fail**, 27 probes) closes NBOM review item 19, which asks for
+> the strongest sentence the platform is allowed to say: a TLS downgrade **plus** a
+> certificate mutation **plus** a new endpoint **plus** a new process is a
+> `CORRELATED_PATTERN` at `SUSPICIOUS_ACTIVITY`, never "attack detected". One change is
+> a fact; four inside one window describe one event, and `cbom.network_patterns` turns
+> the guide-155 comparison into **signals** (`TLS_DOWNGRADE`, `CIPHER_DOWNGRADE`,
+> `CERTIFICATE_MUTATION`, `TRUST_PATH_CHANGE`, `NEW_ENDPOINT`/`ENDPOINT_LOST`,
+> `NEW_PROCESS`) anchored on an explicit window, then into patterns that borrow the
+> shared `attack_patterns` ladder: `NETWORK_CRYPTO_REGRESSION`, `TRUST_PATH_SHIFT`
+> (downgrade *and* replacement on one endpoint), `NEW_EXPOSURE`, `DISAPPEARANCE`, and
+> the combination itself. Three guards keep maintenance windows out of the suspicious
+> bucket: **an upgrade is not a signal**, a only-together pattern needs **at least one
+> weakening**, and a combination needs **two or more of the four**. The ceiling is
+> level 2 — the shared engine reserves level 4 for cross-plane corroboration, and one
+> network window is one plane — so `SECURITY_INCIDENT` appears only in the `never` list.
+> Every pattern carries its subjects, both sides' evidence ids, first/last seen, a
+> `next_action` that opens one investigation, and a `not_proven` that names
+> compromise, attribution and intent. An endpoint that stopped answering is carried as
+> a **blind spot** that narrows what the window means, not as activity.
+
 > [Network asset identity: an address is an attribute, not a name](156-network-identity.md)
 > (**5 pass · 0 partial · 0 fail**, 31 probes) closes NBOM review item 20, which is one
 > sentence long and entirely right: *not* `IP:port`, because IPs change. An inventory
