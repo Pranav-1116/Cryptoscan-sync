@@ -1,9 +1,9 @@
 {
   "schema": "cryptoscan.hardware-discovery/1",
-  "generated_at": "2026-11-02T12:34:43.996821+00:00",
+  "generated_at": "2026-11-02T12:55:21.210221+00:00",
   "counts": {
-    "PASS": 5,
-    "PARTIAL": 2,
+    "PASS": 7,
+    "PARTIAL": 0,
     "FAIL": 0
   },
   "rows": [
@@ -127,9 +127,24 @@
           "observed": "the only subprocess call site passes an argv list with shell=False"
         },
         {
-          "probe": "windows-reader",
-          "ok": false,
-          "observed": "no WMI/CIM reader anywhere in the tree: on Windows the collectors still wait for a caller to supply the context"
+          "probe": "windows-reader-reads-cim",
+          "ok": true,
+          "observed": "identity Dell Inc. PowerEdge R760 serial SN-WIN-0001, BIOS 1.9.3 (2024-02-14), 2 disk firmware revisions and a TPM 2.0, 0, 1.16 \u2014 with the TPM capabilities WMI does not expose left absent rather than invented"
+        },
+        {
+          "probe": "windows-reader-allowlist-is-closed",
+          "ok": true,
+          "observed": "8 CIM classes may be read, each for named properties only; a class outside the table (Win32_Process) is refused rather than run, and no generated script contains a verb that evaluates text or starts a process"
+        },
+        {
+          "probe": "windows-reader-runs-no-shell",
+          "ok": true,
+          "observed": "PowerShell is invoked with an argv list and shell=False, and the module cannot build a command from input at all: the text comes from the class table, there is no encoded-command path and no write verb. The script a caller could not write is run, not typed"
+        },
+        {
+          "probe": "windows-reader-refuses-key-material",
+          "ok": true,
+          "observed": "a CIM reply carrying key material stops the read instead of being stored, on the same guard the Linux and HSM readers use"
         },
         {
           "probe": "snmp-reads-a-switch",
@@ -177,10 +192,8 @@
           "observed": "a device that echoes the credential in a field the collector carries is refused, not inventoried"
         }
       ],
-      "verdict": "PARTIAL",
-      "failed": [
-        "windows-reader"
-      ]
+      "verdict": "PASS",
+      "failed": []
     },
     {
       "id": "security_hardware",
@@ -243,15 +256,28 @@
           "observed": "the only message this reader can build is a Query (operation 0x18); there is no Get, Locate, Create or Destroy path in the module"
         },
         {
-          "probe": "vendor-rest-readers",
-          "ok": false,
-          "observed": "no vendor REST reader (Thales Luna REST, Utimaco, Entrust) is built: an appliance whose only surface is a vendor API is still described by hand"
+          "probe": "vendor-rest-reads-a-luna-appliance",
+          "ok": true,
+          "observed": "the appliance named itself: Thales K7 Base firmware 7.8.2, FIPS mode True, partition PAYMENTS01 holding 42 object(s) with 2 role(s) by name"
+        },
+        {
+          "probe": "vendor-rest-is-cited-not-guessed",
+          "ok": true,
+          "observed": "5 endpoint(s) across 1 vendor manifest(s), each a GET citing the https page it was read from and the fact that page says it returns; a vendor whose documentation was not read (Utimaco, Entrust nShield, Fortanix DSM) is refused by name instead of having a path invented for it"
+        },
+        {
+          "probe": "vendor-rest-is-read-only",
+          "ok": true,
+          "observed": "every shipped endpoint is a GET, an endpoint the manifest does not name is refused, and a parameter is a single encoded path segment \u2014 a serial cannot walk into a zeroize action"
+        },
+        {
+          "probe": "vendor-rest-yields-metadata-only",
+          "ok": true,
+          "observed": "a reply carrying a wrapped key stores nothing outside the named fields, and a secret inside a field the reader does project stops the read \u2014 the vendor's own `authenticationMethod` is dropped for the same reason"
         }
       ],
-      "verdict": "PARTIAL",
-      "failed": [
-        "vendor-rest-readers"
-      ]
+      "verdict": "PASS",
+      "failed": []
     },
     {
       "id": "evidence_relationships",
@@ -454,13 +480,23 @@
   ],
   "negative_control": {
     "injections": {
+      "collector_breadth": {
+        "description": "the Windows CIM class allowlist accepts any class",
+        "verdict": "PARTIAL",
+        "failed_probes": [
+          "windows-reader-allowlist-is-closed",
+          "windows-reader-refuses-key-material"
+        ],
+        "caught": true
+      },
       "security_hardware": {
-        "description": "the secret-material guard becomes a no-op",
+        "description": "the secret-material guard becomes a no-op and any HSM vendor is given a manifest",
         "verdict": "PARTIAL",
         "failed_probes": [
           "secret-material-refused",
           "guard-survives-python-O",
-          "vendor-rest-readers"
+          "vendor-rest-is-cited-not-guessed",
+          "vendor-rest-yields-metadata-only"
         ],
         "caught": true
       },
@@ -488,11 +524,14 @@
     "no bank hardware was touched: every HSM and TPM here is a synthetic payload, and no appliance, hypervisor or network device was contacted",
     "collector breadth feeds each collector a synthetic payload and drives the Linux reader against a fixture sysfs tree and a recorded transcript; no bank host was read, and real hosts differ \u2014 dmidecode absent, root denied, vendor quirks its allowlist has not seen",
     "the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data",
+    "the Windows reader runs against a recorded CIM transcript on a Linux runner: the allowlist, the projection and the refusals are executed, but no Windows host was read \u2014 WMI can be disabled by policy, a vendor's `Win32_Tpm` may be absent, and appliance-specific classes are not in the table",
     "the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted replies: no appliance was contacted, and a real device's ENTITY-MIB or `ietf-hardware` model may be sparse, vendor-extended or absent entirely",
     "drift correlation now fills its hardware side from the live pipeline (`hardware/live/change_feed.py`, wired into `LiveHardwareController.ingest`), but the certificate, application and policy records still have to be handed in: those feeds are not subscribed, so an unaccompanied finding can mean the other feed has not been wired rather than that nothing moved",
     "network correlation reads a TLS observation and a device config it is given; nothing yet pulls those from the certificate probes or the running configuration of a live device, so a device that was never probed has no edges",
     "only the standard YANG models are read (`ietf-system`, `ietf-hardware`): vendor models expose extra facts \u2014 licence state, HA role, crypto policy \u2014 that this artifact does not collect",
     "the HSM readers run against recorded `pkcs11-tool` output and a hand-built KMIP response: no appliance was opened, and real Luna/nShield/Utimaco tokens differ in which mechanisms they list and which attributes they let an unprivileged session read",
+    "the vendor REST reader has one manifest \u2014 Thales Luna, whose reference guide was read \u2014 and it is exercised against replies shaped like that guide's examples; Utimaco, Entrust nShield and Fortanix DSM are named as undocumented, so an appliance from one of those vendors is still described by hand",
+    "the Luna manifest reads the HSM and the single-partition resources only: the guide does not pin a partition *list* shape, so partition ids come from the operator's inventory rather than from a guessed parse",
     "the synthetic estate measures identity, drift volume and runtime, not discovery precision or recall against real vendor firmware",
     "encryption at rest, per-tenant key custody and vendor attestation are outside this artifact entirely"
   ]

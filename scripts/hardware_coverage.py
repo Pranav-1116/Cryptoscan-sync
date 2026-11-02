@@ -23,14 +23,20 @@ those phases, and it does it by *running* the parts that can run:
     also proves the reader that fills that schema in the first place: the Linux
     collector is driven against a fixture sysfs tree and a recorded command
     transcript, and it must refuse a shell, a metacharacter argument and a
-    device path outside ``/dev``. Windows (WMI/CIM) and the SNMP bridge are
-    probed too, and currently fail — named, not hidden.
+    device path outside ``/dev``. The Windows reader is driven the same way
+    against a recorded CIM transcript: eight allowlisted classes, named
+    properties only, and a class outside the table refused rather than run. What
+    it cannot show on a Linux runner is a real Windows host answering, and the
+    limits say so.
 
 ``security_hardware`` (H4)
     HSM and TPM depth, executed against synthetic appliances: the observation
     carries cluster/HA/serial/algorithm/PQC fields, and the secret-material guard
     refuses key material — **under `python -O`**, where an assertion would vanish.
-    This row also proves the guard is not an `assert`, which it used to be.
+    This row also proves the guard is not an `assert`, which it used to be. The
+    vendor REST reader is executed last: every endpoint it can call carries the
+    https page it was read from, every one is a GET, a vendor whose documentation
+    was not read is refused by name, and the reply is projected down to metadata.
 
 ``evidence_relationships`` (H6)
     An application is linked to an HSM only when a record names both ends. The row
@@ -132,6 +138,8 @@ def _load_package(root: Path):
     import universal_vendor.hardware.change_correlation as change_correlation  # noqa: PLC0415
     import universal_vendor.hardware.network_correlation as network_correlation  # noqa: PLC0415
     import universal_vendor.hardware.host.snmp_bridge as snmp_bridge  # noqa: PLC0415
+    import universal_vendor.hardware.host.windows as host_windows  # noqa: PLC0415
+    import universal_vendor.hardware.hsm_readers.rest as hsm_rest  # noqa: PLC0415
     import universal_vendor.hardware.live.change_feed as change_feed  # noqa: PLC0415
     import universal_vendor.hardware.live.controller as live_controller  # noqa: PLC0415
     import universal_vendor.hardware.hsm_hw as hsm  # noqa: PLC0415
@@ -144,12 +152,72 @@ def _load_package(root: Path):
     return {"discovery": discovery, "drift": drift, "fingerprint": fingerprint,
             "device_observation": device_observation,
             "host_credentials": host_credentials, "host_linux": host_linux,
-            "host_netconf": host_netconf, "host_restconf": host_restconf, "hsm": hsm,
+            "host_netconf": host_netconf, "host_restconf": host_restconf,
+            "host_windows": host_windows, "hsm": hsm, "hsm_rest": hsm_rest,
             "change_correlation": change_correlation, "change_feed": change_feed,
             "live_controller": live_controller, "hsm_readers": hsm_readers,
             "network_correlation": network_correlation,
             "models": models, "plugins": plugins, "snmp_bridge": snmp_bridge,
             "relationships": relationships, "safety": safety, "tpm": tpm}
+
+
+def _windows_transcript() -> dict[str, Any]:
+    """A recorded CIM transcript: the examples from the Win32_* class reference.
+
+    Written from the documented property names, not captured from an appliance —
+    which is exactly why the artifact says no Windows host was opened. The reader
+    that consumes it is the production one.
+    """
+    return {
+        "computer_system": [{"Manufacturer": "Dell Inc.", "Model": "PowerEdge R760",
+                             "TotalPhysicalMemory": 274877906944,
+                             "NumberOfProcessors": 2, "NumberOfLogicalProcessors": 128,
+                             "HypervisorPresent": True, "PartOfDomain": True}],
+        "product": [{"Vendor": "Dell Inc.", "Name": "PowerEdge R760",
+                     "Version": "Not Specified", "IdentifyingNumber": "SN-WIN-0001",
+                     "UUID": "4C4C4544-0037-3510-8043-B7C04F4E4432"}],
+        "bios": [{"Manufacturer": "Dell Inc.", "Name": "1.9.3",
+                  "SMBIOSBIOSVersion": "1.9.3", "ReleaseDate": "2024-02-14T00:00:00Z",
+                  "SerialNumber": "SN-WIN-0001"}],
+        "baseboard": [{"Manufacturer": "Dell Inc.", "Product": "0P4XX8",
+                       "SerialNumber": "CNIVC00123", "Version": "A01"}],
+        "processors": [{"Manufacturer": "GenuineIntel",
+                        "Name": "Intel(R) Xeon(R) Platinum 8480+", "NumberOfCores": 56,
+                        "NumberOfLogicalProcessors": 112,
+                        "VirtualizationFirmwareEnabled": True}],
+        "disk_drives": [
+            {"Model": "Dell NVMe ISE PS1010", "SerialNumber": "PHMC1234567",
+             "FirmwareRevision": "1.1.0", "Size": 3840755982336,
+             "MediaType": "Fixed hard disk media", "InterfaceType": "SCSI"},
+            {"Model": "DELL PERC H755", "SerialNumber": "0087C0A1",
+             "FirmwareRevision": "52.16.1-4602", "Size": 1920383410176,
+             "MediaType": "Fixed hard disk media", "InterfaceType": "SCSI"}],
+        "tpm": [{"IsEnabled_InitialValue": True, "IsActivated_InitialValue": True,
+                 "ManufacturerIdTxt": "IFX", "ManufacturerVersion": "7.63.3353.0",
+                 "SpecVersion": "2.0, 0, 1.16", "PhysicalPresenceVersionInfo": "1.3"}],
+        "device_guard": [{"VirtualizationBasedSecurityStatus": 2,
+                          "SecurityServicesRunning": [1, 2],
+                          "SecurityServicesConfigured": [1, 2],
+                          "CodeIntegrityPolicyEnforcementStatus": 2}],
+    }
+
+
+def _luna_routes() -> dict[str, Any]:
+    """Recorded Luna REST replies, shaped like the vendor guide's examples."""
+    return {
+        "151363": {"model": "K7 Base", "firmwareVersion": "7.8.2", "state": "initialized",
+                   "label": "luna01", "partNumber": "908-000632-001",
+                   "fipsModeEnabled": True, "partitionsAllowed": 20,
+                   "partitionsCreated": 2,
+                   "storageSpace": {"total": 16252928, "used": 0, "free": 16252928}},
+        "273087011389": {"label": "PAYMENTS01", "name": "PAYMENTS01",
+                         "state": "initialized", "objectCount": 42,
+                         "storageSpace": {"free": 20480, "total": 20480, "used": 0}},
+        "/partitions/273087011389/roles": {"roles": [
+            {"id": "co", "name": "Crypto Officer"},
+            {"id": "cu", "name": "Crypto User"}]},
+        "/capabilities": {"capabilities": [{"id": "FIPS"}, {"id": "PPSO"}]},
+    }
 
 
 def _probe(name: str, ok: bool, observed: str) -> dict[str, Any]:
@@ -683,23 +751,68 @@ def row_collectors(modules: dict[str, Any], root: Path) -> dict[str, Any]:
         and ("subprocess." + "run(") in source,
         "the only subprocess call site passes an argv list with shell=False"))
 
-    # H3 / H5: named as missing, because they are. A file called `scim.py` is
-    # SCIM user provisioning, not Windows Management Instrumentation — matching
-    # on the letters "cim" would have reported a reader that does not exist.
-    windows_markers = ("get-ciminstance", "get-wmiobject", "win32com", "root\\cimv2",
-                       "root/cimv2", "msacpi_")
-    windows_readers = [
-        path for path in (root / "services").rglob("*.py")
-        if ".venv" not in path.parts and "node_modules" not in path.parts
-        and (path.name.lower() in {"wmi.py", "cim.py", "windows_host.py"}
-             or any(marker in path.read_text(encoding="utf-8", errors="ignore").lower()
-                    for marker in windows_markers))]
+    # H3: the Windows reader, executed against a recorded CIM transcript on this
+    # Linux runner. The reader is the real one; the appliance is a transcript,
+    # and the artifact says so rather than implying a Windows host was opened.
+    windows = modules["host_windows"]
+    recorded = windows.RecordedCimProvider(_windows_transcript())
+    win_facts = windows.WindowsHostCollector(recorded, hostname="WIN-DB-01").collect()
+    context = win_facts.context
     probes.append(_probe(
-        "windows-reader", bool(windows_readers),
-        f"a WMI/CIM host reader exists at {[str(p.relative_to(root)) for p in windows_readers]}"
-        if windows_readers else
-        "no WMI/CIM reader anywhere in the tree: on Windows the collectors still wait for a "
-        "caller to supply the context"))
+        "windows-reader-reads-cim",
+        context["platform"]["serial_reference"] == "SN-WIN-0001"
+        and context["firmware"]["bios_version"] == "1.9.3"
+        and [disk["firmware"] for disk in context["disks"]] == ["1.1.0", "52.16.1-4602"]
+        and context["tpm"]["version"] == "2.0, 0, 1.16"
+        and context["tpm"]["supported_algorithms"] is None,
+        f"identity {context['platform']['manufacturer']} {context['platform']['model']} "
+        f"serial {context['platform']['serial_reference']}, BIOS "
+        f"{context['firmware']['bios_version']} ({context['firmware']['bios_release_date']}), "
+        f"{len(context['disks'])} disk firmware revisions and a TPM "
+        f"{context['tpm']['version']} — with the TPM capabilities WMI does not expose "
+        "left absent rather than invented"))
+    refused = False
+    try:
+        windows.script_for("Win32_Process")
+    except windows.CimQueryRejected:
+        refused = True
+    allowlisted = all(
+        not any(token in windows.script_for(entry.key).lower()
+                for token in windows.FORBIDDEN_POWERSHELL)
+        and "-Property" in windows.script_for(entry.key)
+        for entry in windows.CIM_ALLOWLIST)
+    probes.append(_probe(
+        "windows-reader-allowlist-is-closed",
+        refused and allowlisted and len(windows.CIM_ALLOWLIST) == 8,
+        f"{len(windows.CIM_ALLOWLIST)} CIM classes may be read, each for named properties "
+        "only; a class outside the table (Win32_Process) is refused rather than run, and no "
+        "generated script contains a verb that evaluates text or starts a process"))
+    windows_source = (root / "services" / "universal_vendor" / "universal_vendor"
+                      / "hardware" / "host" / "windows.py").read_text(encoding="utf-8")
+    probes.append(_probe(
+        "windows-reader-runs-no-shell",
+        "shell=False" in windows_source
+        and ("shell=" + "True") not in windows_source
+        and ("subprocess." + "run(") in windows_source
+        and "EncodedCommand" not in windows_source
+        and "Remove-Item" not in windows_source,
+        "PowerShell is invoked with an argv list and shell=False, and the module cannot build "
+        "a command from input at all: the text comes from the class table, there is no "
+        "encoded-command path and no write verb. The script a caller could not write is run, "
+        "not typed"))
+    leaky = windows.RecordedCimProvider({
+        **_windows_transcript(),
+        "tpm": [{"SpecVersion": "2.0", "ManufacturerVersion": "private_key=abc"}]})
+    try:
+        windows.WindowsHostCollector(leaky).collect()
+    except modules["safety"].SecretMaterialRefused:
+        stopped = True
+    else:
+        stopped = False
+    probes.append(_probe(
+        "windows-reader-refuses-key-material", stopped,
+        "a CIM reply carrying key material stops the read instead of being stored, on the "
+        "same guard the Linux and HSM readers use"))
     # H5: the real SNMP stack, over a fake socket, through the bridge.
     snmp = _snmp_modules()
     if snmp is not None:
@@ -926,10 +1039,87 @@ def row_security_hardware(modules: dict[str, Any], root: Path,
         kmip_query_is_query_only(readers, request),
         "the only message this reader can build is a Query (operation 0x18); there is no "
         "Get, Locate, Create or Destroy path in the module"))
+    # H4 continued: the appliance whose only surface is its own HTTPS API.
+    rest = modules["hsm_rest"]
+    routes = _luna_routes()
+
+    def luna_transport(url: str) -> dict[str, Any]:
+        for path, payload in routes.items():
+            if url.endswith(path):
+                return payload
+        raise rest.RestReadError(f"{url}: HTTP 404 Not Found")
+
+    rest_reader = rest.RestHsmReader(rest.THALES_LUNA, luna_transport,
+                                     base_url="https://luna01.bank.example:8443")
+    rest_facts = rest_reader.collect(151363, partition_ids=("273087011389",))
     probes.append(_probe(
-        "vendor-rest-readers", False,
-        "no vendor REST reader (Thales Luna REST, Utimaco, Entrust) is built: an appliance "
-        "whose only surface is a vendor API is still described by hand"))
+        "vendor-rest-reads-a-luna-appliance",
+        rest_facts.firmware == "7.8.2" and rest_facts.model == "K7 Base"
+        and rest_facts.fips_mode is True
+        and rest_facts.partitions[0]["object_count"] == 42
+        and [role["name"] for role in rest_facts.partitions[0]["roles"]] == [
+            "Crypto Officer", "Crypto User"],
+        f"the appliance named itself: {rest_facts.vendor} {rest_facts.model} firmware "
+        f"{rest_facts.firmware}, FIPS mode {rest_facts.fips_mode}, partition "
+        f"{rest_facts.partitions[0]['label']} holding "
+        f"{rest_facts.partitions[0]['object_count']} object(s) with "
+        f"{len(rest_facts.partitions[0]['roles'])} role(s) by name"))
+    documented = all(
+        endpoint.method == "GET" and endpoint.source.startswith("https://")
+        and endpoint.returns.strip()
+        for manifest in rest.VENDORS.values() for endpoint in manifest.endpoints)
+    guessed_refused = False
+    try:
+        rest.manifest_for("utimaco")
+    except rest.VendorNotDocumented:
+        guessed_refused = True
+    probes.append(_probe(
+        "vendor-rest-is-cited-not-guessed",
+        documented and guessed_refused,
+        f"{sum(len(m.endpoints) for m in rest.VENDORS.values())} endpoint(s) across "
+        f"{len(rest.VENDORS)} vendor manifest(s), each a GET citing the https page it was "
+        "read from and the fact that page says it returns; a vendor whose documentation "
+        "was not read (Utimaco, Entrust nShield, Fortanix DSM) is refused by name instead "
+        "of having a path invented for it"))
+    escaped = rest.quote_segment("151363/../actions/zeroize")
+    read_only_refused = False
+    try:
+        rest_reader.get("zeroize", hsmid="151363")
+    except rest.EndpointNotAllowed:
+        read_only_refused = True
+    probes.append(_probe(
+        "vendor-rest-is-read-only",
+        escaped == "151363%2F..%2Factions%2Fzeroize" and read_only_refused
+        and all(endpoint.method == "GET"
+                for manifest in rest.VENDORS.values()
+                for endpoint in manifest.endpoints),
+        "every shipped endpoint is a GET, an endpoint the manifest does not name is "
+        "refused, and a parameter is a single encoded path segment — a serial cannot walk "
+        "into a zeroize action"))
+    leaky_routes = {**routes, "151363": {**routes["151363"],
+                                        "wrappedKey": "do-not-store-me"}}
+    noisy = rest.RestHsmReader(
+        rest.THALES_LUNA,
+        lambda url: next(payload for path, payload in leaky_routes.items()
+                         if url.endswith(path)),
+        base_url="https://luna01.bank.example:8443").collect(151363)
+    stored = "do-not-store-me" not in json.dumps(noisy.to_dict())
+    stopped = False
+    try:
+        rest.RestHsmReader(
+            rest.THALES_LUNA,
+            lambda url: {"model": "K7 Base", "firmwareVersion": "7.8.2",
+                         "label": "private_key=abc"}
+            if url.endswith("151363") else routes["/capabilities"],
+            base_url="https://luna01.bank.example:8443").collect(151363)
+    except modules["safety"].SecretMaterialRefused:
+        stopped = True
+    probes.append(_probe(
+        "vendor-rest-yields-metadata-only",
+        stored and stopped,
+        "a reply carrying a wrapped key stores nothing outside the named fields, and a "
+        "secret inside a field the reader does project stops the read — the vendor's own "
+        "`authenticationMethod` is dropped for the same reason"))
 
     return {"id": "security_hardware",
             "question": "is HSM/TPM discovery deep enough to be worth anything, and can it leak a key?",
@@ -1387,7 +1577,31 @@ def _strip_and_copy(destination: Path) -> Path:
         "    if False:\n"
         "        raise UnevidencedRelationship(")
     relationships.write_text(text, encoding="utf-8")
-    # (c) PQC drift is no longer distinguished
+    # (c) the Windows class allowlist accepts anything
+    windows = target / "host" / "windows.py"
+    text = windows.read_text(encoding="utf-8")
+    text = text.replace(
+        "    try:\n"
+        "        return ALLOWLIST[key]\n"
+        "    except KeyError:\n",
+        "    if key:\n"
+        "        return CimQuery(key, 'root\\\\cimv2', key, (), 'anything')\n"
+        "    try:\n"
+        "        return ALLOWLIST[key]\n"
+        "    except KeyError:\n")
+    windows.write_text(text, encoding="utf-8")
+    # (d) any HSM vendor gets a manifest, documented or not
+    rest = target / "hsm_readers" / "rest.py"
+    text = rest.read_text(encoding="utf-8")
+    text = text.replace(
+        "    if key in VENDORS:\n"
+        "        return VENDORS[key]\n",
+        "    if key:\n"
+        "        return THALES_LUNA\n"
+        "    if key in VENDORS:\n"
+        "        return VENDORS[key]\n")
+    rest.write_text(text, encoding="utf-8")
+    # (e) PQC drift is no longer distinguished
     drift = target / "drift.py"
     text = drift.read_text(encoding="utf-8")
     text = text.replace("def _is_pqc(value: str) -> bool:", "def _is_pqc(value: str) -> bool:\n    return False\n")
@@ -1459,7 +1673,9 @@ def measure() -> dict[str, Any]:
     scratch = Path(tempfile.mkdtemp(prefix="hardware-control-"))
     control: dict[str, Any] = {"injections": {}}
     descriptions = {
-        "security_hardware": "the secret-material guard becomes a no-op",
+        "collector_breadth": "the Windows CIM class allowlist accepts any class",
+        "security_hardware": "the secret-material guard becomes a no-op and any HSM "
+                             "vendor is given a manifest",
         "evidence_relationships": "an edge no longer needs evidence",
         "hardware_drift": "post-quantum algorithms stop being distinguished",
     }
@@ -1494,6 +1710,10 @@ def measure() -> dict[str, Any]:
             "allowlist has not seen",
             "the Linux reader is unprivileged by design, so on a hardened host its memory, "
             "disk-health and PCI facts degrade to `unavailable` reasons rather than to data",
+            "the Windows reader runs against a recorded CIM transcript on a Linux runner: the "
+            "allowlist, the projection and the refusals are executed, but no Windows host was "
+            "read — WMI can be disabled by policy, a vendor's `Win32_Tpm` may be absent, and "
+            "appliance-specific classes are not in the table",
             "the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted "
             "replies: no appliance was contacted, and a real device's ENTITY-MIB or "
             "`ietf-hardware` model may be sparse, vendor-extended or absent entirely",
@@ -1512,6 +1732,13 @@ def measure() -> dict[str, Any]:
             "response: no appliance was opened, and real Luna/nShield/Utimaco tokens differ in "
             "which mechanisms they list and which attributes they let an unprivileged session "
             "read",
+            "the vendor REST reader has one manifest — Thales Luna, whose reference guide was "
+            "read — and it is exercised against replies shaped like that guide's examples; "
+            "Utimaco, Entrust nShield and Fortanix DSM are named as undocumented, so an "
+            "appliance from one of those vendors is still described by hand",
+            "the Luna manifest reads the HSM and the single-partition resources only: the "
+            "guide does not pin a partition *list* shape, so partition ids come from the "
+            "operator's inventory rather than from a guessed parse",
             "the synthetic estate measures identity, drift volume and runtime, not discovery "
             "precision or recall against real vendor firmware",
             "encryption at rest, per-tenant key custody and vendor attestation are outside this "
@@ -1589,7 +1816,9 @@ def render_md(report: dict[str, Any]) -> str:
         "schema complete |",
         "| the Linux reader | `hardware/host/linux.py` — `/sys` allowlist, dmidecode, lsblk, "
         "lspci, smartctl through an argv allowlist | built, executed here |",
-        "| the Windows reader | — | **not built**; WMI/CIM is the gap |",
+        "| the Windows reader | `hardware/host/windows.py` — `Get-CimInstance` over eight "
+        "allowlisted classes, named properties only, argv list with `shell=False` | built, "
+        "executed here against a recorded CIM transcript; no Windows host was available |",
         "| the network transports | `hardware/host/snmp_bridge.py` over the network scanner's "
         "SNMPv2c client (`enterprise/vendors/snmp.py`, now with ENTITY-MIB); "
         "`hardware/host/netconf.py` and `hardware/host/restconf.py` for the devices that do "
@@ -1619,7 +1848,9 @@ def render_md(report: dict[str, Any]) -> str:
         "| HSM / TPM depth | `hardware/hsm_hw.py`, `hardware/tpm.py` | metadata only |",
         "| HSM readers | `hardware/hsm_readers/pkcs11.py` (CK_TOKEN_INFO + mechanisms, PIN "
         "never on argv), `hardware/hsm_readers/kmip_query.py` (Query: vendor, operations, "
-        "objects, profiles) | built, executed here; vendor REST not built |",
+        "objects, profiles), `hardware/hsm_readers/rest.py` (documented vendor REST: a "
+        "manifest per vendor with a citation per endpoint, refused for vendors whose "
+        "documentation was not read) | built, executed here against recorded replies |",
         "| HSM *usage* (a different question) | `services/api/api/hsm_usage.py` — KMIP, spec 67 "
         "§17 | read-only, no `Get` |",
         "",
@@ -1670,10 +1901,12 @@ def render_md(report: dict[str, Any]) -> str:
         "| H1 | fact schema, identity, fingerprint, safety | built, executed here |",
         "| H2 | Linux: `/sys`, dmidecode, `lsblk`, `lspci`, `smartctl`, `/dev` validation | "
         "built, executed here — allowlisted argv only, `shell=False`, refusals tested |",
-        "| H3 | Windows: WMI/CIM, TPM APIs, never a PowerShell string built from input | **not "
-        "built** |",
-        "| H4 | HSM depth per vendor: PKCS#11 attributes, KMIP `Query`, vendor REST | observation "
-        "fields built; readers not |",
+        "| H3 | Windows: WMI/CIM, TPM APIs, never a PowerShell string built from input | built, "
+        "executed here against a recorded CIM transcript and a closed class allowlist; not yet "
+        "run on a Windows host |",
+        "| H4 | HSM depth per vendor: PKCS#11 attributes, KMIP `Query`, vendor REST | built and "
+        "executed here for PKCS#11, KMIP `Query` and one documented REST manifest (Thales Luna); "
+        "Utimaco, Entrust nShield and Fortanix DSM are named as undocumented rather than guessed |",
         "| H5 | network hardware: SNMP/NETCONF/REST per authorized class | built end to end on "
         "all three — SNMP/ENTITY-MIB, NETCONF `ietf-hardware`, RESTCONF `ietf-hardware`; "
         "vendor-specific YANG models not read |",
@@ -1703,9 +1936,9 @@ def render_md(report: dict[str, Any]) -> str:
 
     control = report["negative_control"]
     lines += ["## The negative control", "",
-              "The executable rows re-run against a copy of the package with three guards "
-              "removed. Each removal must make at least one probe in the row that watches for it "
-              "fail:", "",
+              "The executable rows re-run against a copy of the package with "
+              f"{len(control['injections'])} guards removed. Each removal must make at least "
+              "one probe in the row that watches for it fail:", "",
               "| Removed guard | Row | Result |", "|---|---|---|"]
     for row_id, item in control["injections"].items():
         lines.append(f"| {item['description']} | `{row_id}` | "
@@ -1719,39 +1952,37 @@ def render_md(report: dict[str, Any]) -> str:
     lines += [
         "",
         "## What I would build next, in the order the review proposed", "",
-        "The PASS rows are the parts already in the tree; the PARTIAL and FAIL rows name what "
-        "is not, probe by probe. In order:", "",
-        "1. **H3 the Windows reader** — the probe that still fails. WMI/CIM is not a "
-        "PowerShell string built from input: fixed classes (`Win32_ComputerSystem`, "
-        "`Win32_DiskDrive`, `Win32_PhysicalMemory`), a fixed argv to a fixed helper, the "
-        "same allowlist discipline as the Linux reader, and the TPM APIs read through the "
-        "OS surface rather than a vendor tool. It must be tested on Windows, which no CI "
-        "here can do — so it will ship with the gap stated, not with a green row.",
-        "2. **Vendor YANG and vendor REST models** — the standard `ietf-hardware` model "
-        "carries serial, model and firmware; it does not carry HA role, licence state or "
-        "crypto policy. Those live in vendor models (`Cisco-IOS-XE-*`, `junos-*`), and each "
-        "one needs its own parser and its own negative control before it is trusted.",
-        "3. **Vendor REST HSM readers** — PKCS#11 and KMIP `Query` cover the vendor-neutral "
-        "surface, but cluster and HA state (the review's H4 asks for both) are vendor-specific: "
-        "Luna's `cluster`/`haRole`, nShield's module states, Utimaco's HA groups. Each needs "
-        "its own reader, its own fixture, and a burn-in against the vendor's documented API, "
-        "because inventing one from memory would produce confident fiction.",
-        "4. **H6 correlation for network hardware** — a switch is now in the estate, but "
-        "nothing links it to the certificates it terminates or the flows it carries; the "
-        "relationship engine can express that edge and has no network evidence source "
-        "feeding it yet.",
+        "Every row is PASS. A PASS row does not mean the hardware estate is covered; it "
+        "means the code that exists survived the probes it was given. What is still "
+        "missing is reach, and in order:", "",
+        "1. **A Windows host to run the reader against** — the reader is built, the class "
+        "allowlist is closed and the projection is executed, but nothing here has watched a "
+        "real `Win32_Tpm` answer. Until a Windows agent runs it, the honest claim is "
+        "\"the code path is tested\", not \"Windows discovery works\".", 
+        "2. **Manifests for the other HSM vendors** — Utimaco, Entrust nShield and Fortanix "
+        "DSM are named in `hsm_readers/rest.py` as undocumented rather than guessed. Each "
+        "needs the same treatment Luna got: a reference guide read page by page, one "
+        "`DocumentedEndpoint` per fact with its source URL, and a recorded reply shaped like "
+        "the guide's own example — never a path from memory.", 
+        "3. **Vendor YANG models** — the standard `ietf-hardware` model carries serial, model "
+        "and firmware; it does not carry HA role, licence state or crypto policy. Those live "
+        "in vendor models (`Cisco-IOS-XE-*`, `junos-*`), and each one needs its own parser "
+        "and its own negative control before it is trusted.", 
+        "4. **H6 correlation for network hardware from live evidence** — a switch is in the "
+        "estate and the edge types exist, but nothing yet pulls a TLS observation or a "
+        "running config from a live device; a device that was never probed has no edges.", 
         "5. **H8 qualification against a real bank estate** — the synthetic run above is a "
-        "floor. Precision and recall need ground truth only a customer can provide.",
-        "",
+        "floor. Precision and recall need ground truth only a customer can provide.", "",
         "**The verdict this artifact supports:** the hardware foundation, the identity "
         "model, the security-hardware metadata model, the evidence rule for "
         "relationships and the drift vocabulary are implemented and executed here, and "
         "the projection architecture the review asked for is the one in the code. What is "
-        "*not* done is collector reach into Windows and hypervisor estates, per-vendor HSM "
-        "readers, vendor YANG models, and a run against real hardware — the Linux reader is "
-        "driven by a fixture and a transcript, the SNMP walk by a fake socket, and NETCONF "
-        "and RESTCONF by scripted replies. Each is named above rather than folded into the "
-        "score.",
+        "*not* done is execution against real hardware: the Linux reader is driven by a "
+        "fixture and a transcript, the Windows reader by a recorded CIM transcript, the SNMP "
+        "walk by a fake socket, NETCONF and RESTCONF by scripted replies, and the HSM readers "
+        "by recorded `pkcs11-tool` output, a hand-built KMIP response and Luna replies shaped "
+        "like the vendor guide. Reach is the remaining gap, and it is named above rather than "
+        "folded into the score.",
         "",
     ]
     return "\n".join(lines)

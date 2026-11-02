@@ -111,7 +111,7 @@
 > enforcement, **not encryption**, and no test can change that. Evidence tampering is covered by
 > [guide 112](112-evidence-integrity.md).
 >
-> [Hardware discovery](128-hardware-discovery.md) (**6 pass · 1 partial · 0 fail**)
+> [Hardware discovery](128-hardware-discovery.md) (**7 pass · 0 partial · 0 fail**)
 > answers the review that opened with one rule: hardware is not a scanner that
 > emits an HBOM. The HSM observation now carries cluster, HA state, partitions,
 > algorithm capabilities and PQC (ML-KEM/ML-DSA) — metadata only, and the guard
@@ -190,9 +190,33 @@
 > counted once — a correlation count that double-counts its own input is worse
 > than no count.
 >
-> Two PARTIALs remain, and both are probes: no WMI/CIM reader for Windows, and
-> no vendor REST reader for the cluster/HA state that only a vendor API
-> exposes.
+> The two gaps that were probes are now readers, built the same way the Linux
+> one was. `hardware/host/windows.py` reaches Windows through `Get-CimInstance`
+> over a **frozen table of eight CIM classes**, each asked for named properties
+> only — no parameter of the module accepts a query, a class name or a script, so
+> a caller cannot turn the reader into a shell, and a class outside the table
+> (`Win32_Process`) is refused rather than run. It reads platform identity, BIOS
+> version and release date, per-disk firmware, processor and memory, `Win32_Tpm`
+> metadata and the Device Guard state; the TPM capabilities WMI does not expose
+> are left absent rather than invented. It is executed here against a recorded
+> CIM transcript, because no Windows host exists on this runner — which is the
+> one thing it cannot prove, and the artifact says so.
+>
+> `hardware/hsm_readers/rest.py` reads an appliance whose only surface is the
+> vendor's own HTTPS API, under a rule that keeps it honest: **an endpoint exists
+> only because a published vendor document says so**. Every
+> `DocumentedEndpoint` carries the page URL it was read from and the fact that
+> page says it returns; every shipped endpoint is a `GET`; parameters are encoded
+> as single path segments, so a serial number cannot walk into
+> `/actions/zeroize`; and the reply is projected down to metadata, so a wrapped
+> key in a response yields nothing and a secret in a projected field stops the
+> read. The Thales Luna manifest is written from the REST API reference (7.x) and
+> exercised against replies shaped like its own examples. Utimaco, Entrust
+> nShield and Fortanix DSM are named in the module as **undocumented** — asking
+> for one raises, with the reason — because inventing `/api/v1/...` for them
+> would produce a reader that returns an empty observation and calls it success.
+> A partition list is deliberately not parsed: the guide does not pin that shape,
+> so partition ids come from the operator's inventory.
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 
