@@ -48,6 +48,7 @@ DEFAULT_LICENSE_POLICY: dict[str, Any] = {
     "restricted": [],           # SPDX ids that require review
     "require_declared": False,  # any component with no declared license is a finding
     "review_copyleft": True,    # copyleft + undeclared/proprietary combination is a finding
+    "allowed": [],              # explicitly approved identifiers (a legal decision)
 }
 
 _OPERATORS = re.compile(r"\s+(AND|OR|WITH)\s+", re.IGNORECASE)
@@ -291,6 +292,93 @@ def check_license_policy(bom: dict[str, Any] | None, *,
         verdict = "PASS"
     return {"verdict": verdict, "policy": effective, "violations": violations,
             "conflicts": conflicts, "inventory": inventory}
+
+
+#: The review's vocabulary (item 12). Detected is not approved, and neither is
+#: "the policy did not mention it".
+LICENSE_STATES: tuple[str, ...] = ("DECLARED", "DETECTED", "UNKNOWN", "CONFLICT",
+                                   "POLICY_ACCEPTED", "POLICY_REJECTED", "REQUIRES_REVIEW")
+
+
+def license_states(bom: dict[str, Any] | None, *, policy: dict[str, Any] | None = None,
+                   detected: dict[str, str] | None = None) -> dict[str, Any]:
+    """Every component's licence state, in the review's seven-value vocabulary.
+
+    The distinction the review insists on: *license detected* is not *legal
+    approval*. So a component's state is one of
+
+    ``DECLARED``        the document states a licence and nothing has reviewed it
+    ``DETECTED``        a detector found one and the document declares nothing
+    ``CONFLICT``        declaration and detection disagree
+    ``POLICY_ACCEPTED`` / ``POLICY_REJECTED``  a policy decision names this family
+    ``REQUIRES_REVIEW`` neither a decision nor a detection exists
+    ``UNKNOWN``         nothing at all is known about it
+
+    ``detected`` maps a component name to what a file-level detector found; the
+    platform never claims detection it did not perform.
+    """
+    from devsecops.sbom_evidence import license_assessment  # noqa: PLC0415
+
+    effective = dict(DEFAULT_LICENSE_POLICY)
+    effective.update({k: v for k, v in (policy or {}).items() if k in DEFAULT_LICENSE_POLICY})
+    decisions: dict[str, str] = {}
+    for identifier in effective.get("forbidden") or ():
+        decisions[license_family(identifier)] = "DENY"
+    for identifier in effective.get("restricted") or ():
+        decisions.setdefault(license_family(identifier), "REVIEW")
+    for identifier in effective.get("allowed") or ():
+        decisions.setdefault(license_family(identifier), "ALLOW")
+
+    detector = {str(name).lower(): str(value) for name, value in (detected or {}).items()}
+    rows: list[dict[str, Any]] = []
+    for component, entries in _component_licenses(bom or {}):
+        name = _component_name(component)
+        declared = entries[0]["id"] if entries else None
+        found = detector.get(name.lower())
+        decision = decisions.get(license_family(declared), "") if declared else ""
+        policy_map: dict[str, str] = {}
+        if decision:
+            # both spellings, because a component may declare GPL-3.0-only while
+            # the policy names the family GPL-3.0
+            policy_map[str(declared).upper()] = decision
+            policy_map[str(license_family(declared)).upper()] = decision
+        assessment = license_assessment(declared=declared, detected=found,
+                                        policy=policy_map or None)
+        state = {
+            "POLICY_ACCEPTED": "POLICY_ACCEPTED",
+            "POLICY_REJECTED": "POLICY_REJECTED",
+            "CONFLICT": "CONFLICT",
+            "UNKNOWN": "UNKNOWN",
+            "REQUIRES_REVIEW": ("REQUIRES_REVIEW" if declared or found else "UNKNOWN"),
+        }[assessment["state"]]
+        if state in {"REQUIRES_REVIEW", "UNKNOWN"} and found and not declared:
+            state = "DETECTED"
+        elif state in {"REQUIRES_REVIEW", "UNKNOWN"} and declared and not decision:
+            state = "DECLARED"
+        rows.append({
+            "component": name,
+            "version": _component_version(component),
+            "declared": declared,
+            "detected": found,
+            "family": license_family(declared) if declared else None,
+            "state": state,
+            "approved": state == "POLICY_ACCEPTED",
+            "reason": assessment["statement"],
+        })
+    counts = {state: sum(1 for row in rows if row["state"] == state) for state in LICENSE_STATES}
+    approved = counts["POLICY_ACCEPTED"]
+    return {
+        "counts": counts,
+        "components": rows,
+        "approved": approved,
+        "statement": (
+            f"{len(rows)} component(s): {approved} approved by policy, "
+            f"{counts['POLICY_REJECTED']} rejected, {counts['REQUIRES_REVIEW']} awaiting "
+            f"review, {counts['DECLARED']} declared but unreviewed, "
+            f"{counts['UNKNOWN']} unknown"
+            + ("" if approved == len(rows) else
+               " — a declaration is not an approval, and this list is not legal advice")),
+    }
 
 
 def _copyleft_review(inventory: dict[str, Any]) -> list[dict[str, Any]]:

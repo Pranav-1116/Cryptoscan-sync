@@ -1,0 +1,232 @@
+{
+  "schema": "cryptoscan.sbom-gaps-guide/1",
+  "generated_at": "2026-11-02T16:54:52.207446+00:00",
+  "as_of": "2026-11-02",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 33,
+  "ordering_cases": 12,
+  "constraint_cases": 22,
+  "rows": [
+    {
+      "id": "version_ordering",
+      "question": "is 1.0.0-rc1 older than 1.0.0, in every ecosystem?",
+      "phase": "10 (range depth)",
+      "probes": [
+        {
+          "probe": "the-ordering-the-old-comparator-got-backwards",
+          "ok": true,
+          "observed": "12 ordering case(s) hold, including a release candidate before its release and a dev release before its prereleases"
+        },
+        {
+          "probe": "each-ecosystem-gets-its-own-comparator",
+          "ok": true,
+          "observed": "npm\u2192semver, pip\u2192pep440, maven\u2192maven, nuget\u2192generic, gem\u2192generic, composer\u2192semver, cargo\u2192semver, debian\u2192generic"
+        },
+        {
+          "probe": "an-unreadable-version-raises-instead-of-sorting-arbitrarily",
+          "ok": true,
+          "observed": "'not-a-version' is not a semantic version"
+        },
+        {
+          "probe": "the-platform-has-one-comparator",
+          "ok": true,
+          "observed": "container_scan.version_compare delegates to version_ranges: the container matcher and the SBOM matcher share one engine, and the ecosystem decides whether 1.0.0-rc1 is a prerelease (npm) or a package revision (Debian)"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "constraint_syntax",
+      "question": "can the platform read the ranges a feed actually writes?",
+      "phase": "10 (range depth)",
+      "probes": [
+        {
+          "probe": "the-constraint-syntax-advisory-feeds-carry",
+          "ok": true,
+          "observed": "22 constraint case(s) hold across caret, tilde, x-range, comparator sets, PEP 440 compatible release, Maven intervals, unions and exact pins"
+        },
+        {
+          "probe": "an-unreadable-constraint-is-invalid-not-empty",
+          "ok": true,
+          "observed": "INVALID: 'bogus.1' is not a semantic version"
+        },
+        {
+          "probe": "a-constraint-explains-itself",
+          "ok": true,
+          "observed": "^1.2.3 (npm) decomposes to [('>=', '1.2.3'), ('<', '2')]"
+        },
+        {
+          "probe": "one-unreadable-range-does-not-hide-a-match",
+          "ok": true,
+          "observed": "matched on the readable range and kept ['>=bogus'] as unevaluable"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "advisory_matching",
+      "question": "does an advisory range apply, or only an exact version string?",
+      "phase": "10",
+      "probes": [
+        {
+          "probe": "an-exact-version-list-still-matches",
+          "ok": true,
+          "observed": "MATCHED via purl+version"
+        },
+        {
+          "probe": "a-comparator-range-matches-the-version-inside-it",
+          "ok": true,
+          "observed": "MATCHED via purl+range: 1 advisory match(es): CVE-2"
+        },
+        {
+          "probe": "a-version-outside-the-range-is-a-real-non-match",
+          "ok": true,
+          "observed": "ASSESSED_NO_MATCH: assessed against osv 2026-11-01 with purl+version matching and nothing matched"
+        },
+        {
+          "probe": "a-caret-is-read-the-way-npm-reads-it",
+          "ok": true,
+          "observed": "jose 5.2.3 in ^5.0.0 -> MATCHED (comparator semver)"
+        },
+        {
+          "probe": "the-purl-decides-which-comparator-applies",
+          "ok": true,
+          "observed": "pypi component compared with the PEP 440 comparator (pep440)"
+        },
+        {
+          "probe": "a-prerelease-is-not-inside-a-range-that-starts-at-the-release",
+          "ok": true,
+          "observed": "2.0.0-rc1 against >=2.0.0 -> ASSESSED_NO_MATCH: the old comparator would have matched this"
+        },
+        {
+          "probe": "an-introduced-fixed-window-is-understood",
+          "ok": true,
+          "observed": "MATCHED: the container scanner's advisory shape is read by the same engine"
+        },
+        {
+          "probe": "an-advisory-range-nobody-can-read-is-unknown",
+          "ok": true,
+          "observed": "UNKNOWN rather than a clean result: 1 advisory range(s) could not be interpreted for generic: >=three: 'three' contains no version numbers"
+        },
+        {
+          "probe": "a-clean-answer-still-carries-the-feed-and-the-method",
+          "ok": true,
+          "observed": "ASSESSED_NO_MATCH against osv 2026-11-01 by purl+range"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "restore_drill",
+      "question": "has a restore ever actually been run, or only configured?",
+      "phase": "8",
+      "probes": [
+        {
+          "probe": "a-backup-is-read-back-and-compared",
+          "ok": true,
+          "observed": "534 byte(s) copied to the backup store and read back identical"
+        },
+        {
+          "probe": "the-drill-restores-into-a-fresh-store-not-the-primary",
+          "ok": true,
+          "observed": "restored 534 byte(s) from the backup into a fresh store; bytes identical, digest MATCH, signature VALID, a flipped byte was detected"
+        },
+        {
+          "probe": "the-restored-artifact-still-verifies",
+          "ok": true,
+          "observed": "digest MATCH, signature VALID \u2014 a restore that only checks presence would pass a corrupted file"
+        },
+        {
+          "probe": "a-flipped-byte-is-caught-so-the-check-is-not-a-rubber-stamp",
+          "ok": true,
+          "observed": "one byte of the restored artifact was inverted and verification returned TAMPERED"
+        },
+        {
+          "probe": "without-a-secret-the-signature-check-is-reported-as-absent",
+          "ok": true,
+          "observed": "no secret supplied -> signature_check null rather than an invented VALID"
+        },
+        {
+          "probe": "a-corrupted-backup-fails-the-drill",
+          "ok": true,
+          "observed": "a backup whose bytes were altered -> FAILED (digest MISMATCH)"
+        },
+        {
+          "probe": "the-drill-runs-over-every-artifact",
+          "ok": true,
+          "observed": "1 of 1 artifact(s) restored and verified"
+        },
+        {
+          "probe": "an-empty-backup-proves-nothing-and-says-so",
+          "ok": true,
+          "observed": "the backup store holds no artifacts, so the drill proves nothing"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "license_states",
+      "question": "does the licence report ever render a detection as an approval?",
+      "phase": "12",
+      "probes": [
+        {
+          "probe": "a-declared-licence-is-not-an-approval",
+          "ok": true,
+          "observed": "openssl declares Apache-2.0 -> DECLARED: nothing has reviewed it"
+        },
+        {
+          "probe": "only-a-policy-decision-produces-accepted-or-rejected",
+          "ok": true,
+          "observed": "MIT on the allowed list -> POLICY_ACCEPTED; GPL-3.0 forbidden -> POLICY_REJECTED"
+        },
+        {
+          "probe": "a-component-with-no-licence-is-unknown",
+          "ok": true,
+          "observed": "no declaration, no detection -> UNKNOWN"
+        },
+        {
+          "probe": "declaration-and-detection-disagreeing-is-a-conflict",
+          "ok": true,
+          "observed": "declared Apache-2.0, detected GPL-3.0-only -> CONFLICT"
+        },
+        {
+          "probe": "a-detection-without-a-declaration-is-DETECTED-not-approved",
+          "ok": true,
+          "observed": "document silent, detector found MIT -> DETECTED"
+        },
+        {
+          "probe": "the-vocabulary-is-the-reviews-seven-states",
+          "ok": true,
+          "observed": "DECLARED, DETECTED, UNKNOWN, CONFLICT, POLICY_ACCEPTED, POLICY_REJECTED, REQUIRES_REVIEW"
+        },
+        {
+          "probe": "the-summary-says-how-many-nobody-reviewed",
+          "ok": true,
+          "observed": "4 component(s): 1 approved by policy, 1 rejected, 0 awaiting review, 1 declared but unreviewed, 1 unknown \u2014 a declaration is not an approval, and this list is not legal advice"
+        },
+        {
+          "probe": "the-licence-endpoint-returns-the-states",
+          "ok": true,
+          "observed": "/sbom/license returns `states`, `state_rows` and `state_statement` beside the policy verdict"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the comparator is a library, not a package manager: it does not resolve dependency graphs and it cannot know that a vendor's build rewrote a version string before it was recorded",
+    "advisory matching is still against a supplied feed. Which advisory is true for a given build is the feed vendor's claim, not the platform's",
+    "the restore drill runs against the configured artifact store. It proves the backup target holds a restorable copy; it does not prove the backup is in a different failure domain (that is an operational control, not code)",
+    "licence states are a vocabulary and a policy lookup. Which licences a bank accepts remains a legal decision this code must not make",
+    "the seven licence states are reported per component; obligations that depend on distribution model (SaaS versus shipped binary) are outside this artefact"
+  ]
+}

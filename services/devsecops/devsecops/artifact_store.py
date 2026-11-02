@@ -757,6 +757,133 @@ def write_binary_artifact(*, manifest: dict[str, Any], payload: bytes, cbom_blob
 
 
 # --------------------------------------------------------------------------- #
+# backup and restore: the drill, not the policy
+# --------------------------------------------------------------------------- #
+
+def _manifest_for(store: Any, key: str) -> dict[str, Any] | None:
+    """The manifest a store holds for one key (the store lists, it does not get)."""
+    for manifest in store.list_manifests():
+        if str(manifest.get("storage_key")) == str(key):
+            return dict(manifest)
+    return None
+
+
+def backup_artifact(store: Any, backup: Any, key: str) -> dict[str, Any]:
+    """Copy one artifact — blob and manifest — and verify the copy is identical.
+
+    A backup nobody compared is a hope. The copy is read back from the backup
+    store and hashed against what the primary store returned, so a truncated
+    write or a full disk is reported here rather than discovered by an auditor.
+    """
+    blob = store.get(key)
+    manifest = _manifest_for(store, key)
+    backup.put(key, blob)
+    if manifest is not None:
+        backup.put_manifest(key, manifest)
+    restored = backup.get(key)
+    identical = hashlib.sha256(restored).hexdigest() == hashlib.sha256(blob).hexdigest()
+    sealed = bool((manifest or {}).get("at_rest", {}).get("encrypted"))
+    return {
+        "key": str(key),
+        "bytes": len(blob),
+        "manifest": manifest is not None,
+        "byte_identical": identical,
+        "sealed": sealed,
+        "verdict": "BACKED_UP" if identical and manifest is not None else "INCOMPLETE",
+        "statement": (
+            f"{len(blob)} byte(s) copied to the backup store and read back identical"
+            if identical and manifest is not None else
+            "the backup is not a copy of the artifact: "
+            + ("the manifest is missing" if manifest is None else "the bytes differ")),
+    }
+
+
+def restore_drill(backup: Any, key: str, *, target: Any | None = None,
+                  secret: str | None = None) -> dict[str, Any]:
+    """Restore one artifact from backup into a *fresh* store and verify it.
+
+    The review's item 8 asks for restore, not just backup, and a restore that has
+    never been exercised is a claim. This restores into a scratch store (never
+    over the primary), checks byte identity with the backup, checks the
+    manifest's digest for an unsealed artifact, re-verifies the signature when a
+    secret is available, and — the control that makes the verification
+    meaningful — flips one byte and requires it to be caught as ``TAMPERED``.
+    """
+    import tempfile
+
+    from governance.backup_jobs import DiskBackupStorage
+
+    from devsecops.sbom_scan import verify_artifact, verify_manifest
+
+    scratch = target or DiskBackupStorage(tempfile.mkdtemp(prefix="cryptoscan-restore-"))
+    blob = backup.get(key)
+    manifest = _manifest_for(backup, key)
+    scratch.put(key, blob)
+    if manifest is not None:
+        scratch.put_manifest(key, manifest)
+    restored = scratch.get(key)
+    identical = restored == blob
+
+    digest_check: str | None = None
+    sealed = bool((manifest or {}).get("at_rest", {}).get("encrypted"))
+    if manifest is not None and not sealed:
+        digest_check = "MATCH" if hashlib.sha256(restored).hexdigest() == str(
+            manifest.get("sha256")) else "MISMATCH"
+
+    signature = None
+    if manifest is not None and secret:
+        signature = "VALID" if verify_manifest(manifest, secret) else "INVALID"
+
+    tamper_caught = False
+    if manifest is not None and restored:
+        flipped = bytearray(restored)
+        flipped[len(flipped) // 2] ^= 0xFF
+        tamper_caught = verify_artifact(manifest, bytes(flipped), secret)["verdict"] == "TAMPERED"
+
+    checks_ok = (identical and manifest is not None and digest_check != "MISMATCH"
+                 and signature != "INVALID" and tamper_caught)
+    return {
+        "key": str(key),
+        "bytes": len(restored),
+        "sealed": sealed,
+        "manifest_restored": manifest is not None,
+        "byte_identical": identical,
+        "digest_check": digest_check,
+        "signature_check": signature,
+        "tamper_detected": tamper_caught,
+        "verdict": "RESTORED" if checks_ok else "FAILED",
+        "statement": (
+            f"restored {len(restored)} byte(s) from the backup into a fresh store; "
+            + ("bytes identical, " if identical else "bytes differ, ")
+            + (f"digest {digest_check}, " if digest_check else "digest not applicable (sealed), ")
+            + (f"signature {signature}, " if signature else "signature not checked, ")
+            + ("a flipped byte was detected" if tamper_caught else
+               "A FLIPPED BYTE WAS NOT DETECTED")),
+    }
+
+
+def restore_drill_all(backup: Any, *, secret: str | None = None,
+                      limit: int | None = None) -> dict[str, Any]:
+    """The drill over every artifact the backup store holds."""
+    keys = [str(manifest.get("storage_key")) for manifest in backup.list_manifests()]
+    keys = [key for key in keys if key and key != "None"]
+    if limit is not None:
+        keys = keys[:limit]
+    rows = [restore_drill(backup, key, secret=secret) for key in keys]
+    failed = [row for row in rows if row["verdict"] != "RESTORED"]
+    return {
+        "artifacts": len(rows),
+        "restored": len(rows) - len(failed),
+        "failed": failed,
+        "verdict": "RESTORED" if rows and not failed else ("NO_ARTIFACTS" if not rows else "FAILED"),
+        "statement": (
+            f"{len(rows) - len(failed)} of {len(rows)} artifact(s) restored and verified"
+            if rows else "the backup store holds no artifacts, so the drill proves nothing"),
+        "rows": rows,
+    }
+
+
+# --------------------------------------------------------------------------- #
 # reading back: one tenant at a time
 # --------------------------------------------------------------------------- #
 

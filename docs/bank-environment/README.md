@@ -428,6 +428,28 @@
 > type, source, timestamp and confidence on every edge, capability edges always
 > low-confidence, and no path to production for an unobserved artifact.
 
+> [Ranges, restore, licence states](135-sbom-ranges-restore-licences.md)
+> (**5 pass · 0 partial · 0 fail**, 33 probes, 12 ordering and 22 constraint
+> cases) takes three entries from guide 134's own limits list and makes them
+> code. **Advisory ranges**: matching was exact-string equality, so an advisory
+> saying `<3.0.13` or `^5.0.0` never applied. `version_ranges` now orders
+> semver, PEP 440 and Maven-style versions per ecosystem — a release candidate
+> before its release, a dev release before every prerelease, an epoch outranking
+> the numbers — and reads the constraint syntax feeds carry (caret, tilde,
+> `1.2.x`, comparator sets, PEP 440 `~=`, Maven intervals, unions, `!=`). A range
+> nobody can read is `UNKNOWN` with the reason, never "assessed and clean", and
+> the container scanner's comparator delegates to the same engine so the platform
+> has one answer. **Restore**: `backup_artifact` reads its own copy back and
+> compares it; `restore_drill` restores into a *fresh* store and verifies byte
+> identity, the manifest digest and the signature, then flips one byte and
+> requires it to be caught as `TAMPERED` — a corrupted backup fails the drill,
+> and an empty backup reports that it proves nothing. **Licence states**: the
+> review's seven values per component, with `allowed` joinable to the policy, so
+> a declaration is `DECLARED`, a detection with no declaration is `DETECTED`,
+> disagreement is `CONFLICT`, and only a policy decision yields
+> `POLICY_ACCEPTED`/`POLICY_REJECTED`; `/sbom/license` returns the counts and
+> says how many components nobody has reviewed.
+
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 
 The practical answer is: **the bank installs and authorizes the platform inside

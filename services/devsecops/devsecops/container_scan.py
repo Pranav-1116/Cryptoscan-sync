@@ -45,13 +45,28 @@ def parse_version(v: str) -> tuple:
 
 
 def version_compare(a: str, b: str) -> int:
-    pa, pb = parse_version(a), parse_version(b)
-    for x, y in zip(pa, pb):
-        if x < y:
-            return -1
-        if x > y:
-            return 1
-    return (len(pa) > len(pb)) - (len(pa) < len(pb))
+    """Compare two versions, delegating to the platform's version engine.
+
+    The comparator that used to live here split on dots and compared segments,
+    which ordered ``1.0.0-rc1`` *after* ``1.0.0`` — a prerelease read as newer
+    than the release it precedes. :mod:`devsecops.version_ranges` implements the
+    preview/release ordering per ecosystem, so there is one answer in the
+    platform rather than two.
+    """
+    from devsecops.version_ranges import ConstraintError, compare
+
+    try:
+        return compare(a, b)
+    except ConstraintError:
+        # values outside any version grammar still have to order somehow for the
+        # legacy callers, so fall back to the numeric-segment comparison
+        pa, pb = parse_version(a), parse_version(b)
+        for x, y in zip(pa, pb):
+            if x < y:
+                return -1
+            if x > y:
+                return 1
+        return (len(pa) > len(pb)) - (len(pa) < len(pb))
 
 
 def _affected(version: str, vuln: dict) -> bool:

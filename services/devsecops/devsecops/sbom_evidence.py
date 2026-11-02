@@ -518,10 +518,29 @@ def assess_vulnerabilities(component: Mapping[str, Any], *, feed: Mapping[str, A
         return row | {"status": "INSUFFICIENT_IDENTIFIER", "reason":
                       "the component has no version, and an advisory range cannot be applied "
                       "to it"}
-    matches = [advisory for advisory in advisories
-               if _advisory_matches(advisory, purl, str(version))]
-    row["advisories"] = [dict(advisory) for advisory in matches]
-    row["match_method"] = "purl+version"
+    ecosystem = _ecosystem_for(purl, component)
+    matches: list[dict[str, Any]] = []
+    unevaluable: list[str] = []
+    used_range = False
+    for advisory in advisories:
+        verdict = _advisory_verdict(advisory, purl, str(version), ecosystem)
+        used_range = used_range or verdict["range"]
+        unevaluable.extend(verdict.get("unevaluable") or ())
+        if verdict["verdict"] == "MATCH":
+            matches.append(dict(advisory, match=verdict["why"]))
+        elif verdict["verdict"] == "UNEVALUABLE":
+            unevaluable.append(verdict["why"])
+    row["advisories"] = matches
+    row["match_method"] = "purl+range" if used_range else "purl+version"
+    row["ecosystem"] = ecosystem
+    row["unevaluable_ranges"] = unevaluable
+    if unevaluable:
+        # A range the platform cannot read is not a non-match. Reporting it as
+        # "assessed and clean" is exactly the failure mode the review names.
+        if not matches:
+            return row | {"status": "UNKNOWN", "confidence": "LOW", "reason":
+                          f"{len(unevaluable)} advisory range(s) could not be interpreted for "
+                          f"{ecosystem}: {unevaluable[0]}"}
     if not matches:
         return row | {"status": "ASSESSED_NO_MATCH", "confidence": "MEDIUM", "reason":
                       f"assessed against {row['feed']} {row['feed_timestamp']} with "
@@ -532,14 +551,69 @@ def assess_vulnerabilities(component: Mapping[str, Any], *, feed: Mapping[str, A
                                                  f"{identifiers}"}
 
 
-def _advisory_matches(advisory: Mapping[str, Any], purl: str, version: str) -> bool:
+def _ecosystem_for(purl: str, component: Mapping[str, Any]) -> str:
+    """The comparator family, from the purl's type (then the package manager)."""
+    from devsecops.version_ranges import family_for  # noqa: PLC0415
+
+    if purl.startswith("pkg:"):
+        return family_for(purl[4:].split("/", 1)[0])
+    return family_for(component.get("manager") or component.get("ecosystem"))
+
+
+def _advisory_verdict(advisory: Mapping[str, Any], purl: str, version: str,
+                      ecosystem: str) -> dict[str, Any]:
+    """Match one advisory against one version, by range where a range is given.
+
+    Two advisory shapes are read, because both exist in the estate: a list of
+    versions *or constraints* under ``affected_versions``/``versions`` (npm and
+    OSV style), and an introduced/fixed window (the container scanner's shape).
+    Exact strings still work exactly as they did; a constraint is evaluated in
+    the component's own ecosystem, so ``^1.2`` means what npm means by it.
+    """
+    from devsecops.version_ranges import ConstraintError, affected as window, satisfies
+
     target = str(advisory.get("package") or advisory.get("purl") or "")
     if target and target.split("@")[0] != purl.split("@")[0]:
-        return False
-    affected = advisory.get("affected_versions") or advisory.get("versions") or ()
-    if not affected:
-        return True
-    return str(version) in {str(item) for item in affected}
+        return {"verdict": "NO_MATCH", "range": False, "why": "different package"}
+    constraints = (list(advisory.get("affected_versions") or advisory.get("versions") or ())
+                   + list(advisory.get("ranges") or ()))
+    if advisory.get("introduced") or advisory.get("fixed") or advisory.get("last_affected"):
+        constraints.append({"introduced": advisory.get("introduced"),
+                            "fixed": advisory.get("fixed"),
+                            "last_affected": advisory.get("last_affected")})
+    if not constraints:
+        return {"verdict": "MATCH", "range": False, "why": "the advisory matches any version"}
+    unevaluable: list[str] = []
+    for spec in constraints:
+        if isinstance(spec, Mapping):
+            introduced = spec.get("introduced") if spec.get("introduced") not in (None, "0") else None
+            in_window = window(version, introduced=introduced, fixed=spec.get("fixed"),
+                               last_affected=spec.get("last_affected"), ecosystem=ecosystem)
+            if in_window is None:
+                unevaluable.append(str(dict(spec)))
+            elif in_window:
+                return {"verdict": "MATCH", "range": True, "unevaluable": unevaluable,
+                        "why": f"{version} is inside the advisory window {dict(spec)}"}
+            continue
+        text = str(spec)
+        if text == "" or text == version:
+            return {"verdict": "MATCH", "range": False, "unevaluable": unevaluable,
+                    "why": f"exact version {version}"}
+        try:
+            if satisfies(version, text, ecosystem=ecosystem):
+                return {"verdict": "MATCH", "range": True, "unevaluable": unevaluable,
+                        "why": f"{version} satisfies {text!r} ({ecosystem})"}
+        except ConstraintError as exc:
+            unevaluable.append(f"{text}: {exc}")
+    if unevaluable:
+        return {"verdict": "UNEVALUABLE", "range": True, "why": unevaluable[0]}
+    return {"verdict": "NO_MATCH", "range": True, "why": "no range matched"}
+
+
+def _advisory_matches(advisory: Mapping[str, Any], purl: str, version: str) -> bool:
+    """Backwards-compatible boolean wrapper over :func:`_advisory_verdict`."""
+    ecosystem = _ecosystem_for(purl, {})
+    return _advisory_verdict(advisory, purl, version, ecosystem)["verdict"] == "MATCH"
 
 
 # --------------------------------------------------------------------------- #

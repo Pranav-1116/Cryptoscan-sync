@@ -2297,8 +2297,12 @@ _INDEX_CACHE_TTL_SECONDS = 10.0
 class SbomLicenseRequest(BaseModel):
     doc: dict | None = Field(None, description="CycloneDX or SPDX JSON document")
     artifact_id: str | None = Field(None, description="stored artifact instead of an inline document")
-    policy: dict | None = Field(None, description=("forbidden/restricted/require_declared/"
-                                                   "review_copyleft — see DEFAULT_LICENSE_POLICY"))
+    policy: dict | None = Field(None, description=("forbidden/restricted/allowed/"
+                                                   "require_declared/review_copyleft — see "
+                                                   "DEFAULT_LICENSE_POLICY"))
+    detected: dict | None = Field(None, description=("component name -> licence a file-level "
+                                                     "detector found; the platform never claims "
+                                                     "a detection it did not perform"))
     fmt: str = Field("json", description="json, or markdown for a renderable section")
 
 
@@ -2336,11 +2340,18 @@ def sbom_license(body: SbomLicenseRequest, request: Request,
     The copyleft review trigger is a policy flag, not a compatibility ruling:
     the engine never claims two licenses are or are not compatible.
     """
-    from devsecops.sbom_license import check_license_policy, render_license_report
+    from devsecops.sbom_license import (check_license_policy, license_states,
+                                       render_license_report)
 
     doc = _resolve_sbom_doc(body.doc, body.artifact_id, _artifact_tenant(request, db, user))
     report = check_license_policy(doc, policy=body.policy)
-    payload: dict = {"artifact_id": body.artifact_id, "verdict": report["verdict"], **report}
+    # The seven-state vocabulary sits beside the policy verdict on purpose: a
+    # declared licence is not an approval, and the counts say how many components
+    # nobody has reviewed.
+    states = license_states(doc, policy=body.policy, detected=body.detected)
+    payload: dict = {"artifact_id": body.artifact_id, "verdict": report["verdict"], **report,
+                     "states": states["counts"], "state_rows": states["components"],
+                     "state_statement": states["statement"]}
     if str(body.fmt).lower() == "markdown":
         payload["markdown"] = render_license_report(report)
     return payload
