@@ -1,6 +1,6 @@
 # Hardware discovery — from collectors to a twin, not to a second inventory
 
-`cryptoscan.hardware-discovery/1` · generated 2026-11-02T12:05:02.558406+00:00 · **6 pass · 1 partial · 0 fail**
+`cryptoscan.hardware-discovery/1` · generated 2026-11-02T12:17:28.488853+00:00 · **5 pass · 2 partial · 0 fail**
 
 The review this answers set one architectural rule above all others: hardware is not an independent scanner that emits an HBOM. Collectors feed an evidence engine; the evidence engine feeds the canonical estate; the estate feeds the digital twin; and HBOM, CBOM, NBOM and TechBOM are **projections of that one truth**. A second inventory per BOM document type is the failure mode, and the `single_source_of_truth` row below fails if one appears.
 
@@ -22,7 +22,7 @@ The review this answers set one architectural rule above all others: hardware is
 |---|---|---|---|
 | hardware foundation — identity, fact schema, evidence | **is there a hardware fact schema and a stable identity behind it?** | **PASS** | 9 probe(s), all passing |
 | collectors — Linux, Windows, network | **do collectors exist for the estate a bank actually has, and does each emit fields?** | **PARTIAL** | 22 probe(s), failing: windows-reader |
-| security hardware — HSM and TPM | **is HSM/TPM discovery deep enough to be worth anything, and can it leak a key?** | **PASS** | 5 probe(s), all passing |
+| security hardware — HSM and TPM | **is HSM/TPM discovery deep enough to be worth anything, and can it leak a key?** | **PARTIAL** | 12 probe(s), failing: vendor-rest-readers |
 | correlation — evidence-backed relationships | **is a hardware dependency proven by evidence, or assumed because both exist?** | **PASS** | 5 probe(s), all passing |
 | drift — firmware, capability, PQC | **does hardware drift name what moved — firmware, capability, PQC — or just that something did?** | **PASS** | 6 probe(s), all passing |
 | qualification — a synthetic bank estate | **does any of it survive a synthetic bank-sized estate?** | **PASS** | 4 probe(s), all passing |
@@ -47,6 +47,7 @@ Every box in the diagram above is a module, and the mapping is the point: a revi
 | drift | `hardware/drift.py`, `hardware/live/events.py` | firmware, capability, PQC |
 | safety | `hardware/safety.py` — `refuse_secret_material` | raises, never asserts |
 | HSM / TPM depth | `hardware/hsm_hw.py`, `hardware/tpm.py` | metadata only |
+| HSM readers | `hardware/hsm_readers/pkcs11.py` (CK_TOKEN_INFO + mechanisms, PIN never on argv), `hardware/hsm_readers/kmip_query.py` (Query: vendor, operations, objects, profiles) | built, executed here; vendor REST not built |
 | HSM *usage* (a different question) | `services/api/api/hsm_usage.py` — KMIP, spec 67 §17 | read-only, no `Get` |
 
 ## What a collector may observe
@@ -126,7 +127,7 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 - **PASS** `restconf-refuses-cleartext` — an http:// device URL is refused: a bank's inventory is not read over cleartext
 - **PASS** `netconf-refuses-a-credential-echo` — a device that echoes the credential in a field the collector carries is refused, not inventoried
 
-### `security_hardware` — PASS
+### `security_hardware` — PARTIAL
 
 *is HSM/TPM discovery deep enough to be worth anything, and can it leak a key?* (phase H4)
 
@@ -135,6 +136,13 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 - **PASS** `secret-material-refused` — an HSM payload carrying private_key was refused with SecretMaterialRefused
 - **PASS** `guard-survives-python-O` — the same refusal happens under `python -O`, where an assert is compiled out
 - **PASS** `observation-carries-no-key-material` — the rendered HSM observation contains no key material
+- **PASS** `pkcs11-reads-a-partition` — a Luna partition resolved to Thales Luna K7, serial 1234567890, firmware 7.8.1, across 2 partition(s) from CK_TOKEN_INFO
+- **PASS** `pkcs11-reads-pqc-mechanisms` — the mechanism list yielded 6 mechanism(s) and PQC families ['ML-KEM', 'ML-DSA', 'SLH-DSA'], which reach the same HSM observation as the questionnaire path
+- **PASS** `pkcs11-pin-never-on-argv` — the partition PIN travelled in the child's environment, never in argv where `ps` would show it to every user on the host
+- **PASS** `pkcs11-refuses-a-pin-argument` — a caller that tries to put the PIN on the command line is refused before the process is spawned
+- **PASS** `kmip-query-names-the-appliance` — KMIP Query returned vendor 'Thales Luna K7', 5 operation(s), 3 object type(s) and profile(s) ['KMIP 2.0 Profile']
+- **PASS** `kmip-query-is-read-only` — the only message this reader can build is a Query (operation 0x18); there is no Get, Locate, Create or Destroy path in the module
+- **FAIL** `vendor-rest-readers` — no vendor REST reader (Thales Luna REST, Utimaco, Entrust) is built: an appliance whose only surface is a vendor API is still described by hand
 
 ### `evidence_relationships` — PASS
 
@@ -161,12 +169,12 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 
 *does any of it survive a synthetic bank-sized estate?* (phase H8)
 
-- **PASS** `synthetic-estate-projects` — 600 synthetic hardware assets across 4 vendors and 6 device types, projected in 0.01s
+- **PASS** `synthetic-estate-projects` — 600 synthetic hardware assets across 4 vendors and 6 device types, projected in 0.00s
 - **PASS** `identity-does-not-collide` — 600 distinct identities from 600 observations (serial is the key, and it held)
 - **PASS** `drift-scales-with-change-not-with-estate` — 400 change event(s) from 120 upgraded assets in an estate of 600: per-device-type counts {'firewall': 3, 'hsm': 4, 'load_balancer': 3, 'san': 3, 'server': 3, 'tpm': 4}, and no record named an asset that did not change (0 leaked)
 - **PASS** `a-missing-observation-is-not-a-deletion` — identity is retained across observations; an asset that is not re-observed is not silently removed (retirement is its own decision)
 
-Measured: `{"assets": 600, "vendors": 4, "device_types": 6, "changes": 400, "seconds": 0.007}`
+Measured: `{"assets": 600, "vendors": 4, "device_types": 6, "changes": 400, "seconds": 0.004}`
 
 ### `single_source_of_truth` — PASS
 
@@ -182,7 +190,7 @@ The executable rows re-run against a copy of the package with three guards remov
 
 | Removed guard | Row | Result |
 |---|---|---|
-| the secret-material guard becomes a no-op | `security_hardware` | caught — secret-material-refused, guard-survives-python-O |
+| the secret-material guard becomes a no-op | `security_hardware` | caught — secret-material-refused, guard-survives-python-O, vendor-rest-readers |
 | an edge no longer needs evidence | `evidence_relationships` | caught — an-unevidenced-edge-is-refused |
 | post-quantum algorithms stop being distinguished | `hardware_drift` | caught — pqc-capability-arrives-as-its-own-row, losing-pqc-capability-is-high-severity |
 
@@ -195,6 +203,7 @@ Every injected defect was caught.
 - the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data
 - the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted replies: no appliance was contacted, and a real device's ENTITY-MIB or `ietf-hardware` model may be sparse, vendor-extended or absent entirely
 - only the standard YANG models are read (`ietf-system`, `ietf-hardware`): vendor models expose extra facts — licence state, HA role, crypto policy — that this artifact does not collect
+- the HSM readers run against recorded `pkcs11-tool` output and a hand-built KMIP response: no appliance was opened, and real Luna/nShield/Utimaco tokens differ in which mechanisms they list and which attributes they let an unprivileged session read
 - the synthetic estate measures identity, drift volume and runtime, not discovery precision or recall against real vendor firmware
 - encryption at rest, per-tenant key custody and vendor attestation are outside this artifact entirely
 
@@ -204,7 +213,7 @@ The PASS rows are the parts already in the tree; the PARTIAL and FAIL rows name 
 
 1. **H3 the Windows reader** — the probe that still fails. WMI/CIM is not a PowerShell string built from input: fixed classes (`Win32_ComputerSystem`, `Win32_DiskDrive`, `Win32_PhysicalMemory`), a fixed argv to a fixed helper, the same allowlist discipline as the Linux reader, and the TPM APIs read through the OS surface rather than a vendor tool. It must be tested on Windows, which no CI here can do — so it will ship with the gap stated, not with a green row.
 2. **Vendor YANG and vendor REST models** — the standard `ietf-hardware` model carries serial, model and firmware; it does not carry HA role, licence state or crypto policy. Those live in vendor models (`Cisco-IOS-XE-*`, `junos-*`), and each one needs its own parser and its own negative control before it is trusted.
-3. **H4 HSM depth per vendor** — partition, cluster and HA state are in the observation model; what is missing is a reader per vendor (PKCS#11 attributes, KMIP `Query`, vendor REST) and a burn-in against each.
+3. **Vendor REST HSM readers** — PKCS#11 and KMIP `Query` cover the vendor-neutral surface, but cluster and HA state (the review's H4 asks for both) are vendor-specific: Luna's `cluster`/`haRole`, nShield's module states, Utimaco's HA groups. Each needs its own reader, its own fixture, and a burn-in against the vendor's documented API, because inventing one from memory would produce confident fiction.
 4. **H6 correlation for network hardware** — a switch is now in the estate, but nothing links it to the certificates it terminates or the flows it carries; the relationship engine can express that edge and has no network evidence source feeding it yet.
 5. **H8 qualification against a real bank estate** — the synthetic run above is a floor. Precision and recall need ground truth only a customer can provide.
 

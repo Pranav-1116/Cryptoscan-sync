@@ -142,7 +142,23 @@
 > three transports produce one `NetworkDeviceFacts` and one observation
 > projection, so the estate cannot end up with three versions of the same
 > switch, and each refuses a device that echoes the credential in a field it
-> carries. The PARTIAL is now one probe: no WMI/CIM reader for Windows.
+> carries.
+>
+> The security hardware got the same treatment: `hardware/hsm_readers/pkcs11.py`
+> reads a partition's `CK_TOKEN_INFO` and its mechanism list — firmware, serial,
+> model, login and write-protection flags, and the post-quantum mechanisms an
+> appliance advertises (`CKM_ML_KEM`, `CKM_ML_DSA`, `CKM_SLH_DSA`) — with the
+> PIN in the child's environment and never in argv, where `ps` would show it to
+> every user on the host; an argv carrying `--pin` is refused before anything is
+> spawned. `hardware/hsm_readers/kmip_query.py` asks the appliance what it can
+> do over KMIP `Query` — vendor identification, supported operations, object
+> types, profiles — and can build that one operation and nothing else. Both feed
+> the existing `HsmHardwareScanner`, so the estate keeps one HSM observation and
+> not one per protocol.
+>
+> Two PARTIALs remain, and both are probes: no WMI/CIM reader for Windows, and
+> no vendor REST reader for the cluster/HA state that only a vendor API
+> exposes.
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

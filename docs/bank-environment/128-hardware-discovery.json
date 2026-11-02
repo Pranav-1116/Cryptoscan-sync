@@ -1,9 +1,9 @@
 {
   "schema": "cryptoscan.hardware-discovery/1",
-  "generated_at": "2026-11-02T12:05:02.558406+00:00",
+  "generated_at": "2026-11-02T12:17:28.488853+00:00",
   "counts": {
-    "PASS": 6,
-    "PARTIAL": 1,
+    "PASS": 5,
+    "PARTIAL": 2,
     "FAIL": 0
   },
   "rows": [
@@ -211,10 +211,47 @@
           "probe": "observation-carries-no-key-material",
           "ok": true,
           "observed": "the rendered HSM observation contains no key material"
+        },
+        {
+          "probe": "pkcs11-reads-a-partition",
+          "ok": true,
+          "observed": "a Luna partition resolved to Thales Luna K7, serial 1234567890, firmware 7.8.1, across 2 partition(s) from CK_TOKEN_INFO"
+        },
+        {
+          "probe": "pkcs11-reads-pqc-mechanisms",
+          "ok": true,
+          "observed": "the mechanism list yielded 6 mechanism(s) and PQC families ['ML-KEM', 'ML-DSA', 'SLH-DSA'], which reach the same HSM observation as the questionnaire path"
+        },
+        {
+          "probe": "pkcs11-pin-never-on-argv",
+          "ok": true,
+          "observed": "the partition PIN travelled in the child's environment, never in argv where `ps` would show it to every user on the host"
+        },
+        {
+          "probe": "pkcs11-refuses-a-pin-argument",
+          "ok": true,
+          "observed": "a caller that tries to put the PIN on the command line is refused before the process is spawned"
+        },
+        {
+          "probe": "kmip-query-names-the-appliance",
+          "ok": true,
+          "observed": "KMIP Query returned vendor 'Thales Luna K7', 5 operation(s), 3 object type(s) and profile(s) ['KMIP 2.0 Profile']"
+        },
+        {
+          "probe": "kmip-query-is-read-only",
+          "ok": true,
+          "observed": "the only message this reader can build is a Query (operation 0x18); there is no Get, Locate, Create or Destroy path in the module"
+        },
+        {
+          "probe": "vendor-rest-readers",
+          "ok": false,
+          "observed": "no vendor REST reader (Thales Luna REST, Utimaco, Entrust) is built: an appliance whose only surface is a vendor API is still described by hand"
         }
       ],
-      "verdict": "PASS",
-      "failed": []
+      "verdict": "PARTIAL",
+      "failed": [
+        "vendor-rest-readers"
+      ]
     },
     {
       "id": "evidence_relationships",
@@ -297,7 +334,7 @@
         {
           "probe": "synthetic-estate-projects",
           "ok": true,
-          "observed": "600 synthetic hardware assets across 4 vendors and 6 device types, projected in 0.01s"
+          "observed": "600 synthetic hardware assets across 4 vendors and 6 device types, projected in 0.00s"
         },
         {
           "probe": "identity-does-not-collide",
@@ -320,7 +357,7 @@
         "vendors": 4,
         "device_types": 6,
         "changes": 400,
-        "seconds": 0.007
+        "seconds": 0.004
       },
       "verdict": "PASS",
       "failed": []
@@ -354,10 +391,11 @@
     "injections": {
       "security_hardware": {
         "description": "the secret-material guard becomes a no-op",
-        "verdict": "FAIL",
+        "verdict": "PARTIAL",
         "failed_probes": [
           "secret-material-refused",
-          "guard-survives-python-O"
+          "guard-survives-python-O",
+          "vendor-rest-readers"
         ],
         "caught": true
       },
@@ -387,6 +425,7 @@
     "the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data",
     "the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted replies: no appliance was contacted, and a real device's ENTITY-MIB or `ietf-hardware` model may be sparse, vendor-extended or absent entirely",
     "only the standard YANG models are read (`ietf-system`, `ietf-hardware`): vendor models expose extra facts \u2014 licence state, HA role, crypto policy \u2014 that this artifact does not collect",
+    "the HSM readers run against recorded `pkcs11-tool` output and a hand-built KMIP response: no appliance was opened, and real Luna/nShield/Utimaco tokens differ in which mechanisms they list and which attributes they let an unprivileged session read",
     "the synthetic estate measures identity, drift volume and runtime, not discovery precision or recall against real vendor firmware",
     "encryption at rest, per-tenant key custody and vendor attestation are outside this artifact entirely"
   ]

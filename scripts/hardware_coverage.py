@@ -124,6 +124,7 @@ def _load_package(root: Path):
     import universal_vendor.hardware.host.linux as host_linux  # noqa: PLC0415
     import universal_vendor.hardware.host.netconf as host_netconf  # noqa: PLC0415
     import universal_vendor.hardware.host.restconf as host_restconf  # noqa: PLC0415
+    import universal_vendor.hardware.hsm_readers as hsm_readers  # noqa: PLC0415
     import universal_vendor.hardware.host.snmp_bridge as snmp_bridge  # noqa: PLC0415
     import universal_vendor.hardware.hsm_hw as hsm  # noqa: PLC0415
     import universal_vendor.hardware.models as models  # noqa: PLC0415
@@ -136,6 +137,7 @@ def _load_package(root: Path):
             "device_observation": device_observation,
             "host_credentials": host_credentials, "host_linux": host_linux,
             "host_netconf": host_netconf, "host_restconf": host_restconf, "hsm": hsm,
+            "hsm_readers": hsm_readers,
             "models": models, "plugins": plugins, "snmp_bridge": snmp_bridge,
             "relationships": relationships, "safety": safety, "tpm": tpm}
 
@@ -319,6 +321,77 @@ _FIXTURE_RESTHARDWARE = {"ietf-hardware:hardware": {"component": [
      "model-name": "EX4300-48T", "firmware-rev": "21.4R3", "manufacturer": "Juniper"},
     {"name": "Fan 1", "class": "module", "serial-num": "FAN-J1"},
 ]}}
+
+
+_FIXTURE_PKCS11_TOKEN_INFO = """Available slots:
+Slot 0 (0x0): Thales Luna PCIe 800
+  token label        : partition-payments
+  token manufacturer : Thales
+  token model        : Luna K7
+  token flags        : login required, rng, write protected,
+  token serial       : 1234567890
+  hardware version   : 7.0
+  firmware version   : 7.8.1
+  UTC time           : Tue Nov  4 09:12:00 2025
+
+Slot 1 (0x1): Thales Luna PCIe 800
+  token label        : partition-signing
+  token manufacturer : Thales
+  token model        : Luna K7
+  token flags        : login required, rng,
+  token serial       : 1234567891
+  hardware version   : 7.0
+  firmware version   : 7.8.1
+
+Slot 2 (0x2): Luna Backup
+  (empty)
+"""
+
+_FIXTURE_PKCS11_MECHANISMS = """Using slot 0 with a present token (0x0)
+Supported mechanisms:
+  CKM_AES_KEY_GEN, keySize={16,32}, hw, encrypt, decrypt, wrap, unwrap
+  CKM_ML_KEM, keySize={768,1024}, hw
+  CKM_ML_DSA, keySize={44,65,87}, hw, sign, verify
+  CKM_SLH_DSA, hw, sign, verify
+  CKM_RSA_PKCS, keySize={1024,4096}, hw, sign, verify
+  CKM_ECDSA, hw, sign
+"""
+
+
+class _FakePkcs11Tool:
+    """A recorded ``pkcs11-tool``: answers by flag, remembers argv and env."""
+
+    def __init__(self, readers: Any) -> None:
+        self.readers = readers
+        self.calls: list[tuple[tuple[str, ...], dict[str, str]]] = []
+
+    def __call__(self, argv, timeout, env):
+        self.calls.append((tuple(argv), dict(env)))
+        stdout = _FIXTURE_PKCS11_TOKEN_INFO if "-T" in argv else _FIXTURE_PKCS11_MECHANISMS
+        return self.readers.CommandResult(tuple(argv), 0, stdout, "")
+
+
+def _FIXTURE_KMIP_QUERY_RESPONSE() -> bytes:
+    """A Query response as an appliance would encode it."""
+    from universal_vendor.hardware.hsm_readers import kmip_query as kmip  # noqa: PLC0415
+
+    payload = kmip.ttlv_structure(
+        kmip.TAG_RESPONSE_PAYLOAD,
+        kmip.ttlv_structure(kmip.TAG_OPERATIONS,
+                            *[kmip.ttlv_enum(kmip.TAG_OPERATION, op)
+                              for op in (0x08, 0x0B, 0x18, 0x1F, 0x21)]),
+        kmip.ttlv_structure(kmip.TAG_OBJECTS,
+                            *[kmip.ttlv_enum(kmip.TAG_OPERATION, obj)
+                              for obj in (0x02, 0x03, 0x04)]),
+        kmip.ttlv_structure(kmip.TAG_SERVER_INFORMATION,
+                            kmip.ttlv_text(kmip.TAG_VENDOR_IDENTIFICATION, "Thales Luna K7"),
+                            kmip.ttlv_text(kmip.TAG_SERVER_SERIAL_NUMBER, "LX-778812")),
+        kmip.ttlv_structure(kmip.TAG_PROFILE_INFORMATION,
+                            kmip.ttlv_text(kmip.TAG_NAME, "KMIP 2.0 Profile")),
+    )
+    batch = kmip.ttlv_structure(kmip.TAG_BATCH_ITEM,
+                                kmip.ttlv_enum(kmip.TAG_RESULT_STATUS, 0), payload)
+    return kmip.ttlv_structure(kmip.TAG_RESPONSE_MESSAGE, batch)
 
 
 def _snmp_modules() -> dict[str, Any] | None:
@@ -773,9 +846,80 @@ def row_security_hardware(modules: dict[str, Any], root: Path,
     probes.append(_probe("observation-carries-no-key-material", not leaked,
                          "the rendered HSM observation contains no key material"
                          if not leaked else f"the observation leaked {leaked}"))
+    # H4 depth: read the appliance, do not just describe it from a questionnaire.
+    readers = modules["hsm_readers"]
+    with tempfile.TemporaryDirectory(prefix="hardware-hsm-") as scratch:
+        module_path = Path(scratch) / "libCryptoki2_64.so"
+        module_path.write_text("fixture", encoding="utf-8")
+        tool = _FakePkcs11Tool(readers)
+        pkcs11_facts = readers.Pkcs11Reader(
+            runner=tool, environ={"PKCS11_PIN": "1234"}).collect(str(module_path))
+    observation_from_reader = hsm_module.HsmHardwareScanner().scan(pkcs11_facts.to_raw())
+
+    probes.append(_probe(
+        "pkcs11-reads-a-partition",
+        pkcs11_facts.serial_reference == "1234567890"
+        and pkcs11_facts.firmware == "7.8.1" and pkcs11_facts.model == "Luna K7"
+        and len(pkcs11_facts.partitions) == 2,
+        f"a Luna partition resolved to {pkcs11_facts.manufacturer} {pkcs11_facts.model}, "
+        f"serial {pkcs11_facts.serial_reference}, firmware {pkcs11_facts.firmware}, across "
+        f"{len(pkcs11_facts.partitions)} partition(s) from CK_TOKEN_INFO"))
+    probes.append(_probe(
+        "pkcs11-reads-pqc-mechanisms",
+        set(pkcs11_facts.pqc_algorithms) == {"ML-KEM", "ML-DSA", "SLH-DSA"}
+        and observation_from_reader["pqc_capability"] == "SUPPORTED",
+        f"the mechanism list yielded {len(pkcs11_facts.mechanisms)} mechanism(s) and PQC "
+        f"families {pkcs11_facts.pqc_algorithms}, which reach the same HSM observation as "
+        "the questionnaire path"))
+    probes.append(_probe(
+        "pkcs11-pin-never-on-argv",
+        all("1234" not in " ".join(argv) for argv, _env in tool.calls)
+        and all(env.get("PKCS11_PIN") == "1234" for _argv, env in tool.calls),
+        "the partition PIN travelled in the child's environment, never in argv where "
+        "`ps` would show it to every user on the host"))
+    try:
+        readers.build_argv("pkcs11-tool", "--pin", "1234")
+    except readers.PinOnCommandLineRefused:
+        pin_refused = True
+    else:
+        pin_refused = False
+    probes.append(_probe(
+        "pkcs11-refuses-a-pin-argument", pin_refused,
+        "a caller that tries to put the PIN on the command line is refused before the "
+        "process is spawned"))
+
+    kmip = readers.KmipQueryReader(transport=lambda request: _FIXTURE_KMIP_QUERY_RESPONSE())
+    capabilities = kmip.collect()
+    probes.append(_probe(
+        "kmip-query-names-the-appliance",
+        capabilities.supports_query and capabilities.vendor_identification == "Thales Luna K7",
+        f"KMIP Query returned vendor {capabilities.vendor_identification!r}, "
+        f"{len(capabilities.operations)} operation(s), {len(capabilities.objects)} object "
+        f"type(s) and profile(s) {capabilities.profiles}"))
+    request = readers.query_request()
+    probes.append(_probe(
+        "kmip-query-is-read-only",
+        kmip_query_is_query_only(readers, request),
+        "the only message this reader can build is a Query (operation 0x18); there is no "
+        "Get, Locate, Create or Destroy path in the module"))
+    probes.append(_probe(
+        "vendor-rest-readers", False,
+        "no vendor REST reader (Thales Luna REST, Utimaco, Entrust) is built: an appliance "
+        "whose only surface is a vendor API is still described by hand"))
+
     return {"id": "security_hardware",
             "question": "is HSM/TPM discovery deep enough to be worth anything, and can it leak a key?",
             "phase": "H4", "probes": probes}
+
+
+def kmip_query_is_query_only(readers: Any, request: bytes) -> bool:
+    """The request must be a Query and must name no object."""
+    from universal_vendor.hardware.hsm_readers import kmip_query as kmip  # noqa: PLC0415
+
+    if kmip.OPERATION_QUERY.to_bytes(4, "big") not in request:
+        return False
+    lowered = request.lower()
+    return not any(word in lowered for word in (b"locate", b"create", b"destroy", b"get "))
 
 
 def _secret_refusal(modules: dict[str, Any], pessimistic: bool) -> tuple[str, str]:
@@ -1186,6 +1330,10 @@ def measure() -> dict[str, Any]:
             "only the standard YANG models are read (`ietf-system`, `ietf-hardware`): "
             "vendor models expose extra facts — licence state, HA role, crypto policy — that "
             "this artifact does not collect",
+            "the HSM readers run against recorded `pkcs11-tool` output and a hand-built KMIP "
+            "response: no appliance was opened, and real Luna/nShield/Utimaco tokens differ in "
+            "which mechanisms they list and which attributes they let an unprivileged session "
+            "read",
             "the synthetic estate measures identity, drift volume and runtime, not discovery "
             "precision or recall against real vendor firmware",
             "encryption at rest, per-tenant key custody and vendor attestation are outside this "
@@ -1285,6 +1433,9 @@ def render_md(report: dict[str, Any]) -> str:
         "| drift | `hardware/drift.py`, `hardware/live/events.py` | firmware, capability, PQC |",
         "| safety | `hardware/safety.py` — `refuse_secret_material` | raises, never asserts |",
         "| HSM / TPM depth | `hardware/hsm_hw.py`, `hardware/tpm.py` | metadata only |",
+        "| HSM readers | `hardware/hsm_readers/pkcs11.py` (CK_TOKEN_INFO + mechanisms, PIN "
+        "never on argv), `hardware/hsm_readers/kmip_query.py` (Query: vendor, operations, "
+        "objects, profiles) | built, executed here; vendor REST not built |",
         "| HSM *usage* (a different question) | `services/api/api/hsm_usage.py` — KMIP, spec 67 "
         "§17 | read-only, no `Get` |",
         "",
@@ -1392,9 +1543,11 @@ def render_md(report: dict[str, Any]) -> str:
         "carries serial, model and firmware; it does not carry HA role, licence state or "
         "crypto policy. Those live in vendor models (`Cisco-IOS-XE-*`, `junos-*`), and each "
         "one needs its own parser and its own negative control before it is trusted.",
-        "3. **H4 HSM depth per vendor** — partition, cluster and HA state are in the "
-        "observation model; what is missing is a reader per vendor (PKCS#11 attributes, "
-        "KMIP `Query`, vendor REST) and a burn-in against each.",
+        "3. **Vendor REST HSM readers** — PKCS#11 and KMIP `Query` cover the vendor-neutral "
+        "surface, but cluster and HA state (the review's H4 asks for both) are vendor-specific: "
+        "Luna's `cluster`/`haRole`, nShield's module states, Utimaco's HA groups. Each needs "
+        "its own reader, its own fixture, and a burn-in against the vendor's documented API, "
+        "because inventing one from memory would produce confident fiction.",
         "4. **H6 correlation for network hardware** — a switch is now in the estate, but "
         "nothing links it to the certificates it terminates or the flows it carries; the "
         "relationship engine can express that edge and has no network evidence source "
