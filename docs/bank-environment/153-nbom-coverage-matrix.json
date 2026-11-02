@@ -1,0 +1,456 @@
+{
+  "schema": "cryptoscan.nbom-coverage-guide/1",
+  "generated_at": "2026-11-02T19:01:09.242158+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 29,
+  "statuses": [
+    "COMPLETE",
+    "PARTIAL",
+    "FAILED",
+    "UNAUTHORIZED",
+    "UNMEASURED"
+  ],
+  "reasons": [
+    "NO_TARGETS",
+    "NOT_ATTEMPTED",
+    "FAILED_PROBES",
+    "UNAUTHORIZED",
+    "EXCLUDED",
+    "NOT_OBSERVED"
+  ],
+  "matrix": {
+    "schema": "cryptoscan.nbom-coverage/1",
+    "as_of": "2026-11-02",
+    "unit": "endpoint",
+    "groups": [
+      {
+        "target": "External endpoints",
+        "unit": "endpoint",
+        "expected": 120,
+        "attempted": 120,
+        "observed": 118,
+        "failed": 0,
+        "unauthorized": 0,
+        "excluded": 0,
+        "unattempted": 0,
+        "coverage_pct": 98.3,
+        "status": "PARTIAL",
+        "reasons": [
+          "NOT_OBSERVED"
+        ],
+        "statement": "External endpoints: 118 of 120 observed (98.3%)"
+      },
+      {
+        "target": "Internal LB",
+        "unit": "endpoint",
+        "expected": 25,
+        "attempted": 25,
+        "observed": 25,
+        "failed": 0,
+        "unauthorized": 0,
+        "excluded": 0,
+        "unattempted": 0,
+        "coverage_pct": 100.0,
+        "status": "COMPLETE",
+        "reasons": [],
+        "statement": "Internal LB: 25 of 25 observed (100.0%); every expected endpoint was observed"
+      },
+      {
+        "target": "API gateways",
+        "unit": "endpoint",
+        "expected": 40,
+        "attempted": 40,
+        "observed": 37,
+        "failed": 0,
+        "unauthorized": 0,
+        "excluded": 0,
+        "unattempted": 0,
+        "coverage_pct": 92.5,
+        "status": "PARTIAL",
+        "reasons": [
+          "NOT_OBSERVED"
+        ],
+        "statement": "API gateways: 37 of 40 observed (92.5%)"
+      },
+      {
+        "target": "DB endpoints",
+        "unit": "endpoint",
+        "expected": 80,
+        "attempted": 60,
+        "observed": 54,
+        "failed": 0,
+        "unauthorized": 0,
+        "excluded": 0,
+        "unattempted": 20,
+        "coverage_pct": 67.5,
+        "status": "PARTIAL",
+        "reasons": [
+          "NOT_ATTEMPTED"
+        ],
+        "statement": "DB endpoints: 54 of 80 observed (67.5%); 20 never attempted"
+      },
+      {
+        "target": "HSM network interfaces",
+        "unit": "endpoint",
+        "expected": 8,
+        "attempted": 8,
+        "observed": 8,
+        "failed": 0,
+        "unauthorized": 0,
+        "excluded": 0,
+        "unattempted": 0,
+        "coverage_pct": 100.0,
+        "status": "COMPLETE",
+        "reasons": [],
+        "statement": "HSM network interfaces: 8 of 8 observed (100.0%); every expected endpoint was observed"
+      },
+      {
+        "target": "VPN gateways",
+        "unit": "endpoint",
+        "expected": 12,
+        "attempted": 10,
+        "observed": 9,
+        "failed": 0,
+        "unauthorized": 0,
+        "excluded": 0,
+        "unattempted": 2,
+        "coverage_pct": 75.0,
+        "status": "PARTIAL",
+        "reasons": [
+          "NOT_ATTEMPTED"
+        ],
+        "statement": "VPN gateways: 9 of 12 observed (75.0%); 2 never attempted"
+      }
+    ],
+    "totals": {
+      "expected": 285,
+      "attempted": 263,
+      "observed": 251,
+      "failed": 0,
+      "unauthorized": 0,
+      "excluded": 0,
+      "unattempted": 22
+    },
+    "coverage_pct": 88.1,
+    "status": "PARTIAL",
+    "complete_groups": [
+      "Internal LB",
+      "HSM network interfaces"
+    ],
+    "incomplete_groups": [
+      "External endpoints",
+      "API gateways",
+      "DB endpoints",
+      "VPN gateways"
+    ],
+    "unmeasured_groups": [],
+    "reason_counts": {
+      "NOT_ATTEMPTED": 2,
+      "NOT_OBSERVED": 2
+    },
+    "statement": "251 of 285 expected endpoint(s) observed across 6 target group(s) (88.1%) \u2014 partial: 2 group(s) complete, 22 never attempted; any total is a floor on the network, not the network",
+    "claim": {
+      "may_report_total": false,
+      "basis": "FLOOR",
+      "observed": 251,
+      "expected": 285,
+      "coverage_pct": 88.1,
+      "statement": "251 endpoint(s) observed is a floor: the matrix does not cover the whole estate, so the NBOM describes what was observed, not what exists"
+    }
+  },
+  "estate_example": {
+    "schema": "cryptoscan.nbom-coverage/1",
+    "as_of": "2026-11-02T19:01:09.242214+00:00",
+    "unit": "endpoint",
+    "groups": [
+      {
+        "target": "all endpoints",
+        "unit": "endpoint",
+        "expected": 10000,
+        "attempted": 8000,
+        "observed": 6500,
+        "failed": 1000,
+        "unauthorized": 500,
+        "excluded": 0,
+        "unattempted": 1500,
+        "coverage_pct": 65.0,
+        "status": "PARTIAL",
+        "reasons": [
+          "FAILED_PROBES",
+          "UNAUTHORIZED",
+          "NOT_ATTEMPTED"
+        ],
+        "statement": "all endpoints: 6500 of 10000 observed (65.0%); 1500 never attempted, 500 unauthorized, 1000 failed"
+      }
+    ],
+    "totals": {
+      "expected": 10000,
+      "attempted": 8000,
+      "observed": 6500,
+      "failed": 1000,
+      "unauthorized": 500,
+      "excluded": 0,
+      "unattempted": 1500
+    },
+    "coverage_pct": 65.0,
+    "status": "PARTIAL",
+    "complete_groups": [],
+    "incomplete_groups": [
+      "all endpoints"
+    ],
+    "unmeasured_groups": [],
+    "reason_counts": {
+      "NOT_ATTEMPTED": 1,
+      "FAILED_PROBES": 1,
+      "UNAUTHORIZED": 1
+    },
+    "statement": "6500 of 10000 expected endpoint(s) observed across 1 target group(s) (65.0%) \u2014 partial: 0 group(s) complete, 1500 never attempted, 500 unauthorized, 1000 failed; any total is a floor on the network, not the network",
+    "claim": {
+      "may_report_total": false,
+      "basis": "FLOOR",
+      "observed": 6500,
+      "expected": 10000,
+      "coverage_pct": 65.0,
+      "statement": "6500 endpoint(s) observed is a floor: the matrix does not cover the whole estate, so the NBOM describes what was observed, not what exists"
+    }
+  },
+  "summary": {
+    "schema": "cryptoscan.nbom-coverage/1",
+    "status": "PARTIAL",
+    "coverage_pct": 88.1,
+    "expected": 285,
+    "observed": 251,
+    "gaps": {
+      "attempted": 263,
+      "failed": 0,
+      "unauthorized": 0,
+      "unattempted": 22,
+      "excluded": 0
+    },
+    "complete_groups": [
+      "Internal LB",
+      "HSM network interfaces"
+    ],
+    "incomplete_groups": [
+      "External endpoints",
+      "API gateways",
+      "DB endpoints",
+      "VPN gateways"
+    ],
+    "unmeasured_groups": [],
+    "may_report_total": false,
+    "statement": "251 of 285 expected endpoint(s) observed across 6 target group(s) (88.1%) \u2014 partial: 2 group(s) complete, 22 never attempted; any total is a floor on the network, not the network"
+  },
+  "claim": {
+    "may_report_total": false,
+    "basis": "FLOOR",
+    "observed": 251,
+    "expected": 285,
+    "coverage_pct": 88.1,
+    "statement": "251 endpoint(s) observed is a floor: the matrix does not cover the whole estate, so the NBOM describes what was observed, not what exists"
+  },
+  "rows": [
+    {
+      "id": "observed_is_not_the_network",
+      "question": "does 6,500 observed endpoints read as a 10,000-endpoint estate?",
+      "phase": "review 4",
+      "probes": [
+        {
+          "probe": "the-review-s-numbers-produce-65-percent",
+          "ok": true,
+          "observed": "6500 of 10000 (65.0%)"
+        },
+        {
+          "probe": "the-status-is-partial-not-complete",
+          "ok": true,
+          "observed": "PARTIAL"
+        },
+        {
+          "probe": "the-unattempted-endpoints-are-counted",
+          "ok": true,
+          "observed": "1500 never attempted = 10,000 \u2212 8,000 \u2212 500"
+        },
+        {
+          "probe": "a-partial-estate-yields-a-floor-never-a-total",
+          "ok": true,
+          "observed": "6500 endpoint(s) observed is a floor: the matrix does not cover the whole estate, so the NBOM describes what was observed, not what exists"
+        },
+        {
+          "probe": "only-a-fully-observed-estate-supports-a-total",
+          "ok": true,
+          "observed": "25 endpoint(s) observed, and every expected endpoint was observed"
+        },
+        {
+          "probe": "the-gaps-are-named-in-words-not-only-in-numbers",
+          "ok": true,
+          "observed": "6500 of 10000 expected endpoint(s) observed across 1 target group(s) (65.0%) \u2014 partial: 0 group(s) complete, 1500 never attempted, 500 unauthorized, 1000 failed; any total is a floor on the network, not the network"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "five_statuses",
+      "question": "is 'not complete' fine-grained enough to act on?",
+      "phase": "review 5",
+      "probes": [
+        {
+          "probe": "all-five-statuses-are-reachable-and-distinct",
+          "ok": true,
+          "observed": "{\"COMPLETE\": \"COMPLETE\", \"FAILED\": \"FAILED\", \"PARTIAL\": \"PARTIAL\", \"UNAUTHORIZED\": \"UNAUTHORIZED\", \"UNMEASURED\": \"UNMEASURED\"}"
+        },
+        {
+          "probe": "an-unmeasured-group-is-neither-0-nor-100-percent",
+          "ok": true,
+          "observed": "Partner network: no target list, so coverage is unknown \u2014 0% and 100% are both wrong"
+        },
+        {
+          "probe": "probes-that-all-failed-are-a-scan-failure-not-an-empty-network",
+          "ok": true,
+          "observed": "DMZ: 0 of 10 observed (0.0%); probes ran and none negotiated \u2014 that is a scan failure, not an empty network"
+        },
+        {
+          "probe": "an-unauthorized-group-is-called-an-authorization-gap",
+          "ok": true,
+          "observed": "Partner VPN: 0 of 12 observed (0.0%); nothing was attempted because the collector was not authorized for this group"
+        },
+        {
+          "probe": "a-complete-group-says-so-without-a-caveat",
+          "ok": true,
+          "observed": "no reasons, because there is no gap"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "arithmetic_checked",
+      "question": "can a stale target list produce a plausible percentage?",
+      "phase": "review 4",
+      "probes": [
+        {
+          "probe": "an-observation-above-the-target-list-is-refused",
+          "ok": true,
+          "observed": "x: 6 observed against 5 expected \u2014 the target list is stale, and clamping the percentage would hide that"
+        },
+        {
+          "probe": "a-probe-against-an-uninventoried-endpoint-is-refused",
+          "ok": true,
+          "observed": "x: 6 attempted against 5 expected \u2014 the scan targeted endpoints nobody inventoried"
+        },
+        {
+          "probe": "an-observation-without-a-probe-is-refused",
+          "ok": true,
+          "observed": "x: 2 observed against 1 attempted \u2014 an observation needs a probe"
+        },
+        {
+          "probe": "a-negative-or-boolean-count-is-refused",
+          "ok": true,
+          "observed": "expected must be a count, not a boolean"
+        },
+        {
+          "probe": "a-row-with-no-target-is-refused",
+          "ok": true,
+          "observed": "a coverage row needs a target (which group is being measured)"
+        },
+        {
+          "probe": "the-same-group-twice-is-refused-rather-than-summed",
+          "ok": true,
+          "observed": "dmz appears twice in one matrix"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "from_probes",
+      "question": "does a stored probe ledger produce an honest coverage row?",
+      "phase": "review 4 / 3",
+      "probes": [
+        {
+          "probe": "a-successful-handshake-is-observed",
+          "ok": true,
+          "observed": "2 observed"
+        },
+        {
+          "probe": "a-timeout-is-a-failure-and-never-an-observation",
+          "ok": true,
+          "observed": "failed=1, observed=2"
+        },
+        {
+          "probe": "an-unauthorized-probe-is-not-counted-as-attempted",
+          "ok": true,
+          "observed": "unauthorized=1, attempted=3"
+        },
+        {
+          "probe": "an-undocumented-status-is-refused-not-bucketed",
+          "ok": true,
+          "observed": "status MAYBE is not a documented probe outcome, so it is not counted as observed or failed"
+        },
+        {
+          "probe": "a-declared-endpoint-nobody-probed-is-the-gap",
+          "ok": true,
+          "observed": "1 unattempted: ['f.bank.example:443']"
+        },
+        {
+          "probe": "the-row-is-partial-because-a-declared-endpoint-was-never-probed",
+          "ok": true,
+          "observed": "External endpoints: 2 of 5 observed (40.0%); 1 never attempted, 1 unauthorized, 1 failed; 1 declared endpoint(s) were never probed; 1 probe row(s) refused"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "document_carries_the_claim",
+      "question": "does the NBOM itself say how much of the network it covers?",
+      "phase": "review 4 / 5",
+      "probes": [
+        {
+          "probe": "the-block-travels-with-the-document",
+          "ok": true,
+          "observed": "PARTIAL at 88.1% of 285"
+        },
+        {
+          "probe": "the-total-claim-is-a-property-a-reader-cannot-miss",
+          "ok": true,
+          "observed": "cryptoscan:network_may_report_total = false"
+        },
+        {
+          "probe": "existing-document-properties-survive",
+          "ok": true,
+          "observed": "the estate property is still there"
+        },
+        {
+          "probe": "an-nbom-with-components-and-no-coverage-is-unqualified",
+          "ok": true,
+          "observed": "1 component(s) and no coverage block: the document does not say how much of the network it describes"
+        },
+        {
+          "probe": "an-empty-nbom-claims-nothing-so-it-is-not-lying",
+          "ok": true,
+          "observed": "no components and no coverage block, so nothing is claimed"
+        },
+        {
+          "probe": "a-complete-document-may-report-a-total",
+          "ok": true,
+          "observed": "coverage COMPLETE at 100.0%; a total may be quoted"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the expected count comes from the estate's target list. If nobody inventoried the network to begin with, the matrix is arithmetically correct and still describes the wrong denominator \u2014 that is why a group with no targets is UNMEASURED rather than 0%",
+    "coverage is counted per endpoint, not per service behind it. One IP with twelve virtual hosts is one endpoint here and twelve listeners in the NBOM, and neither number is wrong as long as the unit is read",
+    "a probe status vocabulary is a contract. A scanner that starts emitting a new outcome will have its rows refused until the status is mapped, which is deliberate: silently bucketing a new failure mode into 'observed' is the failure this module exists to prevent",
+    "the numbers describe a moment. A run six weeks old is still COMPLETE for the endpoints it probed, so staleness has to be read from the run, not inferred from coverage_pct",
+    "coverage says how much was looked at, never how much cryptography is there. A 100% covered estate with an empty NBOM is a measurement; a 65% estate with 6,500 listeners is a floor",
+    "attaching the block to a document does not enforce it. A reader that ignores cryptoscan:network_may_report_total can still quote a total, which is why qualify() exists for the readers the platform controls"
+  ]
+}

@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -1447,6 +1447,87 @@ def nbom_live(db: Session = Depends(get_db_session), user: str = Depends(get_cur
     bom = build_nbom(gathered["endpoints"], estate="network-estate")
     return {"nbom": bom, "summary": summarise(bom),
             "source": "live" if gathered["endpoints"] else "empty"}
+
+class NbomCoverageRequest(BaseModel):
+    groups: list[dict] = Field(default_factory=list, description=(
+        "one row per target group: target, expected, attempted, observed, failed, "
+        "unauthorized, excluded. An observation above the target count is refused, "
+        "because it means the target list is stale"))
+    as_of: str | None = Field(None, description="ISO timestamp the matrix describes")
+    unit: str = Field("endpoint", description="what is being counted")
+
+
+class NbomCoverageResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    status: str
+    coverage_pct: float | None
+    totals: dict
+    groups: list[dict]
+    complete_groups: list[str]
+    incomplete_groups: list[str]
+    unmeasured_groups: list[str]
+    claim: dict
+    summary: dict
+    statement: str
+
+
+class NbomProbeCoverageRequest(BaseModel):
+    name: str = Field("network", description="the target group this ledger belongs to")
+    probes: list[dict] = Field(default_factory=list, description=(
+        "stored probe rows: endpoint and status. OK/TLS_OK is observed, "
+        "TIMEOUT/REFUSED/ERROR is failed, UNAUTHORIZED is unauthorized, and any other "
+        "status is refused rather than bucketed"))
+    declared: list[str] = Field(default_factory=list, description=(
+        "the target list: a declared endpoint no probe touched becomes unattempted"))
+
+
+class NbomProbeCoverageResponse(BaseModel):
+    row: dict
+    refused: list[dict]
+    statement: str
+
+
+#: Reading a coverage matrix is an analysis action, not a dashboard read: it says what
+#: the estate's network inventory is allowed to claim, so it takes a role.
+NBOM_READERS = require_roles("superadmin", "ciso", "security_analyst", "auditor",
+                             "supervisor")
+
+
+@router.post("/nbom/coverage", response_model=NbomCoverageResponse)
+def nbom_coverage(body: NbomCoverageRequest,
+                  user: str = Depends(NBOM_READERS)) -> Any:
+    """The estate network coverage matrix, and what its numbers may be quoted as.
+
+    10,000 expected endpoints and 6,500 observed is 65% and ``PARTIAL``: the NBOM
+    describes what was observed, not what exists. ``TOTAL`` is available only when
+    every target group is ``COMPLETE``; otherwise the block says ``FLOOR`` and names
+    the never-attempted, unauthorized and failed counts.
+    """
+    from cbom import nbom_coverage as nc
+
+    try:
+        block = nc.matrix(body.groups, as_of=body.as_of, unit=body.unit)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {**block, "summary": nc.summary(block)}
+
+
+@router.post("/nbom/coverage/from-probes", response_model=NbomProbeCoverageResponse)
+def nbom_coverage_from_probes(body: NbomProbeCoverageRequest,
+                              user: str = Depends(NBOM_READERS)) -> Any:
+    """One coverage row from the stored probe ledger, refusals included.
+
+    A timeout is a failure, never an observation; an undocumented status is refused
+    instead of being bucketed; and a declared endpoint no probe reached is the gap a
+    bare probe count hides.
+    """
+    from cbom import nbom_coverage as nc
+
+    try:
+        return nc.from_probes(body.name, body.probes, declared=body.declared)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
 
 from api.routers.cbom_legacy import register_legacy_routes
 register_legacy_routes(router, require_cbom_writer)

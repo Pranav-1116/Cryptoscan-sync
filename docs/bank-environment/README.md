@@ -555,6 +555,31 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [NBOM coverage: an observed endpoint is not the network](153-nbom-coverage-matrix.md)
+> (**5 pass · 0 partial · 0 fail**, 29 probes) closes NBOM review items 4 and 5, the
+> review's "critical" one: 10,000 endpoints, 6,500 observed must not produce a
+> document that reads as the bank's network. `cbom.nbom_coverage` is the coverage
+> model — one row per target group with `expected · attempted · observed · failed ·
+> unauthorized · excluded`, the derived `unattempted` and `coverage_pct`, and five
+> statuses because "not complete" is too coarse to act on: `COMPLETE`, `PARTIAL`,
+> `FAILED` (probes ran, none negotiated: a scan failure, not an empty network),
+> `UNAUTHORIZED` (nothing attempted: an authorization gap), `UNMEASURED` (no target
+> list, where 0% and 100% are both wrong). The review's own numbers produce exactly
+> **65.0%, PARTIAL, 1,500 never attempted, basis FLOOR**; `TOTAL` becomes available
+> only when every group is `COMPLETE`. The arithmetic is checked rather than clamped —
+> an observation above the target count means the target list is stale and is refused,
+> as is a probe against an endpoint nobody inventoried. `from_probes` turns the stored
+> probe ledger into a row: `OK/TLS_OK` observes, `TIMEOUT/REFUSED/ERROR` fails (never
+> plaintext, never healthy), `UNAUTHORIZED` is an authorization gap, and any
+> undocumented status is **refused** instead of bucketed — a declared endpoint no probe
+> touched becomes `unattempted`, which is exactly the gap a bare probe count hides.
+> `attach` writes the block into the NBOM's `metadata.properties`
+> (`cryptoscan:network_coverage*`, including `network_may_report_total`), and
+> `qualify` reports an NBOM with components and no coverage block as `UNQUALIFIED`
+> rather than assumed complete. The review itself is saved at
+> `nbom-review-2026-11-02.md`, with an ownership table for the remaining items.
+> `POST /cbom/nbom/coverage` and `/nbom/coverage/from-probes` expose it, typed.
+
 > [CBOM → digital twin: one graph, three consumers](152-cbom-digital-twin.md)
 > (**5 pass · 0 partial · 0 fail**, 30 probes) closes review item 20's architecture:
 > SBOM · STATIC · NETWORK · RUNTIME · HSM/KMS → crypto graph → CBOM → digital twin →
