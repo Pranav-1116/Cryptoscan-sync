@@ -1,6 +1,6 @@
 # From "this library can do AES" to "this is an asset"
 
-`cryptoscan.cbom-usage-promotion-guide/1` · generated 2026-11-02T17:51:45.149117+00:00 · **4 pass · 0 partial · 0 fail** · 20 probes
+`cryptoscan.cbom-usage-promotion-guide/1` · generated 2026-11-02T18:31:44.015850+00:00 · **4 pass · 0 partial · 0 fail** · 20 probes
 
 The review's item 6: a library that supports AES must not mint `AES-256 USED`. `cbom.promotion` implements the chain the review asks for — capability → candidate → evidence promotes — and makes the boundary visible in the document:
 
@@ -42,7 +42,7 @@ The review's item 6: a library that supports AES must not mint `AES-256 USED`. `
 *is the produced CBOM a claim or a capability list?* (review 6 / 20)
 
 - **PASS** `only-promoted-assets-are-components` — 2 component(s), 2 candidate(s)
-- **PASS** `candidates-are-counted-in-metadata-not-written-as-components` — {"cryptoscan:candidates_excluded": "2", "cryptoscan:promoted_assets": "2", "cryptoscan:promotion_schema": "cryptoscan.cbom-promotion/1"}
+- **PASS** `candidates-are-counted-in-metadata-not-written-as-components` — {"cryptoscan:candidates_excluded": "2", "cryptoscan:promoted_assets": "2", "cryptoscan:promotion_schema": "cryptoscan.cbom-promotion/1", "cryptoscan:promotion_statement": "2 CBOM asset(s) promoted from evidence, 2 candidate(s) left out of the document; a capability is not an invocation"}
 - **PASS** `a-promoted-asset-is-a-cyclonedx-cryptographic-asset` — crypto/algorithm/aes-256-gcm
 - **PASS** `platform-claims-live-in-properties-not-standard-fields` — cryptoscan:confidence, cryptoscan:evidence_id, cryptoscan:observed_classes, cryptoscan:promotion_level, cryptoscan:usage
 - **PASS** `the-evidence-that-earned-the-asset-travels-with-it` — ["RUNTIME-1"]

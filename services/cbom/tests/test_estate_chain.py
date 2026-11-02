@@ -371,3 +371,39 @@ def test_the_summary_counts_the_document_not_the_candidates():
 def test_the_handoff_covers_only_the_documented_assets():
     result = _running()
     assert [row["algorithm"] for row in result["handoff"]["rows"]] == ["AES-256-GCM"]
+
+
+# --------------------------------------------------------------------------- #
+# network attribution inside the chain
+
+
+def test_the_chain_keeps_the_network_attribution_separate_from_the_application():
+    estate = _estate(probes=[{
+        "from": "Internet", "to": "External LB", "endpoint": "payments.bank.example:443",
+        "observed_on": "External LB", "status": "OK", "evidence_id": "NET-1",
+        "crypto": {"cipher_suite": "ECDHE-RSA-AES128-GCM-SHA256", "tls_version": "1.2"}}])
+    result = ec.run(estate)
+    network = result["network"]
+    assert network["assets"]
+    assert all(row["observed_on"] == "External LB" for row in network["assets"])
+    assert all(row["application_inference"] == "NOT_PROVEN" for row in network["assets"])
+    assert all("cryptoscan:application" not in {prop["name"] for prop in component["properties"]}
+               for component in network["components"])
+
+
+def test_the_chain_audits_its_own_graph_for_the_fronting_hop_overclaim():
+    estate = _estate(probes=[{
+        "from": "Internet", "to": "External LB", "endpoint": "payments.bank.example:443",
+        "observed_on": "External LB", "status": "OK", "evidence_id": "NET-1",
+        "crypto": {"cipher_suite": "ECDHE-RSA-AES128-GCM-SHA256", "tls_version": "1.2"}}])
+    result = ec.run(estate)
+    audit = result["network"]["audit"]
+    assert audit["checked_edges"] > 0
+    assert audit["overclaims"]
+    assert audit["overclaims"][0]["terminated_at"] == ["External LB"]
+
+
+def test_a_network_observation_does_not_break_the_seven_checks():
+    result = _running()
+    assert result["network"]["audit"]["overclaims"] == []
+    assert ec.summary(result)["status"] == "HOLDS"

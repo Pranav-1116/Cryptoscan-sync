@@ -52,6 +52,13 @@ SUITE_TOKENS: dict[str, dict[str, Any]] = {
                           "parameters": {"mode": "POLY1305"}},
     "3DES_EDE_CBC": {"algorithm": "3DES", "role": "BULK",
                      "parameters": {"key_size": 168, "mode": "CBC"}},
+    # OpenSSL and IANA spell the same suite differently: ``ECDHE-RSA-AES128-GCM-SHA256``
+    # tokenises to ``AES128_GCM``, which no underscore term covers. Both spellings
+    # are listed so the bulk cipher is never the one fact a suite loses.
+    "AES256_GCM": {"algorithm": "AES-256-GCM", "role": "BULK",
+                   "parameters": {"key_size": 256, "mode": "GCM"}},
+    "AES128_GCM": {"algorithm": "AES-128-GCM", "role": "BULK",
+                   "parameters": {"key_size": 128, "mode": "GCM"}},
     "AES256GCM": {"algorithm": "AES-256-GCM", "role": "BULK",
                   "parameters": {"key_size": 256, "mode": "GCM"}},
     "AES128GCM": {"algorithm": "AES-128-GCM", "role": "BULK",

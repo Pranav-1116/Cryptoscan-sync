@@ -1,0 +1,313 @@
+{
+  "schema": "cryptoscan.cbom-network-assets-guide/1",
+  "generated_at": "2026-11-02T18:33:15.668626+00:00",
+  "counts": {
+    "PASS": 6,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 39,
+  "sample": {
+    "assets": 10,
+    "endpoints": [
+      "gateway.bank.example:443",
+      "payments-api.internal:8443",
+      "payments.bank.example:443"
+    ],
+    "interfaces": [
+      "External LB",
+      "api-gateway",
+      "payments-api"
+    ],
+    "roles": {
+      "API_GATEWAY": 4,
+      "APPLICATION": 4,
+      "LOAD_BALANCER": 2
+    },
+    "summary": {
+      "schema": "cryptoscan.cbom-network-assets/1",
+      "assets": 10,
+      "endpoints": 3,
+      "interfaces": 3,
+      "algorithms": [
+        "AES-128-GCM",
+        "AES-256-GCM",
+        "ECDHE",
+        "RSA",
+        "SHA-256",
+        "SHA-384"
+      ],
+      "attributed_to_an_application": 4,
+      "not_attributed": [
+        "gateway.bank.example:443 AES-256-GCM @ api-gateway",
+        "gateway.bank.example:443 ECDHE @ api-gateway",
+        "gateway.bank.example:443 RSA @ api-gateway",
+        "gateway.bank.example:443 SHA-384 @ api-gateway",
+        "payments.bank.example:443 AES-256-GCM @ External LB",
+        "payments.bank.example:443 SHA-384 @ External LB"
+      ],
+      "refused": 0,
+      "statement": "10 network asset(s) over 3 endpoint(s); 4 attributed to an application, 6 left with the interface that terminated them"
+    }
+  },
+  "rows": [
+    {
+      "id": "the_shape",
+      "question": "does an observation produce the asset the review asks for?",
+      "phase": "review 8",
+      "probes": [
+        {
+          "probe": "the-network-asset-is-the-algorithm",
+          "ok": true,
+          "observed": "AES-256-GCM"
+        },
+        {
+          "probe": "the-endpoint-is-the-one-that-negotiated-it",
+          "ok": true,
+          "observed": "payments.bank.example:443"
+        },
+        {
+          "probe": "the-asset-says-which-interface-observed-it",
+          "ok": true,
+          "observed": "External LB"
+        },
+        {
+          "probe": "the-evidence-id-travels-with-the-asset",
+          "ok": true,
+          "observed": "NET-9281"
+        },
+        {
+          "probe": "the-hop-is-named-not-just-indexed",
+          "ok": true,
+          "observed": "Internet \u2192 External LB"
+        },
+        {
+          "probe": "the-terminator-is-classified",
+          "ok": true,
+          "observed": "LOAD_BALANCER"
+        },
+        {
+          "probe": "the-statement-says-who-owns-the-fact",
+          "ok": true,
+          "observed": "AES-256-GCM was negotiated on payments.bank.example:443 and observed on External LB (LOAD_BALANCER); it is an interface fact and is not attributed to any application"
+        },
+        {
+          "probe": "the-tls-version-is-kept-with-the-algorithm",
+          "ok": true,
+          "observed": "1.3"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_owner",
+      "question": "who does the algorithm belong to?",
+      "phase": "review 8 / 9",
+      "probes": [
+        {
+          "probe": "a-fronting-terminator-is-not-an-application",
+          "ok": true,
+          "observed": "the LB terminated the handshake; the application behind it was not observed"
+        },
+        {
+          "probe": "a-declared-application-terminates-its-own-hop",
+          "ok": true,
+          "observed": "AES-128-GCM is attributed to payments-api"
+        },
+        {
+          "probe": "an-undeclared-name-is-not-taken-on-trust",
+          "ok": true,
+          "observed": "a hostname that looks like an application is still a hop terminator"
+        },
+        {
+          "probe": "a-hop-may-declare-itself-the-application",
+          "ok": true,
+          "observed": "role=APPLICATION is a claim the collector makes, not one this module invents"
+        },
+        {
+          "probe": "the-two-hops-do-not-share-an-attribution",
+          "ok": true,
+          "observed": "the LB's AES-256-GCM and the application's AES-128-GCM are different facts"
+        },
+        {
+          "probe": "the-gateway-is-not-the-application-either",
+          "ok": true,
+          "observed": "an API gateway in the middle of the path terminates its own hop"
+        },
+        {
+          "probe": "the-summary-says-how-much-stayed-with-the-interface",
+          "ok": true,
+          "observed": "10 network asset(s) over 3 endpoint(s); 4 attributed to an application, 6 left with the interface that terminated them"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "merging",
+      "question": "does one connection produce one asset, or a pile of rows?",
+      "phase": "review 8",
+      "probes": [
+        {
+          "probe": "a-repeated-observation-merges-its-evidence",
+          "ok": true,
+          "observed": "NET-9281, NET-9290"
+        },
+        {
+          "probe": "a-hop-that-changed-version-keeps-both",
+          "ok": true,
+          "observed": "1.2, 1.3"
+        },
+        {
+          "probe": "two-endpoints-are-two-assets",
+          "ok": true,
+          "observed": "4 network crypto asset(s) across 2 endpoint(s) and 1 interface(s); 4 not attributed to an application"
+        },
+        {
+          "probe": "the-role-inside-the-suite-survives",
+          "ok": true,
+          "observed": "{\"AES-128-GCM\": \"BULK\", \"ECDHE\": \"KEY_EXCHANGE\", \"RSA\": \"SIGNATURE\", \"SHA-256\": \"HASH\"}"
+        },
+        {
+          "probe": "an-openssl-suite-keeps-its-bulk-cipher",
+          "ok": true,
+          "observed": "ECDHE-RSA-AES128-GCM-SHA256 tokenises to AES128_GCM, which the suite table now covers"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "refusals",
+      "question": "what is refused rather than attributed to nobody?",
+      "phase": "review 8 / 12",
+      "probes": [
+        {
+          "probe": "a-hop-with-no-endpoint-is-refused",
+          "ok": true,
+          "observed": "a hop needs the endpoint where it was observed"
+        },
+        {
+          "probe": "a-hop-with-no-suite-attributes-no-algorithm",
+          "ok": true,
+          "observed": "no negotiated suite, so no algorithm is attributed"
+        },
+        {
+          "probe": "a-handshake-with-no-evidence-is-inventory-not-fact",
+          "ok": true,
+          "observed": "the handshake has no evidence id, so the algorithm cannot be attributed to anything"
+        },
+        {
+          "probe": "a-path-position-is-not-an-owner",
+          "ok": true,
+          "observed": "no interface is recorded as having observed the handshake; a path position is not an owner"
+        },
+        {
+          "probe": "a-hop-that-is-not-an-object-is-refused",
+          "ok": true,
+          "observed": "a hop must be an object"
+        },
+        {
+          "probe": "the-hop-target-is-used-when-no-observer-was-recorded",
+          "ok": true,
+          "observed": "a hop that names its target names its terminator"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_document",
+      "question": "can a reviewer read the component without guessing the hop?",
+      "phase": "review 8 / 12",
+      "probes": [
+        {
+          "probe": "one-component-per-endpoint-and-algorithm",
+          "ok": true,
+          "observed": "10 component(s) for 10 asset(s)"
+        },
+        {
+          "probe": "the-component-is-a-cyclonedx-cryptographic-asset",
+          "ok": true,
+          "observed": "network:payments.bank.example:443#AES-256-GCM"
+        },
+        {
+          "probe": "the-five-fields-are-carried-as-properties",
+          "ok": true,
+          "observed": "{\"cryptoscan:endpoint\": \"payments.bank.example:443\", \"cryptoscan:evidence_id\": \"NET-9281\", \"cryptoscan:hop\": \"Internet \\u2192 External LB\", \"cryptoscan:observed_on\": \"External LB\"}"
+        },
+        {
+          "probe": "no-application-is-written-where-none-was-proven",
+          "ok": true,
+          "observed": "the LB component names the interface, not the application"
+        },
+        {
+          "probe": "a-proven-application-is-written-down",
+          "ok": true,
+          "observed": "network:payments-api.internal:8443#AES-128-GCM"
+        },
+        {
+          "probe": "the-network-level-is-on-the-component",
+          "ok": true,
+          "observed": "a network observation promotes to NETWORK, not to VERIFIED"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_audit",
+      "question": "is the review's overclaim detectable, or only documented?",
+      "phase": "review 8 / 20",
+      "probes": [
+        {
+          "probe": "an-application-edge-resting-on-a-fronting-hop-is-an-overclaim",
+          "ok": true,
+          "observed": "1 overclaim(s) among 1 network-backed USES_CRYPTO edge(s); each rests on a hop that terminated in front of the subject"
+        },
+        {
+          "probe": "the-overclaim-carries-the-role-that-terminated-it",
+          "ok": true,
+          "observed": "LOAD_BALANCER"
+        },
+        {
+          "probe": "a-system-edge-is-audited-too",
+          "ok": true,
+          "observed": "an estate-level claim is the same claim, one level up"
+        },
+        {
+          "probe": "an-edge-with-runtime-evidence-is-not-an-overclaim",
+          "ok": true,
+          "observed": "the application was observed doing it; the handshake is corroboration"
+        },
+        {
+          "probe": "an-algorithm-the-network-never-saw-is-not-audited",
+          "ok": true,
+          "observed": "no network asset, no network claim"
+        },
+        {
+          "probe": "another-edge-kind-is-not-a-usage-claim",
+          "ok": true,
+          "observed": "NEGOTIATES is the endpoint's, not a use"
+        },
+        {
+          "probe": "the-estate-chain-exposes-the-audit",
+          "ok": true,
+          "observed": "2 overclaim(s) among 2 network-backed USES_CRYPTO edge(s); each rests on a hop that terminated in front of the subject"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the identification of a hop's role is a name heuristic plus whatever the collector declares. A load balancer called 'edge01' is UNKNOWN here, which is the honest answer and also an operational gap: the collector should report a role rather than a hostname",
+    "the module cannot see the path. It attributes each hop by itself; a hop whose 'from' is wrong, or a probe that went through a CDN the operator did not record, produces a correct attribution for the wrong topology",
+    "an application is proven by declaration, not by observation. Declaring the wrong set of applications turns NOT_PROVEN into PROVEN, and the audit will then be silent about a real overclaim",
+    "the audit only sees a graph it is given. A report that never builds a USES_CRYPTO edge cannot overclaim here, and equally cannot be checked here",
+    "network evidence proves what was negotiated, not what is enforced: a suite offered in a handshake says nothing about the algorithms the application uses on the data afterwards",
+    "a certificate's public key algorithm arrives as its own evidence category. ECDSA-P256 in a certificate is the certificate's, and this module deliberately never turns it into an application algorithm",
+    "one endpoint may front several applications through SNI; without per-SNI probing the hop is one asset, and the mapping to applications stays unproven"
+  ]
+}

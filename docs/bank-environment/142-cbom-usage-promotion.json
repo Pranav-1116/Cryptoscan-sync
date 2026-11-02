@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.cbom-usage-promotion-guide/1",
-  "generated_at": "2026-11-02T17:51:45.149117+00:00",
+  "generated_at": "2026-11-02T18:31:44.015850+00:00",
   "counts": {
     "PASS": 4,
     "PARTIAL": 0,
@@ -94,7 +94,7 @@
         {
           "probe": "candidates-are-counted-in-metadata-not-written-as-components",
           "ok": true,
-          "observed": "{\"cryptoscan:candidates_excluded\": \"2\", \"cryptoscan:promoted_assets\": \"2\", \"cryptoscan:promotion_schema\": \"cryptoscan.cbom-promotion/1\"}"
+          "observed": "{\"cryptoscan:candidates_excluded\": \"2\", \"cryptoscan:promoted_assets\": \"2\", \"cryptoscan:promotion_schema\": \"cryptoscan.cbom-promotion/1\", \"cryptoscan:promotion_statement\": \"2 CBOM asset(s) promoted from evidence, 2 candidate(s) left out of the document; a capability is not an invocation\"}"
         },
         {
           "probe": "a-promoted-asset-is-a-cyclonedx-cryptographic-asset",

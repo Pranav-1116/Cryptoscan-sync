@@ -226,6 +226,28 @@ class CbomEstateChainResponse(BaseModel):
     statement: str
 
 
+class CbomNetworkAssetsRequest(BaseModel):
+    hops: list[dict] = Field(default_factory=list, description=(
+        "TLS hops as the network collector observed them: from, to, endpoint, "
+        "observed_on (the interface that saw the handshake), cipher_suite, tls_version, "
+        "evidence_id. A hop with no observer or no evidence is refused, because \"somewhere "
+        "in the path\" is what lets the wrong system inherit the algorithms"))
+    applications: list[str] = Field(default_factory=list, description=(
+        "the applications the estate has declared. A hop's algorithm may be attributed to "
+        "an application only when that application is declared (or the hop says "
+        "role=APPLICATION); a hostname is never read as proof"))
+    graph: dict | None = Field(None, description=(
+        "a usage graph to audit: every USES_CRYPTO edge whose whole basis is a handshake "
+        "that terminated in front of the subject is reported as an overclaim"))
+
+
+class CbomNetworkAssetsResponse(BaseModel):
+    assets: dict
+    components: dict
+    audit: dict
+    summary: dict
+
+
 class CbomHsmRequest(BaseModel):
     kind: str = Field(..., description=(
         "CAPABILITY, CONFIGURED_KEY or OPERATION — the three HSM/KMS answers, only the last "
@@ -446,6 +468,30 @@ def cbom_pqc_handoff(body: CbomPqcHandoffRequest,
     if body.document is not None:
         return pq.handoff_from_cbom(body.document, as_of=body.as_of)
     return pq.handoff(body.assets, as_of=body.as_of)
+
+
+@router.post("/network-assets", response_model=CbomNetworkAssetsResponse)
+def cbom_network_assets(body: CbomNetworkAssetsRequest,
+                        user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """A handshake is an interface fact: which endpoint, which terminator, which hop.
+
+    ``TLS_AES_256_GCM_SHA384`` on ``payments.bank.example:443`` terminated by
+    ``External LB`` is the balancer's cipher policy. The review's rule is that the
+    CBOM may say so and may **not** say *Payments API uses AES-256-GCM* without
+    evidence that the application terminated the hop, so an asset carries an
+    application name only when the estate declared that name or the hop says it is
+    the application. The optional ``graph`` audit reports every usage edge that
+    rests on a fronting hop, rather than silently rewriting it.
+    """
+    from cbom import network_assets as na
+
+    assets = na.assets(body.hops, applications=body.applications)
+    return {
+        "assets": assets,
+        "components": na.to_components(assets),
+        "audit": na.audit_graph(body.graph or {}, assets),
+        "summary": na.summary(assets),
+    }
 
 
 @router.post("/estate-chain", response_model=CbomEstateChainResponse)

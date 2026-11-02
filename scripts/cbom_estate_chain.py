@@ -61,7 +61,7 @@ ESTATE: dict[str, Any] = {
         {"key_ref": DISABLED["key_ref"], "operation": "decrypt",
          "evidence_id": "KMS-USE-2", "observed_at": "2026-11-01"},
     ],
-    "probes": [{"endpoint": "payments.bank.example:443", "status": "COMPLETED",
+    "probes": [{"endpoint": "payments.bank.example:443", "status": "OK",
                 "crypto": {"tls_version": "1.3",
                            "cipher_suite": "TLS_AES_256_GCM_SHA384"},
                 "evidence_id": "NET-1", "observed_at": "2026-11-02T00:00:00Z"}],
@@ -189,7 +189,8 @@ def row_promotion(modules: dict[str, Any]) -> dict[str, Any]:
     capability = ec.run({"name": "capabilities-only", "components": [
         {"name": "openssl", "version": "3.0.13", "evidence_id": "SBOM-1",
          "algorithms": ["AES-256-GCM", "RSA-2048"]}]})
-    unattributed = ec.run(_estate(operations=[{**OP, "evidence_id": None}]))
+    unattributed = ec.run(_estate(operations=[{**OP, "evidence_id": None}], probes=[]))
+    runtime_only = ec.run(_estate(probes=[], findings=[]))
     levels = {asset["algorithm"]: asset["promotion_level"]
               for asset in result["promotion"]["assets"]}
     probes = [
@@ -209,13 +210,17 @@ def row_promotion(modules: dict[str, Any]) -> dict[str, Any]:
                        asset["profile"]["observed_classes"])
                    for asset in result["promotion"]["assets"]),
                json.dumps(levels, sort_keys=True)),
-        _probe("runtime-alone-never-reads-as-verified",
-               levels["AES-256-GCM"] == "RUNTIME",
-               "one observing layer is still one layer"),
+        _probe("one-observing-mechanism-never-reads-as-verified",
+               {asset["algorithm"]: asset["promotion_level"]
+                for asset in runtime_only["promotion"]["assets"]}["AES-256-GCM"] == "RUNTIME"
+               and levels["AES-256-GCM"] == "VERIFIED",
+               "runtime alone is RUNTIME; runtime and a handshake agreeing is VERIFIED"),
         _probe("an-observation-without-an-evidence-id-is-refused",
                unattributed["document"]["components"] == []
-               and unattributed["evidence"]["refused"],
-               unattributed["evidence"]["refused"][0].get("reason", "refused")),
+               and any("evidence_id" in str(row.get("reason"))
+                       for row in unattributed["evidence"]["refused"]),
+               [row["reason"] for row in unattributed["evidence"]["refused"]
+                if "evidence_id" in str(row.get("reason"))][0]),
     ]
     return {"id": "promotion",
             "question": "does only the evidence reach the document?",

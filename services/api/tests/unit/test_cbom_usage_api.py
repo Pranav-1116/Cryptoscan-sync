@@ -469,3 +469,55 @@ def test_estate_chain_documents_no_capability(client):
 def test_estate_chain_rejects_an_estate_that_is_not_an_object(client):
     resp = _post(client, "/estate-chain", {"estate": ["not", "an", "estate"]})
     assert resp.status_code == 422
+
+
+LB_HOP = {"from": "Internet", "to": "External LB",
+          "endpoint": "payments.bank.example:443", "observed_on": "External LB",
+          "cipher_suite": "TLS_AES_256_GCM_SHA384", "tls_version": "1.3",
+          "evidence_id": "NET-9281"}
+APP_HOP = {"from": "External LB", "to": "payments-api",
+           "endpoint": "payments-api.internal:8443", "observed_on": "payments-api",
+           "cipher_suite": "ECDHE-RSA-AES128-GCM-SHA256", "tls_version": "1.2",
+           "evidence_id": "NET-9282"}
+
+
+def test_network_assets_are_attributed_to_the_terminator(client):
+    body = _post(client, "/network-assets", {
+        "hops": [LB_HOP, APP_HOP], "applications": ["payments-api"]}).json()
+    by_endpoint = {}
+    for row in body["assets"]["assets"]:
+        by_endpoint.setdefault(row["endpoint"], []).append(row)
+    fronting = by_endpoint["payments.bank.example:443"]
+    assert all(row["observed_on"] == "External LB" for row in fronting)
+    assert all(row["interface_role"] == "LOAD_BALANCER" for row in fronting)
+    assert all(row["application"] is None for row in fronting)
+    assert all(row["application_inference"] == "NOT_PROVEN" for row in fronting)
+    behind = by_endpoint["payments-api.internal:8443"]
+    assert all(row["application"] == "payments-api" for row in behind)
+    assert body["summary"]["attributed_to_an_application"] == len(behind)
+
+
+def test_network_assets_audit_the_application_overclaim(client):
+    body = _post(client, "/network-assets", {
+        "hops": [LB_HOP],
+        "applications": ["payments-api"],
+        "graph": {"edges": [{"from": "application:payments-api", "kind": "USES_CRYPTO",
+                             "to": "algorithm:AES-256-GCM",
+                             "evidence_classes": ["NETWORK_OBSERVED"],
+                             "evidence_ids": ["NET-9281"]}]},
+    }).json()
+    overclaim = body["audit"]["overclaims"][0]
+    assert overclaim["subject"] == "application:payments-api"
+    assert overclaim["terminated_at"] == ["External LB"]
+    properties = {row["name"]: row["value"]
+                  for row in body["components"]["components"][0]["properties"]}
+    assert "cryptoscan:application" not in properties
+
+
+def test_network_assets_refuse_a_hop_with_no_observer(client):
+    body = _post(client, "/network-assets", {
+        "hops": [{key: value for key, value in LB_HOP.items()
+                  if key not in ("observed_on", "to")}],
+        "applications": ["payments-api"]}).json()
+    assert body["assets"]["assets"] == []
+    assert body["assets"]["refused"]

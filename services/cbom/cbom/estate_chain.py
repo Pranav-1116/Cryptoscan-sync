@@ -41,6 +41,7 @@ from typing import Any
 
 from cbom import coverage_render as cr
 from cbom import kms_collectors as kc
+from cbom import network_assets as na
 from cbom import pqc_handoff as pq
 from cbom import process_tracing as pt
 from cbom import promotion as promo
@@ -225,6 +226,13 @@ def run(estate: Mapping[str, Any]) -> dict[str, Any]:
     conflicts = ug.conflict_edges(reconciled)
     graph = ug.build_graph(profiled["profiles"], reconciled=reconciled, system=name)
 
+    # the network assets keep their own attribution: a handshake terminated by the LB
+    # is the LB's cipher policy, and the graph audit says where that was overclaimed
+    network_block = na.assets(network.get("hops") or [],
+                              applications=estate.get("applications") or ())
+    network_block["components"] = na.to_components(network_block)["components"]
+    network_block["audit"] = na.audit_graph(graph, network_block)
+
     # 7. the checks, over everything above
     documented = _usage_by_algorithm(document)
     levels = {asset["algorithm"]: asset.get("promotion_level") for asset in promoted["assets"]}
@@ -284,7 +292,7 @@ def run(estate: Mapping[str, Any]) -> dict[str, Any]:
                      "suppressed": suppressed,
                      "refused": (network.get("refused", []) + static.get("refused", [])
                                  + runtime.get("refused", []) + key_events.get("refused", [])
-                                 + suppressed)},
+                                 + suppressed + network_block.get("refused", []))},
         "profiles": profiled,
         "promotion": {key: promoted[key] for key in
                       ("assets", "candidates", "refused", "levels", "statement")},
@@ -293,12 +301,14 @@ def run(estate: Mapping[str, Any]) -> dict[str, Any]:
         "handoff": handoff,
         "conflicts": {**conflicts, "reconciled": reconciled},
         "graph": graph,
+        "network": network_block,
         "coverage": {**coverage_block, "quotable": cr.quotable_counts(coverage_block)},
         "checks": checks,
         "statement": (
             f"{name}: {len(promoted['assets'])} documented asset(s), "
             f"{len(promoted['candidates'])} candidate(s), "
             f"{len(graph['edges'])} graph edge(s), "
+            f"{len(network_block['assets'])} network asset(s), "
             f"{len(handoff['rows'])} handoff row(s); "
             + ("every cross-layer check holds" if not failed
                else f"{len(failed)} check(s) failed: "

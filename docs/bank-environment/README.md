@@ -555,6 +555,29 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [Network crypto assets: the interface owns the hop](148-cbom-network-assets.md)
+> (**6 pass · 0 partial · 0 fail**, 39 probes) closes review item 8, which is one
+> sentence with a large consequence: if the network sees `TLS_AES_256_GCM_SHA384`
+> on `payments.bank.example:443`, the CBOM may say *network crypto asset
+> AES-256-GCM · endpoint payments.bank.example:443 · observed on External LB ·
+> evidence NET-9281 · hop Internet → External LB*, and may **not** say *Payments API
+> uses AES-256-GCM* without evidence that the application terminated the hop.
+> `cbom.network_assets` produces one asset per (endpoint, algorithm) carrying
+> `observed_on`, the hop label, the interface role (`WAF`, `LOAD_BALANCER`,
+> `API_GATEWAY`, `REVERSE_PROXY`, `CDN`, `APPLICATION`, else `UNKNOWN`) and its
+> evidence ids — and writes an application name **only** when the estate declared
+> that name or the hop says `role: APPLICATION`. A hop with no observer, no suite or
+> no evidence id is refused, because "somewhere in the path" is what lets the wrong
+> system inherit the algorithms. `audit_graph` then reports every `USES_CRYPTO` edge
+> whose whole basis is a handshake that terminated *in front of* its subject — the
+> overclaim the review warns about, now detectable instead of merely documented.
+> The estate chain from guide 147 runs the audit over its own graph.
+> `POST /cbom/network-assets` exposes it, typed, behind the same reader roles. This
+> guide also fixes a real under-reporting bug: `ECDHE-RSA-AES128-GCM-SHA256`
+> tokenises to `AES128_GCM`, which the suite table did not cover, so the commonest
+> TLS 1.2 suite on a load balancer was reporting its signature, key exchange and
+> hash while losing the bulk cipher.
+
 > [The whole chain over one estate: seven seams, seven checks](147-cbom-estate-chain.md)
 > (**6 pass · 0 partial · 0 fail**, 37 probes) is the increment that stops proving
 > layers one at a time. `cbom.estate_chain.run` runs the runtime tracer, the KMS

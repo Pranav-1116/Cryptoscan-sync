@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.cbom-estate-chain-guide/1",
-  "generated_at": "2026-11-02T18:26:13.382006+00:00",
+  "generated_at": "2026-11-02T18:34:51.981950+00:00",
   "counts": {
     "PASS": 6,
     "PARTIAL": 0,
@@ -16,7 +16,7 @@
     "failed_checks": [],
     "documented_assets": 1,
     "candidates_excluded": 2,
-    "graph_edges": 3,
+    "graph_edges": 4,
     "migration_immediate": [],
     "coverage_completeness": "PARTIAL",
     "status": "HOLDS",
@@ -24,9 +24,10 @@
   },
   "evidence_counts": {
     "CONFIGURED": 1,
+    "NETWORK_OBSERVED": 2,
     "RUNTIME_OBSERVED": 2
   },
-  "graph_edges": 3,
+  "graph_edges": 4,
   "document_properties": {
     "cryptoscan:promoted_assets": "1",
     "cryptoscan:candidates_excluded": "2",
@@ -90,7 +91,7 @@
         {
           "probe": "no-suppressed-key-operation-reaches-the-evidence-set",
           "ok": true,
-          "observed": "3 evidence event(s), none from the disabled key"
+          "observed": "5 evidence event(s), none from the disabled key"
         },
         {
           "probe": "no-key-material-is-ever-carried",
@@ -119,17 +120,17 @@
         {
           "probe": "the-level-is-recomputed-from-the-classes",
           "ok": true,
-          "observed": "{\"AES-256-GCM\": \"RUNTIME\"}"
+          "observed": "{\"AES-256-GCM\": \"VERIFIED\"}"
         },
         {
-          "probe": "runtime-alone-never-reads-as-verified",
+          "probe": "one-observing-mechanism-never-reads-as-verified",
           "ok": true,
-          "observed": "one observing layer is still one layer"
+          "observed": "runtime alone is RUNTIME; runtime and a handshake agreeing is VERIFIED"
         },
         {
           "probe": "an-observation-without-an-evidence-id-is-refused",
           "ok": true,
-          "observed": "no handshake completed, so nothing was negotiated"
+          "observed": "a runtime observation is missing evidence_id"
         }
       ],
       "verdict": "PASS",
@@ -207,7 +208,7 @@
         {
           "probe": "the-graph-hangs-off-the-estate-it-describes",
           "ok": true,
-          "observed": "3 edge(s) on system:bank-estate-2026-11"
+          "observed": "4 edge(s) on system:bank-estate-2026-11"
         }
       ],
       "verdict": "PASS",

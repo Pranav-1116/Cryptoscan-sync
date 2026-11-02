@@ -1,8 +1,8 @@
 # The whole chain over one estate: seven seams, seven checks
 
-`cryptoscan.cbom-estate-chain-guide/1` · generated 2026-11-02T18:26:13.382006+00:00 · **6 pass · 0 partial · 0 fail** · 31 probes
+`cryptoscan.cbom-estate-chain-guide/1` · generated 2026-11-02T18:34:51.981950+00:00 · **6 pass · 0 partial · 0 fail** · 31 probes
 
-Estate `bank-estate-2026-11` · 1 documented asset(s) · 2 candidate(s) excluded · 3 graph edge(s) · coverage PARTIAL
+Estate `bank-estate-2026-11` · 1 documented asset(s) · 2 candidate(s) excluded · 4 graph edge(s) · coverage PARTIAL
 
 Each guide before this one proved a layer. This one runs them together, because the failures a reviewer finds are at the joins:
 
@@ -55,7 +55,7 @@ A failing check is not a warning to be adjusted away: it comes back in `checks`,
 - **PASS** `a-key-exists-and-a-key-is-used-are-different-classes` — 1 configured key(s), 2 recorded operation(s); 1 row(s) refused
 - **PASS** `a-disabled-key-is-carried-as-not-usable` — DISABLED key: usable=False
 - **PASS** `an-operation-on-a-disabled-key-is-refused-with-its-reason` — the key is DISABLED, so a recorded operation on it is a discrepancy, not evidence that the algorithm is in use
-- **PASS** `no-suppressed-key-operation-reaches-the-evidence-set` — 3 evidence event(s), none from the disabled key
+- **PASS** `no-suppressed-key-operation-reaches-the-evidence-set` — 5 evidence event(s), none from the disabled key
 - **PASS** `no-key-material-is-ever-carried` — metadata only: the key layer stores no secret
 
 ## `promotion` — PASS
@@ -64,9 +64,9 @@ A failing check is not a warning to be adjusted away: it comes back in `checks`,
 
 - **PASS** `a-capability-never-becomes-a-document-asset` — 0 CBOM asset(s) promoted from evidence, 2 candidate(s) left out of the document; a capability is not an invocation
 - **PASS** `an-observed-operation-becomes-an-asset` — a candidate for 2 algorithm(s), documented for 1
-- **PASS** `the-level-is-recomputed-from-the-classes` — {"AES-256-GCM": "RUNTIME"}
-- **PASS** `runtime-alone-never-reads-as-verified` — one observing layer is still one layer
-- **PASS** `an-observation-without-an-evidence-id-is-refused` — no handshake completed, so nothing was negotiated
+- **PASS** `the-level-is-recomputed-from-the-classes` — {"AES-256-GCM": "VERIFIED"}
+- **PASS** `one-observing-mechanism-never-reads-as-verified` — runtime alone is RUNTIME; runtime and a handshake agreeing is VERIFIED
+- **PASS** `an-observation-without-an-evidence-id-is-refused` — a runtime observation is missing evidence_id
 
 ## `the_document` — PASS
 
@@ -88,7 +88,7 @@ A failing check is not a warning to be adjusted away: it comes back in `checks`,
 - **PASS** `no-single-value-is-asserted-where-the-sources-disagree` — the disagreement is the finding; a human decides
 - **PASS** `every-claim-survives-as-a-row` — 4 claim row(s) kept
 - **PASS** `agreement-is-not-a-conflict` — two layers agreeing on the same value is a corroboration
-- **PASS** `the-graph-hangs-off-the-estate-it-describes` — 3 edge(s) on system:bank-estate-2026-11
+- **PASS** `the-graph-hangs-off-the-estate-it-describes` — 4 edge(s) on system:bank-estate-2026-11
 
 ## `the_seven` — PASS
 
@@ -117,7 +117,7 @@ Metadata properties, verbatim:
 }
 ```
 
-Evidence classes: `{"CONFIGURED": 1, "RUNTIME_OBSERVED": 2}`
+Evidence classes: `{"CONFIGURED": 1, "NETWORK_OBSERVED": 2, "RUNTIME_OBSERVED": 2}`
 
 ## What this does not prove
 

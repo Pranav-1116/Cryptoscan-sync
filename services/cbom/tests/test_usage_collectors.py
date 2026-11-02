@@ -210,3 +210,23 @@ def test_an_end_to_end_collection_keeps_every_source_apart():
     assert "net:run-7:payments.bank.example:443" in evidence
     assert {"EVID-001", "RUNTIME-92821"} <= evidence
     assert profile["confidence"] == "VERY_HIGH"
+
+
+def test_an_openssl_suite_name_keeps_its_bulk_cipher():
+    """``ECDHE-RSA-AES128-GCM-SHA256`` is the commonest TLS 1.2 suite on a load
+    balancer, and tokenises to ``AES128_GCM`` — which no underscore term covered,
+    so the network layer used to report the signature, the key exchange and the
+    hash while silently losing the cipher that actually protects the data."""
+    facts = {fact["algorithm"]: fact for fact
+             in uc.algorithms_from_cipher_suite("ECDHE-RSA-AES128-GCM-SHA256")}
+    assert facts["AES-128-GCM"]["parameters"] == {"key_size": 128, "mode": "GCM"}
+    assert facts["AES-128-GCM"]["role"] == "BULK"
+    assert set(facts) == {"AES-128-GCM", "SHA-256", "ECDHE", "RSA"}
+
+
+def test_the_two_iana_forms_agree():
+    for suite, algorithm in (("TLS_AES_256_GCM_SHA384", "AES-256-GCM"),
+                             ("AES256-GCM-SHA384", "AES-256-GCM"),
+                             ("TLS_AES_128_GCM_SHA256", "AES-128-GCM")):
+        assert algorithm in {fact["algorithm"]
+                             for fact in uc.algorithms_from_cipher_suite(suite)}
