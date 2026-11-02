@@ -517,6 +517,26 @@
 > (`/cbom/usage`, `/cbom/reconcile`, `/cbom/tls-paths`, `/cbom/hsm-evidence`) are
 > behind `require_roles`, so the session-only write inventory stays at 297.
 
+> [The collectors that make the usage profile mean something](140-cbom-usage-collectors.md)
+> (**5 pass · 0 partial · 0 fail**, 27 probes) is guide 139's own first limit made
+> code: nothing fed the evidence model, so every asset's runtime and network rows
+> were permanently `NOT_OBSERVED`. **Network**: a probe that completed a handshake
+> becomes algorithm facts — `TLS_AES_256_GCM_SHA384` is AES-256-GCM (bulk) plus
+> SHA-384 (hash), and a TLS 1.2 suite adds its signature and key exchange — each
+> keeping the endpoint it was observed on and the scan run it came from, plus a
+> certificate record that proves no application operation and one hop attributed
+> to the terminating endpoint. An unprobed endpoint is **refused**, not recorded
+> as absent cryptography. **Static**: a stored finding joined to its evidence rows
+> is `STATIC_OBSERVED`; a finding whose evidence link is missing is refused,
+> because an inventory entry is not a record that something was seen. **Runtime**:
+> an operation needs its name, algorithm, evidence id *and* timestamp — a process
+> with no operation is a claim about runtime. `profiles()` then groups the events
+> per algorithm and names the layers with **no collector at all**, so
+> `NOT_OBSERVED` cannot be read as `not used`. Two typed routes:
+> `POST /cbom/usage/collect` (rows in, profiles out) and `GET /cbom/usage/network`
+> (reads stored `NetworkScanRun` probes, so the network half is real data, not a
+> request body).
+
 > [Durability, archives, obligations, deployment](136-sbom-durability-archives-obligations-deployment.md)
 > (**5 pass · 0 partial · 0 fail**, 68 probes, 4 placement, 9 archive and 13
 > licence-model cases) takes the four limits guide 135 named and makes each one

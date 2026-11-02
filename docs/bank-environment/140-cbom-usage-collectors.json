@@ -1,0 +1,200 @@
+{
+  "schema": "cryptoscan.cbom-usage-collectors-guide/1",
+  "generated_at": "2026-11-02T17:46:21.801503+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 27,
+  "rows": [
+    {
+      "id": "cipher_suites",
+      "question": "can a negotiated suite be read as algorithm facts?",
+      "phase": "review 8",
+      "probes": [
+        {
+          "probe": "a-tls13-suite-names-its-bulk-algorithm-and-hash",
+          "ok": true,
+          "observed": "{\"AES-256-GCM\": \"BULK\", \"SHA-384\": \"HASH\"}"
+        },
+        {
+          "probe": "the-bulk-algorithm-carries-its-parameters",
+          "ok": true,
+          "observed": "{\"key_size\": 256, \"mode\": \"GCM\"}"
+        },
+        {
+          "probe": "a-tls12-suite-adds-signature-and-key-exchange",
+          "ok": true,
+          "observed": "{\"AES-128-GCM\": \"BULK\", \"ECDHE\": \"KEY_EXCHANGE\", \"RSA\": \"SIGNATURE\", \"SHA-256\": \"HASH\"}"
+        },
+        {
+          "probe": "an-unknown-suite-invents-nothing",
+          "ok": true,
+          "observed": "a suite outside the table produces no fact rather than a guess"
+        },
+        {
+          "probe": "the-longest-token-wins",
+          "ok": true,
+          "observed": "CHACHA20_POLY1305 is not mistaken for AES or SHA alone"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "network_source",
+      "question": "does the network scanner's own output become CBOM evidence?",
+      "phase": "review 8 / 9",
+      "probes": [
+        {
+          "probe": "a-completed-handshake-becomes-network-evidence",
+          "ok": true,
+          "observed": "2 algorithm fact(s) from 1 completed handshake(s)"
+        },
+        {
+          "probe": "an-unprobed-endpoint-observes-nothing",
+          "ok": true,
+          "observed": "no handshake completed, so nothing was negotiated"
+        },
+        {
+          "probe": "a-handshake-with-no-suite-is-not-algorithm-evidence",
+          "ok": true,
+          "observed": "a completed handshake with no negotiated suite is not evidence of an algorithm"
+        },
+        {
+          "probe": "network-evidence-without-a-run-or-id-is-refused",
+          "ok": true,
+          "observed": "an unfalsifiable network fact is not stored"
+        },
+        {
+          "probe": "a-probe-yields-a-certificate-record-that-proves-no-operation",
+          "ok": true,
+          "observed": "ECDSA / ECDSA-SHA256 describes the certificate on payments.bank.example:443. A certificate's public key does not prove the application behind it performs that algorithm"
+        },
+        {
+          "probe": "a-probe-yields-one-hop-attributed-to-its-endpoint",
+          "ok": true,
+          "observed": "1 hop(s) with the terminating endpoint named"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "static_source",
+      "question": "does a stored finding carry the evidence that makes it one?",
+      "phase": "review 5 / 6",
+      "probes": [
+        {
+          "probe": "a-finding-with-its-evidence-row-is-a-static-observation",
+          "ok": true,
+          "observed": "1 static observation(s) from 1 evidence row(s)"
+        },
+        {
+          "probe": "the-findings-parameters-travel-with-it",
+          "ok": true,
+          "observed": "{\"key_size\": 256, \"mode\": \"GCM\"}"
+        },
+        {
+          "probe": "a-finding-without-an-evidence-row-is-refused",
+          "ok": true,
+          "observed": "the finding has no evidence row, so it is an inventory entry and not an observation"
+        },
+        {
+          "probe": "a-finding-with-no-algorithm-is-refused",
+          "ok": true,
+          "observed": "an evidence row with no algorithm names nothing"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "runtime_source",
+      "question": "does a runtime row have to name the operation to count?",
+      "phase": "review 7 / 21",
+      "probes": [
+        {
+          "probe": "a-recorded-operation-is-runtime-evidence",
+          "ok": true,
+          "observed": "1 recorded crypto operation(s)"
+        },
+        {
+          "probe": "a-runtime-row-without-evidence-id-is-a-claim",
+          "ok": true,
+          "observed": "a runtime observation is missing evidence_id"
+        },
+        {
+          "probe": "a-runtime-row-without-observed-at-is-a-claim",
+          "ok": true,
+          "observed": "a runtime observation is missing observed_at"
+        },
+        {
+          "probe": "a-runtime-row-without-operation-is-a-claim",
+          "ok": true,
+          "observed": "a runtime observation is missing operation"
+        },
+        {
+          "probe": "a-runtime-row-without-algorithm-is-a-claim",
+          "ok": true,
+          "observed": "a runtime observation is missing algorithm"
+        },
+        {
+          "probe": "a-process-with-no-operation-is-not-runtime-evidence",
+          "ok": true,
+          "observed": "naming a process is not recording an operation"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "collect_to_profile",
+      "question": "does collected evidence become a CBOM asset's answer?",
+      "phase": "review 4 / 20",
+      "probes": [
+        {
+          "probe": "network-alone-is-high-and-names-the-missing-layers",
+          "ok": true,
+          "observed": "2 algorithm(s) from 2 evidence event(s); nothing has observed config, runtime, static for every asset, which is an absent collector and not an absent algorithm"
+        },
+        {
+          "probe": "three-sources-reach-very-high-with-every-id-kept",
+          "ok": true,
+          "observed": "runtime and network both observed this asset, which are independent collection mechanisms"
+        },
+        {
+          "probe": "the-profile-keeps-roles-and-locations",
+          "ok": true,
+          "observed": "roles=['BULK'], locations=['payments-api[9182]', 'payments.bank.example:443', 'src/tls.py:12']"
+        },
+        {
+          "probe": "an-sbom-fact-stays-a-candidate-in-the-collected-profile",
+          "ok": true,
+          "observed": "AES-256: candidate only; the evidence says it could be used, which is a capability and not an invocation"
+        },
+        {
+          "probe": "the-collect-routes-are-typed-and-mounted",
+          "ok": true,
+          "observed": "POST /cbom/usage/collect and GET /cbom/usage/network"
+        },
+        {
+          "probe": "the-network-route-reads-stored-scan-runs",
+          "ok": true,
+          "observed": "the network half comes from rows, not from the request body"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the network collector reads what the prober negotiated. It cannot see a listener the prober never reached, and an unreached endpoint is refused rather than recorded as absent cryptography",
+    "cipher-suite parsing is a table, not a spec implementation. A suite outside it produces no fact rather than a guess, which means a new suite looks like missing evidence until the table is extended",
+    "the static collector joins stored findings to their evidence rows. If the link is absent the finding is refused, which is correct but means a broken ingestion path shrinks the profile instead of flagging the ingestion",
+    "the runtime collector is fed by whatever records crypto operations. The platform does not yet trace a process, so a runtime row is only as good as the agent that wrote it \u2014 the collector's job is to insist on the operation, the id and the time, not to produce them",
+    "profiles are grouped by algorithm name, not by call site: two applications using AES-256-GCM in different ways share one profile unless the caller separates them",
+    "a layer with no collector is reported as unobserved_layers. That is honest, but it is still an absence the console must render as unknown rather than as safe"
+  ]
+}

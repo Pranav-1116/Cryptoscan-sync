@@ -17,8 +17,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from api.dependencies import require_roles
+from api.dependencies import get_db_session, require_roles
 
 router = APIRouter(prefix="/cbom", tags=["cbom"])
 
@@ -68,6 +70,36 @@ class CbomTlsPathsRequest(BaseModel):
         "key_exchange, certificate_ref, evidence_id"))
 
 
+class CbomCollectRequest(BaseModel):
+    probes: list[dict] = Field(default_factory=list, description=(
+        "network-scanner probes: endpoint, status, crypto.{tls_version,cipher_suite}, "
+        "certificates[], scan_run_id or evidence_id. A probe that negotiated nothing "
+        "produces no evidence"))
+    assets: list[dict] = Field(default_factory=list, description=(
+        "stored crypto findings: algorithm, key_size, mode, purpose, file_path, line_number, "
+        "evidence_ids[]. A finding with no evidence row is refused"))
+    operations: list[dict] = Field(default_factory=list, description=(
+        "recorded crypto operations: operation, algorithm, key_size/mode/curve, evidence_id, "
+        "observed_at, process. A row missing any of those is a claim, not an observation"))
+    scan_run_id: str | None = Field(None, description="scan run the probes belong to")
+    purposes: dict = Field(default_factory=dict, description="algorithm -> purpose")
+
+
+class CbomCollectResponse(BaseModel):
+    network: dict
+    static: dict
+    runtime: dict
+    profiles: dict
+
+
+class CbomNetworkUsageResponse(BaseModel):
+    profiles: dict
+    certificates: list[dict]
+    hops: dict
+    source: str
+    scan_runs: int
+
+
 class CbomHsmRequest(BaseModel):
     kind: str = Field(..., description=(
         "CAPABILITY, CONFIGURED_KEY or OPERATION — the three HSM/KMS answers, only the last "
@@ -112,6 +144,59 @@ def cbom_tls_paths(body: CbomTlsPathsRequest, user: str = Depends(require_roles(
     from cbom import usage_evidence as ue
 
     return ue.tls_paths(body.hops)
+
+
+@router.post("/usage/collect", response_model=CbomCollectResponse)
+def cbom_usage_collect(body: CbomCollectRequest,
+                       user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Turn rows this platform already holds into CBOM evidence, then profile them.
+
+    Network probes become ``NETWORK_OBSERVED``, stored findings with their
+    evidence rows become ``STATIC_OBSERVED``, recorded operations become
+    ``RUNTIME_OBSERVED`` — and every source's refusals are reported rather than
+    dropped, because a row that cannot be attributed is an inventory entry, not
+    an observation.
+    """
+    from cbom import usage_collectors as uc
+
+    network = uc.network_events_from_probes(body.probes, scan_run_id=body.scan_run_id)
+    static = uc.static_events_from_assets(body.assets)
+    runtime = uc.runtime_events_from_operations(body.operations)
+    profiles = uc.profiles(network["events"] + static["events"] + runtime["events"],
+                           purposes=body.purposes)
+    return {"network": network, "static": static, "runtime": runtime, "profiles": profiles}
+
+
+@router.get("/usage/network", response_model=CbomNetworkUsageResponse)
+def cbom_usage_network(db: Session = Depends(get_db_session),
+                       user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """The network half of the usage profile, read from stored scan runs.
+
+    This is the collector the network scanner already feeds: each run's probes
+    become ``NETWORK_OBSERVED`` facts carrying the run they came from, plus the
+    certificates served and one hop per observed endpoint. Nothing here claims
+    anything about the application behind a terminator.
+    """
+    from cbom import usage_collectors as uc
+    from db.models.network_scan_run import NetworkScanRun
+
+    runs = db.execute(
+        select(NetworkScanRun).order_by(NetworkScanRun.created_at.desc(),
+                                        NetworkScanRun.id.desc()).limit(20)
+    ).scalars().all()
+    probes: list[dict] = []
+    for run in runs:
+        for probe in ((run.result or {}).get("probes") or []):
+            if isinstance(probe, dict):
+                probes.append({**probe, "scan_run_id": probe.get("scan_run_id") or run.id,
+                               "observed_at": probe.get("observed_at")
+                               or (run.created_at.isoformat() if run.created_at else None)})
+    collected = uc.network_events_from_probes(probes)
+    profiles = uc.profiles(collected["events"])
+    return {"profiles": profiles, "certificates": collected["certificates"],
+            "hops": {"schema": collected["schema"], "paths": collected["hops"],
+                     "statement": collected["statement"]},
+            "source": "live" if probes else "empty", "scan_runs": len(runs)}
 
 
 @router.post("/hsm-evidence")

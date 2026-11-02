@@ -29,6 +29,7 @@ def client(tmp_path, monkeypatch):
         yield session
 
     application.dependency_overrides[get_db_session] = _session
+    application.state.db_session = session
     yield application
     application.dependency_overrides.clear()
 
@@ -131,6 +132,73 @@ def test_tls_paths_report_each_termination(client):
 def test_tls_hop_without_evidence_is_refused_not_invented(client):
     body = _post(client, "/tls-paths", {"hops": [{"endpoint": "x:443"}]}).json()
     assert body["paths"] == [] and body["refused"]
+
+
+PROBE = {
+    "endpoint": "payments.bank.example:443", "status": "OK",
+    "crypto": {"tls_version": "TLS1.3", "cipher_suite": "TLS_AES_256_GCM_SHA384"},
+    "observed_on": "External LB", "scan_run_id": "run-7",
+    "certificates": [{"serial_number": "cert-9281", "public_key_algorithm": "ECDSA",
+                      "public_key_size": 256, "signature_algorithm": "ECDSA-SHA256"}],
+}
+
+
+def test_collect_turns_stored_rows_into_profiles(client):
+    body = _post(client, "/usage/collect", {
+        "probes": [PROBE],
+        "assets": [{"algorithm": "AES-256-GCM", "key_size": 256, "mode": "GCM",
+                    "file_path": "src/tls.py", "line_number": 12,
+                    "evidence_ids": ["EVID-001"]},
+                   {"algorithm": "RSA", "file_path": "src/legacy.py"}],
+        "operations": [{"operation": "EVP_EncryptInit_ex", "algorithm": "AES-256-GCM",
+                        "evidence_id": "RUNTIME-92821",
+                        "observed_at": "2026-11-02T10:42:11Z"}],
+    }).json()
+    profile = next(row for row in body["profiles"]["profiles"]
+                   if row["asset"]["algorithm"] == "AES-256-GCM")
+    assert profile["confidence"] == "VERY_HIGH"
+    assert "net:run-7:payments.bank.example:443" in profile["evidence_ids"]
+    assert body["static"]["refused"][0]["algorithm"] == "RSA"
+    assert body["network"]["certificates"][0]["application_operation_proven"] is False
+
+
+def test_collect_reports_an_unprobed_endpoint_as_nothing(client):
+    body = _post(client, "/usage/collect", {
+        "probes": [{**PROBE, "status": "TIMEOUT"}],
+    }).json()
+    assert body["network"]["events"] == [] and body["network"]["refused"]
+    assert body["profiles"]["profiles"] == []
+
+
+def test_network_usage_reads_the_stored_scan_runs(client):
+    from db.models.network_scan_run import NetworkScanRun
+
+    session = client.state.db_session
+    session.add(NetworkScanRun(scan_id="s-1", target_kind="hosts",
+                               result={"probes": [PROBE]}))
+    session.commit()
+
+    async def go():
+        async with ASGITransport(app=client) as transport:
+            async with AsyncClient(transport=transport, base_url="http://test") as http:
+                return await http.get("/api/v1/cbom/usage/network",
+                                      headers={"Authorization": "Bearer test-token"})
+
+    body = asyncio.run(go()).json()
+    assert body["source"] == "live" and body["scan_runs"] == 1
+    assert body["profiles"]["algorithms"] == ["AES-256-GCM", "SHA-384"]
+    assert body["hops"]["paths"][0]["endpoint"] == "payments.bank.example:443"
+
+
+def test_network_usage_is_empty_until_a_scan_ran(client):
+    async def go():
+        async with ASGITransport(app=client) as transport:
+            async with AsyncClient(transport=transport, base_url="http://test") as http:
+                return await http.get("/api/v1/cbom/usage/network",
+                                      headers={"Authorization": "Bearer test-token"})
+
+    body = asyncio.run(go()).json()
+    assert body["source"] == "empty" and body["profiles"]["profiles"] == []
 
 
 def test_hsm_capability_is_not_an_operation(client):
