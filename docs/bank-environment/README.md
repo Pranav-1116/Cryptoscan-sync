@@ -272,6 +272,42 @@
 > moves from a 🔴 broad concern to 🟡 **qualification still required** — the
 > guards refuse rather than assert, and what is left is a bank Linux host, a
 > Windows runner and the two readers named above.
+>
+> [Vendor evidence](130-vendor-evidence-and-vbom.md)
+> (**9 pass · 0 partial · 0 fail**) answers the follow-up that matters more than
+> any of it: *a vendor declaration is not a verified deployment*. The VBOM's
+> dangerous shortcut is one sentence long — the vendor says product X supports
+> ML-DSA, therefore the payment system uses ML-DSA — and
+> `vendor_intel/vendor_evidence.py` refuses it in three places. **A capability is
+> not a usage**: `CAPABILITY_DECLARED`, `CAPABILITY_OBSERVED` and `USAGE_OBSERVED`
+> are three events over eight evidence types (`DECLARED`, `IMPORTED`,
+> `CONFIGURED`, `OBSERVED`, `RUNTIME_OBSERVED`, `NETWORK_OBSERVED`, `INFERRED`,
+> `UNKNOWN`), and there is no path from the first to the third except through the
+> second. **A declaration has a version and the bank has another**: a crypto
+> profile written for firmware 8.2.1 does not describe an 8.4.0 appliance, and the
+> verdict — `MATCHED`, `PARTIAL_MATCH`, `VERSION_MISMATCH`, `PRODUCT_MISMATCH`,
+> `DEPLOYMENT_UNVERIFIED`, `EXPIRED`, `SUPERSEDED`, `UNKNOWN` — withholds the
+> declared capabilities when it is not `MATCHED`/`PARTIAL_MATCH`. A probe replaces
+> the gate with a constant `MATCHED` to prove the refusal is the gate and not a
+> sentence in the guide.
+>
+> **Sources disagree, and the disagreement is the finding.** Vendor 3.0.13, SBOM
+> 3.0.11, runtime 3.0.11 is a `CONFLICT` with all three rows kept — never a
+> "latest" value; a second probe shows the CBOM's `AES-256` capability and the
+> runtime's `AES-128-GCM` surviving side by side rather than being collapsed. Each
+> capability row carries eighteen fields including its applicability verdict and
+> six separate flags (`vendor_declared`, `bank_observed`, `runtime_observed`,
+> `production_usage`, `version_matched`, `evidence_fresh`), so a UI shows "vendor
+> declared ✓ / bank observed ✓ / runtime observed ?" instead of one boolean. Due
+> diligence is a 22-section record whose gaps are named rather than scored as
+> zero; freshness turns a 2024 questionnaire into `VENDOR_EVIDENCE_STALE` with its
+> age; lifecycle dates override a stale `SUPPORTED` label; and the vendor→product→
+> appliance→application→critical-system chain and the vendor→SDK→container chain
+> answer "which bank systems depend on Vendor-X's HSM?" and "what breaks if SDK
+> 4.2 goes EOL?" with per-level counts. The risk rating is a list of weighted,
+> reasoned factors — a probe asserts two runs with the same inputs are identical,
+> so a rating can be reproduced in front of a regulator.
+
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

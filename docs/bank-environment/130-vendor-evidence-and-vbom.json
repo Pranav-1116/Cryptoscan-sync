@@ -1,0 +1,313 @@
+{
+  "schema": "cryptoscan.vendor-evidence-guide/1",
+  "generated_at": "2026-11-02T13:44:09.511747+00:00",
+  "as_of": "2026-11-02",
+  "counts": {
+    "PASS": 9,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "rows": [
+    {
+      "id": "evidence_vocabulary",
+      "question": "does the evidence model distinguish a vendor claim from a bank fact?",
+      "phase": "6",
+      "probes": [
+        {
+          "probe": "eight-evidence-types-and-no-shortcut",
+          "ok": true,
+          "observed": "the vocabulary is closed and ordered: UNKNOWN < INFERRED < DECLARED < IMPORTED < CONFIGURED < OBSERVED < NETWORK_OBSERVED < RUNTIME_OBSERVED \u2014 a vendor claim never outranks the bank's own observation"
+        },
+        {
+          "probe": "a-declaration-does-not-become-an-observation",
+          "ok": true,
+          "observed": "a vendor document alone yields DECLARED_ONLY with confidence LOW \u2014 it cannot reach CONFIRMED because nothing in the bank's estate was read"
+        },
+        {
+          "probe": "the-drift-vocabulary-separates-the-three-events",
+          "ok": true,
+          "observed": "CAPABILITY_DECLARED, CAPABILITY_OBSERVED and USAGE_OBSERVED are three events with three definitions, so a dashboard cannot collapse them into one green tick"
+        },
+        {
+          "probe": "an-evidence-row-cannot-be-anonymous",
+          "ok": true,
+          "observed": "a claim with no citation is refused at construction: evidence must name the record it came from, and the row carries a stable VE- identifier"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "version_applicability",
+      "question": "does a vendor document for one product version stay attached to that version?",
+      "phase": "7/8",
+      "probes": [
+        {
+          "probe": "declared-8-2-1-against-deployed-8-4-0-is-a-mismatch",
+          "ok": true,
+          "observed": "8.2.1 versus 8.4.0 -> VERSION_MISMATCH: declared 8.2.1, deployed 8.4.0: a different generation, so the declared crypto inventory does not travel"
+        },
+        {
+          "probe": "a-mismatched-declaration-lights-no-capability",
+          "ok": true,
+          "observed": "4 declared capabilities are carried with the verdict and none of them is counted as a vendor capability of this appliance"
+        },
+        {
+          "probe": "the-version-verdict-has-four-distinct-answers",
+          "ok": true,
+          "observed": "exact=8.2.1->MATCHED, patch 8.2.1->8.2.2 PARTIAL_MATCH, minor 8.3.0->8.4.0 VERSION_MISMATCH, and 8.10 > 8.9 because versions compare as numbers rather than strings"
+        },
+        {
+          "probe": "a-product-or-vendor-mismatch-is-not-a-version-mismatch",
+          "ok": true,
+          "observed": "four different refusals for four different reasons: wrong product, wrong vendor, unversioned deployment and unversioned document \u2014 none of them silently MATCHED"
+        },
+        {
+          "probe": "superseded-and-expired-documents-are-refused-even-at-the-right-version",
+          "ok": true,
+          "observed": "a document replaced by a newer one is SUPERSEDED and an old one is EXPIRED, both before any capability is quoted \u2014 the version matches and the claim is still refused"
+        },
+        {
+          "probe": "the-gate-is-what-withholds-the-capability",
+          "ok": true,
+          "observed": "with the applicability gate replaced by a constant MATCHED the same 8.2.1 document lights every capability on the 8.4.0 appliance \u2014 so the refusal above is the gate doing the work, not a phrase in this paragraph"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "due_diligence",
+      "question": "is vendor due diligence a structured record or a status field?",
+      "phase": "9",
+      "probes": [
+        {
+          "probe": "twenty-two-sections-and-no-implicit-zero",
+          "ok": true,
+          "observed": "22 sections are listed; a section that is missing is named rather than scored as zero: vendor_identity, product, product_version, contract, support_lifecycle, end_of_life, \u2026"
+        },
+        {
+          "probe": "an-empty-record-is-incomplete-with-reasons",
+          "ok": true,
+          "observed": "an empty record scores 0.0% and blocks approval for 6 stated reasons, e.g. the last review is unknown: no verification date, so the age of this evidence is unknown"
+        },
+        {
+          "probe": "a-complete-current-review-passes-and-a-stale-one-does-not",
+          "ok": true,
+          "observed": "all 22 sections present, review 365 days old -> COMPLETE, 0 blocker(s)"
+        },
+        {
+          "probe": "the-same-record-with-a-2024-review-is-blocked",
+          "ok": true,
+          "observed": "every section is still on file, and the record is 813 days old, so approval is blocked and the age is stated"
+        },
+        {
+          "probe": "an-unknown-review-status-is-refused",
+          "ok": true,
+          "observed": "a review status outside the five the model accepts raises rather than being stored"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "lifecycle",
+      "question": "does the product lifecycle drive the crypto migration answer?",
+      "phase": "10",
+      "probes": [
+        {
+          "probe": "six-lifecycle-states",
+          "ok": true,
+          "observed": "the ladder runs CURRENT -> SUPPORTED -> MAINTENANCE -> END_OF_SUPPORT -> END_OF_LIFE -> RETIRED"
+        },
+        {
+          "probe": "dates-override-a-stale-declared-state",
+          "ok": true,
+          "observed": "the record still says SUPPORTED while support ended on 2025-06-30: the effective state is END_OF_SUPPORT and the drift is reported"
+        },
+        {
+          "probe": "end-of-life-is-not-end-of-support",
+          "ok": true,
+          "observed": "past both dates the product is END_OF_LIFE, not merely END_OF_SUPPORT, and the record is flagged unsupported"
+        },
+        {
+          "probe": "lifecycle-is-an-input-to-risk-not-a-label",
+          "ok": true,
+          "observed": "the same product state appears as its own risk factor with 25 points, so an EOL appliance raises the vendor score instead of sitting beside it as decoration"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "dependency_chains",
+      "question": "can the estate answer 'which bank systems depend on this vendor product?' \u2014 for hardware and for software?",
+      "phase": "11/12",
+      "probes": [
+        {
+          "probe": "vendor-product-to-asset-to-application-to-system",
+          "ok": true,
+          "observed": "Vendor-X HSM-X500 -> 3 appliance(s) -> 4 application(s) -> 3 service(s) -> ['Card Authorization']; the other vendor's appliance is not counted"
+        },
+        {
+          "probe": "counts-are-per-level-and-never-summed",
+          "ok": true,
+          "observed": "three appliances and four applications is not seven of anything \u2014 each level is counted on its own, which is the number a risk committee can act on"
+        },
+        {
+          "probe": "no-recorded-deployment-is-not-no-dependency",
+          "ok": true,
+          "observed": "a vendor with no recorded appliance says so explicitly, so an empty result cannot be read as an all-clear"
+        },
+        {
+          "probe": "an-end-of-life-sdk-reaches-applications-containers-and-systems",
+          "ok": true,
+          "observed": "SDK 4.2 -> 3 applications, 7 containers, 2 systems and 1 critical service \u2014 the version filter excludes the 4.1 deployment, which is a different exposure"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "capability_evidence",
+      "question": "does one capability row show what is declared, what is observed and what is used?",
+      "phase": "13",
+      "probes": [
+        {
+          "probe": "six-verification-flags-not-one-boolean",
+          "ok": true,
+          "observed": "AES-256 shows vendor_declared, bank_observed, production_usage, version_matched and evidence_fresh separately; the single status is CONFIRMED, and a UI does not have to infer it"
+        },
+        {
+          "probe": "runtime-evidence-outranks-a-declaration",
+          "ok": true,
+          "observed": "a capability the vendor declared and a running session exercised is CORROBORATED at HIGH confidence \u2014 the one combination that justifies the word verified"
+        },
+        {
+          "probe": "the-capability-record-carries-all-eighteen-fields",
+          "ok": true,
+          "observed": "every field the review listed is present, including the applicability verdict and the evidence list, and the record holds no key material of any kind"
+        },
+        {
+          "probe": "a-bank-observation-the-vendor-never-declared-is-still-recorded",
+          "ok": true,
+          "observed": "AES-128 observed on the appliance and never declared is recorded at MEDIUM as BANK_OBSERVED_ONLY \u2014 it is a finding about the estate, not a gap in the VBOM"
+        },
+        {
+          "probe": "the-vbom-row-carries-the-evidence-not-just-a-boolean",
+          "ok": true,
+          "observed": "the existing `VbomGenerator` row shape gains the evidence type, the applicability verdict, the verification status and both evidence ids \u2014 so a VBOM row can be defended one at a time (ML-DSA-65: ML-DSA is a post-quantum construction)"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "freshness",
+      "question": "does old vendor evidence still look current on the dashboard?",
+      "phase": "14",
+      "probes": [
+        {
+          "probe": "a-2024-questionnaire-in-2026-is-stale-with-its-age",
+          "ok": true,
+          "observed": "last verified 2024-08-11, 813 days ago -> EXPIRED: last verified 2024-08-11, 813 days ago \u2014 more than twice the review window, so it cannot support a current claim"
+        },
+        {
+          "probe": "three-freshness-states-plus-unknown",
+          "ok": true,
+          "observed": "FRESH inside one review window, STALE inside two, EXPIRED beyond that, and UNKNOWN when there is no date at all \u2014 a missing date is not treated as fresh"
+        },
+        {
+          "probe": "stale-evidence-emits-its-own-event",
+          "ok": true,
+          "observed": "an old document produces VENDOR_EVIDENCE_STALE beside the claim rather than quietly supporting a current answer: VENDOR_DOCUMENT_EXPIRED, VENDOR_EVIDENCE_STALE"
+        },
+        {
+          "probe": "an-expired-document-is-filed-as-expired",
+          "ok": true,
+          "observed": "an out-of-date document raises VENDOR_DOCUMENT_EXPIRED, not a version mismatch: the event names the reason, so the reviewer is not sent to compare versions that already agree"
+        },
+        {
+          "probe": "an-undated-evidence-row-cannot-be-fresh",
+          "ok": true,
+          "observed": "a claim with no observation date reports UNKNOWN freshness, so 'PQC ready' can never rest on a row nobody can date"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "reconciliation",
+      "question": "when the vendor, the SBOM, the CBOM and the runtime disagree, does the VBOM pick a winner?",
+      "phase": "15",
+      "probes": [
+        {
+          "probe": "three-sources-that-disagree-stay-three-rows",
+          "ok": true,
+          "observed": "OpenSSL: vendor 3.0.13, SBOM 3.0.11, runtime 3.0.11 -> CONFLICT; every row is kept and the conflict is the finding"
+        },
+        {
+          "probe": "a-source-capability-and-a-runtime-cipher-do-not-collapse",
+          "ok": true,
+          "observed": "CBOM says AES-256 is supported while the runtime exercised AES-128-GCM: both rows survive, the stronger source is named for triage, and neither overwrites the other"
+        },
+        {
+          "probe": "agreement-single-source-and-silence-are-three-answers",
+          "ok": true,
+          "observed": "AGREE (two sources, same value), SINGLE_SOURCE (one source, not corroboration) and UNKNOWN (nobody stated it) are distinguished, because a single source is not corroboration"
+        },
+        {
+          "probe": "a-less-specific-value-is-partial-not-a-contradiction",
+          "ok": true,
+          "observed": "vendor '3.0' against SBOM '3.0.11' is one source saying less, not two sources disagreeing \u2014 the difference between PARTIAL and CONFLICT is precision"
+        },
+        {
+          "probe": "a-declared-row-and-an-observed-row-are-one-answer",
+          "ok": true,
+          "observed": "the vendor row and the observation row group into one CONFIRMED capability with both evidence ids attached, instead of two rows a reader has to reconcile by hand"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "vendor_risk",
+      "question": "is a vendor risk rating explainable, or a colour somebody typed?",
+      "phase": "16",
+      "probes": [
+        {
+          "probe": "a-critical-rating-is-a-factor-list",
+          "ok": true,
+          "observed": "CRITICAL (100/100) from 11 named factors, each with points and a reason: product_lifecycle +25, pqc_capability +20, critical_systems_affected +15, crypto_dependency +15, \u2026"
+        },
+        {
+          "probe": "a-clean-vendor-scores-zero-and-says-why",
+          "ok": true,
+          "observed": "a current product with PQC, a verified deployment, an SBOM and supply-chain evidence scores LOW because no factor applies \u2014 the score is computed, not typed"
+        },
+        {
+          "probe": "silence-scores-differently-from-a-refusal",
+          "ok": true,
+          "observed": "a vendor that states no PQC position scores 20 with the factor marked UNKNOWN; one that declares none scores 30"
+        },
+        {
+          "probe": "the-same-inputs-produce-the-same-rating",
+          "ok": true,
+          "observed": "the score is a pure function of its factors: two runs with the same inputs are identical, so a rating can be reproduced in front of a regulator"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "no vendor was contacted and no vendor document was parsed from PDF: the declarations here are fixtures shaped like the fields the review named, so the module is graded, not a vendor's paperwork",
+    "applicability is computed from vendor, product, version and revision. A vendor that versions its crypto profile separately from its firmware version would need a second identity axis this model does not have",
+    "a PATCH-level difference is PARTIAL_MATCH by design; whether the vendor's advisory says the crypto inventory changed inside a patch is a judgement this module hands to a reviewer rather than guessing",
+    "freshness needs a date on the evidence. A questionnaire that arrives undated is UNKNOWN, which blocks a claim rather than ageing gracefully into a false green",
+    "reconciliation compares string forms of a value. Two sources that name the same thing differently ('AES-256' and 'AES256') will conflict until a normaliser sits in front of it",
+    "the dependency chains are assembled from records the bank supplies: appliance to application comes from configuration evidence, application to service from the service register, and neither is discovered by this module",
+    "container counts come from the SBOM import, so a container that ships the component without naming it would be missed",
+    "risk weights are this artifact's stated weights, visible in the module; a bank with its own risk framework can read the factors and reweight them without changing the evidence"
+  ]
+}

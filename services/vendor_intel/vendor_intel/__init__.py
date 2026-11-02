@@ -10,6 +10,20 @@ from vendor_intel.threat_intel import (
     verify_advisory_bundle,
 )
 from vendor_intel.vbom import VbomGenerator, build_vbom
+from vendor_intel.vendor_evidence import (
+    Applicability,
+    CapabilityClaim,
+    Evidence,
+    EvidenceType,
+    ProductIdentity,
+    VendorDeclaration,
+    VerificationStatus,
+    assess_applicability,
+    build_vbom_slice,
+    evaluate_due_diligence,
+    reconcile,
+    vendor_risk,
+)
 
 __all__ = [
     "extract_crypto_mentions",
@@ -24,4 +38,16 @@ __all__ = [
     "verify_advisory_bundle",
     "parse_questionnaire",
     "score_vendor",
+    "Applicability",
+    "CapabilityClaim",
+    "Evidence",
+    "EvidenceType",
+    "ProductIdentity",
+    "VendorDeclaration",
+    "VerificationStatus",
+    "assess_applicability",
+    "build_vbom_slice",
+    "evaluate_due_diligence",
+    "reconcile",
+    "vendor_risk",
 ]
