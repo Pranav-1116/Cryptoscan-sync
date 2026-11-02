@@ -142,7 +142,8 @@ def _parse_manifest(path: Path, parsers: dict[str, Any]) -> list[dict[str, Any]]
 
 
 def scan_source(root: str, *, include_vendored: bool = False,
-                use_lockfiles: bool = True) -> dict[str, Any]:
+                use_lockfiles: bool = True,
+                budget: Any | None = None) -> dict[str, Any]:
     """Walk a source tree and build the canonical scan result.
 
     Declared dependencies come from the package manifests; when
@@ -221,6 +222,27 @@ def scan_source(root: str, *, include_vendored: bool = False,
             break
 
     components = _merge_declared_and_resolved(packages)
+    edges = _dependency_edges(components)
+    # The review's parser-DoS blocker, applied on the path the API actually uses:
+    # every walk has already been bounded by file and manifest caps, and this
+    # bounds the *graph* — components, depth and cycles — before the edges reach
+    # a renderer that would recurse over them.
+    budget = _graph_budget(components, edges, budget=budget)
+    budget["action"] = "NONE"
+    if budget["verdict"] == "REFUSED":
+        limits = budget["budget"]
+        if (budget["components"] > limits["max_components"]
+                or budget["depth"] > limits["max_depth"]):
+            # too big or too deep to render: keep the inventory, withhold the graph
+            budget["action"] = "EDGES_WITHHELD"
+            budget["edges_withheld"] = len(edges)
+            edges = []
+        else:
+            # a cycle is not a reason to throw the graph away — break the back
+            # edges deterministically and say how many
+            edges, broken = _break_cycles(edges)
+            budget["action"] = "CYCLES_BROKEN"
+            budget["edges_broken"] = broken
 
     return {
         "target": str(base),
@@ -233,9 +255,70 @@ def scan_source(root: str, *, include_vendored: bool = False,
         "manifest_count": len(set(manifests)),
         "lockfiles": lockfiles,
         "lockfile_count": len(set(lockfiles)),
-        "dependencies": _dependency_edges(components),
+        "dependencies": edges,
+        "parser_budget": budget,
         "files_walked": files_walked,
     }
+
+
+def _break_cycles(edges: list[dict[str, str]]) -> tuple[list[dict[str, str]], int]:
+    """Drop the edges that close a cycle, keeping a deterministic spanning set.
+
+    A cyclic graph is what makes a naive renderer recurse; it is also something
+    real lockfiles contain (npm peer-dependency cycles). Throwing the whole graph
+    away loses true edges, so the back edges are removed instead — always the
+    same ones, by visiting nodes and children in sorted order.
+    """
+    children: dict[str, list[str]] = {}
+    for edge in edges:
+        children.setdefault(edge["from"], []).append(edge["to"])
+    for values in children.values():
+        values.sort()
+    state: dict[str, int] = {}  # 1 = on the stack, 2 = finished
+    back: set[tuple[str, str]] = set()
+    for start in sorted(children):
+        if state.get(start) == 2:
+            continue
+        stack: list[tuple[str, int]] = [(start, 0)]
+        state[start] = 1
+        while stack:
+            node, index = stack[-1]
+            targets = children.get(node, [])
+            if index >= len(targets):
+                state[node] = 2
+                stack.pop()
+                continue
+            stack[-1] = (node, index + 1)
+            child = targets[index]
+            status = state.get(child)
+            if status == 1:
+                back.add((node, child))
+            elif status is None:
+                state[child] = 1
+                stack.append((child, 0))
+    kept = [edge for edge in edges if (edge["from"], edge["to"]) not in back]
+    return kept, len(edges) - len(kept)
+
+
+def _graph_budget(components: list[dict[str, Any]],
+                  edges: list[dict[str, str]], *, budget: Any | None = None) -> dict[str, Any]:
+    """The dependency graph, measured against the parser budget before it is used.
+
+    ``check_budget`` lives in :mod:`devsecops.sbom_evidence` with the rest of the
+    evidence rules; this adapter is what makes it a guard rather than a library
+    function nobody calls. Component names are the graph's keys because that is
+    how :func:`_dependency_edges` resolves lockfile references.
+    """
+    from devsecops.sbom_evidence import check_budget
+
+    depends: dict[str, list[str]] = {}
+    for edge in edges:
+        depends.setdefault(str(edge.get("from") or ""), []).append(str(edge.get("to") or ""))
+    document = {"components": [
+        {"name": str(component.get("name") or ""),
+         "dependsOn": depends.get(str(component.get("name") or ""), [])}
+        for component in components]}
+    return check_budget(document, budget=budget)
 
 
 def _pip_hash_for(path: Path, name: str | None) -> str | None:

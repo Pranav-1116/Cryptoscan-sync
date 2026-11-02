@@ -240,6 +240,9 @@ def build_binary_manifest(*, scan: dict[str, Any], result: dict[str, Any], bom: 
                                "note": "sealing was not recorded for this artifact"},
         "storage_key": artifact_key,
         "cbom_storage_key": f"tenants/{bucket}/{artifact_id}.cbom.json",
+        # where the evidence lives, and whether that was allowed to be ephemeral:
+        # a manifest that cannot answer this cannot support a restore or an audit
+        "storage": storage_status(),
         # Additional binary projections (HBOM/NBOM/VBOM/vulnerability BOM and
         # the unified technology view) are sidecars, not silently folded into
         # the SBOM document. Each carries its own digest and storage key.
@@ -489,21 +492,113 @@ def persist_binary_scan_index(*, db: Any, artifact_id: str, scan: dict[str, Any]
 # storage
 # --------------------------------------------------------------------------- #
 
-def artifact_storage():
+#: Where an unconfigured install writes. Node-local, so it is durable only when
+#: the operator makes it so (a mounted volume) and says nothing about backups.
+DEFAULT_SBOM_ROOT = "/var/lib/cryptoscan/sboms"
+
+#: Environments where the store's own durability is the operator's problem.
+_EPHEMERAL_ENVIRONMENTS = frozenset({"test", "dev", "development", "local", "ci"})
+
+
+class StorageRefused(RuntimeError):
+    """This environment may not hold evidence in the store that is available.
+
+    Raised instead of silently writing to a temporary directory: the review's
+    blocker is precisely that a fallback turns "we have the evidence" into "we
+    had it until the container restarted".
+    """
+
+
+def _storage_environment(environment: str | None = None) -> str:
+    env = environment or os.environ.get("ENVIRONMENT") or os.environ.get("CRYPTOSCAN_ENV")
+    return str(env or "development").strip().lower()
+
+
+def _store_probe(root: Path) -> tuple[bool, bool, str | None]:
+    """Write, read back and hash a probe object: ``(writable, integrity, error)``.
+
+    "Integrity verified on write" is a claim, so it is tested rather than assumed:
+    a store that returns different bytes than it was given is not a store this
+    platform will put production evidence into.
+    """
+    probe = root / ".cryptoscan-store-probe"
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        payload = b"cryptoscan-store-probe"
+        probe.write_bytes(payload)
+        returned = probe.read_bytes()
+        probe.unlink(missing_ok=True)
+        return True, returned == payload, None
+    except Exception as exc:  # noqa: BLE001 — an unusable root is reported, not raised here
+        return False, False, f"{type(exc).__name__}: {exc}"
+
+
+def storage_status(environment: str | None = None) -> dict[str, Any]:
+    """What the store is, and whether this environment may use it.
+
+    The manifest records this, so an auditor can see *where* an artifact was
+    written and whether that was allowed, rather than inferring it from a path.
+    """
+    from devsecops.sbom_evidence import storage_policy
+
+    env = _storage_environment(environment)
+    configured = str(os.environ.get("SBOM_STORAGE_DIR") or "").strip()
+    root = Path(configured or DEFAULT_SBOM_ROOT)
+    writable, integrity, error = _store_probe(root)
+    backup = str(os.environ.get("SBOM_STORAGE_BACKUP_DIR") or "").strip() or None
+    retention_raw = str(os.environ.get("SBOM_RETENTION_DAYS") or "").strip()
+    retention = int(retention_raw) if retention_raw.isdigit() and int(retention_raw) > 0 else None
+    durable = bool(configured)
+    policy = storage_policy(
+        environment=env, configured_store=configured or None, writable=writable,
+        durable=durable, backup=backup, retention_days=retention,
+        integrity_verified=integrity)
+    return {
+        "environment": env,
+        "root": str(root),
+        "configured": bool(configured),
+        "writable": writable,
+        "durable": durable,
+        "integrity_verified": integrity,
+        "backup": bool(backup),
+        "retention_days": retention,
+        "verdict": policy["verdict"] if env not in _EPHEMERAL_ENVIRONMENTS
+        else ("ALLOW" if writable else "ALLOW_EPHEMERAL"),
+        "mode": policy["mode"],
+        "reasons": policy["reasons"],
+        "error": error,
+    }
+
+
+def artifact_storage(environment: str | None = None):
     """Persistent on-disk SBOM artifact store (survives restarts).
 
     Shared by the API and the worker: both read ``SBOM_STORAGE_DIR``, so a job
     scanned by a worker is downloadable from the API's endpoints unchanged.
+
+    **A temporary fallback is a production refusal.** Outside dev/test/CI, an
+    unwritable or unconfigured store raises :class:`StorageRefused` naming what
+    is missing — backup target (``SBOM_STORAGE_BACKUP_DIR``), retention
+    (``SBOM_RETENTION_DAYS``) and integrity — instead of writing evidence to a
+    directory that disappears with the container. Development keeps the old
+    convenience, and :func:`storage_status` records which of the two happened.
     """
     import tempfile
 
     from governance.backup_jobs import DiskBackupStorage
 
-    root = os.environ.get("SBOM_STORAGE_DIR", "/var/lib/cryptoscan/sboms")
-    try:
-        return DiskBackupStorage(root)
-    except Exception:  # noqa: BLE001 — an unwritable default root must not lose the artifact
-        return DiskBackupStorage(os.path.join(tempfile.gettempdir(), "cryptoscan-sboms"))
+    status = storage_status(environment)
+    if status["verdict"] == "REFUSE":
+        raise StorageRefused(
+            "refusing to store SBOM evidence in "
+            f"{status['environment']}: " + "; ".join(status["reasons"]))
+    if status["writable"]:
+        return DiskBackupStorage(status["root"])
+    if status["environment"] not in _EPHEMERAL_ENVIRONMENTS:
+        raise StorageRefused(
+            f"the artifact store at {status['root']} is not usable: {status['error']}")
+    logger.warning("sbom_artifact_store_ephemeral: %s", status["error"])
+    return DiskBackupStorage(os.path.join(tempfile.gettempdir(), "cryptoscan-sboms"))
 
 
 def resolve_signing_secret(db: Any = None, *, fallback_secret: str | None = None,

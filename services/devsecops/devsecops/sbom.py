@@ -132,6 +132,53 @@ def import_sbom(doc: dict[str, Any]) -> list[dict[str, Any]]:
     raise ValueError("unrecognized SBOM format (expected CycloneDX or SPDX JSON)")
 
 
+#: Fields an imported document may never set, whatever it claims.
+PROTECTED_IMPORT_FIELDS: tuple[str, ...] = ("deployment_identity", "runtime_evidence",
+                                            "authorization", "observed_fact")
+
+
+def guard_import(doc: dict[str, Any], *, source: str = "api:/sbom/import",
+                 existing: dict[str, Any] | None = None,
+                 budget: Any | None = None) -> dict[str, Any]:
+    """Screen an imported document before anything reads a component out of it.
+
+    Every route that accepts an SBOM from outside the platform calls this first.
+    It applies the parser budget (a 100 MB or 200-deep document is refused by a
+    stated limit), and it refuses a document that tries to overwrite a fact the
+    platform observed — an import adds rows, it does not change the estate.
+
+    Returns the screening result; raises ``ValueError`` with the reasons on
+    refusal, which is what the route turns into a 4xx.
+    """
+    from devsecops.sbom_evidence import check_budget, import_sbom as screen  # noqa: PLC0415
+
+    measured = check_budget(doc, budget=budget)
+    if measured["verdict"] == "REFUSED":
+        raise ValueError("imported SBOM refused: " + "; ".join(measured["problems"]))
+    screened = screen(doc, source=source, existing=existing or {},
+                      refuse_protected_claims=True)
+    if screened["verdict"] == "REJECTED":
+        reasons = "; ".join(row["reason"] for row in screened.get("refused") or ())
+        raise ValueError(f"imported SBOM refused: {reasons}")
+    return {
+        "trust": "UNTRUSTED",
+        "content_hash": screened.get("content_hash"),
+        "budget": measured,
+        "may_override": False,
+        "statement": (f"imported from {source} as untrusted evidence: its rows may be added to "
+                      "the inventory and may not change an observed fact"),
+    }
+
+
+def mark_imported(components: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Label every imported row so nothing downstream mistakes it for a scan."""
+    for component in components:
+        component["trust"] = "UNTRUSTED"
+        component["imported"] = True
+        component["may_override"] = False
+    return components
+
+
 # ------------------------------------------------------------ export ------ #
 def export_cyclonedx(components: list[dict[str, Any]], *, tool: str = "CryptoScan") -> dict[str, Any]:
     cdx_comps = []

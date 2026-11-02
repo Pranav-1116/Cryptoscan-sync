@@ -401,6 +401,33 @@
 > depth/cycle budget before it hits the CPU. Everything not proven is listed in
 > the guide, in the review's order.
 
+> [Enforced where the code runs](134-sbom-enforcement.md) (**8 pass · 0 partial ·
+> 0 fail**, 39 probes) is the follow-up a reviewer asks next: *is any of that on
+> the path the product takes?* Five gaps closed by enforcement rather than
+> documentation. **The artifact store no longer degrades to `/tmp`**: production
+> with no configured store, no backup target (`SBOM_STORAGE_BACKUP_DIR`), no
+> retention (`SBOM_RETENTION_DAYS`) or no verified integrity raises
+> `StorageRefused` naming what is missing, the integrity claim is a real write/
+> read/hash round-trip, and the manifest records where the evidence went and
+> whether that store was allowed to be ephemeral — the API answers 503 instead
+> of writing evidence to a directory that dies with the container. **The parser
+> budget is on the scan**: an 80-deep graph withholds the edges and keeps the
+> inventory, a cycle breaks exactly one back edge rather than recursing, and
+> `parser_budget` travels into the response and the stored manifest. **An
+> imported SBOM is screened before it is read**: the budget refuses it by a
+> stated limit, a document that asserts `deployment_identity`,
+> `runtime_evidence`, `authorization` or `observed_fact` is refused rather than
+> merged, and every row comes back `UNTRUSTED` with `may_override: False` and a
+> content hash. **A VEX statement now expires**: reviewer, evidence id and ISO
+> expiry make it `COMPLETE`, their absence is `INCOMPLETE` with the missing
+> fields named, and a lapsed `not_affected` returns the finding to `in_triage`
+> while keeping the claim visible. Two reporting pieces land with it —
+> `assess_document` gives every component a vulnerability posture *and* the
+> count that were never assessed, and `twin_edges` builds SBOM → component →
+> application → release → artifact → deployment → workload with evidence id,
+> type, source, timestamp and confidence on every edge, capability edges always
+> low-confidence, and no path to production for an unobserved artifact.
+
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 
 The practical answer is: **the bank installs and authorizes the platform inside

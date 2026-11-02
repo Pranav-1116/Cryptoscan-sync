@@ -862,7 +862,8 @@ PROTECTED_FACTS: tuple[str, ...] = ("deployment_identity", "runtime_evidence",
 
 
 def import_sbom(document: Mapping[str, Any], *, source: str,
-                existing: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                existing: Mapping[str, Any] | None = None,
+                refuse_protected_claims: bool = False) -> dict[str, Any]:
     """An imported SBOM adds rows and changes no facts.
 
     The review's first security blocker, mechanised: an import is ``UNTRUSTED``,
@@ -878,13 +879,22 @@ def import_sbom(document: Mapping[str, Any], *, source: str,
     refused: list[dict[str, str]] = []
     accepted: list[str] = []
     for key, value in document.items():
-        if str(key) in PROTECTED_FACTS and existing.get(key) not in (None, value):
-            refused.append({
-                "field": str(key),
-                "reason": (f"the imported document would replace {key}={existing.get(key)!r} "
-                           f"with {value!r}; an imported SBOM is untrusted input and may not "
-                           "overwrite an observed fact")})
-            continue
+        if str(key) in PROTECTED_FACTS:
+            if existing.get(key) not in (None, value):
+                refused.append({
+                    "field": str(key),
+                    "reason": (f"the imported document would replace {key}={existing.get(key)!r} "
+                               f"with {value!r}; an imported SBOM is untrusted input and may not "
+                               "overwrite an observed fact")})
+                continue
+            if refuse_protected_claims:
+                # Nothing to overwrite, and still refused: a fact the platform
+                # observes is not something an upload may assert at all.
+                refused.append({
+                    "field": str(key),
+                    "reason": (f"the imported document asserts {key}={value!r}; an imported "
+                               "SBOM may add rows and may not state an observed fact")})
+                continue
         accepted.append(str(key))
     components = document.get("components") or []
     rows = []
@@ -1021,6 +1031,199 @@ def _depth_and_cycles(graph: Mapping[str, Sequence[str]]) -> tuple[int, int]:
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #
+
+
+# --------------------------------------------------------------------------- #
+# item 10, at document scale: every component, with its posture and its reason
+# --------------------------------------------------------------------------- #
+
+#: The fields a vulnerability row must carry for a reviewer to defend it.
+VULN_ROW_FIELDS: tuple[str, ...] = ("component", "version", "purl", "feed", "feed_version",
+                                    "feed_timestamp", "match_method", "confidence",
+                                    "advisories", "status", "reason")
+
+
+def assess_document(sbom: SbomRecord, *, feed: Mapping[str, Any] | None,
+                    advisories: Sequence[Mapping[str, Any]] = (),
+                    as_of: date | None = None,
+                    max_feed_age_days: int = 7) -> dict[str, Any]:
+    """Vulnerability posture for a whole SBOM, not one lucky component.
+
+    A per-component answer is easy; the hard part is the rollup. The counts keep
+    ``MATCHED`` and ``NOT_ASSESSED`` apart, so a document whose components were
+    never looked at cannot be summarised as "clean" — the summary says how many
+    were assessed, and the statement names the states that are *not* a pass.
+    """
+    as_of = as_of or date.today()
+    rows = [assess_vulnerabilities(component, feed=feed, advisories=advisories,
+                                   as_of=as_of, max_feed_age_days=max_feed_age_days)
+            for component in sbom.components]
+    counts = {state: sum(1 for row in rows if row["status"] == state) for state in VULN_STATES}
+    assessed = counts["MATCHED"] + counts["ASSESSED_NO_MATCH"]
+    unassessed = len(rows) - assessed
+    return {
+        "schema": SCHEMA,
+        "sbom": sbom.sbom_id,
+        "as_of": as_of.isoformat(),
+        "feed": (dict(feed) if feed else None),
+        "components": rows,
+        "counts": counts,
+        "assessed": assessed,
+        "unassessed": unassessed,
+        "statement": (
+            f"{len(rows)} component(s): {counts['MATCHED']} matched, "
+            f"{counts['ASSESSED_NO_MATCH']} assessed with no match, {unassessed} not "
+            "assessed against a current feed"
+            + ("" if not unassessed else
+               f" — {unassessed} of {len(rows)} have no posture and may not be reported as "
+               "clean")),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# item 14: SBOM edges for the digital twin, each carrying its evidence
+# --------------------------------------------------------------------------- #
+
+#: Edge kinds the twin consumes. Every one of them is a claim with a source.
+TWIN_EDGE_KINDS: tuple[str, ...] = ("CONTAINS", "DESCRIBED_BY", "PRODUCED", "DEPLOYED_AS",
+                                    "RUNS_AS", "SERVES", "HAS_CAPABILITY")
+
+
+def twin_edges(sbom: SbomRecord, *, build: BuildIdentity | None = None,
+               deployments: Iterable[DeploymentObservation] = (),
+               application: str | None = None,
+               business_system: str | None = None,
+               algorithms: Mapping[str, Sequence[str]] | None = None) -> dict[str, Any]:
+    """Software → application → release → artifact → deployment → workload edges.
+
+    The review's distinction matters here: the twin must be able to answer *where
+    is this package deployed*, not *which document contains it*. So ``CONTAINS``
+    comes from an SBOM and stops at the artifact, and only an observation —
+    carrying its own id and timestamp — produces ``DEPLOYED_AS``/``RUNS_AS``.
+    A component with no observation therefore has no path to production, in the
+    graph as well as in the report.
+    """
+    observed = list(deployments)
+    edges: list[dict[str, Any]] = []
+    artifact = sbom.artifact
+
+    def edge(source: str, kind: str, target: str, *, evidence_id: str, evidence_type: str,
+             origin: str, observed_at: Any = None, confidence: str = "HIGH") -> None:
+        edges.append({"from": source, "kind": kind, "to": target,
+                      "evidence_id": evidence_id, "evidence_type": evidence_type,
+                      "source": origin, "observed_at": _iso(observed_at),
+                      "confidence": confidence})
+
+    artifact_ref = artifact.reference if artifact else "artifact:unknown"
+    edge(f"sbom:{sbom.sbom_id}", "DESCRIBED_BY", artifact_ref, evidence_id=sbom.sbom_id,
+         evidence_type="SBOM", origin="scan", observed_at=sbom.created_at,
+         confidence="HIGH" if artifact else "MEDIUM")
+
+    if application:
+        edge(application, "SERVES", business_system or "business-system:unstated",
+             evidence_id=f"APP-{_norm(application)}", evidence_type="REGISTER",
+             origin="cmdb", confidence="MEDIUM")
+
+    for component in sbom.components:
+        name = _norm(component.get("name"))
+        if not name:
+            continue
+        edge(f"sbom:{sbom.sbom_id}", "CONTAINS", f"component:{name}",
+             evidence_id=sbom.sbom_id, evidence_type="SBOM", origin="scan",
+             observed_at=sbom.created_at,
+             confidence="HIGH" if component.get("version") else "MEDIUM")
+        if component.get("crypto_relevant"):
+            for algorithm in (algorithms or {}).get(name, ()) or ():
+                edge(f"component:{name}", "HAS_CAPABILITY", f"algorithm:{_norm(algorithm)}",
+                     evidence_id=f"CAP-{name}", evidence_type="CAPABILITY", origin="sbom",
+                     observed_at=sbom.created_at,
+                     confidence="LOW")  # capability, never usage
+
+    if build is not None and build.artifact is not None:
+        edge(f"release:{build.build_id}", "PRODUCED", artifact_ref,
+             evidence_id=build.build_id, evidence_type="BUILD", origin=build.builder or "builder",
+             observed_at=build.finished_at)
+
+    matched = [obs for obs in observed
+               if artifact and obs.artifact.digest == artifact.digest]
+    for observation in matched:
+        edge(f"deployment:{observation.deployment}", "DEPLOYED_AS", artifact_ref,
+             evidence_id=observation.evidence_id, evidence_type="OBSERVATION",
+             origin=observation.source, observed_at=observation.observed_at)
+        edge(f"workload:{observation.workload}", "RUNS_AS",
+             f"deployment:{observation.deployment}",
+             evidence_id=observation.evidence_id, evidence_type="OBSERVATION",
+             origin=observation.source, observed_at=observation.observed_at)
+
+    unresolved = [component.get("name") for component in sbom.components
+                  if component.get("name")
+                  and not any(obs.artifact.digest == (artifact.digest if artifact else None)
+                              for obs in observed)]
+    return {
+        "schema": SCHEMA,
+        "nodes": sorted({node for e in edges for node in (e["from"], e["to"])}),
+        "edges": edges,
+        "unobserved_components": unresolved,
+        "statement": (
+            f"{len(edges)} edge(s) from {sbom.sbom_id}"
+            + (f", {len(matched)} deployment observation(s) reaching "
+               f"{', '.join(sorted({obs.environment for obs in matched}))}" if matched else
+               "; no observation reaches this artifact, so no component resolves to a running "
+               "system")),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# item 15: snapshots are a series, not a file
+# --------------------------------------------------------------------------- #
+
+
+def history(snapshots: Sequence[SbomRecord]) -> dict[str, Any]:
+    """A timeline of snapshots and what moved at each step.
+
+    ``snapshot_changes`` answers one pair; a bank asks a series. Ordering is by
+    ``created_at`` and ties are broken by id, so the same set of snapshots always
+    produces the same timeline — a drift engine that reorders itself is not
+    evidence.
+    """
+    ordered = sorted(snapshots, key=lambda record: (record.created_at or date.min,
+                                                    str(record.sbom_id)))
+    transitions: list[dict[str, Any]] = []
+    for previous, current in zip(ordered, ordered[1:]):
+        changes = snapshot_changes(previous, current)
+        transitions.append({
+            "from": previous.sbom_id, "to": current.sbom_id,
+            "at": _iso(current.created_at),
+            "changes": changes,
+            "counts": {kind: sum(1 for row in changes if row["kind"] == kind)
+                       for kind in CHANGE_KINDS},
+        })
+    timeline: dict[str, list[dict[str, Any]]] = {}
+    for record in ordered:
+        for component in record.components:
+            name = _norm(component.get("name"))
+            if not name:
+                continue
+            timeline.setdefault(str(component.get("name")), []).append({
+                "sbom": record.sbom_id, "at": _iso(record.created_at),
+                "version": component.get("version"),
+            })
+    durations = [(later.created_at - earlier.created_at).days
+                 for earlier, later in zip(ordered, ordered[1:])
+                 if earlier.created_at and later.created_at]
+    return {
+        "schema": SCHEMA,
+        "snapshots": [record.sbom_id for record in ordered],
+        "transitions": transitions,
+        "components": timeline,
+        "changed_transitions": sum(1 for row in transitions if row["changes"]),
+        "gap_days": max(durations) if durations else None,
+        "statement": (
+            f"{len(ordered)} snapshot(s), {len(transitions)} transition(s), "
+            f"{sum(1 for row in transitions if not row['changes'])} with no change"
+            + (f"; the longest gap between snapshots is {max(durations)} day(s)"
+               if durations else "")),
+    }
 
 
 def _norm(value: Any) -> str:

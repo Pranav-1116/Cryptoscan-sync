@@ -134,13 +134,21 @@ class SbomImportRequest(BaseModel):
 @router.post("/sbom/import")
 def sbom_import(body: SbomImportRequest,
                 user: str = Depends(require_roles("admin", "auditor", "security_analyst", "superadmin"))):
-    from devsecops.sbom import check_pinning, dependency_graph, import_sbom
+    from devsecops.sbom import (check_pinning, dependency_graph, guard_import,
+                                import_sbom, mark_imported)
 
+    # An imported document is untrusted input: it is measured against the parser
+    # budget and screened for attempts to overwrite an observed fact *before* a
+    # component is read out of it, and every row it contributes is labelled.
     try:
-        comps = import_sbom(body.doc)
+        screening = guard_import(body.doc, source=f"api:/sbom/import:{user}")
+        comps = mark_imported(import_sbom(body.doc))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"component_count": len(comps), "components": comps,
+            "trust": screening["trust"], "may_override": screening["may_override"],
+            "content_hash": screening["content_hash"],
+            "import_budget": screening["budget"],
             "pinning": check_pinning(comps), "graph": dependency_graph(comps)}
 
 
@@ -193,12 +201,20 @@ def _sbom_storage():
 
     The store itself lives in :mod:`devsecops.artifact_store`, so a worker process
     writing the same job produces an artifact these endpoints serve unchanged.
+    A production install whose store is unconfigured or unbacked raises
+    :class:`StorageRefused` there rather than degrading to a temporary directory;
+    the API turns that into a 503 that names what is missing, because an artifact
+    the bank cannot find tomorrow is not evidence.
     """
-    from devsecops.artifact_store import artifact_storage
+    from devsecops.artifact_store import StorageRefused, artifact_storage
 
     global _SBOM_STORE
     if _SBOM_STORE is None:
-        _SBOM_STORE = artifact_storage()
+        try:
+            _SBOM_STORE = artifact_storage()
+        except StorageRefused as exc:
+            raise HTTPException(status_code=503,
+                                detail=f"SBOM artifact storage unavailable: {exc}")
     return _SBOM_STORE
 
 
@@ -462,7 +478,7 @@ def sbom_scan(body: SbomScanRequest, request: Request,
     sha256 = hashlib.sha256(payload).hexdigest()
     artifact_id = str(uuid.uuid4())
     ext = "cdx.json" if fmt == "cyclonedx" else "spdx.json"
-    from devsecops.artifact_store import artifact_tenant_bucket
+    from devsecops.artifact_store import artifact_tenant_bucket, storage_status
     tenant = _artifact_tenant(request, db, user)
     key = f"tenants/{artifact_tenant_bucket(tenant)}/{artifact_id}.{ext}"
 
@@ -490,6 +506,9 @@ def sbom_scan(body: SbomScanRequest, request: Request,
         "direct_count": sum(1 for p in packages if p.get("direct") is True),
         "transitive_count": sum(1 for p in packages if p.get("direct") is False),
         "dependency_edges": len(result.get("dependencies") or []),
+        # the graph as the parser budget measured it: depth, cycle count and what
+        # was withheld, so "0 edges" is never mistaken for "no dependencies"
+        "parser_budget": result.get("parser_budget") or None,
         "minimum_elements": compliance["score"],
         "compliant": compliance["compliant"],
         "pinned": pinning["pinned"],
@@ -519,6 +538,7 @@ def sbom_scan(body: SbomScanRequest, request: Request,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": user,
         "storage_key": key,
+        "storage": storage_status(),
         "cbom_storage_key": f"{artifact_id}.cbom.json" if kind == "binary" else None,
         "bom_documents": ({
             name: {"storage_key": f"{artifact_id}.{name.replace('_', '-')}.json",
@@ -564,6 +584,7 @@ def sbom_scan(body: SbomScanRequest, request: Request,
                                      "components": component_count, "sha256": sha256[:16]})
     db.commit()
     return {"artifact_id": artifact_id, "manifest": manifest, "compliance": compliance,
+            "parser_budget": manifest.get("parser_budget"),
             "download_url": f"/api/v1/devsecops/sbom/{artifact_id}/download",
             "report_url": f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown",
             "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify",

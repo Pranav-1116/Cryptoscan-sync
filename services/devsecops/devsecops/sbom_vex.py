@@ -23,6 +23,7 @@ can be exchanged directly; a markdown rendering is provided for humans.
 """
 from __future__ import annotations
 
+import datetime as _dt
 from typing import Any
 
 # CycloneDX analysis.state / analysis.justification enums (1.4/1.5)
@@ -32,6 +33,10 @@ JUSTIFICATIONS = ("code_not_present", "code_not_reachable", "requires_configurat
                   "requires_dependency", "requires_environment", "protected_by_compiler",
                   "protected_at_runtime", "protected_at_perimeter", "protected_by_mitigating_control")
 RESPONSES = ("can_not_fix", "will_not_fix", "update", "rollback", "workaround_available")
+
+
+def _today() -> "_dt.date":
+    return _dt.date.today()
 
 
 def _norm(text: str | None) -> str:
@@ -115,18 +120,61 @@ def validate_analyses(analyses: dict[str, Any] | None) -> dict[str, dict[str, An
         for response in responses:
             if str(response) not in RESPONSES:
                 raise ValueError(f"analysis for {cve}: response must be one of {', '.join(RESPONSES)}")
+        # Governance, not decoration. A statement that nobody signed, cites no
+        # evidence or never expires is not something a bank can rely on a year
+        # later, so the fields are validated here and their absence is recorded
+        # rather than shrugged at.
+        reviewer = str(entry.get("reviewer") or "").strip() or None
+        evidence_id = str(entry.get("evidence_id") or "").strip() or None
+        assessed_on = _as_date(entry.get("assessed_on"), f"analysis for {cve}: assessed_on")
+        expires_on = _as_date(entry.get("expires_on"), f"analysis for {cve}: expires_on")
+        if assessed_on and expires_on and expires_on < assessed_on:
+            raise ValueError(f"analysis for {cve}: expires_on is before assessed_on, so the "
+                             "statement would never have been current")
+        missing = [name for name, value in (("reviewer", reviewer),
+                                            ("evidence_id", evidence_id),
+                                            ("expires_on", expires_on)) if not value]
+        if state == "not_affected" and missing:
+            governance = "INCOMPLETE"
+        elif missing:
+            governance = "INCOMPLETE" if len(missing) == 3 else "PARTIAL"
+        else:
+            governance = "COMPLETE"
         clean[str(cve)] = {
             "state": state,
             "justification": str(justification) if justification else None,
             "detail": str(entry.get("detail") or "") or None,
             "response": [str(r) for r in responses],
+            "reviewer": reviewer,
+            "evidence_id": evidence_id,
+            "assessed_on": assessed_on,
+            "expires_on": expires_on,
+            "governance": governance,
+            "missing": missing,
         }
     return clean
 
 
+def _as_date(value: Any, label: str) -> str | None:
+    """An ISO date, or a refusal — a free-text expiry cannot be enforced."""
+    if value is None or value == "":
+        return None
+    try:
+        return _dt.date.fromisoformat(str(value)[:10]).isoformat()
+    except ValueError as exc:
+        raise ValueError(f"{label} must be an ISO date (YYYY-MM-DD), got {value!r}") from exc
+
+
 def statements(bom: dict[str, Any] | None, *,
-               analyses: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    """Per-advisory VEX statements for a document (deterministic order)."""
+               analyses: dict[str, Any] | None = None,
+               as_of: "_dt.date | None" = None) -> list[dict[str, Any]]:
+    """Per-advisory VEX statements for a document (deterministic order).
+
+    ``as_of`` is the date an expiry is judged against; it defaults to today and
+    is passed explicitly by tests and reports so the same document and the same
+    statements always produce the same answer.
+    """
+    today = as_of or _today()
     bom = bom or {}
     overrides = validate_analyses(analyses)
     components = _component_refs(bom)
@@ -139,12 +187,31 @@ def statements(bom: dict[str, Any] | None, *,
         present = [ref for ref in refs if ref in components]
         fixed = fixed_version_from(bom, cve)
         override = overrides.get(cve)
+        governance: dict[str, Any] | None = None
         if override:
             state = override["state"]
             justification = override["justification"]
             detail = override["detail"] or "statement issued by an operator"
             response = override["response"]
             source = "operator"
+            governance = {
+                "reviewer": override["reviewer"],
+                "evidence_id": override["evidence_id"],
+                "assessed_on": override["assessed_on"],
+                "expires_on": override["expires_on"],
+                "state": override["governance"],
+                "missing": override["missing"],
+            }
+            expires = override.get("expires_on")
+            if expires and state == "not_affected" and _dt.date.fromisoformat(expires) < today:
+                # An expired "not affected" stops being an answer: the finding
+                # returns to triage and the statement is kept, with its date, so
+                # the reviewer can see what lapsed rather than what vanished.
+                state = "in_triage"
+                detail = (f"{override['detail'] or 'statement issued by an operator'} — the "
+                          f"not_affected statement lapsed on {expires}")
+                governance["expired"] = True
+                governance["claimed_state"] = override["state"]
         elif refs and not present:
             state, justification = "not_affected", "code_not_present"
             detail = "no component in this document matches the affected version range"
@@ -164,6 +231,7 @@ def statements(bom: dict[str, Any] | None, *,
             "cve": cve, "state": state, "justification": justification, "detail": detail,
             "response": response, "severity": _severity(vuln), "source": source,
             "fixed_version": fixed,
+            "governance": governance,
             "affects": present or refs,
             "affected_components": [
                 {"ref": ref, "name": components[ref].get("name"),
