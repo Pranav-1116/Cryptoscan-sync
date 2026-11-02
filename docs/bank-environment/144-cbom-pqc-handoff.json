@@ -1,0 +1,185 @@
+{
+  "schema": "cryptoscan.cbom-pqc-handoff-guide/1",
+  "generated_at": "2026-11-02T18:06:08.331947+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 24,
+  "rows": [
+    {
+      "id": "status_vocabulary",
+      "question": "can a status say what a boolean could not?",
+      "phase": "review 15",
+      "probes": [
+        {
+          "probe": "a-shor-vulnerable-key-is-quantum-sensitive",
+          "ok": true,
+          "observed": "RSA-2048: Shor breaks it, no boolean needed"
+        },
+        {
+          "probe": "grover-impact-depends-on-size",
+          "ok": true,
+          "observed": "AES-128 is Grover-weakened; AES-256 keeps >=128 bits and is acceptable"
+        },
+        {
+          "probe": "a-pqc-algorithm-is-resistant-and-a-hybrid-is-hybrid",
+          "ok": true,
+          "observed": "resistant and hybrid are different answers"
+        },
+        {
+          "probe": "an-unregistered-algorithm-is-unknown-not-resistant",
+          "ok": true,
+          "observed": "resistance is never assumed from silence"
+        },
+        {
+          "probe": "no-algorithm-is-not-assessed",
+          "ok": true,
+          "observed": "an asset with no algorithm produces no quantum claim"
+        },
+        {
+          "probe": "classical-breakage-is-named-on-the-same-row",
+          "ok": true,
+          "observed": "a quantum status never hides a classical purge"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "priority_from_evidence",
+      "question": "does migration priority follow risk and usage, not size of inventory?",
+      "phase": "review 14 / 15",
+      "probes": [
+        {
+          "probe": "a-deployed-algorithm-outranks-a-capability",
+          "ok": true,
+          "observed": "capability MEDIUM vs runtime HIGH"
+        },
+        {
+          "probe": "confidentiality-use-of-a-shor-vulnerable-key-is-immediate",
+          "ok": true,
+          "observed": "harvest-now-decrypt-later does not improve with waiting"
+        },
+        {
+          "probe": "signature-use-is-not-an-hndl-escalation",
+          "ok": true,
+          "observed": "authenticity migration is a different register"
+        },
+        {
+          "probe": "evidence-only-ever-escalates",
+          "ok": true,
+          "observed": "nothing in the handoff lowers a finding"
+        },
+        {
+          "probe": "a-resistance-claim-needs-no-migration",
+          "ok": true,
+          "observed": "no work is invented for an algorithm already on the target"
+        },
+        {
+          "probe": "the-replacement-is-specific-to-the-family",
+          "ok": true,
+          "observed": "a hash is not replaced by a cipher, and AES-128 by AES-256"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_seam",
+      "question": "does the document inventory while the engine decides?",
+      "phase": "review 14",
+      "probes": [
+        {
+          "probe": "the-document-carries-a-status-with-its-basis",
+          "ok": true,
+          "observed": "{\"cryptoscan:algorithm_class\": \"PUBLIC_KEY\", \"cryptoscan:quantum_status\": \"QUANTUM_SENSITIVE\", \"cryptoscan:quantum_status_basis\": \"REGISTRY_SHOR\"}"
+        },
+        {
+          "probe": "the-document-does-not-carry-the-boolean",
+          "ok": true,
+          "observed": "the non-standard field is gone from the standard block"
+        },
+        {
+          "probe": "a-document-without-usage-properties-is-unobserved",
+          "ok": true,
+          "observed": "a plain CycloneDX CBOM says nothing about deployment"
+        },
+        {
+          "probe": "usage-properties-reach-the-handoff",
+          "ok": true,
+          "observed": "AES-256 observed in use still needs no PQC migration"
+        },
+        {
+          "probe": "old-documents-are-read-not-ignored",
+          "ok": true,
+          "observed": "a pre-guide-144 document still yields a status"
+        },
+        {
+          "probe": "a-boolean-is-only-derived-where-it-is-defensible",
+          "ok": true,
+          "observed": "Grover-weakened is not silently 'safe'"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "conformance",
+      "question": "is the change a schema fix, not only a vocabulary change?",
+      "phase": "review 15",
+      "probes": [
+        {
+          "probe": "the-xml-serializer-no-longer-writes-the-boolean",
+          "ok": true,
+          "observed": "CycloneDX 1.5 XML has no quantumVulnerable element"
+        },
+        {
+          "probe": "the-1-5-json-builders-no-longer-write-it-either",
+          "ok": true,
+          "observed": "both 1.5 component builders emit namespaced properties instead"
+        },
+        {
+          "probe": "the-readers-resolve-both-generations",
+          "ok": true,
+          "observed": "ingest and assessment do not depend on the field that was removed"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "api_exposure",
+      "question": "can an operator ask what needs migrating, and why?",
+      "phase": "review 14",
+      "probes": [
+        {
+          "probe": "the-handoff-route-exists-and-is-typed",
+          "ok": true,
+          "observed": "POST /cbom/pqc-handoff"
+        },
+        {
+          "probe": "the-route-is-role-gated",
+          "ok": true,
+          "observed": "a migration register is not anonymous"
+        },
+        {
+          "probe": "the-route-uses-the-module-and-accepts-a-document",
+          "ok": true,
+          "observed": "one implementation, usable straight from an uploaded CBOM"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "status is classified from the algorithm registry, not from the deployment. A protocol negotiated with a PQC suite still reads as the suite it names, so 'the bank is hybrid on this TLS endpoint' needs the network evidence, not this module",
+    "priority is a planning order, not a deadline. The platform's regulatory dates live in the quantum and banking registers; nothing here asserts one",
+    "migration_status is caller-supplied and defaults to NOT_STARTED. The platform does not yet observe remediation, so a migrated asset keeps saying NOT_STARTED until an operator records it",
+    "a hybrid asset is NONE priority because its classical half is covered by the PQC half. That is right for the negotiation and wrong for the component that still implements only X25519, which this seam cannot see",
+    "the recommended replacement is the engine's answer for the algorithm family, not for this deployment: ML-KEM-768 may be unavailable in the HSM that holds the key, and that blocker is not modelled here",
+    "the 1.6 path already refused quantumVulnerable; the 1.5 builders and the XML serializer were the ones that wrote it, and third-party documents may still carry it \u2014 the readers accept it, but its presence is a schema finding, not a credential of quality"
+  ]
+}

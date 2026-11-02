@@ -159,6 +159,24 @@ class CbomKmsResponse(BaseModel):
     posture: dict
 
 
+class CbomPqcHandoffRequest(BaseModel):
+    assets: list[dict] = Field(default_factory=list, description=(
+        "inventoried crypto assets: algorithm, key_size, purpose, usage (promotion "
+        "level or usage state) and evidence_ids"))
+    document: dict | None = Field(None, description=(
+        "a CBOM document to hand off instead of assets; usage is read from the "
+        "platform's cryptoscan: properties, and a plain document counts as unobserved"))
+    as_of: str | None = None
+
+
+class CbomPqcHandoffResponse(BaseModel):
+    rows: list[dict]
+    summary: dict
+    refused: list[dict]
+    statement: str
+    as_of: str
+
+
 class CbomHsmRequest(BaseModel):
     kind: str = Field(..., description=(
         "CAPABILITY, CONFIGURED_KEY or OPERATION — the three HSM/KMS answers, only the last "
@@ -329,6 +347,26 @@ def cbom_kms_keys(body: CbomKmsRequest,
     return {"keys": keys, "usage": usage,
             "posture": kc.posture(keys["records"], as_of=as_of,
                                   max_age_days=body.max_age_days)}
+
+
+@router.post("/pqc-handoff", response_model=CbomPqcHandoffResponse)
+def cbom_pqc_handoff(body: CbomPqcHandoffRequest,
+                     user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """CBOM inventory -> a PQC migration handoff, one row per asset.
+
+    The document says what exists; this says what needs migration, in which order,
+    and on what basis. Status, risk and priority are separate fields because a
+    boolean cannot carry them: AES-256 is *classical, acceptable* while AES-128 is
+    *Grover-weakened*, and an unregistered algorithm is ``UNKNOWN`` rather than
+    quietly resistant. Priority only escalates — runtime evidence outranks a
+    capability, and a confidentiality purpose on a Shor-vulnerable algorithm is
+    ``IMMEDIATE``.
+    """
+    from cbom import pqc_handoff as pq
+
+    if body.document is not None:
+        return pq.handoff_from_cbom(body.document, as_of=body.as_of)
+    return pq.handoff(body.assets, as_of=body.as_of)
 
 
 @router.post("/hsm-evidence")

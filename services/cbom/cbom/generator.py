@@ -148,9 +148,11 @@ class CbomGenerator:
 
     def to_xml(self, bom: dict[str, Any]) -> str:
         """CycloneDX 1.5 XML serialization with full CBOM fidelity:
-        cryptoProperties (assetType/oid/nistDesignation/quantumVulnerable/
-        primitive), evidence, metadata properties (incl. cryptoscan:jws),
-        dependencies and vulnerabilities."""
+        cryptoProperties (assetType/oid/nistDesignation/primitive), evidence,
+        metadata properties (incl. cryptoscan:jws), dependencies and
+        vulnerabilities. ``quantumVulnerable`` is deliberately absent: it is not a
+        CycloneDX 1.5 field, and a boolean could not carry the status anyway —
+        the JSON export writes ``cryptoscan:quantum_status`` instead."""
         if bom.get("specVersion") == "1.6":
             raise ValueError("Native CycloneDX1.6 export supports JSON only; legacy XML cannot serialize it")
         root = Element("bom")
@@ -204,9 +206,6 @@ class CbomGenerator:
                 if crypto.get("nistDesignation"):
                     nist = SubElement(props, "nistDesignation")
                     nist.text = str(crypto["nistDesignation"])
-                if crypto.get("quantumVulnerable") is not None:
-                    qv = SubElement(props, "quantumVulnerable")
-                    qv.text = "true" if crypto["quantumVulnerable"] else "false"
             evidence = item.get("evidence") or {}
             if evidence.get("file"):
                 ev = SubElement(el, "evidence")

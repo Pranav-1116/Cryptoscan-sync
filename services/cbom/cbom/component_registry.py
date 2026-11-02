@@ -187,7 +187,6 @@ def cbom_crypto_component(data: dict[str, Any]) -> dict[str, Any]:
                 "parameterSetIdentifier": str(data.get("key_size")) if data.get("key_size") else None,
             },
             "nistDesignation": normalized.get("nist_designation"),
-            "quantumVulnerable": normalized.get("quantum_vulnerable"),
         },
         "evidence": {
             "identity": [
@@ -236,6 +235,11 @@ def cbom_crypto_component(data: dict[str, Any]) -> dict[str, Any]:
         properties.append({"name": "cryptoscan:system_id", "value": str(data["system_id"])})
     if recorded:
         properties.append({"name": "cryptoscan:confidence", "value": recorded})
+    # CycloneDX 1.5/1.6 cryptoProperties has no `quantumVulnerable`; the status
+    # travels as a namespaced property with its basis (review item 15). A boolean
+    # could not distinguish "Grover-weakened but acceptable" from "Shor-broken".
+    from cbom import pqc_handoff
+    properties.extend(pqc_handoff.component_properties(algorithm, data.get("key_size")))
     # Bank business context is caller-supplied metadata, not independently verified.
     # Explicit allowlist: never copy arbitrary finding_data or key/secret values.
     for field in ("application", "owner", "data_classification", "retention_years", "criticality", "exposure", "purpose", "library"):

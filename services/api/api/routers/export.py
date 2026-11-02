@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from db.repositories.evidence_repository import EvidenceRepository
 from db.repositories.scan_repository import ScanRepository
 from evidence.hashing.content_hasher import ContentHasher
+from cbom import pqc_handoff
 from evidence.verification.stored_scan import verify_stored_scan
 
 router = APIRouter(tags=["export"])
@@ -189,7 +190,6 @@ def export_cbom(
                         "parameterSetIdentifier": str(row.key_size) if row.key_size else None,
                     },
                     "nistDesignation": normalized.get("nist_designation"),
-                    "quantumVulnerable": normalized.get("quantum_vulnerable"),
                 },
                 "evidence": {
                     "file": row.file_path,
@@ -198,13 +198,21 @@ def export_cbom(
                     "chain_hash": row.chain_hash,
                     "compliance_status": row.compliance_status,
                 },
+                # No `quantumVulnerable` in cryptoProperties: it is not a
+                # CycloneDX field. The status and its basis travel as
+                # namespaced properties (review item 15).
+                "properties": pqc_handoff.component_properties(row.algorithm, row.key_size),
             }
         )
     # key-inventory records: export metadata as CycloneDX properties (labels, store, state, dates — never values)
     for row, comp in zip(rows, components):
         inv = project_finding(row.finding_data)[0].get("inventory")
         if inv:
-            comp["properties"] = [{"name": f"cryptoscan:key:{k}", "value": str(v)} for k, v in sorted(inv.items()) if v not in (None, "", [])][:24]
+            comp["properties"].extend(
+                {"name": f"cryptoscan:key:{k}", "value": str(v)}
+                for k, v in sorted(inv.items()) if v not in (None, "", [])
+            )
+            comp["properties"] = comp["properties"][:24]
             comp["cryptoProperties"]["assetType"] = "related-crypto-material" if inv.get("key_label") and not inv.get("subject") else ("certificate" if inv.get("subject") else "algorithm")
     root_ref = f"root:{scan.id}"
     extra_components, dependencies = _cascade_dependencies(root_ref, (scan.statistics or {}).get("cascade") or {}, rows)

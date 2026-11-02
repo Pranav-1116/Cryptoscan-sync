@@ -350,3 +350,35 @@ def test_kms_posture_reports_rotation_against_the_policy(client):
 
 def test_kms_rejects_an_unparseable_as_of(client):
     assert _post(client, "/kms/keys", {"rows": [], "as_of": "not-a-date"}).status_code == 422
+
+
+def test_pqc_handoff_separates_status_from_priority(client):
+    body = _post(client, "/pqc-handoff", {"assets": [
+        {"algorithm": "RSA-2048", "key_size": 2048, "purpose": "TLS",
+         "usage": "RUNTIME", "evidence_ids": ["RUNTIME-1"]},
+        {"algorithm": "AES-256-GCM", "key_size": 256, "purpose": "DATA_AT_REST"},
+    ]}).json()
+    rows = {row["algorithm"]: row for row in body["rows"]}
+    assert rows["RSA-2048"]["quantum_status"] == "QUANTUM_SENSITIVE"
+    assert rows["RSA-2048"]["migration_priority"] == "IMMEDIATE"
+    assert rows["AES-256-GCM"]["quantum_status"] == "CLASSICAL_ONLY"
+    assert rows["AES-256-GCM"]["migration_priority"] == "NONE"
+    assert body["summary"]["requiring_migration"] == 1
+
+
+def test_pqc_handoff_never_invents_a_verdict_for_an_unknown_algorithm(client):
+    body = _post(client, "/pqc-handoff", {"assets": [{"algorithm": "ACME-9"}]}).json()
+    row = body["rows"][0]
+    assert row["quantum_status"] == "UNKNOWN" and row["requires_review"] is True
+    assert row["migration_priority"] == "UNKNOWN"
+
+
+def test_pqc_handoff_reads_a_document_and_defaults_to_unobserved(client):
+    body = _post(client, "/pqc-handoff", {"document": {"components": [
+        {"bom-ref": "crypto/RSA-2048", "name": "RSA-2048",
+         "cryptoProperties": {"algorithmProperties": {"algorithm": "RSA-2048"}}},
+    ]}}).json()
+    assert body["rows"][0]["usage"] is None
+    assert body["rows"][0]["quantum_status"] == "QUANTUM_SENSITIVE"
+    assert body["as_of"]
+

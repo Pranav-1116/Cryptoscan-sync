@@ -3,7 +3,8 @@
 Turns a CycloneDX CBOM into an auditable posture report — score, grade,
 per-algorithm findings, quantum exposure, and migration recommendations —
 using only what the document itself carries (nistDesignation,
-quantumVulnerable, primitive, oid). Works on CryptoScan-generated CBOMs
+cryptoscan:quantum_status — or, in older documents, quantumVulnerable — plus
+primitive and oid). Works on CryptoScan-generated CBOMs
 and third-party CBOMs alike; when a component lacks cryptoProperties, a
 small known-algorithm knowledge base fills the gap.
 
@@ -95,7 +96,13 @@ def _component_classification(component: dict[str, Any]) -> dict[str, Any]:
         or "unknown"
     )
     designation = str(crypto.get("nistDesignation") or "").upper() or None
-    quantum = crypto.get("quantumVulnerable")
+    # The document may carry the richer status (cryptoscan:quantum_status) or, in
+    # older documents, the legacy boolean. A status that cannot be reduced to a
+    # boolean (TRANSITIONAL / UNKNOWN) is left to the knowledge base rather than
+    # being read as "safe".
+    from cbom import pqc_handoff
+
+    quantum = pqc_handoff.vulnerable_from_component(component)
     if quantum is None:
         quantum = KNOWN_ALGORITHMS.get(name.upper(), {}).get("quantum")
     if designation is None:

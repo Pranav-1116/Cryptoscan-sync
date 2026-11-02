@@ -7,6 +7,8 @@ import json
 from collections import Counter
 from typing import Any
 
+from cbom import pqc_handoff
+
 
 def record_to_dict(record: Any) -> dict[str, Any]:
     if hasattr(record, "to_dict"):
@@ -229,7 +231,10 @@ def records_from_bom(bom: dict[str, Any]) -> list[dict[str, Any]]:
                     "standard_name": name,
                     "algorithm_family": algo_props.get("primitive"),
                     "nist_designation": props.get("nistDesignation"),
-                    "quantum_vulnerable": props.get("quantumVulnerable"),
+                    # Read through the handoff so a 1.5/1.6 document (property) and a
+                    # pre-guide-144 document (legacy boolean) both resolve.
+                    "quantum_vulnerable": pqc_handoff.vulnerable_from_component(component),
+                    "quantum_status": pqc_handoff.status_from_component(component),
                     "cbom_component_type": component.get("type") or "cryptographic-asset",
                 },
                 "cryptoProperties": props or None,

@@ -555,6 +555,24 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [PQC readiness is not the CBOM, and a boolean is not a status](144-cbom-pqc-handoff.md)
+> (**5 pass · 0 partial · 0 fail**, 24 probes) closes review items 14 and 15.
+> `quantumVulnerable: true|false|null` failed three ways: it said `false` for
+> AES-256 without noting Grover, it could not express hybrid or transitional
+> states, and it put a **decision** in a document that only ever observed an
+> **algorithm**. `cbom.pqc_handoff` is the seam between the two: the document now
+> carries `cryptoscan:quantum_status` with its basis (`REGISTRY_SHOR`,
+> `REGISTRY_GROVER_ACCEPTABLE_MARGIN`, `UNRECOGNIZED_ALGORITHM`, …) as a
+> namespaced property, while the migration decision stays in the PQC engine —
+> `algorithm_class`, `quantum_risk`, `migration_priority` and `migration_status`
+> are separate fields on one handoff row. Priority is the only place usage
+> evidence enters, and it only escalates: runtime evidence outranks a capability,
+> and a confidentiality purpose on a Shor-vulnerable algorithm is `IMMEDIATE`
+> (harvest-now-decrypt-later does not improve with waiting). An unregistered
+> algorithm is `UNKNOWN` with `requires_review`, never quietly resistant; a
+> classically broken one says so on the same row, because migrating it to ML-KEM
+> would not fix it. `POST /cbom/pqc-handoff` takes assets or a whole CBOM.
+
 > [Supported, existing, used: three answers for a key](143-cbom-kms-collectors.md)
 > (**4 pass · 0 partial · 0 fail**, 20 probes) closes review item 11's key
 > question. `cbom.kms_collectors` reads KMS/HSM inventory rows into metadata
