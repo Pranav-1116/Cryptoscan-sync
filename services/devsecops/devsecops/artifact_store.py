@@ -567,6 +567,121 @@ def storage_status(environment: str | None = None) -> dict[str, Any]:
         "mode": policy["mode"],
         "reasons": policy["reasons"],
         "error": error,
+        # Where the copies live is a different question from whether the store is
+        # usable: a single writable directory is durable and still one failure
+        # domain. The declared topology travels on the manifest so a restore test
+        # cannot be mistaken for an HA claim.
+        "topology": storage_topology(environment=env),
+    }
+
+
+def storage_topology(*, environment: str | None = None) -> dict[str, Any]:
+    """The declared site topology, joined to the replica roots actually configured.
+
+    A replica root with no declared site is reported as ``UNDECLARED`` rather than
+    assessed: an unknown failure domain is not a separate one, and calling it
+    separate is exactly the mistake the topology check exists to catch.
+    """
+    from devsecops import storage_topology as topology
+
+    declared = topology.topology_from_env()
+    claimed = {str(site.get("name")): site for site in declared.get("sites") or []}
+    roots = replica_roots()
+    if not roots:
+        return {"configured": False, "verdict": "UNDECLARED", "declared": declared,
+                "sites": declared.get("sites") or [], "replicas": [],
+                "statement": ("no replica target is configured, so this artifact exists in "
+                              "one failure domain")}
+    unknown = [name for name, _ in roots if name not in claimed]
+    if unknown:
+        return {"configured": True, "verdict": "UNDECLARED", "declared": declared,
+                "sites": declared.get("sites") or [], "replicas": [name for name, _ in roots],
+                "reasons": [f"replica {name} has no declared failure domain, so its separation "
+                            "from the primary cannot be shown" for name in unknown],
+                "statement": (f"UNDECLARED: {len(roots)} replica target(s) are configured but "
+                              f"{', '.join(unknown)} is not in SBOM_STORAGE_SITES")}
+    primary_name = "primary" if "primary" in claimed else next(iter(claimed))
+    sites = [topology.StoreSite(**claimed[primary_name])] + [
+        topology.StoreSite(**claimed[name]) for name, _ in roots]
+    verdict = topology.placement(sites)
+    return {"configured": True, "declared": declared, "replicas": [name for name, _ in roots],
+            "primary": primary_name, "sites": verdict["sites"], "pairs": verdict["pairs"],
+            "verdict": verdict["verdict"], "reasons": verdict["reasons"],
+            "statement": verdict["statement"]}
+
+
+def replica_roots() -> list[tuple[str, str]]:
+    """``SBOM_STORAGE_REPLICA_DIRS`` as ``(name, path)`` pairs.
+
+    ``name=/path,name2=/path2`` — the name is what ties a root to a declared site.
+    A bare path is named ``replica-<n>`` and will read as undeclared, which is the
+    point: the operator has to say *where* the copy is, not just that there is one.
+    """
+    raw = str(os.environ.get("SBOM_STORAGE_REPLICA_DIRS") or "").strip()
+    pairs: list[tuple[str, str]] = []
+    for index, chunk in enumerate(part.strip() for part in raw.split(",") if part.strip()):
+        name, _, path = chunk.partition("=")
+        if not path:
+            pairs.append((f"replica-{index}", name.strip()))
+        else:
+            pairs.append((name.strip() or f"replica-{index}", path.strip()))
+    return pairs
+
+
+def mirror_objects(objects: dict[str, bytes], *, primary: Any) -> dict[str, Any]:
+    """Write every object to every replica and verify each copy by digest.
+
+    The primary is written first and by the caller; this writes the replicas and
+    reads every object back. A write that does not reach a verified quorum leaves
+    the artifact in place — it exists, which is better than not existing — and the
+    manifest records ``DEGRADED`` with the sites that failed, because an
+    unacknowledged copy is not a copy an auditor may count.
+    """
+    roots = replica_roots()
+    if not roots:
+        return {"configured": False, "verdict": "UNDECLARED", "statement":
+                "no replica target is configured, so the artifact was written to one site"}
+    from devsecops import storage_topology as topology
+    from governance.backup_jobs import DiskBackupStorage
+
+    declared = topology.topology_from_env()
+    claimed = {str(site.get("name")): site for site in declared.get("sites") or []}
+    primary_name = "primary" if "primary" in claimed else (next(iter(claimed)) if claimed else "primary")
+    backends: dict[str, Any] = {primary_name: primary}
+    sites = [topology.StoreSite(name=primary_name, role="PRIMARY")]
+    if primary_name in claimed:
+        sites[0] = topology.StoreSite(**claimed[primary_name])
+    for name, path in roots:
+        backends[name] = DiskBackupStorage(path)
+        sites.append(topology.StoreSite(**claimed[name]) if name in claimed
+                     else topology.StoreSite(name=name, role="REPLICA"))
+    store = topology.ReplicatedStore(sites=tuple(sites), backends=backends)
+    failures: list[dict[str, str]] = []
+    verified: dict[str, list[str]] = {}
+    acknowledged = True
+    for key, blob in objects.items():
+        try:
+            result = store.put(key, blob)
+            verified[key] = result["verified"]
+        except (IOError, OSError) as exc:
+            acknowledged = False
+            failures.append({"key": key, "error": str(exc)[:200]})
+    health = store.health()
+    undeclared = [name for name, _ in roots if name not in claimed]
+    verdict = ("DEGRADED" if (failures or not acknowledged)
+               else "UNDECLARED" if undeclared or primary_name not in claimed
+               else "REPLICATED" if len(sites) > 1 else "SINGLE_SITE")
+    return {
+        "configured": True, "verdict": verdict, "sites": [site.name for site in sites],
+        "primary": primary_name, "objects": len(objects),
+        "verified": {key: names for key, names in verified.items()},
+        "failed": failures, "health": health,
+        "statement": (
+            ("replica(s) " + ", ".join(undeclared) + " have no declared failure domain")
+            if verdict == "UNDECLARED" and not failures else
+            f"{len(objects)} object(s) verified on {len(health['sites'])} site(s)" if not failures else
+            f"{len(failures)} object(s) did not reach a verified quorum: "
+            + "; ".join(row["error"] for row in failures[:2])),
     }
 
 
@@ -744,6 +859,10 @@ def write_binary_artifact(*, manifest: dict[str, Any], payload: bytes, cbom_blob
     store.put(cbom_key, cbom_blob)
     for sidecar_key, sidecar_blob in (bom_blobs or {}).items():
         store.put(str(sidecar_key), sidecar_blob)
+    manifest.setdefault("storage", {})["replication"] = mirror_objects(
+        {key: payload, cbom_key: cbom_blob,
+         **{str(sidecar): blob for sidecar, blob in (bom_blobs or {}).items()}},
+        primary=store)
     signing_secret_value, key_id = secret
     if signing_secret_value:
         from devsecops import sbom_scan as sb

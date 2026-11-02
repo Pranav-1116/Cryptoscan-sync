@@ -3828,6 +3828,20 @@ def explore_container(data: bytes, fmt: str, *, depth: int, prefix: str,
     summary["inner_format"] = inner_format
     summary["members_listed"] = len(members)
     summary["members"] = members[:40]
+    # The member list says what the archive declares; the guard says whether any
+    # of it may be trusted. A refused member is never parsed — reading it is the
+    # thing being refused — but the rest of the archive is still walked, and the
+    # statement travels with the summary so a clean result cannot hide it.
+    guard = _archive_guard(data, fmt, payload, inner_format)
+    refused_names: set[str] = set()
+    if guard is not None:
+        summary["archive_guard"] = guard
+        refused_names = {str(row.get("name")) for row in guard.get("refused_members") or []
+                         if row.get("name")}
+        if refused_names:
+            summary["refused"].append({
+                "format": fmt, "reason": guard["statement"],
+                "members": sorted(refused_names)[:10], "member_count": len(refused_names)})
 
     # .deb: the control file carries the package identity, data.tar the contents
     payloads: list[tuple[str, bytes]] = []
@@ -3864,9 +3878,38 @@ def explore_container(data: bytes, fmt: str, *, depth: int, prefix: str,
             summary["opened"].append(f"zip members read ({len(payloads)} openable)")
         summary["refused"].extend(zip_refused)
 
+    if refused_names:
+        payloads = [(name, blob) for name, blob in payloads if name not in refused_names]
     _parse_member_payloads(payloads[:12], depth=depth, prefix=prefix, parsed=parsed,
                            summary=summary, yara=yara, member_offsets=member_offsets)
     return summary
+
+
+def _archive_guard(data: bytes, fmt: str, payload: bytes | None,
+                   inner_format: str) -> dict[str, Any] | None:
+    """The member-safety verdict for a container, or ``None`` when unchecked.
+
+    Only formats the guard models are assessed. A format it does not recognise
+    returns no guard rather than an ALLOW, because "nothing was checked" must not
+    read as "nothing was wrong".
+    """
+    from devsecops import archive_guard
+
+    try:
+        if fmt == "zip":
+            return archive_guard.from_zip(data)
+        if fmt == "ar":
+            # an `ar` member list is flat names; the guard models filesystem
+            # entries, so a .deb is not assessed here rather than mis-assessed
+            return None
+        if fmt in OPENABLE_COMPRESSION and payload is not None:
+            return archive_guard.from_tar(payload)
+        if inner_format == "ustar" and payload is not None:
+            return archive_guard.from_tar(payload)
+    except Exception as _handler_exc:  # noqa: BLE001 — a guard that cannot read says so
+        logger.warning("exception_suppressed", extra={"error_type": type(_handler_exc).__name__})
+        return None
+    return None
 
 
 def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, prefix: str,

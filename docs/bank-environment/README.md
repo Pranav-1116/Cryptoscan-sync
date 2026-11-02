@@ -450,6 +450,28 @@
 > `POLICY_ACCEPTED`/`POLICY_REJECTED`; `/sbom/license` returns the counts and
 > says how many components nobody has reviewed.
 
+> [Durability, archives, obligations, deployment](136-sbom-durability-archives-obligations-deployment.md)
+> (**5 pass · 0 partial · 0 fail**, 68 probes, 4 placement, 9 archive and 13
+> licence-model cases) takes the four limits guide 135 named and makes each one
+> code. **Failure domains**: `storage_topology` refuses a replica pair that shares
+> a required axis — and refuses a pair that never declared the axis, because an
+> unknown domain is not a second one; the artifact manifest now carries both the
+> placement verdict and, from `ReplicatedStore`, which sites verified the bytes
+> after a digest read-back, acknowledging only on a quorum. **Archive intake**:
+> `archive_guard` refuses traversal, absolute paths, device nodes, fifos and links
+> out of the root before anything is expanded, and `binary_scan` never parses a
+> refused member — a hostile archive is a refusal, not a budget. **Licence
+> obligations**: `license_obligations` turns a licence plus a *distribution model*
+> into cited duties, so the same GPL component obliges nothing used internally and
+> demands source when shipped, AGPL adds the network offer, LGPL adds relinking,
+> a non-commercial licence is flagged in every model, and the verdict tops out at
+> `NEEDS_LEGAL` because acceptance is counsel's call. **Deployment evidence**:
+> `deployment_collectors` reads a pod listing and a CMDB register into
+> observations, refuses a container the runtime names only by tag, and attributes
+> a workload two applications claim to neither. `/sbom/obligations` and
+> `/sbom/deployments` expose both.
+
+
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 
 The practical answer is: **the bank installs and authorizes the platform inside

@@ -2306,6 +2306,76 @@ class SbomLicenseRequest(BaseModel):
     fmt: str = Field("json", description="json, or markdown for a renderable section")
 
 
+class SbomObligationsRequest(BaseModel):
+    doc: dict | None = Field(None, description="CycloneDX or SPDX JSON document")
+    artifact_id: str | None = Field(None, description="stored artifact instead of an inline document")
+    distribution_model: str = Field("INTERNAL", description=(
+        "how the product reaches its users: INTERNAL, SAAS, BINARY_SHIPPED or "
+        "SOURCE_DISTRIBUTED — the model decides which obligations are triggered"))
+    modified: bool | list[str] = Field(False, description=(
+        "whether components were modified: true for all, or a list of component names"))
+    fmt: str = Field("json", description="json, or markdown for a renderable section")
+
+
+class SbomDeploymentsRequest(BaseModel):
+    pods: dict | None = Field(None, description=(
+        "a kubectl `get pods -o json` document, or an object with a pods list; each "
+        "container's runtime imageID supplies the digest"))
+    cmdb: dict | None = Field(None, description=(
+        "the CMDB application register: an `applications` list of name, "
+        "business_system, owner, criticality and workloads (`pod/namespace/name`)"))
+    observations: list[dict] | None = Field(None, description=(
+        "already-collected observations, for an agent that did its own look"))
+    doc: dict | None = Field(None, description="CycloneDX or SPDX JSON to correlate")
+    artifact_id: str | None = Field(None, description="stored artifact to correlate")
+    environment: str | None = Field(None, description="environment label (default PRODUCTION)")
+    cluster: str | None = Field(None, description="cluster label recorded on each observation")
+    observed_at: str | None = Field(None, description="ISO date the snapshot was taken")
+    image_reference: str | None = Field(None, description=(
+        "the artifact the SBOM describes (registry path); with image_digest this binds the "
+        "document to an address so its components can be matched to observations"))
+    image_digest: str | None = Field(None, description="sha256:... of the artifact the SBOM describes")
+
+
+class SbomObligationDuty(BaseModel):
+    id: str
+    title: str
+    cite: str
+    components: list[str]
+
+
+class SbomObligationRow(BaseModel):
+    component: str
+    licence: str | None = None
+    family: str
+    open: list[str]
+    verdict: str
+
+
+class SbomObligationsResponse(BaseModel):
+    """One row per duty, one row per component, and never a compliance verdict."""
+
+    artifact_id: str | None = None
+    schema_: str = Field(alias="schema")
+    model: str
+    components: list[SbomObligationRow]
+    duties: list[SbomObligationDuty]
+    counts: dict[str, int]
+    unknown_components: list[str]
+    verdict: str
+    statement: str
+    markdown: str | None = None
+
+
+class SbomDeploymentsResponse(BaseModel):
+    """What was observed, what the register says, and what could be correlated."""
+
+    artifact_id: str | None = None
+    collection: dict
+    register: dict | None = None
+    correlation: dict | None = None
+
+
 class SbomVexRequest(BaseModel):
     doc: dict | None = Field(None, description="CycloneDX or SPDX JSON document")
     artifact_id: str | None = Field(None, description="stored artifact instead of an inline document")
@@ -2354,6 +2424,120 @@ def sbom_license(body: SbomLicenseRequest, request: Request,
                      "state_statement": states["statement"]}
     if str(body.fmt).lower() == "markdown":
         payload["markdown"] = render_license_report(report)
+    return payload
+
+
+@router.post("/sbom/deployments", response_model=SbomDeploymentsResponse)
+def sbom_deployments(body: SbomDeploymentsRequest, request: Request,
+                     db: Session = Depends(get_db_session),
+                     user: str = Depends(require_roles(*_SBOM_READERS))):
+    """Turn a cluster listing and a CMDB export into deployment evidence.
+
+    The review's gap: an SBOM says a component was *built*, and nothing said it
+    was *running*. This endpoint is the collector — it reads what the runtime
+    actually started (``imageID``, not ``image``), attributes each workload to an
+    application, and, when an SBOM is supplied, answers where each component is
+    deployed.
+
+    Two refusals are deliberate and reported. A container the runtime identifies
+    only by tag produces *no* observation: a tag is a pointer, and evidence needs
+    an address. A workload the register attributes to two applications is not
+    attributed to either.
+    """
+    from datetime import date as _date
+
+    from devsecops import deployment_collectors as collectors
+
+    if not body.pods and not body.observations:
+        raise HTTPException(status_code=422, detail="provide `pods` or `observations`")
+    observed_at = None
+    if body.observed_at:
+        try:
+            observed_at = _date.fromisoformat(body.observed_at[:10])
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"observed_at is not a date: {exc}")
+    payload: dict = {"artifact_id": body.artifact_id}
+    if body.pods:
+        try:
+            collected = collectors.observations_from_kubernetes(
+                body.pods, environment=body.environment, cluster=body.cluster,
+                observed_at=observed_at)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        payload["collection"] = collected
+        observations = collected["observations"]
+    else:
+        observations = list(body.observations or [])
+        payload["collection"] = {"schema": collectors.SCHEMA, "observations": observations,
+                                 "statement": f"{len(observations)} observation(s) supplied"}
+    if body.cmdb:
+        try:
+            payload["register"] = collectors.register_from_cmdb(body.cmdb)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+    if body.doc or body.artifact_id:
+        doc = _resolve_sbom_doc(body.doc, body.artifact_id, _artifact_tenant(request, db, user))
+        try:
+            sbom = collectors.sbom_record_from_document(
+                doc, sbom_id=str(body.artifact_id or "inline"),
+                image_reference=body.image_reference, image_digest=body.image_digest)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+        payload["correlation"] = collectors.correlate(
+            [sbom], observations, register=payload.get("register"))
+    return payload
+
+
+@router.post("/sbom/obligations", response_model=SbomObligationsResponse)
+def sbom_obligations(body: SbomObligationsRequest, request: Request,
+                     db: Session = Depends(get_db_session),
+                     user: str = Depends(require_roles(*_SBOM_READERS))):
+    """What a licence obliges *this* distribution model to do.
+
+    The licence inventory endpoint answers "what is in here"; this one answers
+    "what does shipping it make us do" — a different question with a different
+    answer for the same component, depending on whether the product is consumed
+    internally, offered as a service, or handed to a customer as a binary.
+
+    Every row is a duty to consider, never a compliance ruling: the engine reports
+    ``NO_ACTION``, ``REVIEW`` or ``NEEDS_LEGAL`` and cites the clause, and an
+    unidentified licence is ``NEEDS_LEGAL`` rather than silently obligation-free.
+    """
+    from devsecops.license_obligations import portfolio_obligations
+    from devsecops.sbom_license import _component_licenses
+
+    doc = _resolve_sbom_doc(body.doc, body.artifact_id, _artifact_tenant(request, db, user))
+    modified = body.modified
+    modified_names = ({str(name).lower() for name in modified} if isinstance(modified, list)
+                      else None)
+    components = []
+    for comp, entries in _component_licenses(doc):
+        name = str(comp.get("name") or comp.get("SPDXID") or "?")
+        # one row per declared licence: a dual-licensed component carries the
+        # union of both sets of duties, which is what counsel has to choose from
+        licences = [str(entry.get("id")) for entry in entries] or [""]
+        touched = bool(modified) if modified_names is None else name.lower() in modified_names
+        for licence in licences:
+            components.append({"name": name, "licence": licence, "modified": touched})
+    try:
+        report = portfolio_obligations(components, model=body.distribution_model)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    payload: dict = {"artifact_id": body.artifact_id, **report}
+    if str(body.fmt).lower() == "markdown":
+        lines = [f"# Licence obligations — {report['model']}", "", report["statement"], ""]
+        if not report["duties"]:
+            lines.append("No obligation in the table is triggered by this model.")
+        for duty in report["duties"]:
+            lines.append(f"- **{duty['title']}** ({duty['cite']}) — "
+                         f"{len(duty['components'])} component(s): "
+                         + ", ".join(sorted(duty["components"])[:8]))
+        if report["unknown_components"]:
+            lines += ["", "## Licence not identified",
+                      ", ".join(sorted(report["unknown_components"])),
+                      "", "These components have no identified licence: counsel decides, "
+                      "the engine does not assume permissive."]
+        payload["markdown"] = "\n".join(lines)
     return payload
 
 
