@@ -196,7 +196,7 @@ is a `CRYPTOGRAPHIC_REGRESSION` — a strong signal, not a conclusion.
 | 17 NBOM → twin | implemented | guide 152 |
 | 18, 21 change and snapshots | **done in this round** | guide 155 (`cbom.nbom_history`) |
 | 19 correlated pattern | **missing** | open |
-| 20 network asset identity | **missing** | open |
+| 20 network asset identity | **done in this round** | guide 156 (`cbom.network_identity`) |
 
 The "call made here" line for each of the new guides lives in the guide itself; this
 file is the review as received, plus the ownership table above.

@@ -226,6 +226,28 @@ class CbomEstateChainResponse(BaseModel):
     statement: str
 
 
+class CbomNetworkIdentityRequest(BaseModel):
+    observations: list[dict] = Field(default_factory=list, description=(
+        "asset observations: asset_id, device_id, hostname, type, ips, environment, "
+        "zone, location, certificate, collector_source, evidence_id, observed_at. An "
+        "observation carrying only an IP and a port is refused, not named"))
+    links: dict[str, dict] | None = Field(None, description=(
+        "declared asset -> application mapping with an evidence id; without both, the "
+        "link is a claim and comes back NOT_PROVEN"))
+
+
+class CbomNetworkIdentityResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    assets: list[dict]
+    refused: list[dict]
+    observations: int
+    collectors: list[str]
+    untyped: list[str]
+    statement: str
+    links: dict
+    summary: dict
+
+
 class CbomNetworkAssetsRequest(BaseModel):
     hops: list[dict] = Field(default_factory=list, description=(
         "TLS hops as the network collector observed them: from, to, endpoint, "
@@ -651,6 +673,24 @@ def cbom_termination_paths(body: CbomTerminationPathsRequest,
         "edges": tp.to_edges(paths),
         "summary": tp.summary(paths),
     }
+
+
+@router.post("/network-identity", response_model=CbomNetworkIdentityResponse)
+def cbom_network_identity(body: CbomNetworkIdentityRequest,
+                          user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Stable network asset identity, with IP churn as history on the asset.
+
+    Review item 20 of the NBOM review: *not* `IP:port`. An observation with no
+    identity except an address is refused; two collectors on one hostname become one
+    asset with two evidence ids; an address change is `IP_ADDED`/`IP_REMOVED` against
+    the same asset id. An application is named only from a declared mapping with an
+    evidence id, so an interface never becomes the application behind it.
+    """
+    from cbom import network_identity as ni
+
+    inventory = ni.merge(body.observations)
+    return {**inventory, "links": ni.link(inventory["assets"], body.links),
+            "summary": ni.summary(inventory)}
 
 
 @router.post("/network-assets", response_model=CbomNetworkAssetsResponse)

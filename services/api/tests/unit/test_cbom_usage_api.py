@@ -715,3 +715,44 @@ def test_history_compare_refuses_two_documents_that_are_not_snapshots(client):
                                                   "after": {"endpoints": []}})
     assert response.status_code == 422
     assert "not a" in response.json()["detail"]
+
+
+def test_network_identity_keeps_an_asset_across_an_address_change(client):
+    lb = {"asset_id": "NET-001928", "type": "LOAD_BALANCER",
+          "hostname": "ext-lb-prod-01", "ips": ["10.20.1.10", "10.20.1.11"],
+          "environment": "PRODUCTION", "zone": "DMZ",
+          "certificate": {"fingerprint_sha256": "CERT-9281"},
+          "collector_source": "authorized-scanner", "evidence_id": "NET-1"}
+    body = _post(client, "/network-identity", {"observations": [
+        lb, {**lb, "ips": ["10.20.1.11", "10.20.1.12"], "collector_source": "cmdb-export",
+             "evidence_id": "CMDB-1", "observed_at": "2026-11-02T00:00:00Z"}]}).json()
+    asset = body["assets"][0]
+    assert asset["asset_id"] == "NET-001928"
+    assert asset["type"] == "LOAD_BALANCER" and asset["zone"] == "DMZ"
+    assert asset["ip_history"][0]["ip"] == "10.20.1.10"
+    assert asset["collector_sources"] == ["authorized-scanner", "cmdb-export"]
+    assert asset["evidence_ids"] == ["CMDB-1", "NET-1"]
+    assert body["summary"]["assets"] == 1
+
+
+def test_network_identity_refuses_an_address_as_a_name(client):
+    body = _post(client, "/network-identity", {"observations": [
+        {"ip": "10.20.1.10", "port": 443, "evidence_id": "NET-1"}]}).json()
+    assert body["assets"] == []
+    assert "IP:port is not an identity" in body["refused"][0]["reason"]
+
+
+def test_network_identity_never_names_an_application_without_a_mapping(client):
+    waf = {"hostname": "ext-waf-prod-01", "type": "WAF", "ips": ["10.20.1.20"],
+           "zone": "DMZ", "collector_source": "cmdb-export", "evidence_id": "CMDB-1"}
+    unlinked = _post(client, "/network-identity", {"observations": [waf]}).json()
+    assert unlinked["links"]["links"][0]["inference"] == "NOT_PROVEN"
+    assert unlinked["links"]["links"][0]["applications"] == []
+
+    linked = _post(client, "/network-identity", {
+        "observations": [waf],
+        "links": {unlinked["assets"][0]["asset_id"]: {
+            "applications": ["Payments API"], "evidence_id": "CMDB-7",
+            "source": "CMDB"}}}).json()
+    assert linked["links"]["links"][0]["inference"] == "PROVEN"
+    assert linked["links"]["links"][0]["evidence_id"] == "CMDB-7"

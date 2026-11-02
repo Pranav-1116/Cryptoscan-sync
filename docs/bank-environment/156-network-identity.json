@@ -1,0 +1,373 @@
+{
+  "schema": "cryptoscan.nbom-identity-guide/1",
+  "generated_at": "2026-11-02T19:17:29.869508+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 31,
+  "identifiers": [
+    "asset_id",
+    "device_id",
+    "hostname",
+    "certificate_fingerprint_sha256",
+    "service_identity",
+    "sni"
+  ],
+  "asset_types": [
+    "LOAD_BALANCER",
+    "ADC",
+    "REVERSE_PROXY",
+    "API_GATEWAY",
+    "WAF",
+    "FIREWALL",
+    "VPN",
+    "MAIL_GATEWAY",
+    "HSM",
+    "KMS",
+    "SERVER",
+    "APPLIANCE",
+    "UNKNOWN"
+  ],
+  "churn_kinds": [
+    "IP_ADDED",
+    "IP_REMOVED",
+    "HOSTNAME_CHANGED",
+    "CERTIFICATE_CHANGED",
+    "ENVIRONMENT_CHANGED",
+    "LOCATION_CHANGED",
+    "TYPE_CHANGED",
+    "ASSET_ADDED",
+    "ASSET_RETIRED"
+  ],
+  "inventory": {
+    "schema": "cryptoscan.cbom-network-identity/1",
+    "assets": 2,
+    "observations": 2,
+    "collectors": [
+      "authorized-scanner",
+      "cmdb-export"
+    ],
+    "addresses": 3,
+    "multi_address": [
+      "NET-001928"
+    ],
+    "untyped": [],
+    "refused": 0,
+    "statement": "2 network asset(s) from 2 observation(s) across 2 collector source(s); 1 asset(s) answered on more than one address",
+    "not_proven": [
+      "that a hostname is an application: a name is an entry point until a mapping says otherwise, and a load balancer's name is not the system behind it",
+      "that an asset with a new address is a new asset, or that an asset with no observation was retired \u2014 a discovery gap and a decommission look identical here",
+      "that two collectors reporting the same hostname are reporting the same device: they may be two devices behind one name",
+      "that the cryptography an asset terminates is used by the application behind it"
+    ]
+  },
+  "churn": {
+    "schema": "cryptoscan.cbom-network-identity/1",
+    "changes": [
+      {
+        "kind": "IP_ADDED",
+        "asset_id": "NET-001928",
+        "field": "ips",
+        "change": "ADDED",
+        "value": "10.20.1.12",
+        "detail": "ips gained 10.20.1.12",
+        "evidence_before": [
+          "NET-1"
+        ],
+        "evidence_after": [
+          "NET-9"
+        ]
+      },
+      {
+        "kind": "IP_REMOVED",
+        "asset_id": "NET-001928",
+        "field": "ips",
+        "change": "REMOVED",
+        "value": "10.20.1.10",
+        "detail": "ips lost 10.20.1.10",
+        "evidence_before": [
+          "NET-1"
+        ],
+        "evidence_after": [
+          "NET-9"
+        ]
+      },
+      {
+        "kind": "CERTIFICATE_CHANGED",
+        "asset_id": "NET-001928",
+        "field": "certificates",
+        "change": "ADDED",
+        "value": "CERT-9999",
+        "detail": "certificates gained CERT-9999",
+        "evidence_before": [
+          "NET-1"
+        ],
+        "evidence_after": [
+          "NET-9"
+        ]
+      },
+      {
+        "kind": "CERTIFICATE_CHANGED",
+        "asset_id": "NET-001928",
+        "field": "certificates",
+        "change": "REMOVED",
+        "value": "CERT-9281",
+        "detail": "certificates lost CERT-9281",
+        "evidence_before": [
+          "NET-1"
+        ],
+        "evidence_after": [
+          "NET-9"
+        ]
+      }
+    ],
+    "counts": {
+      "CERTIFICATE_CHANGED": 2,
+      "IP_ADDED": 1,
+      "IP_REMOVED": 1
+    },
+    "identity_stable": true,
+    "statement": "4 change(s) across 2 identity(ies); 2 address change(s), which moved under the same asset id rather than renaming it"
+  },
+  "link": {
+    "schema": "cryptoscan.cbom-network-identity/1",
+    "links": [
+      {
+        "asset_id": "NET-001928",
+        "applications": [
+          "Payments API"
+        ],
+        "inference": "PROVEN",
+        "evidence_id": "CMDB-7",
+        "source": "CMDB",
+        "reason": null,
+        "statement": "NET-001928 is declared to serve Payments API (CMDB-7)"
+      },
+      {
+        "asset_id": "NET-28794BDBFD",
+        "applications": [],
+        "inference": "NOT_PROVEN",
+        "evidence_id": null,
+        "source": null,
+        "reason": "no declared mapping names an application for this asset",
+        "statement": "NET-28794BDBFD is an interface fact: no application is named, because inferring one from a hostname is how a load balancer becomes an application"
+      }
+    ],
+    "proven": 1,
+    "unproven": 1,
+    "statement": "2 asset(s): 1 linked to an application by a declared mapping, 1 left as interface facts"
+  },
+  "rows": [
+    {
+      "id": "not_an_address",
+      "question": "is an address an identity, or a property of one?",
+      "phase": "review 20",
+      "probes": [
+        {
+          "probe": "an-ip-and-a-port-cannot-create-an-asset",
+          "ok": true,
+          "observed": "an IP:port is not an identity: this observation carries no asset id, device id, hostname or certificate, and an address changes"
+        },
+        {
+          "probe": "the-review-s-example-keeps-every-field-it-names",
+          "ok": true,
+          "observed": "NET-001928 \u00b7 LOAD_BALANCER \u00b7 DMZ"
+        },
+        {
+          "probe": "a-derived-identity-is-deterministic-and-ignores-the-address",
+          "ok": true,
+          "observed": "NET-28794BDBFD for both addresses"
+        },
+        {
+          "probe": "an-explicit-asset-id-wins-over-a-derived-one",
+          "ok": true,
+          "observed": "the CMDB id is kept, not replaced by a hash"
+        },
+        {
+          "probe": "no-key-material-is-ever-part-of-an-identity",
+          "ok": true,
+          "observed": "NOT_STORED"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "one_asset_many_addresses",
+      "question": "what happens to history when an address moves?",
+      "phase": "review 20",
+      "probes": [
+        {
+          "probe": "an-address-change-does-not-become-a-new-asset",
+          "ok": true,
+          "observed": "NET-001928, NET-28794BDBFD"
+        },
+        {
+          "probe": "churn-is-reported-as-attributes-on-the-same-identity",
+          "ok": true,
+          "observed": "4 change(s) across 2 identity(ies); 2 address change(s), which moved under the same asset id rather than renaming it"
+        },
+        {
+          "probe": "every-address-carries-when-it-was-first-and-last-seen",
+          "ok": true,
+          "observed": "10.20.1.10 first and last seen 2026-11-01"
+        },
+        {
+          "probe": "two-addresses-at-once-is-a-multi-homed-asset-not-two-assets",
+          "ok": true,
+          "observed": "2 addresses on one identity"
+        },
+        {
+          "probe": "a-rotation-is-a-change-under-the-asset-not-a-replacement",
+          "ok": true,
+          "observed": "the certificate rotated, the asset did not"
+        },
+        {
+          "probe": "the-statement-says-the-addresses-are-attributes",
+          "ok": true,
+          "observed": "NET-001928 (LOAD_BALANCER, PRODUCTION, DC1) seen 1 time(s) with 2 address(es) 10.20.1.10, 10.20.1.11; the addresses are attributes of this asset, not its identity"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "what_an_identity_is_made_of",
+      "question": "which fields identify a device, and which only describe it?",
+      "phase": "review 20",
+      "probes": [
+        {
+          "probe": "environment-and-zone-are-part-of-the-identity",
+          "ok": true,
+          "observed": "three contexts, three identities"
+        },
+        {
+          "probe": "the-basis-is-recorded-so-a-reviewer-can-see-the-inference",
+          "ok": true,
+          "observed": "hostname"
+        },
+        {
+          "probe": "two-collectors-seeing-one-device-produce-one-asset",
+          "ok": true,
+          "observed": "1 network asset(s) from 2 observation(s) across 2 collector source(s)"
+        },
+        {
+          "probe": "a-disagreeing-device-type-is-kept-as-a-conflict",
+          "ok": true,
+          "observed": "both answers survive; neither is silently chosen"
+        },
+        {
+          "probe": "an-unknown-device-class-is-recorded-and-listed",
+          "ok": true,
+          "observed": "UNKNOWN is a fact, not a guess"
+        },
+        {
+          "probe": "a-class-outside-the-vocabulary-is-refused",
+          "ok": true,
+          "observed": "MAINFRAME_THING is not an asset type this model records"
+        },
+        {
+          "probe": "the-same-observations-in-another-order-give-the-same-inventory",
+          "ok": true,
+          "observed": "order does not create identity"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "interface_is_not_an_application",
+      "question": "may a load balancer's name be read as the application behind it?",
+      "phase": "review 20 / item 8 boundary",
+      "probes": [
+        {
+          "probe": "an-asset-with-no-mapping-names-no-application",
+          "ok": true,
+          "observed": "NET-001928 is an interface fact: no application is named, because inferring one from a hostname is how a load balancer becomes an application"
+        },
+        {
+          "probe": "a-mapping-without-an-evidence-id-is-a-claim",
+          "ok": true,
+          "observed": "the mapping carries no evidence id, so it is a claim and not evidence"
+        },
+        {
+          "probe": "a-declared-mapping-with-evidence-is-the-only-proof",
+          "ok": true,
+          "observed": "NET-001928 is declared to serve Payments API (CMDB-7)"
+        },
+        {
+          "probe": "a-hostname-that-looks-like-an-application-is-still-just-a-hostname",
+          "ok": true,
+          "observed": "the name is an entry point until a mapping says otherwise"
+        },
+        {
+          "probe": "the-report-counts-proven-and-unproven-links",
+          "ok": true,
+          "observed": "2 asset(s): 0 linked to an application by a declared mapping, 2 left as interface facts"
+        },
+        {
+          "probe": "a-hop-asset-is-attached-to-the-device-that-terminated-it",
+          "ok": true,
+          "observed": "2 network crypto asset row(s): 2 attached to an asset identity, 0 left unresolved rather than given a name"
+        },
+        {
+          "probe": "an-interface-with-no-record-is-left-unresolved",
+          "ok": true,
+          "observed": "no inventory record carries Mystery Box as a hostname, SNI or service identity"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "history_without_rekeying",
+      "question": "does the history survive a failover, a rotation and a retirement?",
+      "phase": "review 20 / 21 boundary",
+      "probes": [
+        {
+          "probe": "a-three-run-history-answers-what-moved-without-re-keying",
+          "ok": true,
+          "observed": "1 change(s) across 2 identity(ies); no address moved; 0 arrival(s) and 1 disappearance(s) to reconcile with the CMDB"
+        },
+        {
+          "probe": "a-disappearance-is-a-question-for-the-owner",
+          "ok": true,
+          "observed": "no observation in the later inventory: retired and not answering are indistinguishable, so this is a question for the owner, not a deletion"
+        },
+        {
+          "probe": "changes-carry-the-evidence-from-both-inventories",
+          "ok": true,
+          "observed": "NET-1 \u2192 NET-9 on every change"
+        },
+        {
+          "probe": "the-summary-counts-addresses-under-identities",
+          "ok": true,
+          "observed": "2 network asset(s) from 2 observation(s) across 2 collector source(s); 1 asset(s) answered on more than one address"
+        },
+        {
+          "probe": "the-summary-states-what-an-inventory-cannot-prove",
+          "ok": true,
+          "observed": "4 stated limit(s)"
+        },
+        {
+          "probe": "a-churn-report-refuses-two-things-that-are-not-inventories",
+          "ok": true,
+          "observed": "a foreign document is rejected, not diffed"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "a derived identity is a convenience, not a CMDB record. It is stable for as long as the hostname, environment and location are, and it says DERIVED so nobody has to guess which kind of id they are reading",
+    "an asset with no observation in a later run is reported as retired *or* unobserved. Distinguishing those needs the collector's attempted target list (guide 153), and this module will not guess",
+    "two collectors reporting one hostname may be two devices behind one name. The evidence ids are kept separate and the observation count says how many times the identity was confirmed, not how many devices exist",
+    "an address seen once is recorded with a timestamp; an address is not tracked to the second, so churn between two runs is reported as added and removed rather than as a move",
+    "device type is whatever the source said, or UNKNOWN. A wrong type in the CMDB is silently wrong here too, which is why the type participates in a conflict but never in the identity",
+    "linking an asset to an application needs a declared mapping with an evidence id. Nothing here infers an application from a name, a zone or a certificate, so an unlinked asset stays an interface fact",
+    "a hop asset from guide 148 is attached to an identity by matching the interface name against a hostname, SNI or service identity. An interface with no matching record stays UNRESOLVED; the alternative is an asset invented from a label somebody typed on a diagram"
+  ]
+}

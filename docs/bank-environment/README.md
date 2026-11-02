@@ -555,6 +555,31 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [Network asset identity: an address is an attribute, not a name](156-network-identity.md)
+> (**5 pass · 0 partial · 0 fail**, 31 probes) closes NBOM review item 20, which is one
+> sentence long and entirely right: *not* `IP:port`, because IPs change. An inventory
+> keyed on `10.20.1.10:443` rebuilds the estate on every failover — history lost,
+> assets invented, findings orphaned. `cbom.network_identity` derives the identity from
+> what survives an address change, in a stated order — `asset_id` (CMDB, kept
+> verbatim) → `device_id` → `hostname` + environment + location (deterministic
+> `NET-XXXXXXXXXX`) → certificate fingerprint → service identity — and **refuses** an
+> observation whose only handle is an address and a port, because an identity the
+> collector invents is exactly the inventory the review rejects. Address churn becomes
+> **history on the asset**: `IP_ADDED`/`IP_REMOVED` with first and last seen per
+> address, `multiple_addresses` for a multi-homed device, and `identity_stable` on the
+> churn report, so a failover is two attribute changes and not a retirement plus an
+> arrival. Two collectors that see one hostname produce one asset with two evidence
+> ids and an observation count — and when they disagree about the device type, the
+> disagreement is kept as a `conflicts` entry instead of one answer being chosen. A
+> disappearance is `ASSET_RETIRED` with the sentence that retirement and a discovery
+> gap are indistinguishable. And `link()` names an application only from a declared
+> mapping **with an evidence id**; a hostname that looks like an application, a zone or
+> a certificate never becomes one, so the load balancer stays an interface fact.
+> `resolve()` is the seam to guide 148: a hop asset is attached to an identity only
+> when the interface name matches a hostname, SNI or service identity, and an
+> unmatched interface stays `UNRESOLVED` rather than being given a name.
+> `POST /cbom/network-identity` exposes it, typed, behind the reader roles.
+
 > [NBOM history: what changed, and what moved the wrong way](155-nbom-history.md)
 > (**5 pass · 0 partial · 0 fail**, 31 probes) closes NBOM review items 18 and 21,
 > whose complaint is that the NBOM has no memory: a snapshot is point-in-time, so
