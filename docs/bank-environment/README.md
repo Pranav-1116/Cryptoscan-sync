@@ -450,6 +450,25 @@
 > `POLICY_ACCEPTED`/`POLICY_REJECTED`; `/sbom/license` returns the counts and
 > says how many components nobody has reviewed.
 
+> [The gate stops believing the document](137-sbom-gate-evidence.md)
+> (**5 pass · 0 partial · 0 fail**, 26 probes) is the part guide 136 left on
+> trust. **The gate counted the document's own CVE table**, so a component nobody
+> assessed produced the same `PASS` as one checked against a current feed: it now
+> takes the feed and the VEX statements, answers per component in the six states,
+> blocks on assessed critical/high findings, and reports
+> `document_cve_entries` beside `assessed_open` so neither number can be quoted
+> alone. **VEX was advisory**: every statement is re-validated at evaluation
+> time, so a lapsed, unjustified or unreviewed `NOT_AFFECTED` suppresses nothing
+> and the finding returns with `GATE-VEX-LAPSED` and the reason. **A signature
+> named itself**: the manifest now records algorithm, key id, key version, key
+> status, trust anchor, signed and verified times, revocation, and the three
+> claims the ladder supports — HMAC earns integrity and authenticity and never
+> non-repudiation — and a revoked or expired key raises `SigningRefused` instead
+> of signing. **Nothing said what produced the artifact**: `source_commit`,
+> `build_id`, `builder`, `pipeline` and the produced digest travel from
+> `/sbom/scan` and `/binary/scan` onto `manifest.provenance`, with every missing
+> link named and `complete` also requiring an observation.
+
 > [Durability, archives, obligations, deployment](136-sbom-durability-archives-obligations-deployment.md)
 > (**5 pass · 0 partial · 0 fail**, 68 probes, 4 placement, 9 archive and 13
 > licence-model cases) takes the four limits guide 135 named and makes each one

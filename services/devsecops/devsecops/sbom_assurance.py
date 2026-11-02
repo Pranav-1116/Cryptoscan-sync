@@ -359,6 +359,12 @@ DEFAULT_GATE_POLICY: dict[str, Any] = {
     # full license policy (see devsecops.sbom_license); `deny_licenses` above
     # remains as the simple, backwards-compatible deny list
     "license_policy": None,
+    # evidence gate (see vulnerability_evidence below): when a feed is supplied,
+    # components nobody assessed are reported, and this flag decides whether that
+    # is a warning or a blocker. Default off so the document-only gate keeps its
+    # old thresholds; a caller that wants "not assessed" to fail turns it on.
+    "require_vulnerability_assessment": False,
+    "max_feed_age_days": 7,
 }
 
 
@@ -398,11 +404,137 @@ def _licenses(bom: dict[str, Any]) -> list[tuple[str, str]]:
     return out
 
 
+def _components_for_evidence(bom: dict[str, Any]) -> tuple[dict[str, Any], ...]:
+    """(name, version, purl) per component, from either document format."""
+    rows: list[dict[str, Any]] = []
+    if _is_cdx(bom):
+        for comp in _cdx_components(bom):
+            rows.append({"name": comp.get("name"), "version": comp.get("version"),
+                         "purl": comp.get("purl")})
+    else:
+        for pkg in spdx_components(bom):
+            identifiers = [str(ref.get("referenceLocator") or "")
+                           for ref in pkg.get("externalRefs") or []
+                           if isinstance(ref, dict)]
+            purl = next((value for value in identifiers if value.startswith("pkg:")), None)
+            rows.append({"name": pkg.get("name"), "version": pkg.get("versionInfo"),
+                         "purl": purl})
+    return tuple(rows)
+
+
+def vulnerability_evidence(bom: dict[str, Any], *, feed: dict[str, Any] | None = None,
+                           advisories: list[dict[str, Any]] | None = None,
+                           vex: list[dict[str, Any]] | None = None,
+                           as_of: Any = None,
+                           max_feed_age_days: int = 7) -> dict[str, Any]:
+    """What the *evidence* says about vulnerabilities, not what the document lists.
+
+    ``_cve_counts`` counts CVE entries a document happens to carry, and a document
+    that carries none is then indistinguishable from one nobody assessed. This
+    does the assessment: every component against the supplied feed (six states),
+    then every match against the supplied VEX statements, which are re-validated
+    here so an expired or unjustified ``NOT_AFFECTED`` cannot suppress anything.
+
+    With no feed the answer is ``NOT_ASSESSED`` for every component and the block
+    says so — it never renders as clean.
+    """
+    from devsecops import sbom_evidence
+
+    statements: dict[tuple[str, str], dict[str, Any]] = {}
+    for statement in vex or ():
+        if not isinstance(statement, dict):
+            continue
+        row = dict(statement)
+        for field in ("assessed_at", "expires_at"):
+            value = row.get(field)
+            if isinstance(value, str):
+                try:
+                    from datetime import date as _date
+
+                    row[field] = _date.fromisoformat(value[:10])
+                except ValueError:
+                    row[field] = None
+        if not row.get("assessed_at") or not row.get("expires_at"):
+            continue
+        evaluated = sbom_evidence.vex_statement(
+            cve=str(row.get("cve") or ""), component=str(row.get("component") or ""),
+            affected_versions=tuple(row.get("affected_versions") or ()),
+            application=str(row.get("application") or "unstated"),
+            deployment=str(row.get("deployment") or "unstated"),
+            status=str(row.get("status") or ""),
+            justification=row.get("justification"), reviewer=row.get("reviewer"),
+            evidence_id=row.get("evidence_id"), assessed_at=row["assessed_at"],
+            expires_at=row["expires_at"], as_of=as_of)
+        key = (str(row.get("cve") or "").strip().lower(),
+               str(row.get("component") or "").strip().lower())
+        statements[key] = evaluated
+
+    record = sbom_evidence.SbomRecord(sbom_id="gate", artifact=None,
+                                      components=_components_for_evidence(bom))
+    assessed = sbom_evidence.assess_document(
+        record, feed=feed, advisories=tuple(advisories or ()), as_of=as_of,
+        max_feed_age_days=max_feed_age_days)
+
+    open_rows: list[dict[str, Any]] = []
+    suppressed: list[dict[str, Any]] = []
+    lapsed: list[dict[str, Any]] = []
+    for row in assessed["components"]:
+        for advisory in row["advisories"]:
+            statement = statements.get((str(advisory.get("id")).strip().lower(),
+                                        str(row["component"]).strip().lower()))
+            severity = str(advisory.get("severity") or "UNKNOWN").upper()
+            entry = {"component": row["component"], "version": row["version"],
+                     "advisory": advisory.get("id"), "severity": severity,
+                     "purl": row["purl"], "match_method": row["match_method"],
+                     "confidence": row["confidence"]}
+            if statement is None:
+                open_rows.append(entry | {"vex": "NONE"})
+                continue
+            entry["vex"] = statement["verdict"]
+            if statement["verdict"] == "CURRENT" and statement["status"] == "NOT_AFFECTED":
+                suppressed.append(entry | {"justification": statement["justification"],
+                                           "reviewer": statement["reviewer"],
+                                           "expires_at": statement["expires_at"]})
+            else:
+                if statement["verdict"] != "CURRENT":
+                    lapsed.append(entry | {"problems": statement["problems"]})
+                open_rows.append(entry)
+    by_severity: dict[str, int] = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0,
+                                   "UNKNOWN": 0}
+    for row in open_rows:
+        by_severity[row["severity"] if row["severity"] in by_severity else "UNKNOWN"] += 1
+    supplied = bool(feed)
+    return {
+        "assessment": "SUPPLIED" if supplied else "NOT_SUPPLIED",
+        "as_of": assessed["as_of"],
+        "feed": assessed["feed"],
+        "states": assessed["counts"],
+        "assessed": assessed["assessed"],
+        "unassessed": assessed["unassessed"],
+        "open": open_rows,
+        "open_by_severity": by_severity,
+        "suppressed_by_vex": suppressed,
+        "lapsed_or_invalid_vex": lapsed,
+        "statement": (
+            ("no vulnerability feed was consulted: the document's own entries are the only "
+             "thing counted, and an absent entry is not an all-clear")
+            if not supplied else
+            f"{assessed['assessed']} of {len(record.components)} component(s) assessed; "
+            f"{len(open_rows)} open finding(s) ({by_severity['CRITICAL']} critical, "
+            f"{by_severity['HIGH']} high), {len(suppressed)} suppressed by a current VEX "
+            f"statement, {len(lapsed)} whose VEX statement lapsed or is invalid"),
+    }
+
+
 def evaluate_gate(bom: dict[str, Any] | None, *,
                   policy: dict[str, Any] | None = None,
                   unpinned: int | None = None,
                   signed: bool | None = None,
-                  scanner_findings: dict[str, int] | None = None) -> dict[str, Any]:
+                  scanner_findings: dict[str, int] | None = None,
+                  feed: dict[str, Any] | None = None,
+                  advisories: list[dict[str, Any]] | None = None,
+                  vex: list[dict[str, Any]] | None = None,
+                  as_of: Any = None) -> dict[str, Any]:
     """Deterministic supply-chain gate for a rendered SBOM.
 
     Blockers fail a pipeline; warnings inform. Every finding names the policy
@@ -495,14 +627,52 @@ def evaluate_gate(bom: dict[str, Any] | None, *,
                              "detail": f"{scanner_counts[severity]} {severity} finding(s) from the "
                                        f"scan itself"})
 
+    # The document's own CVE table is a *claim*; the feed is the evidence. When a
+    # caller supplies a feed (or VEX statements) the gate is decided on the
+    # assessment, and the two counts are reported side by side so nobody can
+    # quote "0 vulnerabilities in the document" as a pass.
+    evidence = vulnerability_evidence(
+        bom, feed=feed, advisories=advisories, vex=vex, as_of=as_of,
+        max_feed_age_days=int(effective["max_feed_age_days"] or 7))
+    if feed is not None or vex:
+        open_counts = evidence["open_by_severity"]
+        if open_counts["CRITICAL"] > int(effective["allow_critical"]):
+            blockers.append({"code": "GATE-VULN-CRITICAL", "severity": "CRITICAL",
+                             "detail": (f"{open_counts['CRITICAL']} assessed critical finding(s) "
+                                        f"remain open (allowed: {effective['allow_critical']})")})
+        allow_high_ev = effective["allow_high"]
+        if allow_high_ev is not None and open_counts["HIGH"] > int(allow_high_ev):
+            blockers.append({"code": "GATE-VULN-HIGH", "severity": "HIGH",
+                             "detail": (f"{open_counts['HIGH']} assessed high finding(s) remain "
+                                        f"open (allowed: {allow_high_ev})")})
+        if evidence["unassessed"]:
+            target = blockers if effective["require_vulnerability_assessment"] else warnings
+            target.append({
+                "code": "GATE-VULN-UNASSESSED", "severity": "MEDIUM",
+                "detail": (f"{evidence['unassessed']} of "
+                           f"{evidence['assessed'] + evidence['unassessed']} component(s) have no "
+                           "vulnerability posture from a current feed — not assessed is not clean")})
+        for row in evidence["lapsed_or_invalid_vex"]:
+            warnings.append({"code": "GATE-VEX-LAPSED", "severity": row["severity"],
+                             "detail": (f"{row['advisory']} on {row['component']}: the VEX "
+                                        f"statement is {row['vex']}, so the finding is open "
+                                        "again")})
+
     result = {
         "verdict": "FAIL" if blockers else "PASS",
         "policy": effective,
         "counts": {"components": compliance["component_count"], **counts,
+                   # the document's own entries, kept so the two answers can be compared
+                   "document_cve_entries": sum(counts.values()),
+                   "assessed_open": len(evidence["open"]),
+                   "unassessed": evidence["unassessed"],
                    "unpinned": unpinned, "minimum_elements": compliance["score"],
                    **({"scanner_findings": scanner_counts} if scanner_findings else {})},
         "blockers": blockers,
         "warnings": warnings,
+        # always present: the gate's answer about *evidence*, which is a different
+        # question from the answer about the document
+        "vulnerability_evidence": evidence,
     }
     if license_report is not None:
         result["license_verdict"] = license_report["verdict"]

@@ -346,6 +346,19 @@ class SbomScanRequest(BaseModel):
     recursive: bool = Field(True, description="binary kind: descend into subdirectories")
     include_raw: bool = Field(False, description=("binary kind: also record files with no recognised "
                                                   "container format but crypto-library evidence"))
+    # item 7: what produced this artifact. Optional because a manual scan has no
+    # build; when supplied the manifest carries the chain and names its gaps.
+    source_commit: str | None = Field(None, max_length=64,
+                                      description="the commit the artifact was built from")
+    build_id: str | None = Field(None, max_length=128, description="the CI build identifier")
+    builder: str | None = Field(None, max_length=128, description="who ran the build")
+    pipeline: str | None = Field(None, max_length=128, description="the pipeline that ran it")
+    artifact_digest: str | None = Field(None, max_length=80,
+                                        description="sha256:... of the produced artifact")
+    artifact_reference: str | None = Field(None, max_length=300,
+                                           description="registry reference of the produced artifact")
+    started_at: str | None = Field(None, max_length=40, description="ISO build start")
+    finished_at: str | None = Field(None, max_length=40, description="ISO build finish")
 
 
 @router.post("/sbom/scan", status_code=status.HTTP_201_CREATED)
@@ -453,7 +466,8 @@ def sbom_scan(body: SbomScanRequest, request: Request,
             created_by=user, db=db, artifact_id=None, feed_supplied=bool(body.feed),
             recursive=body.recursive, include_raw=body.include_raw,
             secret=_sbom_signing_secret(db),
-            tenant_id=_artifact_tenant(request, db, user), bom_bundle=binary_bundle)
+            tenant_id=_artifact_tenant(request, db, user), bom_bundle=binary_bundle,
+            build=_build_from_request(body))
         manifest = stored["manifest"]
         artifact_id = stored["artifact_id"]
         UserRepository(db).audit(
@@ -628,6 +642,14 @@ class BinaryScanRequest(BaseModel):
                                  description="walk-wide input byte budget")
     max_seconds: float = Field(15 * 60, ge=0.1, le=2 * 60 * 60,
                                description="walk-wide wall-clock budget")
+    source_commit: str | None = Field(None, max_length=64, description="the commit the artifact came from")
+    build_id: str | None = Field(None, max_length=128, description="the CI build identifier")
+    builder: str | None = Field(None, max_length=128, description="who ran the build")
+    pipeline: str | None = Field(None, max_length=128, description="the pipeline that ran it")
+    artifact_digest: str | None = Field(None, max_length=80, description="sha256:... of the artifact")
+    artifact_reference: str | None = Field(None, max_length=300, description="registry reference")
+    started_at: str | None = Field(None, max_length=40, description="ISO build start")
+    finished_at: str | None = Field(None, max_length=40, description="ISO build finish")
 
 
 class BinaryScanJobRequest(BaseModel):
@@ -1159,7 +1181,8 @@ def binary_scan(body: BinaryScanRequest, request: Request,
         artifact_id=body.artifact_id, job_id=body.job_id, feed_supplied=bool(body.feed),
         recursive=body.recursive, include_raw=body.include_raw,
         secret=_sbom_signing_secret(db),
-        tenant_id=_artifact_tenant(request, db, user), bom_bundle=bom_bundle)
+        tenant_id=_artifact_tenant(request, db, user), bom_bundle=bom_bundle,
+        build=_build_from_request(body))
     artifact_id = stored["artifact_id"]
     manifest = stored["manifest"]
     compliance = stored["compliance"]
@@ -2033,10 +2056,17 @@ def sbom_verify(artifact_id: str, request: Request, db: Session = Depends(get_db
                                  target_id=artifact_id,
                                  detail={"checks": result["checks"]}, outcome="FAILURE")
         db.commit()
-    return {"artifact_id": artifact_id, **result, "manifest": {
-        "format": man.get("format"), "kind": man.get("kind"), "target": man.get("target"),
-        "sha256": man.get("sha256"), "created_at": man.get("created_at"),
-        "signature_alg": man.get("signature_alg")}}
+    return {"artifact_id": artifact_id, **result,
+            # the digest-and-HMAC check answers "are these the bytes that were
+            # signed"; these two answer "which claims does that signature support"
+            # and "what produced this artifact", which the manifest recorded at
+            # write time and the signature covers
+            "signature_evidence": man.get("signature_evidence"),
+            "provenance": man.get("provenance"),
+            "manifest": {
+                "format": man.get("format"), "kind": man.get("kind"), "target": man.get("target"),
+                "sha256": man.get("sha256"), "created_at": man.get("created_at"),
+                "signature_alg": man.get("signature_alg")}}
 
 
 @router.get("/sbom/{artifact_id}/report")
@@ -2157,6 +2187,15 @@ def sbom_report(artifact_id: str, request: Request, fmt: str = "markdown",
 
 class SbomGateRequest(BaseModel):
     policy: dict | None = Field(None, description="gate policy overrides (see DEFAULT_GATE_POLICY)")
+    feed: dict | None = Field(None, description=(
+        "the advisory feed that was consulted: name, version, updated_at. With no feed the "
+        "gate can only count what the document claims, and says so"))
+    advisories: list[dict] | None = Field(None, description=(
+        "feed rows (id, severity, purl, affected_versions) matched against the components"))
+    vex: list[dict] | None = Field(None, description=(
+        "VEX statements (cve, component, status, justification, reviewer, evidence_id, "
+        "assessed_at, expires_at); each is re-validated, so a lapsed one suppresses nothing"))
+    as_of: str | None = Field(None, description="ISO date the gate is evaluated for")
 
 
 class SbomRescanRequest(BaseModel):
@@ -2206,10 +2245,22 @@ def sbom_gate(artifact_id: str, request: Request, body: SbomGateRequest | None =
         bom = json.loads(blob.decode("utf-8"))
     except Exception as exc:  # noqa: BLE001 — a corrupt blob is a real failure, not a pass
         raise HTTPException(status_code=422, detail=f"stored SBOM could not be parsed: {exc}")
+    as_of = None
+    if body and body.as_of:
+        from datetime import date as _date
+
+        try:
+            as_of = _date.fromisoformat(body.as_of[:10])
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"as_of is not a date: {exc}")
     result = evaluate_gate(bom, policy=(body.policy if body else None),
                            unpinned=man.get("unpinned"),
                            signed=bool(man.get("signature")),
-                           scanner_findings=_scanner_findings(man))
+                           scanner_findings=_scanner_findings(man),
+                           feed=(body.feed if body else None),
+                           advisories=(body.advisories if body else None),
+                           vex=(body.vex if body else None),
+                           as_of=as_of)
     return {"artifact_id": artifact_id, "target": man.get("target"), "format": man.get("format"),
             "generated_at": man.get("created_at"), **result}
 
@@ -2382,6 +2433,19 @@ class SbomVexRequest(BaseModel):
     analyses: dict | None = Field(None, description=("operator statements, keyed by CVE: "
                                                      "{state, justification, detail, response}"))
     fmt: str = Field("json", description="json (CycloneDX VEX) or markdown")
+
+
+def _build_from_request(body: Any) -> dict | None:
+    """The build identity a scan request supplies, or ``None``.
+
+    Nothing is inferred: a scan with no commit records no commit, and the manifest
+    then says so in ``provenance.gaps`` rather than shipping an empty chain that
+    looks complete.
+    """
+    fields = ("source_commit", "build_id", "builder", "pipeline", "artifact_digest",
+              "artifact_reference", "started_at", "finished_at")
+    payload = {field: getattr(body, field, None) for field in fields}
+    return {key: value for key, value in payload.items() if value} or None
 
 
 def _resolve_sbom_doc(doc: dict | None, artifact_id: str | None,

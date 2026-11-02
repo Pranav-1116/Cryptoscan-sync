@@ -1,0 +1,196 @@
+{
+  "schema": "cryptoscan.sbom-gate-evidence-guide/1",
+  "generated_at": "2026-11-02T17:19:43.039470+00:00",
+  "as_of": "2026-11-02",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 26,
+  "rows": [
+    {
+      "id": "gate_evidence",
+      "question": "does the gate pass a component nobody ever assessed?",
+      "phase": "10",
+      "probes": [
+        {
+          "probe": "a-document-with-no-cve-entries-is-not-an-assessment",
+          "ok": true,
+          "observed": "no vulnerability feed was consulted: the document's own entries are the only thing counted, and an absent entry is not an all-clear"
+        },
+        {
+          "probe": "the-same-document-fails-when-a-feed-is-consulted",
+          "ok": true,
+          "observed": "1 assessed critical finding(s) remain open (allowed: 0)"
+        },
+        {
+          "probe": "the-document-count-and-the-assessed-count-are-both-reported",
+          "ok": true,
+          "observed": "0 document entr(ies), 1 assessed open"
+        },
+        {
+          "probe": "a-stale-feed-is-not-an-all-clear",
+          "ok": true,
+          "observed": "0 of 1 component(s) assessed; 0 open finding(s) (0 critical, 0 high), 0 suppressed by a current VEX statement, 0 whose VEX statement lapsed or is invalid"
+        },
+        {
+          "probe": "a-policy-can-make-unassessed-a-blocker",
+          "ok": true,
+          "observed": "1 of 1 component(s) have no vulnerability posture from a current feed \u2014 not assessed is not clean"
+        },
+        {
+          "probe": "the-documents-own-claim-still-counts-without-a-feed",
+          "ok": true,
+          "observed": "1 document entry gated"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "vex_suppression",
+      "question": "can an expired or unjustified VEX still hide a critical finding?",
+      "phase": "11",
+      "probes": [
+        {
+          "probe": "a-current-justified-statement-suppresses-the-finding",
+          "ok": true,
+          "observed": "1 of 1 component(s) assessed; 0 open finding(s) (0 critical, 0 high), 1 suppressed by a current VEX statement, 0 whose VEX statement lapsed or is invalid"
+        },
+        {
+          "probe": "a-lapsed-statement-suppresses-nothing-and-says-why",
+          "ok": true,
+          "observed": "EXPIRED"
+        },
+        {
+          "probe": "free-text-is-not-a-justification",
+          "ok": true,
+          "observed": "NOT_AFFECTED needs a justification from the closed list (VULNERABLE_CODE_NOT_PRESENT, VULNERABLE_CODE_NOT_IN_EXECUTE_PATH, \u2026); free text is not a justification"
+        },
+        {
+          "probe": "an-unreviewed-statement-is-not-a-statement",
+          "ok": true,
+          "observed": "INVALID"
+        },
+        {
+          "probe": "a-statement-about-another-component-suppresses-nothing",
+          "ok": true,
+          "observed": "the finding stayed open: a VEX statement is scoped to one component"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "signature_evidence",
+      "question": "does a stored signature say what it actually proves?",
+      "phase": "9",
+      "probes": [
+        {
+          "probe": "the-manifest-records-the-signing-identity",
+          "ok": true,
+          "observed": "HMAC-SHA256 key hmac-2026-11 v3 (ACTIVE), anchor bank-kms:sbom-signing"
+        },
+        {
+          "probe": "hmac-claims-authenticity-and-not-non-repudiation",
+          "ok": true,
+          "observed": "signed and verified: AUTHENTIC: tenants/platform/78a9003e-2083-4c1a-94e8-d4a18f7b4183.cdx.json \u2014 integrity yes, authenticity yes, non-repudiation no"
+        },
+        {
+          "probe": "the-evidence-block-is-covered-by-the-signature",
+          "ok": true,
+          "observed": "the manifest is signed after the evidence block is written, so editing it breaks the HMAC"
+        },
+        {
+          "probe": "a-revoked-key-refuses-to-sign",
+          "ok": true,
+          "observed": "a revoked key stops producing signatures instead of writing one a verifier must discount"
+        },
+        {
+          "probe": "an-unsigned-artifact-says-so",
+          "ok": true,
+          "observed": "UNSIGNED: the digest may be intact and nothing vouches for it"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "build_provenance",
+      "question": "can the artifact say what produced it, and what is missing?",
+      "phase": "7",
+      "probes": [
+        {
+          "probe": "the-manifest-records-commit-build-digest-and-sbom",
+          "ok": true,
+          "observed": "build BUILD-2026-1102-0091 from 9f2c1ab4d7 produced sha256:aaaaaaaaaaaa\u2026; never observed running, so provenance stops at the artifact"
+        },
+        {
+          "probe": "a-chain-without-an-observation-is-not-called-complete",
+          "ok": true,
+          "observed": "complete also requires an observation: provenance stops at the artifact"
+        },
+        {
+          "probe": "the-missing-links-are-named-not-omitted",
+          "ok": true,
+          "observed": "2 gap(s): source_commit is not a commit hash, so the build cannot be traced to a tree"
+        },
+        {
+          "probe": "a-build-that-names-no-artifact-digest-says-so",
+          "ok": true,
+          "observed": "2 gap(s): the build names no artifact digest"
+        },
+        {
+          "probe": "a-scan-with-no-build-supplied-does-not-invent-one",
+          "ok": true,
+          "observed": "no commit, no build id and no provenance block: the manifest says nothing rather than something that looks auditable"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "api_exposure",
+      "question": "can a caller reach these answers through the API?",
+      "phase": "10 / 9 / 7",
+      "probes": [
+        {
+          "probe": "the-gate-route-accepts-a-feed-and-vex-statements",
+          "ok": true,
+          "observed": "/sbom/{artifact_id}/gate takes `feed`, `advisories`, `vex` and `as_of`"
+        },
+        {
+          "probe": "the-gate-uses-the-assessment-not-only-the-document",
+          "ok": true,
+          "observed": "the gate blocks on assessed critical findings and reports the document count beside them"
+        },
+        {
+          "probe": "the-verify-route-returns-the-signature-evidence",
+          "ok": true,
+          "observed": "/sbom/{artifact_id}/verify answers which claims the signature supports"
+        },
+        {
+          "probe": "both-scan-routes-record-the-build-identity",
+          "ok": true,
+          "observed": "a commit supplied to /sbom/scan or /binary/scan reaches the manifest"
+        },
+        {
+          "probe": "no-new-untyped-route-was-added",
+          "ok": true,
+          "observed": "the untyped-response inventory is untouched by this change"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the gate's assessment is only as good as the feed handed to it: which advisory is true for a build is the feed vendor's claim, and this code carries it rather than deciding it",
+    "VEX is re-validated at evaluation time, not at authoring time. A statement that was valid when written and has since lapsed still suppresses nothing, but a statement with a wrong justification is only caught if it is outside the closed list",
+    "the signature ladder reports what an HMAC can claim, and HMAC can never claim non-repudiation. Moving to Ed25519/ECDSA is a key-management change this code supports but does not perform",
+    "key status and trust anchor are configuration: the platform cannot know that a key was revoked until an operator says so, and it cannot verify an anchor it was told to trust",
+    "build provenance records what a caller supplied. A CI system that lies about its commit produces a complete-looking chain, which is why the manifest also carries the signature evidence over it",
+    "the unassessed count is a statement about components, not about reachability: a component can be assessed, matched and still not be exploitable in this deployment"
+  ]
+}

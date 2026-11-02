@@ -32,7 +32,7 @@ import json
 import logging
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -753,7 +753,8 @@ def store_binary_artifact(*, scan: dict[str, Any], result: dict[str, Any], bom: 
                           secret: tuple[str | None, str] | None = None,
                           tenant_id: str | None = None,
                           encryption_secret: str | None = None,
-                          bom_bundle: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+                          bom_bundle: dict[str, dict[str, Any]] | None = None,
+                          build: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build the manifest for a finished scan and store it, signed.
 
     This is the one place a binary artifact is written. The synchronous endpoint
@@ -826,6 +827,11 @@ def store_binary_artifact(*, scan: dict[str, Any], result: dict[str, Any], bom: 
         feed_supplied=feed_supplied, recursive=recursive, include_raw=include_raw,
         job_id=job_id, ruleset_digest=(result.get("yara") or {}).get("digest"),
         tenant_id=tenant_id, at_rest=at_rest, bom_documents=sidecar_documents)
+    # item 7: the chain from commit to artifact, and the links that are missing.
+    # `build` is what the CI system told us; nothing here invents a commit.
+    provenance = provenance_for(bom, artifact_id=artifact_id, build=build)
+    if provenance is not None:
+        manifest["provenance"] = provenance
     written = write_binary_artifact(
         manifest=manifest, payload=sealed_payload, cbom_blob=sealed_cbom,
         bom_blobs=sidecar_blobs,
@@ -836,6 +842,127 @@ def store_binary_artifact(*, scan: dict[str, Any], result: dict[str, Any], bom: 
     return {"artifact_id": artifact_id, "manifest": manifest, "compliance": compliance,
             "pinning": pinning, "payload_sha256": sha256, "components": components,
             "database_indexed": database_indexed, **written}
+
+
+class SigningRefused(RuntimeError):
+    """The configured signing key may not be used to vouch for new evidence.
+
+    Raised instead of writing a manifest whose signature a verifier would have to
+    discount: a revoked or expired key must stop producing signatures, whatever
+    the caller wanted to store.
+    """
+
+
+#: Key records for the platform's own HMAC signer. HMAC authenticates to anyone
+#: holding the secret, so it can never claim non-repudiation — which is exactly
+#: what ``sbom_evidence.SIGNATURE_CLAIMS`` says about it.
+def signing_key(key_id: str) -> Any:
+    """The signing key's record, from the environment, for the ladder.
+
+    ``SBOM_SIGNING_KEY_STATUS`` (ACTIVE/ROTATED/REVOKED/EXPIRED) and
+    ``SBOM_SIGNING_TRUST_ANCHOR`` are operational facts about the key, so they are
+    configuration: the code cannot know that somebody revoked it yesterday.
+    """
+    from devsecops import sbom_evidence as evidence
+
+    status = str(os.environ.get("SBOM_SIGNING_KEY_STATUS") or "ACTIVE").strip().upper()
+    anchor = str(os.environ.get("SBOM_SIGNING_TRUST_ANCHOR") or "platform:local-hmac")
+    return evidence.SigningKey(key_id=str(key_id or "unsigned"),
+                               algorithm="HMAC-SHA256",
+                               status=status if status in evidence.KEY_STATUSES else "ACTIVE",
+                               trust_anchor=anchor or None)
+
+
+def signature_evidence(manifest: dict[str, Any], *, key_id: str,
+                       signed: bool) -> dict[str, Any]:
+    """What this artifact's signature actually proves, recorded on the manifest.
+
+    The review asks for algorithm, key id, key version, key status, verification
+    time, trust anchor and revocation — fields a reader needs to audit a signature
+    without re-running the platform. The ladder decides which of integrity,
+    authenticity and non-repudiation the evidence supports; for HMAC that is the
+    first two, and saying so is more useful than a bare boolean "signed: true".
+    """
+    import hashlib
+
+    from devsecops import sbom_evidence as evidence
+    from devsecops.sbom_scan import canonical_manifest
+
+    key = signing_key(key_id)
+    subject = str(manifest.get("storage_key") or "manifest")
+    digest = "sha256:" + hashlib.sha256(canonical_manifest(manifest)).hexdigest()
+    record = None
+    if signed:
+        record = evidence.Signature(key_id=key.key_id,
+                                    signed_at=datetime.now(timezone.utc).date(),
+                                    value=str(manifest.get("signature") or "recorded"),
+                                    subject=subject)
+    verdict = evidence.verify_signature(
+        subject, digest, record, key if signed else None,
+        known_anchors=(key.trust_anchor,) if key.trust_anchor else (),
+        as_of=datetime.now(timezone.utc).date())
+    return {
+        "subject": subject,
+        "manifest_digest": digest,
+        "algorithm": key.algorithm,
+        "key_id": key.key_id,
+        "key_status": key.status,
+        "key_version": str(os.environ.get("SBOM_SIGNING_KEY_VERSION") or "v1"),
+        "trust_anchor": key.trust_anchor,
+        "signed_at": (record.signed_at.isoformat() if record else None),
+        "verified_at": verdict.get("verified_at"),
+        "revoked": key.status == "REVOKED",
+        **verdict,
+        "statement": ("signed and verified: " + str(verdict.get("statement") or "")
+                      if signed else str(verdict.get("statement") or "")),
+    }
+
+
+def provenance_for(bom: dict[str, Any], *, artifact_id: str,
+                   build: dict[str, Any] | None) -> dict[str, Any] | None:
+    """commit → build → digest → SBOM, with the links that are missing named.
+
+    Storing an SBOM without this leaves the artifact unable to answer what
+    produced it, which is the review's item 7. An absent build is not silently
+    fine: it is a provenance record whose gaps say nothing was recorded.
+    """
+    from devsecops import sbom_evidence as evidence
+
+    if not build:
+        return None
+    artifact = None
+    reference = str(build.get("artifact_reference") or "").strip()
+    digest = str(build.get("artifact_digest") or "").strip()
+    if reference and digest:
+        try:
+            artifact = evidence.ArtifactIdentity(reference, digest)
+        except evidence.IdentityError:
+            artifact = None
+
+    def _when(value: Any) -> Any:
+        if isinstance(value, date):
+            return value
+        if isinstance(value, str) and value:
+            try:
+                return date.fromisoformat(value[:10])
+            except ValueError:
+                return None
+        return None
+
+    identity = evidence.BuildIdentity(
+        source_commit=str(build.get("source_commit") or ""),
+        build_id=str(build.get("build_id") or ""),
+        builder=str(build.get("builder") or ""),
+        pipeline=str(build.get("pipeline") or ""),
+        artifact=artifact, sbom_id=str(artifact_id),
+        started_at=_when(build.get("started_at")), finished_at=_when(build.get("finished_at")))
+    components = tuple({"name": row.get("name"),
+                        "version": row.get("version"),
+                        "purl": row.get("purl")} for row in (bom.get("components") or [])
+                       if isinstance(row, dict))
+    record = evidence.SbomRecord(sbom_id=str(artifact_id), artifact=artifact,
+                                 components=components, build_id=identity.build_id)
+    return evidence.build_provenance(identity, record, [])
 
 
 def write_binary_artifact(*, manifest: dict[str, Any], payload: bytes, cbom_blob: bytes,
@@ -867,8 +994,24 @@ def write_binary_artifact(*, manifest: dict[str, Any], payload: bytes, cbom_blob
     if signing_secret_value:
         from devsecops import sbom_scan as sb
 
+        key_record = signing_key(key_id)
+        if key_record.status in {"REVOKED", "EXPIRED"}:
+            raise SigningRefused(
+                f"signing key {key_record.key_id} is {key_record.status}, so it may not sign new "
+                "evidence: re-key the platform (SBOM_SIGNING_KEY_STATUS / key id) before storing "
+                "this artifact")
         manifest["signature_alg"] = "HMAC-SHA256"
         manifest["signature_key"] = key_id
+        manifest["signature"] = sb.sign_manifest(manifest, signing_secret_value)
+    # Recorded before the manifest is stored and covered by the signature: what
+    # the signature proves is part of the signed statement, not a footnote added
+    # by whoever reads it later.
+    manifest["signature_evidence"] = signature_evidence(manifest, key_id=str(key_id),
+                                                        signed=bool(signing_secret_value))
+    if signing_secret_value:
+        from devsecops import sbom_scan as sb
+
+        # re-sign so the evidence block itself is covered
         manifest["signature"] = sb.sign_manifest(manifest, signing_secret_value)
     store.put_manifest(key, manifest)
     return {"artifact_key": key, "cbom_key": cbom_key, "signed": bool(signing_secret_value),
