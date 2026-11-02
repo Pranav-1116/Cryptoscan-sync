@@ -125,6 +125,7 @@ def _load_package(root: Path):
     import universal_vendor.hardware.host.netconf as host_netconf  # noqa: PLC0415
     import universal_vendor.hardware.host.restconf as host_restconf  # noqa: PLC0415
     import universal_vendor.hardware.hsm_readers as hsm_readers  # noqa: PLC0415
+    import universal_vendor.hardware.change_correlation as change_correlation  # noqa: PLC0415
     import universal_vendor.hardware.network_correlation as network_correlation  # noqa: PLC0415
     import universal_vendor.hardware.host.snmp_bridge as snmp_bridge  # noqa: PLC0415
     import universal_vendor.hardware.hsm_hw as hsm  # noqa: PLC0415
@@ -138,7 +139,8 @@ def _load_package(root: Path):
             "device_observation": device_observation,
             "host_credentials": host_credentials, "host_linux": host_linux,
             "host_netconf": host_netconf, "host_restconf": host_restconf, "hsm": hsm,
-            "hsm_readers": hsm_readers, "network_correlation": network_correlation,
+            "change_correlation": change_correlation, "hsm_readers": hsm_readers,
+            "network_correlation": network_correlation,
             "models": models, "plugins": plugins, "snmp_bridge": snmp_bridge,
             "relationships": relationships, "safety": safety, "tpm": tpm}
 
@@ -1120,6 +1122,48 @@ def row_drift(modules: dict[str, Any], root: Path) -> dict[str, Any]:
                          "diffing two different assets is refused rather than producing a "
                          "confidently wrong change log" if mistaken
                          else "two different assets were diffed as one"))
+    # H7 continued: did anything move beside the hardware change?
+    correlation = modules["change_correlation"]
+    migration_hardware = [{"asset_id": "HSM-01", "event_type": "PQC_CAPABILITY_ADDED",
+                           "change_class": "CAPABILITY_CHANGE", "severity": "MEDIUM",
+                           "pqc_affected": True, "evidence": ["EV-1", "EV-2"],
+                           "detail": {"algorithms": ["ML-DSA-65"]},
+                           "detected_at": "2026-11-02T09:14:00+00:00"}]
+    window = [
+        {"domain": "APPLICATION", "subject": "HSM-01",
+         "event_type": "TLS_PROFILE_CHANGED", "at": "2026-11-02T09:16:00+00:00"},
+        {"domain": "CERTIFICATE", "subject": "HSM-01",
+         "event_type": "CERTIFICATE_REISSUED", "at": "2026-11-02T09:20:00+00:00"},
+    ]
+    correlated = correlation.correlate_changes(migration_hardware, window)
+    probes.append(_probe(
+        "drift-correlates-with-other-change",
+        correlated["results"][0]["verdict"] == "CORRELATED"
+        and correlated["results"][0]["companion_domains"] == ["APPLICATION", "CERTIFICATE"],
+        "an ML-DSA arrival was paired with the TLS profile switch and the certificate "
+        "reissue that followed it inside the window"))
+    alone = correlation.correlate_changes(migration_hardware, [])
+    probes.append(_probe(
+        "a_capability_nobody_uses_is_named",
+        alone["results"][0]["verdict"] == "UNACCOMPANIED"
+        and alone["results"][0]["missing_domains"] == ["APPLICATION", "CERTIFICATE"],
+        "the same capability with nothing beside it is reported as unaccompanied rather "
+        "than as a migration"))
+    readiness = correlation.migration_readiness(migration_hardware, [])
+    probes.append(_probe(
+        "adoption-is-not-assumed",
+        readiness["adoption_observed"] is False
+        and "not a completed one" in readiness["statement"],
+        "a capability that arrived and is unused is stated as an available migration, not "
+        "as an achievement"))
+    outside = correlation.correlate_changes(migration_hardware, window, window_minutes=1)
+    probes.append(_probe(
+        "proximity-is-bounded-and-declared",
+        outside["results"][0]["companions"] == []
+        and any("not causation" in limit for limit in outside["limits"]),
+        "a change five minutes outside the window is not a companion, and the result says "
+        "in its own words that proximity is not causation"))
+
     return {"id": "hardware_drift",
             "question": "does hardware drift name what moved — firmware, capability, PQC — or just that something did?",
             "phase": "H7", "probes": probes}
@@ -1386,6 +1430,9 @@ def measure() -> dict[str, Any]:
             "the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted "
             "replies: no appliance was contacted, and a real device's ENTITY-MIB or "
             "`ietf-hardware` model may be sparse, vendor-extended or absent entirely",
+            "drift correlation compares the change records it is handed; it does not yet "
+            "subscribe to the certificate and application drift feeds, so an unaccompanied "
+            "finding can mean the other feed has not been wired rather than that nothing moved",
             "network correlation reads a TLS observation and a device config it is given; "
             "nothing yet pulls those from the certificate probes or the running "
             "configuration of a live device, so a device that was never probed has no edges",
@@ -1495,6 +1542,9 @@ def render_md(report: dict[str, Any]) -> str:
         "| network correlation | `hardware/network_correlation.py` — a device to the "
         "certificates it terminates, and to the HSM its config names | built, executed here |",
         "| drift | `hardware/drift.py`, `hardware/live/events.py` | firmware, capability, PQC |",
+        "| drift correlation | `hardware/change_correlation.py` — a hardware change beside "
+        "certificate/app/policy movement in the same window, and the PQC adoption question | "
+        "built, executed here |",
         "| safety | `hardware/safety.py` — `refuse_secret_material` | raises, never asserts |",
         "| HSM / TPM depth | `hardware/hsm_hw.py`, `hardware/tpm.py` | metadata only |",
         "| HSM readers | `hardware/hsm_readers/pkcs11.py` (CK_TOKEN_INFO + mechanisms, PIN "
@@ -1561,7 +1611,8 @@ def render_md(report: dict[str, Any]) -> str:
         "here for applications and for network devices; certificate→application (which app "
         "the TLS protects) is not correlated |",
         "| H7 | drift: firmware, crypto capability, PQC, correlated with cert/app/policy change | "
-        "built, executed here |",
+        "built, executed here; correlation consumes the records it is given, it does not yet "
+        "read the certificate and application change feeds itself |",
         "| H8 | qualification against a real bank estate | synthetic only; precision and recall "
         "need ground truth |",
         "",

@@ -166,6 +166,17 @@
 > applications instead of counting a certificate as an application (which it did,
 > until this pass).
 >
+> Drift now answers the change-board question too: `hardware/change_correlation.py`
+> puts a hardware change beside the certificate, application and policy records
+> that moved in the same window, and labels the result `CORRELATED`, `PARTIAL`,
+> `UNACCOMPANIED`, `ISOLATED` or `SUSPICIOUS` — the last being a certificate that
+> moved while the appliance holding its key did not. `migration_readiness` states
+> the PQC finding without flattering it: an ML-DSA capability that arrived with
+> no application or certificate movement is "an available migration, not a
+> completed one". Every result carries its own disclaimer that proximity is not
+> causation, and nothing here mints an edge — an edge needs evidence naming both
+> ends, which a timestamp is not.
+>
 > Two PARTIALs remain, and both are probes: no WMI/CIM reader for Windows, and
 > no vendor REST reader for the cluster/HA state that only a vendor API
 > exposes.

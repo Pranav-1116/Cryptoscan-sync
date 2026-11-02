@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.hardware-discovery/1",
-  "generated_at": "2026-11-02T12:23:01.052953+00:00",
+  "generated_at": "2026-11-02T12:28:16.548209+00:00",
   "counts": {
     "PASS": 5,
     "PARTIAL": 2,
@@ -346,6 +346,26 @@
           "probe": "two-assets-are-never-one-history",
           "ok": true,
           "observed": "diffing two different assets is refused rather than producing a confidently wrong change log"
+        },
+        {
+          "probe": "drift-correlates-with-other-change",
+          "ok": true,
+          "observed": "an ML-DSA arrival was paired with the TLS profile switch and the certificate reissue that followed it inside the window"
+        },
+        {
+          "probe": "a_capability_nobody_uses_is_named",
+          "ok": true,
+          "observed": "the same capability with nothing beside it is reported as unaccompanied rather than as a migration"
+        },
+        {
+          "probe": "adoption-is-not-assumed",
+          "ok": true,
+          "observed": "a capability that arrived and is unused is stated as an available migration, not as an achievement"
+        },
+        {
+          "probe": "proximity-is-bounded-and-declared",
+          "ok": true,
+          "observed": "a change five minutes outside the window is not a companion, and the result says in its own words that proximity is not causation"
         }
       ],
       "verdict": "PASS",
@@ -382,7 +402,7 @@
         "vendors": 4,
         "device_types": 6,
         "changes": 400,
-        "seconds": 0.005
+        "seconds": 0.004
       },
       "verdict": "PASS",
       "failed": []
@@ -449,6 +469,7 @@
     "collector breadth feeds each collector a synthetic payload and drives the Linux reader against a fixture sysfs tree and a recorded transcript; no bank host was read, and real hosts differ \u2014 dmidecode absent, root denied, vendor quirks its allowlist has not seen",
     "the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data",
     "the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted replies: no appliance was contacted, and a real device's ENTITY-MIB or `ietf-hardware` model may be sparse, vendor-extended or absent entirely",
+    "drift correlation compares the change records it is handed; it does not yet subscribe to the certificate and application drift feeds, so an unaccompanied finding can mean the other feed has not been wired rather than that nothing moved",
     "network correlation reads a TLS observation and a device config it is given; nothing yet pulls those from the certificate probes or the running configuration of a live device, so a device that was never probed has no edges",
     "only the standard YANG models are read (`ietf-system`, `ietf-hardware`): vendor models expose extra facts \u2014 licence state, HA role, crypto policy \u2014 that this artifact does not collect",
     "the HSM readers run against recorded `pkcs11-tool` output and a hand-built KMIP response: no appliance was opened, and real Luna/nShield/Utimaco tokens differ in which mechanisms they list and which attributes they let an unprivileged session read",
