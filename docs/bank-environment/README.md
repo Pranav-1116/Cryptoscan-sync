@@ -124,9 +124,17 @@
 > allowlisted binaries, with `shell=False`, validated device nodes and an argv
 > allowlist that refuses a shell string; a refused command, an unprivileged host
 > and a missing binary are each proven to degrade to a stated reason rather than
-> a crash. The PARTIAL is now precise: no WMI/CIM reader for Windows, and the
-> SNMP client in the network scanner is not yet bridged into hardware
-> observations.
+> a crash.
+>
+> The same pass closed the network half: `hardware/host/snmp_bridge.py` carries
+> the network scanner's SNMPv2c client into the estate, and the client now walks
+> **ENTITY-MIB** — which is where a switch actually keeps its serial, model and
+> firmware, rather than a marketing sentence in sysDescr. A switch arrives as a
+> canonical observation (Cisco C9300-48P, serial `FDO2140A1B2`, firmware
+> `17.9.4a`, TLS-termination seam) with the community string used and dropped:
+> the bridge refuses to return a payload that echoes it. The PARTIAL is now
+> precise: no WMI/CIM reader for Windows, and no NETCONF/REST transport for the
+> appliances that do not speak SNMP.
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

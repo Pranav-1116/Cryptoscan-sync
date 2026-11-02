@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from network_scanner.enterprise.vendors.snmp import (
+    ENTITY_PHYSICAL,
     IF_TABLE,
     IP_ROUTE_TABLE,
     PDU_GET,
@@ -221,6 +222,19 @@ def _if_table_responder() -> _FakeResponder:
         IP_ROUTE_TABLE + ".1.0.10.1.0.0": _value_octet("10.1.0.0"),
         IP_ROUTE_TABLE + ".7.0.10.0.0.0": _value_octet("10.0.0.254"),
         IP_ROUTE_TABLE + ".7.0.10.1.0.0": _value_octet("10.1.0.1"),
+        # ENTITY-MIB: index 1 is the chassis, index 2 a fan tray with its own
+        # serial, index 3 a port with no serial of its own.
+        ENTITY_PHYSICAL + ".5.1": _value_integer(3),
+        ENTITY_PHYSICAL + ".7.1": _value_octet("Chassis"),
+        ENTITY_PHYSICAL + ".11.1": _value_octet("FDO2140A1B2"),
+        ENTITY_PHYSICAL + ".13.1": _value_octet("C9300-48P"),
+        ENTITY_PHYSICAL + ".9.1": _value_octet("17.09.04a"),
+        ENTITY_PHYSICAL + ".12.1": _value_octet("Cisco Systems, Inc."),
+        ENTITY_PHYSICAL + ".5.2": _value_integer(7),
+        ENTITY_PHYSICAL + ".7.2": _value_octet("Fan tray 1"),
+        ENTITY_PHYSICAL + ".11.2": _value_octet("FAN-0001"),
+        ENTITY_PHYSICAL + ".5.3": _value_integer(10),
+        ENTITY_PHYSICAL + ".7.3": _value_octet("GigabitEthernet1/0/1"),
     }
     return _FakeResponder(table)
 
@@ -309,6 +323,27 @@ class TestSnmpDiscovery:
         info = snmp_discover("10.0.0.99", sock_factory=DeadResponder().socket)
         assert info.reachable is False
         assert info.interfaces == []
+
+    def test_entity_table_reaches_the_inventory(self) -> None:
+        info = snmp_discover("edge-01", sock_factory=_if_table_responder().socket)
+        assert len(info.entities) == 3
+        assert info.entities[0]["entPhysicalModelName"] == "C9300-48P"
+
+    def test_chassis_is_the_switch_not_the_fan_tray(self) -> None:
+        info = snmp_discover("edge-01", sock_factory=_if_table_responder().socket)
+        chassis = info.chassis
+        assert chassis is not None
+        assert chassis["entPhysicalSerialNum"] == "FDO2140A1B2"
+        assert chassis["entPhysicalClass"] == 3
+
+    def test_a_serial_bearing_entity_is_better_than_nothing(self) -> None:
+        info = SnmpDeviceInfo(host="edge-01", entities=[
+            {"entPhysicalClass": 7, "entPhysicalSerialNum": "FAN-9"},
+            {"entPhysicalClass": 10},
+        ])
+        assert info.chassis is not None
+        assert info.chassis["entPhysicalSerialNum"] == "FAN-9"
+        assert SnmpDeviceInfo(host="edge-01").chassis is None
 
     def test_vendor_mapping(self) -> None:
         assert vendor_from_sys_object_id("1.3.6.1.4.1.9.1.1222") == "Cisco"

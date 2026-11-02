@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.hardware-discovery/1",
-  "generated_at": "2026-11-02T11:37:28.336233+00:00",
+  "generated_at": "2026-11-02T11:45:17.344221+00:00",
   "counts": {
     "PASS": 6,
     "PARTIAL": 1,
@@ -132,15 +132,35 @@
           "observed": "no WMI/CIM reader anywhere in the tree: on Windows the collectors still wait for a caller to supply the context"
         },
         {
-          "probe": "network-transport-wired",
+          "probe": "snmp-reads-a-switch",
+          "ok": true,
+          "observed": "a switch resolved to Cisco C9300-48P serial FDO2140A1B2 firmware 17.9.4a from ENTITY-MIB over a real BER walk (19 request(s))"
+        },
+        {
+          "probe": "snmp-credential-is-not-inventory",
+          "ok": true,
+          "observed": "the community string is used and dropped; the fact record carries no credential reference"
+        },
+        {
+          "probe": "snmp-feeds-the-estate",
+          "ok": true,
+          "observed": "the same device becomes a canonical switch observation with its serial, firmware and TLS-termination seam, not a second network inventory"
+        },
+        {
+          "probe": "snmp-refuses-a-credential-echo",
+          "ok": true,
+          "observed": "a device that echoes the community string in sysDescr is refused rather than inventoried"
+        },
+        {
+          "probe": "netconf-rest-transport",
           "ok": false,
-          "observed": "an SNMP client exists in the network scanner but nothing bridges it into hardware observations, so a switch still arrives only if a caller fills the context"
+          "observed": "no NETCONF or vendor REST transport: SNMP covers what SNMP exposes, and the appliances that only speak NETCONF still need a caller to fill the context"
         }
       ],
       "verdict": "PARTIAL",
       "failed": [
         "windows-reader",
-        "network-transport-wired"
+        "netconf-rest-transport"
       ]
     },
     {
@@ -346,6 +366,7 @@
     "no bank hardware was touched: every HSM and TPM here is a synthetic payload, and no appliance, hypervisor or network device was contacted",
     "collector breadth feeds each collector a synthetic payload and drives the Linux reader against a fixture sysfs tree and a recorded transcript; no bank host was read, and real hosts differ \u2014 dmidecode absent, root denied, vendor quirks its allowlist has not seen",
     "the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data",
+    "the SNMP row runs against a fake socket: no switch was contacted, and a real appliance's ENTITY-MIB may be sparse, vendor-extended or absent entirely",
     "the synthetic estate measures identity, drift volume and runtime, not discovery precision or recall against real vendor firmware",
     "encryption at rest, per-tenant key custody and vendor attestation are outside this artifact entirely"
   ]

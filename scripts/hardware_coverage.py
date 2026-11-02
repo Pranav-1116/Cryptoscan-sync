@@ -109,7 +109,8 @@ def _load_package(root: Path):
     negative control starts passing.
     """
     service = root / "services" / "universal_vendor"
-    for entry in (str(service), str(ROOT / "services" / "cbom")):
+    for entry in (str(service), str(ROOT / "services" / "cbom"),
+                  str(ROOT / "services" / "network_scanner")):
         while entry in sys.path:
             sys.path.remove(entry)
         sys.path.insert(0, entry)
@@ -119,6 +120,7 @@ def _load_package(root: Path):
     import universal_vendor.hardware.drift as drift  # noqa: PLC0415
     import universal_vendor.hardware.fingerprint as fingerprint  # noqa: PLC0415
     import universal_vendor.hardware.host.linux as host_linux  # noqa: PLC0415
+    import universal_vendor.hardware.host.snmp_bridge as snmp_bridge  # noqa: PLC0415
     import universal_vendor.hardware.hsm_hw as hsm  # noqa: PLC0415
     import universal_vendor.hardware.models as models  # noqa: PLC0415
     import universal_vendor.hardware.plugins as plugins  # noqa: PLC0415
@@ -128,6 +130,7 @@ def _load_package(root: Path):
 
     return {"discovery": discovery, "drift": drift, "fingerprint": fingerprint,
             "host_linux": host_linux, "hsm": hsm, "models": models, "plugins": plugins,
+            "snmp_bridge": snmp_bridge,
             "relationships": relationships, "safety": safety, "tpm": tpm}
 
 
@@ -279,6 +282,115 @@ class _HostTranscript:
             return host_linux.CommandResult(tuple(argv), 127, "", "not installed",
                                             available=False)
         return host_linux.CommandResult(tuple(argv), 0, stdout, "")
+
+
+def _snmp_modules() -> dict[str, Any] | None:
+    """The network scanner's SNMP stack, if this deployment has it."""
+    try:
+        from network_scanner.enterprise.vendors import snmp as snmp_module  # noqa: PLC0415
+    except ImportError:
+        return None
+    return {"module": snmp_module, "snmp_discover": snmp_module.snmp_discover}
+
+
+class _FakeSocket:
+    def __init__(self, responder: "_FakeSnmpResponder") -> None:
+        self.responder = responder
+        self._pending = b""
+
+    def settimeout(self, timeout: float) -> None:
+        return None
+
+    def sendto(self, packet: bytes, addr: tuple) -> None:
+        self._pending = self.responder.handle(packet)
+
+    def recvfrom(self, size: int) -> tuple[bytes, tuple]:
+        return self._pending, ("127.0.0.1", 161)
+
+    def close(self) -> None:
+        return None
+
+
+class _FakeSnmpResponder:
+    """A switch on a socket that does not exist: real BER in, real BER out."""
+
+    def __init__(self) -> None:
+        snmp = _snmp_modules()
+        assert snmp is not None
+        module = snmp["module"]
+        octets = module.encode_octet_string
+        integers = module.encode_integer
+        entity = module.ENTITY_PHYSICAL
+        self.table = {
+            module.SYS_DESCR: octets(b"Cisco IOS XE Software, Version 17.09.04a"),
+            module.SYS_OBJECT_ID: octets(b"1.3.6.1.4.1.9.1.1222"),
+            module.SYS_UPTIME: integers(123456),
+            module.SYS_NAME: octets(b"core-sw-01.dxb.example.com"),
+            module.SYS_LOCATION: octets(b"DXB-DC1-ROW3"),
+            module.SYS_SERVICES: integers(78),
+            module.IF_TABLE + ".2.1": octets(b"Gi1/0/1"),
+            module.IF_TABLE + ".8.1": integers(1),
+            entity + ".5.1": integers(3),
+            entity + ".7.1": octets(b"Chassis"),
+            entity + ".11.1": octets(b"FDO2140A1B2"),
+            entity + ".13.1": octets(b"C9300-48P"),
+            entity + ".9.1": octets(b"17.9.4a"),
+            entity + ".12.1": octets(b"Cisco Systems, Inc."),
+            entity + ".5.2": integers(7),
+            entity + ".11.2": octets(b"FAN-0001"),
+        }
+        self.requests: list[tuple[int, str]] = []
+
+    def socket(self, family: int = 2, socktype: int = 2) -> _FakeSocket:
+        return _FakeSocket(self)
+
+    def handle(self, packet: bytes) -> bytes:
+        module = _snmp_modules()["module"]
+        _tag, body, _ = module._read_tlv(packet, 0)
+        _version_tag, _version, pos = module._read_tlv(body, 0)
+        _community_tag, _community, pos = module._read_tlv(body, pos)
+        pdu_tag, pdu, _ = module._read_tlv(body, pos)
+        _id_tag, req_id, pos = module._read_tlv(pdu, 0)
+        _err, _err_payload, pos = module._read_tlv(pdu, pos)
+        _idx, _idx_payload, pos = module._read_tlv(pdu, pos)
+        _seq, varbinds, _ = module._read_tlv(pdu, pos)
+        _vb, varbind, _ = module._read_tlv(varbinds, 0)
+        _oid_tag, oid_payload, _ = module._read_tlv(varbind, 0)
+        oid = module.decode_oid(oid_payload)
+        self.requests.append((pdu_tag, oid))
+
+        following = [key for key in sorted(self.table) if key > oid]
+        if pdu_tag == module.PDU_GET:
+            response_oid, value = oid, self.table.get(oid)
+        elif following:  # endOfMibView must be NULL, or the walk never ends
+            response_oid = following[0]
+            value = self.table.get(response_oid)
+        else:
+            response_oid, value = oid, None
+        if value is None:
+            value = module._encode_tlv(module._TAG_NULL, b"")
+        varbind = module._encode_tlv(module._TAG_SEQUENCE,
+                                     module.encode_oid(response_oid) + value)
+        varbinds = module._encode_tlv(module._TAG_SEQUENCE, varbind)
+        pdu = module._encode_tlv(module.PDU_RESPONSE,
+                                 req_id + b"\x02\x01\x00" + b"\x02\x01\x00" + varbinds)
+        return module._encode_tlv(module._TAG_SEQUENCE,
+                                  module.encode_integer(1)
+                                  + module.encode_octet_string(b"public") + pdu)
+
+
+class _EchoingSnmpDevice:
+    """A device whose sysDescr contains the community string — a red flag."""
+
+    reachable = True
+    sys_descr = "Cisco IOS XE (snmp community coverage-community)"
+    sys_object_id = "1.3.6.1.4.1.9.1.1222"
+    sys_name = "core-sw-01"
+    sys_location = None
+    interfaces: list[dict[str, Any]] = []
+    routes: list[dict[str, Any]] = []
+    entities: list[dict[str, Any]] = []
+    security_mode = "SNMPv2c-community"
 
 
 def row_collectors(modules: dict[str, Any], root: Path) -> dict[str, Any]:
@@ -454,16 +566,57 @@ def row_collectors(modules: dict[str, Any], root: Path) -> dict[str, Any]:
         if windows_readers else
         "no WMI/CIM reader anywhere in the tree: on Windows the collectors still wait for a "
         "caller to supply the context"))
-    snmp_clients = [path for path in root.rglob("snmp*.py") if "network_scanner" in str(path)]
-    wired = any("universal_vendor.hardware" in path.read_text(encoding="utf-8", errors="ignore")
-                for path in snmp_clients)
+    # H5: the real SNMP stack, over a fake socket, through the bridge.
+    snmp = _snmp_modules()
+    if snmp is not None:
+        responder = _FakeSnmpResponder()
+        facts = modules["snmp_bridge"].SnmpHardwareBridge(
+            discover=snmp["snmp_discover"]).collect(
+                "core-sw-01", community="coverage-community",
+                sock_factory=responder.socket)
+        probes.append(_probe(
+            "snmp-reads-a-switch",
+            facts.reachable and facts.serial_reference == "FDO2140A1B2"
+            and facts.model == "C9300-48P" and facts.vendor == "Cisco",
+            f"a switch resolved to {facts.vendor} {facts.model} serial "
+            f"{facts.serial_reference} firmware {facts.firmware} from ENTITY-MIB over a "
+            f"real BER walk ({len(responder.requests)} request(s))" if facts.reachable
+            else f"the SNMP walk produced nothing: {facts.unavailable}"))
+        probes.append(_probe(
+            "snmp-credential-is-not-inventory",
+            "coverage-community" not in json.dumps(facts.to_dict(), default=str)
+            and facts.to_dict()["credential_ref"] is None,
+            "the community string is used and dropped; the fact record carries no "
+            "credential reference"))
+        observation = modules["snmp_bridge"].SnmpHardwareBridge(
+            discover=snmp["snmp_discover"]).to_observation(facts)
+        probes.append(_probe(
+            "snmp-feeds-the-estate",
+            observation is not None and observation.device_type == "switch"
+            and observation.serial_reference == "FDO2140A1B2",
+            "the same device becomes a canonical switch observation with its serial, "
+            "firmware and TLS-termination seam, not a second network inventory"
+            if observation is not None else "no observation was produced"))
+        echoed = _EchoingSnmpDevice()
+        try:
+            modules["snmp_bridge"].SnmpHardwareBridge(
+                discover=lambda host, **kwargs: echoed).collect(
+                    "core-sw-01", community="coverage-community")
+        except modules["snmp_bridge"].CredentialLeakRefused:
+            refused = True
+        else:
+            refused = False
+        probes.append(_probe(
+            "snmp-refuses-a-credential-echo", refused,
+            "a device that echoes the community string in sysDescr is refused rather than "
+            "inventoried"))
+    else:
+        probes.append(_probe("snmp-reads-a-switch", False,
+                             "the network scanner's SNMP client could not be imported"))
     probes.append(_probe(
-        "network-transport-wired", wired,
-        "an SNMP client exists at "
-        f"{[str(path.relative_to(root)) for path in snmp_clients]} and feeds hardware "
-        "observations" if wired else
-        "an SNMP client exists in the network scanner but nothing bridges it into hardware "
-        "observations, so a switch still arrives only if a caller fills the context"))
+        "netconf-rest-transport", False,
+        "no NETCONF or vendor REST transport: SNMP covers what SNMP exposes, and the "
+        "appliances that only speak NETCONF still need a caller to fill the context"))
     return {"id": "collector_breadth",
             "question": "do collectors exist for the estate a bank actually has, and does each emit fields?",
             "phase": "H2/H3/H5", "probes": probes}
@@ -928,6 +1081,8 @@ def measure() -> dict[str, Any]:
             "allowlist has not seen",
             "the Linux reader is unprivileged by design, so on a hardened host its memory, "
             "disk-health and PCI facts degrade to `unavailable` reasons rather than to data",
+            "the SNMP row runs against a fake socket: no switch was contacted, and a real "
+            "appliance's ENTITY-MIB may be sparse, vendor-extended or absent entirely",
             "the synthetic estate measures identity, drift volume and runtime, not discovery "
             "precision or recall against real vendor firmware",
             "encryption at rest, per-tenant key custody and vendor attestation are outside this "
@@ -1006,8 +1161,9 @@ def render_md(report: dict[str, Any]) -> str:
         "| the Linux reader | `hardware/host/linux.py` — `/sys` allowlist, dmidecode, lsblk, "
         "lspci, smartctl through an argv allowlist | built, executed here |",
         "| the Windows reader | — | **not built**; WMI/CIM is the gap |",
-        "| the network transport | SNMP client exists in `services/network_scanner`, no bridge "
-        "into hardware observations | **not wired** |",
+        "| the network transport | `hardware/host/snmp_bridge.py` over the network scanner's "
+        "SNMPv2c client (`enterprise/vendors/snmp.py`, now with ENTITY-MIB) | built, executed "
+        "here over a real BER walk; NETCONF/REST still missing |",
         "| identity + confidence | `hardware/identity.py` (signals, `first_seen`/`last_seen`), "
         "`hardware/fingerprint.py` | deterministic; confidence follows corroboration |",
         "| evidence engine | `hardware/fingerprint.py` — per-source weights; "
@@ -1078,8 +1234,8 @@ def render_md(report: dict[str, Any]) -> str:
         "built** |",
         "| H4 | HSM depth per vendor: PKCS#11 attributes, KMIP `Query`, vendor REST | observation "
         "fields built; readers not |",
-        "| H5 | network hardware: SNMP/NETCONF/REST per authorized class | plugin schema and an "
-        "SNMPv2c client exist; nothing bridges the client into hardware observations |",
+        "| H5 | network hardware: SNMP/NETCONF/REST per authorized class | SNMP built end to "
+        "end (serial, model, firmware from ENTITY-MIB); NETCONF/REST not built |",
         "| H6 | correlation: evidence-backed relationships, blast radius | built, executed here |",
         "| H7 | drift: firmware, crypto capability, PQC, correlated with cert/app/policy change | "
         "built, executed here |",
@@ -1126,17 +1282,17 @@ def render_md(report: dict[str, Any]) -> str:
         "same allowlist discipline as the Linux reader, and the TPM APIs read through the "
         "OS surface rather than a vendor tool. It must be tested on Windows, which no CI "
         "here can do — so it will ship with the gap stated, not with a green row.",
-        "2. **H5 the SNMP bridge** — an SNMPv2c client already exists in "
-        "`services/network_scanner/network_scanner/enterprise/vendors/snmp.py` (sysDescr, "
-        "ifTable, community handling). What is missing is a translator from its output "
-        "into a hardware context, so a switch's firmware and serial reach the estate "
-        "instead of stopping in the network scanner.",
+        "2. **H5 NETCONF and vendor REST** — SNMP now carries a switch's identity, but "
+        "NETCONF/REST-only appliances (many firewalls and load balancers) still need a "
+        "caller to fill the context. Same rule as the other transports: fixed operations, "
+        "credentials referenced not stored, and a stated reason when a device refuses.",
         "3. **H4 HSM depth per vendor** — partition, cluster and HA state are in the "
         "observation model; what is missing is a reader per vendor (PKCS#11 attributes, "
         "KMIP `Query`, vendor REST) and a burn-in against each.",
-        "4. **H5 network hardware beyond SNMP** — NETCONF/REST per authorized device "
-        "class, feeding both NBOM and CBOM (a load balancer is a TLS terminator *and* a "
-        "box).",
+        "4. **H6 correlation for network hardware** — a switch is now in the estate, but "
+        "nothing yet links it to the certificates it terminates or the flows it carries; "
+        "the relationship engine can express that edge and has no network evidence source "
+        "feeding it yet.",
         "5. **H8 qualification against a real bank estate** — the synthetic run above is a "
         "floor. Precision and recall need ground truth only a customer can provide.",
         "",
@@ -1144,10 +1300,10 @@ def render_md(report: dict[str, Any]) -> str:
         "model, the security-hardware metadata model, the evidence rule for "
         "relationships and the drift vocabulary are implemented and executed here, and "
         "the projection architecture the review asked for is the one in the code. What is "
-        "*not* done is collector reach into Windows, hypervisor and network estates, "
-        "per-vendor HSM readers, and a run against a real Linux host — the reader here is "
-        "driven by a fixture and a transcript. Each is named above rather than folded "
-        "into the score.",
+        "*not* done is collector reach into Windows and hypervisor estates, NETCONF/REST "
+        "transports, per-vendor HSM readers, and a run against real hardware — the Linux "
+        "reader is driven by a fixture and a transcript, and the SNMP walk by a fake "
+        "socket. Each is named above rather than folded into the score.",
         "",
     ]
     return "\n".join(lines)

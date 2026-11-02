@@ -8,6 +8,12 @@ read-only contract.
 
 from __future__ import annotations
 
+from universal_vendor.hardware.host.snmp_bridge import (
+    CredentialLeakRefused,
+    NetworkDeviceFacts,
+    SnmpHardwareBridge,
+    SnmpUnavailable,
+)
 from universal_vendor.hardware.host.linux import (
     ALLOWED_BINARIES,
     CommandNotAllowed,
@@ -27,6 +33,10 @@ from universal_vendor.hardware.host.linux import (
 
 __all__ = [
     "ALLOWED_BINARIES",
+    "CredentialLeakRefused",
+    "NetworkDeviceFacts",
+    "SnmpHardwareBridge",
+    "SnmpUnavailable",
     "CommandNotAllowed",
     "CommandResult",
     "HostFacts",

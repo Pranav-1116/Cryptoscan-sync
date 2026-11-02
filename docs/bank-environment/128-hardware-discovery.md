@@ -1,6 +1,6 @@
 # Hardware discovery — from collectors to a twin, not to a second inventory
 
-`cryptoscan.hardware-discovery/1` · generated 2026-11-02T11:37:28.336233+00:00 · **6 pass · 1 partial · 0 fail**
+`cryptoscan.hardware-discovery/1` · generated 2026-11-02T11:45:17.344221+00:00 · **6 pass · 1 partial · 0 fail**
 
 The review this answers set one architectural rule above all others: hardware is not an independent scanner that emits an HBOM. Collectors feed an evidence engine; the evidence engine feeds the canonical estate; the estate feeds the digital twin; and HBOM, CBOM, NBOM and TechBOM are **projections of that one truth**. A second inventory per BOM document type is the failure mode, and the `single_source_of_truth` row below fails if one appears.
 
@@ -21,7 +21,7 @@ The review this answers set one architectural rule above all others: hardware is
 | Phase | Question | Verdict | What was measured |
 |---|---|---|---|
 | hardware foundation — identity, fact schema, evidence | **is there a hardware fact schema and a stable identity behind it?** | **PASS** | 9 probe(s), all passing |
-| collectors — Linux, Windows, network | **do collectors exist for the estate a bank actually has, and does each emit fields?** | **PARTIAL** | 14 probe(s), failing: windows-reader, network-transport-wired |
+| collectors — Linux, Windows, network | **do collectors exist for the estate a bank actually has, and does each emit fields?** | **PARTIAL** | 18 probe(s), failing: windows-reader, netconf-rest-transport |
 | security hardware — HSM and TPM | **is HSM/TPM discovery deep enough to be worth anything, and can it leak a key?** | **PASS** | 5 probe(s), all passing |
 | correlation — evidence-backed relationships | **is a hardware dependency proven by evidence, or assumed because both exist?** | **PASS** | 5 probe(s), all passing |
 | drift — firmware, capability, PQC | **does hardware drift name what moved — firmware, capability, PQC — or just that something did?** | **PASS** | 6 probe(s), all passing |
@@ -37,7 +37,7 @@ Every box in the diagram above is a module, and the mapping is the point: a revi
 | collectors (Linux, Windows, network, vendor) | `universal_vendor/hardware/plugins/` — 9 modules, 30 vendor plugins; `hardware/discovery.py` — three discovery methods | schema complete |
 | the Linux reader | `hardware/host/linux.py` — `/sys` allowlist, dmidecode, lsblk, lspci, smartctl through an argv allowlist | built, executed here |
 | the Windows reader | — | **not built**; WMI/CIM is the gap |
-| the network transport | SNMP client exists in `services/network_scanner`, no bridge into hardware observations | **not wired** |
+| the network transport | `hardware/host/snmp_bridge.py` over the network scanner's SNMPv2c client (`enterprise/vendors/snmp.py`, now with ENTITY-MIB) | built, executed here over a real BER walk; NETCONF/REST still missing |
 | identity + confidence | `hardware/identity.py` (signals, `first_seen`/`last_seen`), `hardware/fingerprint.py` | deterministic; confidence follows corroboration |
 | evidence engine | `hardware/fingerprint.py` — per-source weights; `universal_vendor/evidence.py` — content-hash chain; `HardwareObservation` keeps `discovery_sources` and `identity_conflicts` | every contributing source stays visible, conflicts are uncertainty not overwrite |
 | canonical estate | `hardware/models.py` — `HardwareObservation`, 32 device types, `CryptoCapability` | one schema for every device class |
@@ -78,7 +78,7 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 | H2 | Linux: `/sys`, dmidecode, `lsblk`, `lspci`, `smartctl`, `/dev` validation | built, executed here — allowlisted argv only, `shell=False`, refusals tested |
 | H3 | Windows: WMI/CIM, TPM APIs, never a PowerShell string built from input | **not built** |
 | H4 | HSM depth per vendor: PKCS#11 attributes, KMIP `Query`, vendor REST | observation fields built; readers not |
-| H5 | network hardware: SNMP/NETCONF/REST per authorized class | plugin schema and an SNMPv2c client exist; nothing bridges the client into hardware observations |
+| H5 | network hardware: SNMP/NETCONF/REST per authorized class | SNMP built end to end (serial, model, firmware from ENTITY-MIB); NETCONF/REST not built |
 | H6 | correlation: evidence-backed relationships, blast radius | built, executed here |
 | H7 | drift: firmware, crypto capability, PQC, correlated with cert/app/policy change | built, executed here |
 | H8 | qualification against a real bank estate | synthetic only; precision and recall need ground truth |
@@ -116,7 +116,11 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 - **PASS** `linux-reader-refuses-arbitrary-commands` — a shell, a metacharacter argument, a traversal device path and a non-device file were all refused (4/4)
 - **PASS** `linux-reader-runs-no-shell` — the only subprocess call site passes an argv list with shell=False
 - **FAIL** `windows-reader` — no WMI/CIM reader anywhere in the tree: on Windows the collectors still wait for a caller to supply the context
-- **FAIL** `network-transport-wired` — an SNMP client exists in the network scanner but nothing bridges it into hardware observations, so a switch still arrives only if a caller fills the context
+- **PASS** `snmp-reads-a-switch` — a switch resolved to Cisco C9300-48P serial FDO2140A1B2 firmware 17.9.4a from ENTITY-MIB over a real BER walk (19 request(s))
+- **PASS** `snmp-credential-is-not-inventory` — the community string is used and dropped; the fact record carries no credential reference
+- **PASS** `snmp-feeds-the-estate` — the same device becomes a canonical switch observation with its serial, firmware and TLS-termination seam, not a second network inventory
+- **PASS** `snmp-refuses-a-credential-echo` — a device that echoes the community string in sysDescr is refused rather than inventoried
+- **FAIL** `netconf-rest-transport` — no NETCONF or vendor REST transport: SNMP covers what SNMP exposes, and the appliances that only speak NETCONF still need a caller to fill the context
 
 ### `security_hardware` — PASS
 
@@ -185,6 +189,7 @@ Every injected defect was caught.
 - no bank hardware was touched: every HSM and TPM here is a synthetic payload, and no appliance, hypervisor or network device was contacted
 - collector breadth feeds each collector a synthetic payload and drives the Linux reader against a fixture sysfs tree and a recorded transcript; no bank host was read, and real hosts differ — dmidecode absent, root denied, vendor quirks its allowlist has not seen
 - the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data
+- the SNMP row runs against a fake socket: no switch was contacted, and a real appliance's ENTITY-MIB may be sparse, vendor-extended or absent entirely
 - the synthetic estate measures identity, drift volume and runtime, not discovery precision or recall against real vendor firmware
 - encryption at rest, per-tenant key custody and vendor attestation are outside this artifact entirely
 
@@ -193,9 +198,9 @@ Every injected defect was caught.
 The PASS rows are the parts already in the tree; the PARTIAL and FAIL rows name what is not, probe by probe. In order:
 
 1. **H3 the Windows reader** — the probe that still fails. WMI/CIM is not a PowerShell string built from input: fixed classes (`Win32_ComputerSystem`, `Win32_DiskDrive`, `Win32_PhysicalMemory`), a fixed argv to a fixed helper, the same allowlist discipline as the Linux reader, and the TPM APIs read through the OS surface rather than a vendor tool. It must be tested on Windows, which no CI here can do — so it will ship with the gap stated, not with a green row.
-2. **H5 the SNMP bridge** — an SNMPv2c client already exists in `services/network_scanner/network_scanner/enterprise/vendors/snmp.py` (sysDescr, ifTable, community handling). What is missing is a translator from its output into a hardware context, so a switch's firmware and serial reach the estate instead of stopping in the network scanner.
+2. **H5 NETCONF and vendor REST** — SNMP now carries a switch's identity, but NETCONF/REST-only appliances (many firewalls and load balancers) still need a caller to fill the context. Same rule as the other transports: fixed operations, credentials referenced not stored, and a stated reason when a device refuses.
 3. **H4 HSM depth per vendor** — partition, cluster and HA state are in the observation model; what is missing is a reader per vendor (PKCS#11 attributes, KMIP `Query`, vendor REST) and a burn-in against each.
-4. **H5 network hardware beyond SNMP** — NETCONF/REST per authorized device class, feeding both NBOM and CBOM (a load balancer is a TLS terminator *and* a box).
+4. **H6 correlation for network hardware** — a switch is now in the estate, but nothing yet links it to the certificates it terminates or the flows it carries; the relationship engine can express that edge and has no network evidence source feeding it yet.
 5. **H8 qualification against a real bank estate** — the synthetic run above is a floor. Precision and recall need ground truth only a customer can provide.
 
-**The verdict this artifact supports:** the hardware foundation, the identity model, the security-hardware metadata model, the evidence rule for relationships and the drift vocabulary are implemented and executed here, and the projection architecture the review asked for is the one in the code. What is *not* done is collector reach into Windows, hypervisor and network estates, per-vendor HSM readers, and a run against a real Linux host — the reader here is driven by a fixture and a transcript. Each is named above rather than folded into the score.
+**The verdict this artifact supports:** the hardware foundation, the identity model, the security-hardware metadata model, the evidence rule for relationships and the drift vocabulary are implemented and executed here, and the projection architecture the review asked for is the one in the code. What is *not* done is collector reach into Windows and hypervisor estates, NETCONF/REST transports, per-vendor HSM readers, and a run against real hardware — the Linux reader is driven by a fixture and a transcript, and the SNMP walk by a fake socket. Each is named above rather than folded into the score.

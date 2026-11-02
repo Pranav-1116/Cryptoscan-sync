@@ -31,6 +31,10 @@ SYS_LOCATION = "1.3.6.1.2.1.1.6.0"
 SYS_SERVICES = "1.3.6.1.2.1.1.7.0"
 IF_TABLE = "1.3.6.1.2.1.2.2.1"
 IP_ROUTE_TABLE = "1.3.6.1.2.1.4.21.1"
+#: ENTITY-MIB physical table. This is where a switch keeps its serial number,
+#: model name and firmware revision — sysDescr is a marketing sentence, and an
+#: inventory built on a marketing sentence is not an inventory.
+ENTITY_PHYSICAL = "1.3.6.1.2.1.47.1.1.1.1"
 
 # BER tags
 _TAG_INTEGER = 0x02
@@ -282,6 +286,7 @@ class SnmpDeviceInfo:
     sys_services: int | None = None
     interfaces: list[dict[str, Any]] = field(default_factory=list)
     routes: list[dict[str, Any]] = field(default_factory=list)
+    entities: list[dict[str, Any]] = field(default_factory=list)
     security_mode: str = "SNMPv2c-community"  # auth/privacy *mode* metadata only
     reachable: bool = False
 
@@ -296,10 +301,35 @@ class SnmpDeviceInfo:
             "sys_services": self.sys_services,
             "interfaces": list(self.interfaces),
             "routes": list(self.routes),
+            "entities": list(self.entities),
+            "chassis": self.chassis,
             "security_mode": self.security_mode,
             "reachable": self.reachable,
             "credential_ref": None,  # community string is never persisted
         }
+
+
+    @property
+    def chassis(self) -> dict[str, Any] | None:
+        """The physical chassis entry, or the best entity that carries a serial.
+
+        ENTITY-MIB indexes every part the device knows about — fans, power
+        supplies, transceivers, each with its own serial. Reporting the first
+        entry would name a fan tray as the switch, so the chassis class wins and
+        a serial-bearing entry is the fallback.
+        """
+        if not self.entities:
+            return None
+        for entity in self.entities:
+            if entity.get("entPhysicalClass") == 3 and entity.get("entPhysicalSerialNum"):
+                return entity
+        for entity in self.entities:
+            if entity.get("entPhysicalSerialNum"):
+                return entity
+        for entity in self.entities:
+            if entity.get("entPhysicalClass") == 3:
+                return entity
+        return None
 
 
 def vendor_from_sys_object_id(object_id: str | None) -> str | None:
@@ -359,6 +389,19 @@ def snmp_discover(
     except SnmpError:
         pass
     try:
+        table = client.walk(ENTITY_PHYSICAL)
+        per_index: dict[str, dict[str, Any]] = {}
+        for oid, value in table.items():
+            suffix = oid[len(ENTITY_PHYSICAL) + 1:]
+            if "." not in suffix:
+                continue
+            column, index = suffix.split(".", 1)
+            entry = per_index.setdefault(index, {})
+            entry[_ENTITY_COLUMNS.get(int(column), f"col_{column}")] = value
+        info.entities = list(per_index.values())
+    except SnmpError:
+        pass
+    try:
         table = client.walk(IP_ROUTE_TABLE)
         per_dest: dict[str, dict[str, Any]] = {}
         for oid, value in table.items():
@@ -378,3 +421,10 @@ def snmp_discover(
 _IF_COLUMNS = {1: "ifIndex", 2: "ifDescr", 3: "ifType", 4: "ifMtu", 5: "ifSpeed",
                6: "ifPhysAddress", 7: "ifAdminStatus", 8: "ifOperStatus"}
 _ROUTE_COLUMNS = {1: "routeDest", 2: "routeIfIndex", 3: "routeMetric1", 7: "routeNextHop", 8: "routeType"}
+#: entPhysicalClass values worth acting on: 3 chassis, 9 module, 10 port.
+_ENTITY_COLUMNS = {1: "entPhysicalDescr", 2: "entPhysicalVendorType",
+                   4: "entPhysicalContainedIn", 5: "entPhysicalClass",
+                   7: "entPhysicalName", 8: "entPhysicalHardwareRev",
+                   9: "entPhysicalFirmwareRev", 10: "entPhysicalSoftwareRev",
+                   11: "entPhysicalSerialNum", 12: "entPhysicalMfgName",
+                   13: "entPhysicalModelName"}

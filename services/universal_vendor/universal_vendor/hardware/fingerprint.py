@@ -76,8 +76,6 @@ def fingerprint_hardware(signals: dict[str, Any]) -> HardwareFingerprint:
         key for key, value in signals.items()
         if key in _EVIDENCE_WEIGHTS and _meaningful_signal(value)
     )
-    score = sum(_EVIDENCE_WEIGHTS.get(key, 0.0) for key in sources)
-
     dmi = signals.get("dmi") or {}
     if isinstance(dmi, str):
         dmi = {}
