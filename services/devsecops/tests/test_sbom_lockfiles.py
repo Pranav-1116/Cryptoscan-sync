@@ -267,7 +267,9 @@ def test_scan_source_merges_resolved_over_declared(tmp_path):
     r = sb.scan_source(str(tmp_path))
     by = _by_name(r["packages"])
     assert by["express"]["version"] == "4.19.2"       # resolved wins
-    assert by["express"]["declared_spec"] == "4.18.0"  # manifest spec retained
+    # Retained *verbatim*: ``^4.18.0`` is a range and ``4.18.0`` a pin, so
+    # stripping the operator would lose the only record of what was asked for.
+    assert by["express"]["declared_spec"] == "^4.18.0"
     assert by["express"]["scope"] == "resolved"
     assert by["cookie"]["scope"] == "resolved"
     assert by["cookie"]["direct"] is False

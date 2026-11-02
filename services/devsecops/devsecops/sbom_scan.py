@@ -125,6 +125,15 @@ def _parse_manifest(path: Path, parsers: dict[str, Any]) -> list[dict[str, Any]]
         parsers.get("requirements.txt") if key.startswith("requirements") else None
     )
     if parser is None:
+        # A parser registered under an extension (``*.csproj``) is dispatched by
+        # suffix. Looking the parser up by exact filename cannot ever match, and
+        # the failure is silent — an empty SBOM is a valid-looking answer.
+        parser = next(
+            (candidate for suffix, candidate in parsers.items()
+             if suffix.startswith(".") and key.lower().endswith(suffix.lower())),
+            None,
+        )
+    if parser is None:
         return []
     try:
         return parser(path)
@@ -160,6 +169,8 @@ def scan_source(root: str, *, include_vendored: bool = False,
         "Cargo.toml": pp.parse_cargo,
         "Gemfile": pp.parse_gemfile,
         "composer.json": pp.parse_composer,
+        "pyproject.toml": pp.parse_pyproject,
+        "Pipfile": pp.parse_pipfile,
     }
     skip = set(_ALWAYS_SKIP_DIRS)
     if not include_vendored:
@@ -189,8 +200,8 @@ def scan_source(root: str, *, include_vendored: bool = False,
                 continue
             if fn in parsers:
                 found = _parse_manifest(path, parsers)
-            elif fn.endswith(".csproj"):
-                found = _parse_manifest(path, {"csproj": pp.parse_csproj})
+            elif fn.lower().endswith(".csproj"):
+                found = _parse_manifest(path, {".csproj": pp.parse_csproj})
             else:
                 continue
             if found:

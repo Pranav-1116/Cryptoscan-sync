@@ -368,6 +368,38 @@
 > VBOM row and coverage statement, so "1 post-quantum tick is evidence-backed" can
 > be traced back to `session:C0` in `ssl.log`.
 
+> [SBOM evidence and parser qualification](133-sbom-evidence-and-qualification.md)
+> (**10 pass · 0 partial · 0 fail**, 65 probes over a **15 of 15** parser
+> matrix) starts from the review beside it
+> ([133-sbom-review-as-received.md](133-sbom-review-as-received.md)) and answers
+> it by running the parsers rather than describing them — which immediately
+> turned up three defects: a `.csproj` parser keyed by a name no filename could
+> match (so a `.NET` project produced a *valid-looking empty SBOM*), an npm range
+> silently coerced to a pinned version (`^5.0.0` read as `5.0.0`, exactly the
+> range/pin confusion the review says must stay visible), and `pyproject.toml` /
+> `Pipfile` never read as manifests at all (so a Poetry project with no lockfile
+> looked like a project with no dependencies). **Deployed is not described**: a
+> registry reference must be digest-pinned — `:latest` is refused, not flagged —
+> and a component is `PRESENT_IN_DEPLOYMENT` only when a deployment observation
+> cites that digest, otherwise `PRESENT_IN_ARTIFACT`, `PRESENT_IN_SBOM_ONLY` or
+> `NOT_IN_SBOM`. **The chain is graded end to end**: commit → build → digest →
+> SBOM → deployment, with every missing link named, a backdated SBOM refused and
+> a build without an observation explicitly stopping at the artifact.
+> **Production evidence cannot degrade to a temporary directory**: no store,
+> no backup, no retention or no integrity is `REFUSE`, and ephemeral storage is
+> allowed only for dev/test/CI. **Integrity, authenticity and non-repudiation are
+> three claims**: SHA-256 earns the first, HMAC the first two, an anchored
+> Ed25519 key all three — a revoked key invalidates what it signed, and rotation
+> keeps an old signature valid while saying so. **"0 vulnerabilities" is never
+> the same answer as "nobody looked"**: six states, so a clean result from a
+> stale feed is `STALE_FEED` and an identifier-less component is
+> `INSUFFICIENT_IDENTIFIER`. VEX statements expire and must name a reviewer and
+> evidence; a detected licence is never an approval; SBOM→CBOM is a four-rung
+> ladder (capability → static → runtime → network) that cannot skip; a diff's
+> crypto impact is `UNKNOWN` until something observed it; an imported SBOM may
+> not overwrite an observed fact; and a hostile document hits a byte/component/
+> depth/cycle budget before it hits the CPU. Everything not proven is listed in
+> the guide, in the review's order.
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

@@ -1,0 +1,1053 @@
+{
+  "schema": "cryptoscan.sbom-evidence-guide/1",
+  "generated_at": "2026-11-02T16:21:14.130132+00:00",
+  "as_of": "2026-11-02",
+  "counts": {
+    "PASS": 10,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "rows": [
+    {
+      "id": "parser_qualification",
+      "question": "which ecosystem and lockfile generation is actually production-qualified?",
+      "phase": "3",
+      "probes": [
+        {
+          "probe": "every-case-is-executed-not-asserted",
+          "ok": true,
+          "observed": "15 case(s) written to disk and scanned by `scan_source`; 15 pass, 0 partial, 0 need a fix"
+        },
+        {
+          "probe": "a-pyproject-only-project-is-not-an-empty-sbom",
+          "ok": true,
+          "observed": "pyproject.toml alone (PEP 621 + poetry group) -> ['bandit', 'cryptography', 'requests']; before this reader existed the same tree yielded zero components, indistinguishable from a project with no dependencies"
+        },
+        {
+          "probe": "csproj-dispatch-reaches-the-parser",
+          "ok": true,
+          "observed": "App.csproj -> ['bouncycastle.cryptography', 'newtonsoft.json']; before this fix the same file produced no package at all because the parser was keyed 'csproj' and looked up by filename"
+        },
+        {
+          "probe": "a-caret-survives-the-manifest-reader",
+          "ok": true,
+          "observed": "jose ^5.0.0 carried as RANGE, so a range cannot be read as a pin"
+        },
+        {
+          "probe": "the-lockfile-generations-are-exercised-separately",
+          "ok": true,
+          "observed": "11 revision(s) exercised, Cargo.lock v1 (no version field), Cargo.lock v2 (version = 3 header), NuGet lock file v1, bundler lock, composer lock, go modules, \u2026"
+        },
+        {
+          "probe": "an-ecosystem-with-one-bad-case-is-not-qualified",
+          "ok": true,
+          "observed": "8 ecosystem(s) scored; qualified=True \u2014 one FIX anywhere would flip that to False, which is the point of a matrix"
+        },
+        {
+          "probe": "the-matrix-is-an-artifact-not-a-unit-test",
+          "ok": true,
+          "observed": "15 of 15 parser case(s) pass; 0 are partial and 0 need a fix. Every ecosystem the review listed is production-qualified against the revisions exercised here."
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "deployment_identity",
+      "question": "does a component in an SBOM become 'deployed', or only 'described'?",
+      "phase": "5/6",
+      "probes": [
+        {
+          "probe": "a-component-in-a-sbom-bound-to-a-digest-and-observed-is-in-production",
+          "ok": true,
+          "observed": "openssl 3.0.13 is present in payments-api-prod (PRODUCTION) \u2014 cited to OBS-2026-1102-01"
+        },
+        {
+          "probe": "an-uploaded-document-is-not-a-deployment",
+          "ok": true,
+          "observed": "the same component in a document bound to no digest -> PRESENT_IN_SBOM_ONLY: the review's 'exists somewhere in an uploaded SBOM'"
+        },
+        {
+          "probe": "a-digest-nobody-observed-running-is-not-deployed",
+          "ok": true,
+          "observed": "bound digest, no observation -> PRESENT_IN_ARTIFACT"
+        },
+        {
+          "probe": "a-mutable-tag-is-refused-as-identity",
+          "ok": true,
+          "observed": "`payments-api:latest` is refused outright rather than flagged, because a tag is a pointer and evidence needs an address"
+        },
+        {
+          "probe": "a-digest-qualified-reference-parses-into-an-identity",
+          "ok": true,
+          "observed": "ghcr.io/bank/payments-api@sha256:aaaaaaaaaaaa\u2026 parsed as an immutable identity"
+        },
+        {
+          "probe": "a-pinned-reference-that-contradicts-its-record-is-refused",
+          "ok": true,
+          "observed": "the reference pins sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb and the r"
+        },
+        {
+          "probe": "a-component-that-is-not-in-the-sbom-is-a-different-answer",
+          "ok": true,
+          "observed": "an absent component is NOT_IN_SBOM: a statement about the inventory, not about the estate"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "build_provenance",
+      "question": "can the running pod be traced back to a commit and a build record?",
+      "phase": "7",
+      "probes": [
+        {
+          "probe": "the-chain-runs-from-commit-to-running-pod",
+          "ok": true,
+          "observed": "build BUILD-2026-1102-0091 from 9f2c1ab4d7 produced sha256:aaaaaaaaaaaa\u2026; observed running in PRODUCTION"
+        },
+        {
+          "probe": "a-build-with-no-record-has-every-gap-named",
+          "ok": true,
+          "observed": "4 gap(s): build_id is empty; \u2026 no SBOM is bound to this build, or the bound SBOM is a different one"
+        },
+        {
+          "probe": "an-unattributable-commit-breaks-the-chain",
+          "ok": true,
+          "observed": "source_commit is not a commit hash, so the build cannot be traced to a tree"
+        },
+        {
+          "probe": "a-sbom-of-a-different-artifact-is-not-this-builds-sbom",
+          "ok": true,
+          "observed": "the SBOM describes a different artifact than the build produced"
+        },
+        {
+          "probe": "a-sbom-that-predates-the-build-is-refused",
+          "ok": true,
+          "observed": "the SBOM predates the build it is attached to"
+        },
+        {
+          "probe": "provenance-without-an-observation-stops-at-the-artifact",
+          "ok": true,
+          "observed": "build BUILD-2026-1102-0091 from 9f2c1ab4d7 produced sha256:aaaaaaaaaaaa\u2026; never observed running, so provenance stops at the artifact"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "storage_durability",
+      "question": "can production evidence quietly land in a temporary directory?",
+      "phase": "8",
+      "probes": [
+        {
+          "probe": "production-with-no-store-is-refused-not-degraded",
+          "ok": true,
+          "observed": "PRODUCTION with SBOM_STORAGE_DIR unset -> REFUSE: no artifact store is configured, and falling back to temporary storage would leave evidence for a production run with no durable home"
+        },
+        {
+          "probe": "a-durable-store-without-backup-retention-or-integrity-is-still-refused",
+          "ok": true,
+          "observed": "3 refusal(s): no backup target is configured, so a restore cannot be demonstrated"
+        },
+        {
+          "probe": "a-configured-durable-store-with-dr-and-retention-passes",
+          "ok": true,
+          "observed": "production evidence storage is configured and durable"
+        },
+        {
+          "probe": "ephemeral-storage-is-allowed-only-where-the-record-does-not-depend-on-it",
+          "ok": true,
+          "observed": "dev -> ALLOW (EPHEMERAL_OK); the same call in PRODUCTION is REFUSE"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "signing_ladder",
+      "question": "which of integrity, authenticity and non-repudiation does a signature actually support?",
+      "phase": "9",
+      "probes": [
+        {
+          "probe": "a-hash-gives-integrity-and-nothing-else",
+          "ok": true,
+          "observed": "SHA-256 -> integrity yes, authenticity no: a digest proves the bytes did not change, not who produced them"
+        },
+        {
+          "probe": "hmac-gives-authenticity-within-a-shared-secret",
+          "ok": true,
+          "observed": "HMAC-SHA256 -> authenticity yes, non-repudiation no: anyone holding the key could have signed it"
+        },
+        {
+          "probe": "an-anchored-asymmetric-key-earns-non-repudiation",
+          "ok": true,
+          "observed": "NON_REPUDIABLE: SBOM-9182 \u2014 integrity yes, authenticity yes, non-repudiation yes"
+        },
+        {
+          "probe": "an-unanchored-key-proves-possession-not-identity",
+          "ok": true,
+          "observed": "key ed-unknown is not anchored to a trust anchor this verifier knows (['bank-root-ca']), so the signature proves possession rather than identity"
+        },
+        {
+          "probe": "a-revoked-key-invalidates-everything-it-signed",
+          "ok": true,
+          "observed": "REVOKED_KEY: SBOM-9182 is signed by a revoked key"
+        },
+        {
+          "probe": "rotation-keeps-an-old-signature-valid-and-says-so",
+          "ok": true,
+          "observed": "NON_REPUDIABLE: SBOM-9182 \u2014 integrity yes, authenticity yes, non-repudiation yes; the key was rotated to ed-2026 after signing, and the signature remains valid for its signing date"
+        },
+        {
+          "probe": "an-expired-key-fails-even-when-it-is-anchored",
+          "ok": true,
+          "observed": "EXPIRED_KEY: SBOM-9182 is signed by an expired key"
+        },
+        {
+          "probe": "no-signature-is-its-own-verdict",
+          "ok": true,
+          "observed": "UNSIGNED: the digest may be intact and nothing vouches for it"
+        },
+        {
+          "probe": "an-unknown-algorithm-cannot-be-treated-as-a-signature",
+          "ok": true,
+          "observed": "'ROT13' is not an algorithm this verifier knows; an unknown algorithm cannot be treated as"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "vulnerability_status",
+      "question": "does '0 vulnerabilities' mean clean, or that nobody looked?",
+      "phase": "10",
+      "probes": [
+        {
+          "probe": "a-match-carries-the-feed-the-method-and-the-advisory",
+          "ok": true,
+          "observed": "MATCHED against osv 2026-11-01 by purl+version: 1 advisory match(es): CVE-2024-6119"
+        },
+        {
+          "probe": "zero-matches-is-assessed-and-says-so",
+          "ok": true,
+          "observed": "ASSESSED_NO_MATCH: assessed against osv 2026-11-01 with purl+version matching and nothing matched"
+        },
+        {
+          "probe": "zero-matches-from-a-stale-feed-is-not-an-all-clear",
+          "ok": true,
+          "observed": "STALE_FEED: the feed is 62 days old (limit 7); a zero-match result from a stale feed is not an all-clear"
+        },
+        {
+          "probe": "a-component-with-no-identifier-cannot-be-matched",
+          "ok": true,
+          "observed": "the component has no purl, so a version-range match would be a guess against a name"
+        },
+        {
+          "probe": "no-feed-is-not-assessed-rather-than-clean",
+          "ok": true,
+          "observed": "no vulnerability feed was consulted, so this component has no vulnerability posture \u2014 which is not the same as having none"
+        },
+        {
+          "probe": "a-feed-that-cannot-be-dated-yields-unknown",
+          "ok": true,
+          "observed": "the feed states no update time, so its currency cannot be established"
+        },
+        {
+          "probe": "the-vocabulary-is-closed-and-six-state",
+          "ok": true,
+          "observed": "NOT_ASSESSED, ASSESSED_NO_MATCH, MATCHED, UNKNOWN, STALE_FEED, INSUFFICIENT_IDENTIFIER"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "vex_and_licence",
+      "question": "does a VEX statement expire and name an owner, and is a detected licence ever mistaken for an approval?",
+      "phase": "11/12",
+      "probes": [
+        {
+          "probe": "a-vex-statement-names-a-reviewer-a-reason-and-an-expiry",
+          "ok": true,
+          "observed": "CURRENT: CVE-2024-6119 on openssl is NOT_AFFECTED until 2027-01-01"
+        },
+        {
+          "probe": "an-expired-vex-statement-stops-suppressing-the-finding",
+          "ok": true,
+          "observed": "EXPIRED: the NOT_AFFECTED assessment for CVE-2024-6119 on openssl lapsed on 2026-01-01 and no longer suppresses the finding"
+        },
+        {
+          "probe": "free-text-is-not-a-justification",
+          "ok": true,
+          "observed": "3 problem(s): NOT_AFFECTED needs a justification from the closed list (VULNERABLE_CODE_NOT_PRESENT, VULNERABLE_CODE_NOT_IN_EXECUTE_PATH, \u2026); free text is not a justification"
+        },
+        {
+          "probe": "a-statement-cannot-expire-before-it-was-made",
+          "ok": true,
+          "observed": "the statement expires before it was assessed"
+        },
+        {
+          "probe": "a-detected-licence-is-not-an-approval",
+          "ok": true,
+          "observed": "declared and detected Apache-2.0 -> REQUIRES_REVIEW: Apache-2.0 is known and no policy decision exists for it; the scanner reports, it does not approve"
+        },
+        {
+          "probe": "a-declared-and-detected-conflict-is-its-own-state",
+          "ok": true,
+          "observed": "the package declares MIT and the scanner detected GPL-3.0; neither is a decision, and the difference is a question for legal"
+        },
+        {
+          "probe": "only-a-policy-decision-produces-accepted-or-rejected",
+          "ok": true,
+          "observed": "MIT -> POLICY_ACCEPTED, GPL-3.0 -> POLICY_REJECTED, both from a policy and neither from a scanner"
+        },
+        {
+          "probe": "no-licence-is-unknown-not-permissive",
+          "ok": true,
+          "observed": "no licence was declared or detected, so nothing can be accepted"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "crypto_promotion",
+      "question": "does a crypto-capable component become 'used' without evidence?",
+      "phase": "13",
+      "probes": [
+        {
+          "probe": "an-inventory-row-starts-at-capability-and-says-so",
+          "ok": true,
+          "observed": "openssl 3.0.13 is inventoried as crypto-capable. That is a capability claim about a package, not a statement that any application uses it"
+        },
+        {
+          "probe": "static-evidence-raises-the-rung-by-one",
+          "ok": true,
+          "observed": "openssl: static evidence shows the code path calls AES-256-GCM; still not a statement about traffic"
+        },
+        {
+          "probe": "a-skipped-rung-stops-the-ladder",
+          "ok": true,
+          "observed": "STATIC_OBSERVED has no evidence while RUNTIME_OBSERVED does: the ladder cannot skip a rung, so the candidate stops at CAPABILITY until STATIC_OBSERVED is evidenced"
+        },
+        {
+          "probe": "the-ladder-reaches-network-with-four-kinds-of-evidence",
+          "ok": true,
+          "observed": "STATIC_OBSERVED -> RUNTIME_OBSERVED -> NETWORK_OBSERVED; openssl: network evidence shows TLS_AES_256_GCM_SHA384 on the wire"
+        },
+        {
+          "probe": "every-rung-cites-what-it-came-from",
+          "ok": true,
+          "observed": "SBOM; file:src/tls/conn.go#L142; session:S-1; pcap:payments-api-2026-11-02#42"
+        },
+        {
+          "probe": "an-observation-outside-the-ladder-is-refused",
+          "ok": true,
+          "observed": "'OBSERVED' is not a rung on the promotion ladder; expected one of ('CAPABILITY', 'STATIC_OBSERVED', "
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "history_and_diff",
+      "question": "does a diff say what changed, or what it means?",
+      "phase": "15/16",
+      "probes": [
+        {
+          "probe": "every-kind-of-movement-is-named",
+          "ok": true,
+          "observed": "5 change(s): ARTIFACT_CHANGED, DEPENDENCY_CHANGED, PACKAGE_ADDED, PACKAGE_REMOVED, VERSION_CHANGED"
+        },
+        {
+          "probe": "a-version-bump-does-not-decide-its-own-crypto-impact",
+          "ok": true,
+          "observed": "3 change(s) with crypto_impact UNKNOWN because nothing observed the new version: the alternative is a diff that reads like a conclusion"
+        },
+        {
+          "probe": "a-change-carries-the-artifact-release-and-deployment-it-happened-to",
+          "ok": true,
+          "observed": "openssl 3.0.11 -> 3.0.13 on ghcr.io/bank/payments-api release BUILD-2026-1102-0091 in ['PRODUCTION']"
+        },
+        {
+          "probe": "observed-runtime-and-network-evidence-close-the-question",
+          "ok": true,
+          "observed": "with runtime and network evidence the same change reads RUNTIME_EVIDENCE_PRESENT / OBSERVED / OBSERVED"
+        },
+        {
+          "probe": "the-diff-itself-carries-an-evidence-id",
+          "ok": true,
+          "observed": "DIF-322ecf17ee2b \u2014 recomputable from the change set, so two runs over the same snapshots are the same finding"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "input_safety",
+      "question": "can an imported SBOM or a hostile document change the estate?",
+      "phase": "17",
+      "probes": [
+        {
+          "probe": "an-import-may-not-overwrite-an-observed-fact",
+          "ok": true,
+          "observed": "the imported document would replace deployment_identity='payments-api-prod' with 'attacker-prod'; an imported SBOM is untrusted input and may not overwrite an observed fact"
+        },
+        {
+          "probe": "an-accepted-import-is-labelled-untrusted-and-cannot-override",
+          "ok": true,
+          "observed": "1 row(s) marked IMPORTED with a content hash 931e4a2b18cd\u2026, may_override False"
+        },
+        {
+          "probe": "a-deep-graph-hits-the-depth-limit",
+          "ok": true,
+          "observed": "dependency depth 201 exceeds the 64 limit"
+        },
+        {
+          "probe": "a-cyclic-graph-is-refused-rather-than-recursed",
+          "ok": true,
+          "observed": "1 cycle(s) found iteratively, so a hostile graph cannot exhaust the stack before it reaches the limit"
+        },
+        {
+          "probe": "a-hundred-megabyte-file-is-refused-by-its-size",
+          "ok": true,
+          "observed": "104857600 bytes exceeds the 8000000-byte limit"
+        },
+        {
+          "probe": "an-ordinary-document-passes-the-budget",
+          "ok": true,
+          "observed": "2 component(s), depth 2, no cycles \u2014 inside the budget"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "qualification": {
+    "schema": "cryptoscan.sbom-parser-qualification/1",
+    "cases": 15,
+    "counts": {
+      "PASS": 15,
+      "PARTIAL": 0,
+      "FIX": 0
+    },
+    "ecosystems": [
+      {
+        "ecosystem": "dotnet",
+        "cases": 2,
+        "pass": 2,
+        "partial": 0,
+        "fix": 0,
+        "verdict": "PASS",
+        "manifests": [
+          "App.csproj"
+        ],
+        "lockfiles": [
+          "packages.lock.json"
+        ],
+        "revisions": [
+          "csproj PackageReference",
+          "NuGet lock file v1"
+        ]
+      },
+      {
+        "ecosystem": "go",
+        "cases": 1,
+        "pass": 1,
+        "partial": 0,
+        "fix": 0,
+        "verdict": "PASS",
+        "manifests": [
+          "go.mod"
+        ],
+        "lockfiles": [
+          "go.sum"
+        ],
+        "revisions": [
+          "go modules"
+        ]
+      },
+      {
+        "ecosystem": "maven",
+        "cases": 1,
+        "pass": 1,
+        "partial": 0,
+        "fix": 0,
+        "verdict": "PASS",
+        "manifests": [
+          "pom.xml"
+        ],
+        "lockfiles": [],
+        "revisions": [
+          "pom.xml"
+        ]
+      },
+      {
+        "ecosystem": "npm",
+        "cases": 4,
+        "pass": 4,
+        "partial": 0,
+        "fix": 0,
+        "verdict": "PASS",
+        "manifests": [
+          "package.json"
+        ],
+        "lockfiles": [
+          "package-lock.json"
+        ],
+        "revisions": [
+          "lockfileVersion 1",
+          "lockfileVersion 2",
+          "lockfileVersion 3",
+          "manifest only"
+        ]
+      },
+      {
+        "ecosystem": "php",
+        "cases": 1,
+        "pass": 1,
+        "partial": 0,
+        "fix": 0,
+        "verdict": "PASS",
+        "manifests": [
+          "composer.json"
+        ],
+        "lockfiles": [
+          "composer.lock"
+        ],
+        "revisions": [
+          "composer lock"
+        ]
+      },
+      {
+        "ecosystem": "python",
+        "cases": 3,
+        "pass": 3,
+        "partial": 0,
+        "fix": 0,
+        "verdict": "PASS",
+        "manifests": [
+          "Pipfile",
+          "pyproject.toml",
+          "requirements.txt"
+        ],
+        "lockfiles": [
+          "Pipfile.lock",
+          "poetry.lock"
+        ],
+        "revisions": [
+          "pip requirements",
+          "poetry lock",
+          "pipenv lock v2"
+        ]
+      },
+      {
+        "ecosystem": "ruby",
+        "cases": 1,
+        "pass": 1,
+        "partial": 0,
+        "fix": 0,
+        "verdict": "PASS",
+        "manifests": [
+          "Gemfile"
+        ],
+        "lockfiles": [
+          "Gemfile.lock"
+        ],
+        "revisions": [
+          "bundler lock"
+        ]
+      },
+      {
+        "ecosystem": "rust",
+        "cases": 2,
+        "pass": 2,
+        "partial": 0,
+        "fix": 0,
+        "verdict": "PASS",
+        "manifests": [
+          "Cargo.toml"
+        ],
+        "lockfiles": [
+          "Cargo.lock"
+        ],
+        "revisions": [
+          "Cargo.lock v1 (no version field)",
+          "Cargo.lock v2 (version = 3 header)"
+        ]
+      }
+    ],
+    "rows": [
+      {
+        "id": "npm_lockfile_v1",
+        "ecosystem": "npm",
+        "manifest": "package.json",
+        "lockfile": "package-lock.json",
+        "revision": "lockfileVersion 1",
+        "verdict": "PASS",
+        "reason": "2 expected component(s) found from package-lock.json with scope resolved",
+        "components_found": [
+          "body-parser",
+          "express",
+          "jest",
+          "jose"
+        ],
+        "manifests_seen": [
+          "package.json"
+        ],
+        "lockfiles_seen": [
+          "package-lock.json"
+        ],
+        "scopes": [
+          "declared",
+          "resolved"
+        ],
+        "declared_specs": {
+          "express": "4.19.2",
+          "jest": "^29.7.0",
+          "jose": "^5.0.0"
+        },
+        "version_constraints": {
+          "express": "EXACT",
+          "jest": "RANGE",
+          "jose": "RANGE"
+        },
+        "note": ""
+      },
+      {
+        "id": "npm_lockfile_v2",
+        "ecosystem": "npm",
+        "manifest": "package.json",
+        "lockfile": "package-lock.json",
+        "revision": "lockfileVersion 2",
+        "verdict": "PASS",
+        "reason": "2 expected component(s) found from package-lock.json with scope resolved",
+        "components_found": [
+          "express",
+          "jest",
+          "jose"
+        ],
+        "manifests_seen": [
+          "package.json"
+        ],
+        "lockfiles_seen": [
+          "package-lock.json"
+        ],
+        "scopes": [
+          "declared",
+          "resolved"
+        ],
+        "declared_specs": {
+          "express": "4.19.2",
+          "jest": "^29.7.0",
+          "jose": "^5.0.0"
+        },
+        "version_constraints": {
+          "express": "EXACT",
+          "jest": "RANGE",
+          "jose": "RANGE"
+        },
+        "note": ""
+      },
+      {
+        "id": "npm_lockfile_v3",
+        "ecosystem": "npm",
+        "manifest": "package.json",
+        "lockfile": "package-lock.json",
+        "revision": "lockfileVersion 3",
+        "verdict": "PASS",
+        "reason": "2 expected component(s) found from package-lock.json with scope resolved",
+        "components_found": [
+          "body-parser",
+          "express",
+          "jest",
+          "jose"
+        ],
+        "manifests_seen": [
+          "package.json"
+        ],
+        "lockfiles_seen": [
+          "package-lock.json"
+        ],
+        "scopes": [
+          "declared",
+          "resolved"
+        ],
+        "declared_specs": {
+          "express": "4.19.2",
+          "jest": "^29.7.0",
+          "jose": "^5.0.0"
+        },
+        "version_constraints": {
+          "express": "EXACT",
+          "jest": "RANGE",
+          "jose": "RANGE"
+        },
+        "note": ""
+      },
+      {
+        "id": "npm_declared_range_is_not_a_version",
+        "ecosystem": "npm",
+        "manifest": "package.json",
+        "lockfile": null,
+        "revision": "manifest only",
+        "verdict": "PASS",
+        "reason": "1 expected component(s) found from the manifest with scope declared",
+        "components_found": [
+          "express",
+          "jest",
+          "jose"
+        ],
+        "manifests_seen": [
+          "package.json"
+        ],
+        "lockfiles_seen": [],
+        "scopes": [
+          "declared"
+        ],
+        "declared_specs": {
+          "express": "4.19.2",
+          "jest": "^29.7.0",
+          "jose": "^5.0.0"
+        },
+        "version_constraints": {
+          "express": "EXACT",
+          "jest": "RANGE",
+          "jose": "RANGE"
+        },
+        "note": "the caret survives, so nothing downstream can mistake a range for a pin"
+      },
+      {
+        "id": "python_requirements",
+        "ecosystem": "python",
+        "manifest": "requirements.txt",
+        "lockfile": null,
+        "revision": "pip requirements",
+        "verdict": "PASS",
+        "reason": "1 expected component(s) found from the manifest with scope declared",
+        "components_found": [
+          "cryptography",
+          "requests"
+        ],
+        "manifests_seen": [
+          "requirements.txt"
+        ],
+        "lockfiles_seen": [],
+        "scopes": [
+          "declared"
+        ],
+        "declared_specs": {
+          "cryptography": "cryptography==42.0.5",
+          "requests": "requests>=2.31"
+        },
+        "version_constraints": {
+          "cryptography": "NON_VERSION",
+          "requests": "NON_VERSION"
+        },
+        "note": ""
+      },
+      {
+        "id": "python_poetry_lock",
+        "ecosystem": "python",
+        "manifest": "pyproject.toml",
+        "lockfile": "poetry.lock",
+        "revision": "poetry lock",
+        "verdict": "PASS",
+        "reason": "1 expected component(s) found from poetry.lock with scope resolved",
+        "components_found": [
+          "cffi",
+          "cryptography"
+        ],
+        "manifests_seen": [
+          "pyproject.toml"
+        ],
+        "lockfiles_seen": [
+          "poetry.lock"
+        ],
+        "scopes": [
+          "resolved"
+        ],
+        "declared_specs": {
+          "cryptography": "^42.0.5"
+        },
+        "version_constraints": {
+          "cryptography": "RANGE"
+        },
+        "note": "the manifest half must be read too: the resolved 42.0.5 is a consequence of the declared ^42.0.5, and a lockfile-only answer cannot tell a reviewer the project accepted a range"
+      },
+      {
+        "id": "python_pipfile_lock",
+        "ecosystem": "python",
+        "manifest": "Pipfile",
+        "lockfile": "Pipfile.lock",
+        "revision": "pipenv lock v2",
+        "verdict": "PASS",
+        "reason": "1 expected component(s) found from Pipfile.lock with scope resolved",
+        "components_found": [
+          "cryptography",
+          "requests"
+        ],
+        "manifests_seen": [
+          "Pipfile"
+        ],
+        "lockfiles_seen": [
+          "Pipfile.lock"
+        ],
+        "scopes": [
+          "resolved"
+        ],
+        "declared_specs": {
+          "cryptography": "*"
+        },
+        "version_constraints": {
+          "cryptography": "ANY"
+        },
+        "note": "'*' is a declaration with no version in it at all; reporting the locked 42.0.5 without saying the project declared 'anything' would overstate the guarantee"
+      },
+      {
+        "id": "maven_pom",
+        "ecosystem": "maven",
+        "manifest": "pom.xml",
+        "lockfile": null,
+        "revision": "pom.xml",
+        "verdict": "PASS",
+        "reason": "1 expected component(s) found from the manifest with scope declared",
+        "components_found": [
+          "bcprov-jdk18on",
+          "nimbus-jose-jwt"
+        ],
+        "manifests_seen": [
+          "pom.xml"
+        ],
+        "lockfiles_seen": [],
+        "scopes": [
+          "declared"
+        ],
+        "declared_specs": {
+          "bcprov-jdk18on": "1.78.1",
+          "nimbus-jose-jwt": "9.37.3"
+        },
+        "version_constraints": {
+          "bcprov-jdk18on": "EXACT",
+          "nimbus-jose-jwt": "EXACT"
+        },
+        "note": ""
+      },
+      {
+        "id": "go_mod_and_sum",
+        "ecosystem": "go",
+        "manifest": "go.mod",
+        "lockfile": "go.sum",
+        "revision": "go modules",
+        "verdict": "PASS",
+        "reason": "1 expected component(s) found from go.sum with scope resolved",
+        "components_found": [
+          "github.com/nimbusds/jose",
+          "golang.org/x/crypto"
+        ],
+        "manifests_seen": [
+          "go.mod"
+        ],
+        "lockfiles_seen": [
+          "go.sum"
+        ],
+        "scopes": [
+          "declared",
+          "resolved"
+        ],
+        "declared_specs": {
+          "github.com/nimbusds/jose": "1.2.3",
+          "golang.org/x/crypto": "0.23.0"
+        },
+        "version_constraints": {
+          "github.com/nimbusds/jose": "EXACT",
+          "golang.org/x/crypto": "EXACT"
+        },
+        "note": "the module version is canonicalised without its v prefix, which keeps the value comparable across ecosystems"
+      },
+      {
+        "id": "rust_cargo_lock_v1",
+        "ecosystem": "rust",
+        "manifest": "Cargo.toml",
+        "lockfile": "Cargo.lock",
+        "revision": "Cargo.lock v1 (no version field)",
+        "verdict": "PASS",
+        "reason": "1 expected component(s) found from Cargo.lock with scope resolved",
+        "components_found": [
+          "ring"
+        ],
+        "manifests_seen": [
+          "Cargo.toml"
+        ],
+        "lockfiles_seen": [
+          "Cargo.lock"
+        ],
+        "scopes": [
+          "resolved"
+        ],
+        "declared_specs": {
+          "ring": "0.17"
+        },
+        "version_constraints": {
+          "ring": "EXACT"
+        },
+        "note": ""
+      },
+      {
+        "id": "rust_cargo_lock_v2",
+        "ecosystem": "rust",
+        "manifest": "Cargo.toml",
+        "lockfile": "Cargo.lock",
+        "revision": "Cargo.lock v2 (version = 3 header)",
+        "verdict": "PASS",
+        "reason": "1 expected component(s) found from Cargo.lock with scope resolved",
+        "components_found": [
+          "ring"
+        ],
+        "manifests_seen": [
+          "Cargo.toml"
+        ],
+        "lockfiles_seen": [
+          "Cargo.lock"
+        ],
+        "scopes": [
+          "resolved"
+        ],
+        "declared_specs": {
+          "ring": "0.17"
+        },
+        "version_constraints": {
+          "ring": "EXACT"
+        },
+        "note": ""
+      },
+      {
+        "id": "dotnet_csproj",
+        "ecosystem": "dotnet",
+        "manifest": "App.csproj",
+        "lockfile": null,
+        "revision": "csproj PackageReference",
+        "verdict": "PASS",
+        "reason": "1 expected component(s) found from the manifest with scope declared",
+        "components_found": [
+          "bouncycastle.cryptography",
+          "newtonsoft.json"
+        ],
+        "manifests_seen": [
+          "App.csproj"
+        ],
+        "lockfiles_seen": [],
+        "scopes": [
+          "declared"
+        ],
+        "declared_specs": {
+          "bouncycastle.cryptography": "2.3.1",
+          "newtonsoft.json": "13.0.3"
+        },
+        "version_constraints": {
+          "bouncycastle.cryptography": "EXACT",
+          "newtonsoft.json": "EXACT"
+        },
+        "note": "this is the case the review named: the parser existed and dispatch could never reach it"
+      },
+      {
+        "id": "dotnet_packages_lock",
+        "ecosystem": "dotnet",
+        "manifest": "App.csproj",
+        "lockfile": "packages.lock.json",
+        "revision": "NuGet lock file v1",
+        "verdict": "PASS",
+        "reason": "1 expected component(s) found from packages.lock.json with scope resolved",
+        "components_found": [
+          "newtonsoft.json",
+          "system.memory"
+        ],
+        "manifests_seen": [
+          "App.csproj"
+        ],
+        "lockfiles_seen": [
+          "packages.lock.json"
+        ],
+        "scopes": [
+          "resolved"
+        ],
+        "declared_specs": {
+          "newtonsoft.json": "13.0.3"
+        },
+        "version_constraints": {
+          "newtonsoft.json": "EXACT"
+        },
+        "note": ""
+      },
+      {
+        "id": "ruby_gemfile_lock",
+        "ecosystem": "ruby",
+        "manifest": "Gemfile",
+        "lockfile": "Gemfile.lock",
+        "revision": "bundler lock",
+        "verdict": "PASS",
+        "reason": "1 expected component(s) found from Gemfile.lock with scope resolved",
+        "components_found": [
+          "openssl",
+          "openssl-signature_algorithm"
+        ],
+        "manifests_seen": [
+          "Gemfile"
+        ],
+        "lockfiles_seen": [
+          "Gemfile.lock"
+        ],
+        "scopes": [
+          "resolved"
+        ],
+        "declared_specs": {},
+        "version_constraints": {},
+        "note": ""
+      },
+      {
+        "id": "php_composer_lock",
+        "ecosystem": "php",
+        "manifest": "composer.json",
+        "lockfile": "composer.lock",
+        "revision": "composer lock",
+        "verdict": "PASS",
+        "reason": "1 expected component(s) found from composer.lock with scope resolved",
+        "components_found": [
+          "phpseclib/phpseclib"
+        ],
+        "manifests_seen": [
+          "composer.json"
+        ],
+        "lockfiles_seen": [
+          "composer.lock"
+        ],
+        "scopes": [
+          "resolved"
+        ],
+        "declared_specs": {
+          "phpseclib/phpseclib": "3.0"
+        },
+        "version_constraints": {
+          "phpseclib/phpseclib": "EXACT"
+        },
+        "note": ""
+      }
+    ],
+    "qualified": true,
+    "statement": "15 of 15 parser case(s) pass; 0 are partial and 0 need a fix. Every ecosystem the review listed is production-qualified against the revisions exercised here."
+  },
+  "check_policy": {
+    "pass": 0,
+    "partial": 1,
+    "fail": 2
+  },
+  "limits": [
+    "the parser matrix runs the readers this repository has, against files this repository generates. A bank's exporter will produce shapes nobody wrote a case for, and the honest answer then is an unqualified ecosystem, not a guess",
+    "the qualification cases are small files. They prove the readers parse the shape; they do not prove throughput against a 50,000-component real SBOM",
+    "deployment observations are supplied by the platform integration. The chain is graded here; producing the observation from Kubernetes needs a cluster",
+    "the signing ladder verifies the claims a key algorithm can support. Key custody, HSM-backed signing and certificate chain validation are outside this module",
+    "licence states are a vocabulary and a policy lookup. Which licences a bank accepts is a legal decision this code must not make",
+    "the promotion ladder requires evidence of each rung. Producing static, runtime and network evidence at bank scale needs the collectors named in guides 130-132"
+  ]
+}
