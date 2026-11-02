@@ -592,3 +592,33 @@ def test_completeness_of_nothing_quotes_nothing(client):
     body = _post(client, "/completeness", {"components": []}).json()
     assert body["inventory"]["components"] == 0
     assert body["inventory"]["may_report_total"] is False
+
+
+def test_the_twin_is_projected_from_the_document_not_rebuilt(client):
+    body = _post(client, "/twin", {
+        "estate": ESTATE,
+        "policy": [{"algorithm": "AES-256-GCM", "key_size": 256}],
+        "advisories": [{"id": "CVE-2024-0001", "component": "openssl",
+                        "fixed_in": "3.0.14", "severity": "HIGH"}],
+    }).json()
+    kinds = {node["kind"] for node in body["twin"]["nodes"]}
+    assert {"SYSTEM", "COMPONENT", "PROVIDER", "PROCESS", "ALGORITHM"} <= kinds
+    assert body["twin"]["cbom"]["bomFormat"] == "CycloneDX"
+    assert set(body["consumers"]["consumers"]) == {"drift", "pqc_migration",
+                                                   "threat_intelligence"}
+    assert body["consumers"]["claim_check"]["ok"] is True
+
+
+def test_a_capability_never_leads_a_consumer_report(client):
+    body = _post(client, "/twin", {"estate": ESTATE, "policy": []}).json()
+    capability = [node for node in body["twin"]["nodes"]
+                  if node["kind"] == "ALGORITHM" and node["claim_level"] == "CAPABILITY"]
+    assert capability, "the library declares algorithms nothing observed"
+    migration = {row["algorithm"] for row in body["consumers"]["consumers"]
+                 ["pqc_migration"]["rows"]}
+    assert not migration & {node["id"].split(":", 1)[1] for node in capability}
+
+
+def test_a_twin_request_that_is_not_an_estate_is_refused(client):
+    response = _post(client, "/twin", {"estate": ["not", "an", "estate"]})
+    assert response.status_code == 422

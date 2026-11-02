@@ -275,6 +275,25 @@ class CbomCompletenessResponse(BaseModel):
     components: list[dict]
 
 
+class CbomTwinRequest(BaseModel):
+    estate: dict = Field(..., description=(
+        "the same estate description ``/estate-chain`` takes: components, operations, "
+        "keys and key_uses, probes, findings, conflicts, coverage"))
+    policy: list[dict] = Field(default_factory=list, description=(
+        "crypto policy rows for drift: algorithm, key_size, allowed. A policy row that "
+        "nothing was observed using is reported as not observed, not as drift"))
+    advisories: list[dict] = Field(default_factory=list, description=(
+        "advisories to match against the twin: id, component, fixed_in or "
+        "affected_versions[], severity"))
+
+
+class CbomTwinResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    twin: dict
+    consumers: dict
+    summary: dict
+
+
 class CbomHsmRequest(BaseModel):
     kind: str = Field(..., description=(
         "CAPABILITY, CONFIGURED_KEY or OPERATION — the three HSM/KMS answers, only the last "
@@ -586,6 +605,33 @@ def cbom_estate_chain(body: CbomEstateChainRequest,
         raise HTTPException(status_code=422, detail=str(exc))
     result["summary"] = ec.summary(result)
     return result
+
+
+@router.post("/twin", response_model=CbomTwinResponse)
+def cbom_twin(body: CbomTwinRequest,
+              user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """The crypto graph and digital twin, plus the three consumers that read it.
+
+    Review item 20's architecture: five evidence families feed one graph, the graph
+    feeds the CBOM, and the twin is projected from that same evidence — so the twin
+    cannot disagree with the document. Drift, PQC migration and threat intelligence
+    each answer one question and inherit the claim level of the node they read; a
+    consumer that reports more than its node is refused in ``claim_check``.
+    """
+    from cbom import digital_twin as dt
+
+    try:
+        twin = dt.build(body.estate)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    consumers = dt.consumers(twin, policy=body.policy, advisories=body.advisories,
+                             as_of=body.estate.get("as_of"))
+    return {
+        "schema": dt.SCHEMA,
+        "twin": twin,
+        "consumers": consumers,
+        "summary": dt.summary(twin, consumers),
+    }
 
 
 @router.post("/hsm-evidence")

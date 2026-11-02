@@ -1,0 +1,293 @@
+{
+  "schema": "cryptoscan.cbom-digital-twin-guide/1",
+  "generated_at": "2026-11-02T18:53:35.270515+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 30,
+  "families": [
+    "sbom",
+    "static",
+    "network",
+    "runtime",
+    "kms"
+  ],
+  "node_kinds": [
+    "SYSTEM",
+    "COMPONENT",
+    "PROVIDER",
+    "PROCESS",
+    "ALGORITHM",
+    "KEY",
+    "ENDPOINT",
+    "CERTIFICATE"
+  ],
+  "claim_levels": [
+    "CAPABILITY",
+    "IMPORTED",
+    "CONFIGURED",
+    "STATIC",
+    "NETWORK",
+    "RUNTIME"
+  ],
+  "twin": {
+    "estate": "bank-estate-2026-11",
+    "statement": "bank-estate-2026-11: 15 twin node(s), 18 edge(s) from 5 of 5 evidence families",
+    "families": {
+      "sbom": 1,
+      "static": 1,
+      "network": 2,
+      "runtime": 5,
+      "kms": 1
+    },
+    "claim_levels": {
+      "CAPABILITY": 7,
+      "IMPORTED": 0,
+      "CONFIGURED": 1,
+      "STATIC": 1,
+      "NETWORK": 1,
+      "RUNTIME": 5
+    }
+  },
+  "summary": {
+    "schema": "cryptoscan.cbom-digital-twin/1",
+    "estate": "bank-estate-2026-11",
+    "nodes": 15,
+    "edges": 18,
+    "families": {
+      "sbom": 1,
+      "static": 1,
+      "network": 2,
+      "runtime": 5,
+      "kms": 1
+    },
+    "unrepresented_families": [],
+    "drift": {
+      "POLICY_NOT_OBSERVED": 1,
+      "UNATTRIBUTED": 1
+    },
+    "migration": {
+      "IMMEDIATE": 1,
+      "NEAR_TERM": 0,
+      "PLANNED": 0,
+      "MONITOR": 0
+    },
+    "advisories": {
+      "EXECUTING": 1,
+      "NOT_PRESENT": 1,
+      "PRESENT": 1
+    },
+    "claim_check": true,
+    "statement": "bank-estate-2026-11: 15 node(s), 18 edge(s); drift clean=True, advisories exposed=2"
+  },
+  "rows": [
+    {
+      "id": "one_graph",
+      "question": "does every evidence family connect into one graph?",
+      "phase": "review 20 / graph",
+      "probes": [
+        {
+          "probe": "all-five-evidence-families-reach-the-twin",
+          "ok": true,
+          "observed": "{\"kms\": 1, \"network\": 2, \"runtime\": 5, \"sbom\": 1, \"static\": 1}"
+        },
+        {
+          "probe": "a-family-with-no-evidence-is-named-not-assumed",
+          "ok": true,
+          "observed": "bank-estate-2026-11: 13 twin node(s), 15 edge(s) from 4 of 5 evidence families; no evidence yet from network"
+        },
+        {
+          "probe": "no-edge-dangles-so-the-graph-can-be-walked",
+          "ok": true,
+          "observed": "18 edge(s), 0 dangling"
+        },
+        {
+          "probe": "every-edge-carries-the-evidence-that-drew-it",
+          "ok": true,
+          "observed": "18 edge(s) with evidence ids"
+        },
+        {
+          "probe": "the-twin-is-projected-from-the-document-not-rebuilt",
+          "ok": true,
+          "observed": "cryptoscan.cbom-estate-chain/1"
+        },
+        {
+          "probe": "a-declared-and-an-observed-value-are-resolved-by-precedence",
+          "ok": true,
+          "observed": "the version disagreement is precedence, not a conflict"
+        },
+        {
+          "probe": "two-observers-disagreeing-survive-as-a-conflict-edge",
+          "ok": true,
+          "observed": "cipher_suite has two observed values and both are kept"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "no_upgrade",
+      "question": "can a projection or a consumer upgrade a claim?",
+      "phase": "review 20 / claims",
+      "probes": [
+        {
+          "probe": "a-library-is-a-capability-whatever-its-algorithms-do",
+          "ok": true,
+          "observed": "component:openssl: CAPABILITY"
+        },
+        {
+          "probe": "an-algorithm-only-a-library-lists-stays-a-capability",
+          "ok": true,
+          "observed": "AES-192-CBC is declared by ['openssl'] and used by nothing"
+        },
+        {
+          "probe": "a-source-tree-call-is-static-evidence-and-says-so",
+          "ok": true,
+          "observed": "AES-128-CBC STATIC from ['STATIC_OBSERVED']"
+        },
+        {
+          "probe": "an-observed-algorithm-inherits-runtime-from-its-strongest-evidence",
+          "ok": true,
+          "observed": "RUNTIME from ['NETWORK_OBSERVED', 'RUNTIME_OBSERVED']"
+        },
+        {
+          "probe": "a-key-is-configured-and-never-observed",
+          "ok": true,
+          "observed": "CONFIGURED, private_material=NOT STORED"
+        },
+        {
+          "probe": "no-consumer-claims-more-than-the-node-it-read",
+          "ok": true,
+          "observed": "no consumer claims more than the node it read"
+        },
+        {
+          "probe": "a-candidate-algorithm-never-reaches-a-consumer-report",
+          "ok": true,
+          "observed": "drift rows: AES-128-CBC, SHA-1"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "drift",
+      "question": "what changed against policy, and what does that prove?",
+      "phase": "review 20 / drift",
+      "probes": [
+        {
+          "probe": "an-algorithm-outside-policy-is-unattributed-not-silent",
+          "ok": true,
+          "observed": "AES-256-GCM is observed in use and no policy row mentions it"
+        },
+        {
+          "probe": "a-policy-row-nobody-observed-is-not-called-drift",
+          "ok": true,
+          "observed": "policy lists this algorithm and nothing was observed using it; that is not evidence that"
+        },
+        {
+          "probe": "a-forbidden-algorithm-seen-running-is-drift",
+          "ok": true,
+          "observed": "2 drift finding(s) against 2 policy row(s): 1 unattributed, 1 unexpected use; a policy row nobody observed is reported as not observed, not as drift"
+        },
+        {
+          "probe": "the-wrong-parameter-is-parameter-drift",
+          "ok": true,
+          "observed": {
+            "PARAMETER_DRIFT": 1,
+            "UNATTRIBUTED": 1
+          }
+        },
+        {
+          "probe": "a-drift-finding-cites-the-evidence-on-both-counts",
+          "ok": true,
+          "observed": "every observed-side finding carries its evidence ids"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "pqc_queue",
+      "question": "which crypto has to migrate, and how firmly is that known?",
+      "phase": "review 20 / migration",
+      "probes": [
+        {
+          "probe": "an-observed-rsa-operation-is-immediate-migration",
+          "ok": true,
+          "observed": "RSA-2048 IMMEDIATE"
+        },
+        {
+          "probe": "the-quantum-verdict-comes-from-the-registry-not-the-document",
+          "ok": true,
+          "observed": "{\"AES-128-CBC\": \"REGISTRY_GROVER\", \"AES-256-GCM\": \"REGISTRY_GROVER_ACCEPTABLE_MARGIN\", \"RSA-2048\": \"REGISTRY_SHOR\"}"
+        },
+        {
+          "probe": "the-queue-is-ordered-by-urgency",
+          "ok": true,
+          "observed": "IMMEDIATE, LOW, NONE"
+        },
+        {
+          "probe": "a-capability-only-estate-cannot-lead-with-immediate",
+          "ok": true,
+          "observed": "2 algorithm(s) in the migration queue; nothing at IMMEDIATE priority; every verdict comes from the registry, never from the document"
+        },
+        {
+          "probe": "each-row-keeps-the-claim-level-it-was-built-from",
+          "ok": true,
+          "observed": "RSA-2048 from RUNTIME evidence"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "threat_intel",
+      "question": "which advisory touches code that is actually running?",
+      "phase": "review 20 / threat",
+      "probes": [
+        {
+          "probe": "a-provider-a-process-loaded-is-executing-exposure",
+          "ok": true,
+          "observed": "a process has it loaded"
+        },
+        {
+          "probe": "an-installed-component-is-present-not-executing",
+          "ok": true,
+          "observed": "installed, with nothing saying it is loaded"
+        },
+        {
+          "probe": "a-component-with-no-version-is-neither-confirmed-nor-cleared",
+          "ok": true,
+          "observed": "the component is known and its version is not, so the advisory can be neither confirmed nor cleared"
+        },
+        {
+          "probe": "an-advisory-for-something-absent-is-not-exposure",
+          "ok": true,
+          "observed": "1 advisory match(es) over 1 advisory(ies): 1 not present; installed and running are different exposures"
+        },
+        {
+          "probe": "a-capability-algorithm-is-never-an-exposure-on-its-own",
+          "ok": true,
+          "observed": "a supported-but-unused algorithm is not a running exposure"
+        },
+        {
+          "probe": "the-report-keeps-installed-and-running-apart",
+          "ok": true,
+          "observed": "3 advisory match(es) over 2 advisory(ies): 1 executing, 1 not present, 1 present; installed and running are different exposures"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the twin is a projection of the document and the evidence set behind it. Anything the collectors never saw is absent from the graph, not marked as unknown \u2014 the coverage block says how much was inspected, and that is the honest bound on the twin",
+    "drift compares an observed algorithm with a policy row. It has no opinion about policy that does not exist yet: an algorithm seen in use with no policy row is reported as unattributed, not as drift",
+    "the PQC queue orders what the twin *observed*. An estate that has not been traced yet produces a queue of capabilities, and every row says so",
+    "threat intelligence matches advisories against component names and versions. It does not read CVE text, so a name mismatch (libcrypto vs openssl) is a miss, not a judgement",
+    "a version range is read as numeric dotted parts. Vendors with their own versioning (or backported patches) need their fix to be expressed as a minimum version, and a backport is invisible here",
+    "the three consumers are read-only by construction. Acting on them \u2014 quarantining a key, opening a migration ticket \u2014 happens outside the twin, where the claim level travels with the request"
+  ]
+}

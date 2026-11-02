@@ -555,6 +555,30 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [CBOM → digital twin: one graph, three consumers](152-cbom-digital-twin.md)
+> (**5 pass · 0 partial · 0 fail**, 30 probes) closes review item 20's architecture:
+> SBOM · STATIC · NETWORK · RUNTIME · HSM/KMS → crypto graph → CBOM → digital twin →
+> drift · PQC migration · threat intelligence. `cbom.digital_twin` **projects** the
+> twin from guide 147's estate chain, so the twin and the document cannot disagree;
+> what it adds is the questions a document cannot answer. A node carries the evidence
+> classes behind it and a `claim_level` from one table (`CAPABILITY` < `IMPORTED` <
+> `CONFIGURED` < `STATIC` < `NETWORK` < `RUNTIME`), and a library stays `CAPABILITY`
+> even when the same algorithm is observed at runtime somewhere else. Every edge keeps
+> its evidence ids, no edge dangles — an algorithm only a key or a suite mentions still
+> becomes a node, as a capability — and a conflict between two observers survives as an
+> edge while a declaration against an observation is resolved by precedence. The three
+> consumers answer and never upgrade: **drift** reports `UNEXPECTED_USE`,
+> `PARAMETER_DRIFT`, `PARAMETER_UNKNOWN` (policy names a size, nothing recorded one, so
+> drift is not asserted), `UNATTRIBUTED`, and `POLICY_NOT_OBSERVED` — the last
+> explicitly *not* evidence of absence; **PQC migration** queues only what is in use,
+> inherits the node's level, and every verdict names its `REGISTRY_*` basis, so a
+> capability-only estate never leads with `IMMEDIATE`; **threat intelligence** matches
+> advisories by component and version and keeps exposures apart — `EXECUTING` (a
+> process loaded it), `PRESENT` (installed, nothing says loaded), `VERSION_UNKNOWN`
+> (neither confirmed nor cleared), `NOT_PRESENT`. `claim_check` re-reads every consumer
+> row against its node and fails if one claimed more. `POST /cbom/twin` exposes it,
+> typed, behind the same reader roles.
+
 > [Adversarial CBOM: the five blockers, attacked](151-cbom-adversarial.md)
 > (**5 pass · 0 partial · 0 fail**, 30 probes) closes review item 21 by attacking it.
 > Five red blockers — evidence spoofing, false attribution, weak evidence promotion,
