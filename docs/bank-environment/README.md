@@ -492,6 +492,31 @@
 > inventory stays at 1156 of 1265 operations and the authorization register at
 > 1235.
 
+> [What a CBOM asset may claim](139-cbom-usage-proof.md)
+> (**6 pass · 0 partial · 0 fail**, 34 probes) takes the CBOM review
+> (`cbom-review-2026-11-02.md`) and makes its central objection code:
+> `AES-256-GCM / confidence HIGH` is eight claims wearing one line. **Evidence
+> classes** are the review's nine values, with a declared fact unable to promote
+> itself (an `IMPORTED` event that claims `layer: runtime` keeps `IMPORTED` and
+> says so) and an observation without an evidence id refused outright. **Usage
+> profile** answers capability, static, config, runtime and network separately,
+> each with its evidence ids, and confidence follows a *stated* ladder — imported
+> `LOW`, static/config `MEDIUM`, runtime or network `HIGH`, runtime *and* network
+> `VERY_HIGH` because they are independent collection mechanisms; the reason ships
+> with the answer. **No false attribution**: a crypto-capable library yields
+> candidate algorithms at `LOW`, never `USED` assets, and only new evidence
+> promotes one. **Conflicts**: every source's claim is kept — SBOM `3.0.13`, container
+> `3.0.13`, runtime `3.0.11`, vendor `3.0.13` — two observing sources that disagree
+> produce a `VERSION_CONFLICT` and the field asserts **no** value. **TLS** is one
+> relationship per hop, attributed to the endpoint that terminated it, never to the
+> application behind it. **Certificates** are their own category and prove no
+> application operation. **Key metadata** carries a reference and refuses material
+> by name. **HSM** capability, configured key and recorded operation are three
+> separate answers. **Coverage**: `12 discovered, 62/100 inspected (62%), PARTIAL`
+> — and only `COMPLETE` lets the count be quoted as a total. Four typed routes
+> (`/cbom/usage`, `/cbom/reconcile`, `/cbom/tls-paths`, `/cbom/hsm-evidence`) are
+> behind `require_roles`, so the session-only write inventory stays at 297.
+
 > [Durability, archives, obligations, deployment](136-sbom-durability-archives-obligations-deployment.md)
 > (**5 pass · 0 partial · 0 fail**, 68 probes, 4 placement, 9 archive and 13
 > licence-model cases) takes the four limits guide 135 named and makes each one

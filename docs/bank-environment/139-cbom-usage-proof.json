@@ -1,0 +1,244 @@
+{
+  "schema": "cryptoscan.cbom-usage-proof-guide/1",
+  "generated_at": "2026-11-02T17:42:06.149489+00:00",
+  "counts": {
+    "PASS": 6,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 34,
+  "rows": [
+    {
+      "id": "evidence_classes",
+      "question": "does every claim carry a class, and can a class lie?",
+      "phase": "review 5 / 21",
+      "probes": [
+        {
+          "probe": "the-nine-classes-are-the-vocabulary",
+          "ok": true,
+          "observed": "OBSERVED, STATIC_OBSERVED, RUNTIME_OBSERVED, NETWORK_OBSERVED, CONFIGURED, IMPORTED, VENDOR_DECLARED, INFERRED, UNKNOWN"
+        },
+        {
+          "probe": "an-invented-class-is-refused-not-mapped",
+          "ok": true,
+          "observed": "only the closed vocabulary is accepted"
+        },
+        {
+          "probe": "an-observation-without-an-evidence-id-is-refused",
+          "ok": true,
+          "observed": "an observation nobody can point at is not evidence"
+        },
+        {
+          "probe": "an-imported-fact-cannot-promote-itself-to-runtime",
+          "ok": true,
+          "observed": "runtime claims RUNTIME_OBSERVED, but the event is IMPORTED; it cannot become an observation without independent evidence"
+        },
+        {
+          "probe": "a-layer-implies-its-class",
+          "ok": true,
+          "observed": "runtime -> RUNTIME_OBSERVED, sbom -> IMPORTED"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "usage_profile",
+      "question": "can an asset say which layer observed it, and why the confidence?",
+      "phase": "review 4 / 17",
+      "probes": [
+        {
+          "probe": "sbom-capability-is-low-confidence-and-not-usage",
+          "ok": true,
+          "observed": "AES-256-GCM (key_size=256, mode=GCM): candidate only; the evidence says it could be used, which is a capability and not an invocation"
+        },
+        {
+          "probe": "a-static-observation-is-medium-and-observed",
+          "ok": true,
+          "observed": "static or configuration evidence places the algorithm here, but nothing watched it run"
+        },
+        {
+          "probe": "a-runtime-observation-is-high-and-carries-its-evidence",
+          "ok": true,
+          "observed": "runtime observed the operation"
+        },
+        {
+          "probe": "runtime-and-network-together-are-very-high",
+          "ok": true,
+          "observed": "runtime and network both observed this asset, which are independent collection mechanisms"
+        },
+        {
+          "probe": "the-reviews-four-layer-view-is-produced",
+          "ok": true,
+          "observed": "{\"static\": true, \"config\": true, \"runtime\": true, \"network\": true}"
+        },
+        {
+          "probe": "evidence-about-another-algorithm-does-not-count",
+          "ok": true,
+          "observed": "a runtime RSA observation says nothing about AES-256-GCM"
+        },
+        {
+          "probe": "no-evidence-is-unknown-not-observed-as-clean",
+          "ok": true,
+          "observed": "no evidence has been collected for this asset"
+        },
+        {
+          "probe": "a-profile-of-nothing-is-refused",
+          "ok": true,
+          "observed": "an asset needs an algorithm"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "no_false_attribution",
+      "question": "does an SBOM mint crypto assets it cannot prove?",
+      "phase": "review 6 / 21",
+      "probes": [
+        {
+          "probe": "a-librarys-support-list-becomes-candidates-not-assets",
+          "ok": true,
+          "observed": "5 candidate algorithm(s) from openssl's capability. A library that supports an algorithm is not an application that calls it, so none of these is a usage claim until an observing layer reports the operation"
+        },
+        {
+          "probe": "a-candidate-carries-the-evidence-that-would-promote-it",
+          "ok": true,
+          "observed": "STATIC_OBSERVED, RUNTIME_OBSERVED, NETWORK_OBSERVED"
+        },
+        {
+          "probe": "only-new-evidence-promotes-a-candidate-to-usage",
+          "ok": true,
+          "observed": "the same asset with a runtime observation is usage; the candidate was not used as evidence"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "conflicts",
+      "question": "does the CBOM collapse disagreeing sources into one version?",
+      "phase": "review 16",
+      "probes": [
+        {
+          "probe": "every-source-is-kept-including-the-declarations",
+          "ok": true,
+          "observed": "IMPORTED, OBSERVED, RUNTIME_OBSERVED, VENDOR_DECLARED"
+        },
+        {
+          "probe": "disagreeing-observers-produce-a-named-conflict",
+          "ok": true,
+          "observed": "version has 2 observed values across 2 source(s); the observation layers disagree and the disagreement is the finding"
+        },
+        {
+          "probe": "a-conflicted-field-asserts-no-value",
+          "ok": true,
+          "observed": "no single value is asserted: the sources conflict"
+        },
+        {
+          "probe": "agreeing-observers-resolve-to-the-strongest-claim",
+          "ok": true,
+          "observed": "3.0.13 from runtime (RUNTIME_OBSERVED), the strongest available claim"
+        },
+        {
+          "probe": "an-imported-claim-does-not-conflict-with-an-observation",
+          "ok": true,
+          "observed": "a declaration is not a second observation"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "tls_certificates_keys",
+      "question": "is termination, certificate crypto and HSM use kept apart?",
+      "phase": "review 8-13 / 21",
+      "probes": [
+        {
+          "probe": "a-tls-chain-is-three-relationships-not-one-attribute",
+          "ok": true,
+          "observed": "3 TLS relationship(s) across 3 endpoint(s); each hop is attributed to the interface that terminated it, not to the application behind it"
+        },
+        {
+          "probe": "each-hop-is-attributed-to-the-endpoint-that-terminated-it",
+          "ok": true,
+          "observed": "attribution is to the observed endpoint"
+        },
+        {
+          "probe": "a-hop-without-evidence-or-endpoint-is-refused",
+          "ok": true,
+          "observed": "an unobserved hop is not a relationship"
+        },
+        {
+          "probe": "a-certificate-is-its-own-category-and-proves-no-operation",
+          "ok": true,
+          "observed": "ECDSA / ECDSA-SHA256 describes the certificate on payments.bank.example:443. A certificate's public key does not prove the application behind it performs that algorithm"
+        },
+        {
+          "probe": "key-metadata-is-a-reference-and-never-material",
+          "ok": true,
+          "observed": "HSM://partition-01/key/PAY-SIGN-001, private_material=NOT STORED"
+        },
+        {
+          "probe": "a-private-key-in-a-cbom-is-an-error",
+          "ok": true,
+          "observed": "the record is refused, not sanitised"
+        },
+        {
+          "probe": "hsm-capability-configured-key-and-operation-are-three-answers",
+          "ok": true,
+          "observed": "VENDOR_DECLARED -> CONFIGURED -> RUNTIME_OBSERVED as evidence accumulates"
+        },
+        {
+          "probe": "an-hsm-operation-without-evidence-is-refused",
+          "ok": true,
+          "observed": "the only evidence of an operation is a record of it"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "coverage_and_api",
+      "question": "does the CBOM state how much of the estate it speaks for?",
+      "phase": "review 18 / 19",
+      "probes": [
+        {
+          "probe": "a-partial-estate-cannot-quote-its-count-as-a-total",
+          "ok": true,
+          "observed": "12 crypto asset(s) discovered; 62/100 application(s) inspected (62%); the count is what was discovered, not what exists"
+        },
+        {
+          "probe": "the-statement-says-discovered-not-exists",
+          "ok": true,
+          "observed": "the count is annotated with its coverage"
+        },
+        {
+          "probe": "only-a-complete-inventory-is-a-total",
+          "ok": true,
+          "observed": "COMPLETE is the only quotable state; NONE and UNKNOWN are named"
+        },
+        {
+          "probe": "the-four-routes-exist-and-are-mounted",
+          "ok": true,
+          "observed": "POST /cbom/{usage,reconcile,tls-paths,hsm-evidence}"
+        },
+        {
+          "probe": "the-schema-key-survives-the-response-model",
+          "ok": true,
+          "observed": "the report's `schema` key is kept by the typed model"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the module classifies evidence, it does not collect it. A caller that labels a vendor's PDF as RUNTIME_OBSERVED with an invented evidence id defeats it, which is why the collecting layer must own the class rather than the request body",
+    "confidence is a ladder over classes present, not a probability: two agreeing observations are VERY_HIGH because the mechanisms are independent, not because the answer has been tested against ground truth",
+    "runtime and network evidence do not yet have first-class collectors feeding this profile. The contract, the ladder and the API exist so that they can, and until they do every asset's runtime and network rows are genuinely NOT_OBSERVED",
+    "a TLS hop is attributed to the endpoint that terminated it. Nothing here proves the traffic before and after a terminator is the same connection, which is why the hops stay separate rather than being joined into a path with one verdict",
+    "certificate parsing is the collector's job: this record keeps the fields it is given, and an incomplete certificate is reported as incomplete rather than read as a weaker certificate",
+    "PQC status is deliberately absent. CBOM says what crypto exists; migration priority, quantum risk and the assessment itself belong to the assessment engine, which already has its own vocabulary"
+  ]
+}

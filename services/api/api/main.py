@@ -62,6 +62,7 @@ from api.routers import (
     topology,
     threat_intel,
     cbom,
+    cbom_usage,
     certificates,
     cloud,
     cloud_scans,
@@ -570,6 +571,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(algorithms.router, prefix=prefix)
     app.include_router(systems.router, prefix=prefix)
     app.include_router(cbom.router, prefix=prefix)
+    app.include_router(cbom_usage.router, prefix=prefix)
     from api.routers import host_evidence, collection
     app.include_router(collection.router, prefix=prefix)
     # Three routers existed with routes, tests and console callers but were never
