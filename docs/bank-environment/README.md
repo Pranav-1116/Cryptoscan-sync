@@ -156,6 +156,16 @@
 > the existing `HsmHardwareScanner`, so the estate keeps one HSM observation and
 > not one per protocol.
 >
+> Correlation now covers network hardware as well as applications:
+> `hardware/network_correlation.py` turns a TLS observation from a device into an
+> evidenced `TERMINATES_TLS` edge (certificate → load balancer), folds the same
+> device's configuration in — a trustpoint, an `ssl certificate` line, a PKCS#11
+> token — and produces `lb-01 -USES_HSM-> HSM-01` on config evidence. Because the
+> certificate is the edge subject, an HA pair presenting one certificate is
+> visible as shared, and blast radius lists the certificates at risk beside the
+> applications instead of counting a certificate as an application (which it did,
+> until this pass).
+>
 > Two PARTIALs remain, and both are probes: no WMI/CIM reader for Windows, and
 > no vendor REST reader for the cluster/HA state that only a vendor API
 > exposes.

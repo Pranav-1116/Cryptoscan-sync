@@ -51,7 +51,14 @@ SOURCE_CONFIDENCE: dict[str, str] = {
 
 #: The edge kinds this module will produce. A relationship is typed, so the twin
 #: can tell "uses" from "hosts" from "terminates TLS for".
-EDGE_KINDS = ("USES_HSM", "USES_TPM", "RUNS_ON", "PART_OF_CLUSTER", "HOSTS", "TERMINATES_TLS")
+EDGE_KINDS = ("USES_HSM", "USES_TPM", "RUNS_ON", "PART_OF_CLUSTER", "HOSTS",
+              "TERMINATES_TLS", "FRONTS")
+
+#: The kinds whose ``subject`` is an application (or a system). Only these count
+#: as blast radius: a certificate terminated by a device is a thing that would
+#: break, not a thing that depends on it, and counting it inflated every radius
+#: by the number of certificates on the device.
+APPLICATION_EDGE_KINDS = frozenset({"USES_HSM", "USES_TPM", "RUNS_ON", "HOSTS"})
 
 #: Tokens that must never appear in an evidence payload — the evidence pointer is
 #: a location, not a value, and a config snippet can carry a credential.
@@ -243,6 +250,10 @@ def blast_radius(hardware: str, edges: Iterable[HardwareEdge | Mapping[str, Any]
             continue
         if not payload.get("evidence"):
             continue  # defensive: an edge with no evidence is not a dependency
+        if payload.get("kind") not in APPLICATION_EDGE_KINDS:
+            # A certificate the device terminates is at risk *with* the device;
+            # it is not an application that depends on it.
+            continue
         touching.append(payload)
 
     applications = sorted({payload["subject"] for payload in touching})
@@ -259,6 +270,7 @@ def blast_radius(hardware: str, edges: Iterable[HardwareEdge | Mapping[str, Any]
                                   key=lambda c: {"HIGH": 3, "MEDIUM": 2, "LOW": 1}[c])
                               if touching else None),
         "edges": touching,
+        "application_edge_kinds": sorted(APPLICATION_EDGE_KINDS),
         "applications_affected": len(applications),
         "systems_affected": len([s for s in systems if s != "UNMAPPED"]),
     }

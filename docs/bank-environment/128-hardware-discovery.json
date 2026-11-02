@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.hardware-discovery/1",
-  "generated_at": "2026-11-02T12:17:28.488853+00:00",
+  "generated_at": "2026-11-02T12:23:01.052953+00:00",
   "counts": {
     "PASS": 5,
     "PARTIAL": 2,
@@ -282,6 +282,31 @@
           "probe": "blast-radius-walks-evidenced-edges",
           "ok": true,
           "observed": "HSM-01 failure reaches 1 application(s), 1 system(s), and the flow(s) ['card-authorisation']"
+        },
+        {
+          "probe": "network-device-terminates-a-certificate",
+          "ok": true,
+          "observed": "a load balancer gained 3 evidenced TERMINATES_TLS edge(s): ['cert:ab12cd34', 'cert:BANK-ROOT', 'cert:card-auth']"
+        },
+        {
+          "probe": "network-device-config-uses-the-hsm",
+          "ok": true,
+          "observed": "the same device config that names its certificate also named the HSM token, so lb-01 -USES_HSM-> HSM-01 exists on CONFIG evidence"
+        },
+        {
+          "probe": "an-ha-pair-shares-its-certificate",
+          "ok": true,
+          "observed": "two load balancers presenting one certificate are reported as sharing it, which is only visible because the certificate is the edge subject"
+        },
+        {
+          "probe": "a-certificate-is-never-misattributed",
+          "ok": true,
+          "observed": "a TLS observation taken from lb-01 cannot be filed against lb-02"
+        },
+        {
+          "probe": "a-certificate-is-not-an-application",
+          "ok": true,
+          "observed": "blast radius counts applications that depend on the device and lists the certificates at risk beside them, instead of counting a certificate as an application"
         }
       ],
       "verdict": "PASS",
@@ -357,7 +382,7 @@
         "vendors": 4,
         "device_types": 6,
         "changes": 400,
-        "seconds": 0.004
+        "seconds": 0.005
       },
       "verdict": "PASS",
       "failed": []
@@ -424,6 +449,7 @@
     "collector breadth feeds each collector a synthetic payload and drives the Linux reader against a fixture sysfs tree and a recorded transcript; no bank host was read, and real hosts differ \u2014 dmidecode absent, root denied, vendor quirks its allowlist has not seen",
     "the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data",
     "the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted replies: no appliance was contacted, and a real device's ENTITY-MIB or `ietf-hardware` model may be sparse, vendor-extended or absent entirely",
+    "network correlation reads a TLS observation and a device config it is given; nothing yet pulls those from the certificate probes or the running configuration of a live device, so a device that was never probed has no edges",
     "only the standard YANG models are read (`ietf-system`, `ietf-hardware`): vendor models expose extra facts \u2014 licence state, HA role, crypto policy \u2014 that this artifact does not collect",
     "the HSM readers run against recorded `pkcs11-tool` output and a hand-built KMIP response: no appliance was opened, and real Luna/nShield/Utimaco tokens differ in which mechanisms they list and which attributes they let an unprivileged session read",
     "the synthetic estate measures identity, drift volume and runtime, not discovery precision or recall against real vendor firmware",

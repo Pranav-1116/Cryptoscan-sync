@@ -125,6 +125,7 @@ def _load_package(root: Path):
     import universal_vendor.hardware.host.netconf as host_netconf  # noqa: PLC0415
     import universal_vendor.hardware.host.restconf as host_restconf  # noqa: PLC0415
     import universal_vendor.hardware.hsm_readers as hsm_readers  # noqa: PLC0415
+    import universal_vendor.hardware.network_correlation as network_correlation  # noqa: PLC0415
     import universal_vendor.hardware.host.snmp_bridge as snmp_bridge  # noqa: PLC0415
     import universal_vendor.hardware.hsm_hw as hsm  # noqa: PLC0415
     import universal_vendor.hardware.models as models  # noqa: PLC0415
@@ -137,7 +138,7 @@ def _load_package(root: Path):
             "device_observation": device_observation,
             "host_credentials": host_credentials, "host_linux": host_linux,
             "host_netconf": host_netconf, "host_restconf": host_restconf, "hsm": hsm,
-            "hsm_readers": hsm_readers,
+            "hsm_readers": hsm_readers, "network_correlation": network_correlation,
             "models": models, "plugins": plugins, "snmp_bridge": snmp_bridge,
             "relationships": relationships, "safety": safety, "tpm": tpm}
 
@@ -392,6 +393,20 @@ def _FIXTURE_KMIP_QUERY_RESPONSE() -> bytes:
     batch = kmip.ttlv_structure(kmip.TAG_BATCH_ITEM,
                                 kmip.ttlv_enum(kmip.TAG_RESULT_STATUS, 0), payload)
     return kmip.ttlv_structure(kmip.TAG_RESPONSE_MESSAGE, batch)
+
+
+_FIXTURE_TLS_OBSERVATION = {
+    "device": "lb-01", "port": 443, "fingerprint_sha256": "ab12cd34",
+    "subject": "CN=card-auth.bank.example", "issuer": "CN=Bank Issuing CA",
+    "san": ["DNS:card-auth.bank.example"], "not_after": "2027-01-10T00:00:00+00:00",
+}
+
+_FIXTURE_DEVICE_CONFIG = """
+hostname lb-01
+crypto pki trustpoint BANK-ROOT
+ ssl certificate card-auth
+ pkcs11 label: HSM-01
+"""
 
 
 def _snmp_modules() -> dict[str, Any] | None:
@@ -1000,6 +1015,50 @@ def row_relationships(modules: dict[str, Any], root: Path) -> dict[str, Any]:
                          f"HSM-01 failure reaches {radius['applications_affected']} application(s), "
                          f"{radius['systems_affected']} system(s), and the flow(s) "
                          f"{radius['business_flows']}"))
+    # H6 for network hardware: a switch tied to the certificate it terminates.
+    correlation = modules["network_correlation"]
+    probe_record = _FIXTURE_TLS_OBSERVATION
+    lb_edges = correlation.derive_network_edges(
+        "lb-01", tls_observations=[probe_record],
+        config_text=_FIXTURE_DEVICE_CONFIG, config_reference="devices/lb-01.conf")
+    peer_edges = correlation.derive_network_edges(
+        "lb-02", tls_observations=[{**probe_record, "device": "lb-02"}])
+    tls_edges = [edge for edge in lb_edges if edge.kind == "TERMINATES_TLS"]
+    probes.append(_probe(
+        "network-device-terminates-a-certificate",
+        any(edge.subject == "cert:ab12cd34" and edge.confidence == "HIGH"
+            for edge in tls_edges),
+        f"a load balancer gained {len(tls_edges)} evidenced TERMINATES_TLS edge(s): "
+        f"{[edge.subject for edge in tls_edges]}"))
+    probes.append(_probe(
+        "network-device-config-uses-the-hsm",
+        any(edge.kind == "USES_HSM" and edge.hardware == "HSM-01" for edge in lb_edges),
+        "the same device config that names its certificate also named the HSM token, so "
+        "lb-01 -USES_HSM-> HSM-01 exists on CONFIG evidence"))
+    probes.append(_probe(
+        "an-ha-pair-shares-its-certificate",
+        correlation.shared_certificates(lb_edges + peer_edges) == {
+            "cert:ab12cd34": ["lb-01", "lb-02"]},
+        "two load balancers presenting one certificate are reported as sharing it, which "
+        "is only visible because the certificate is the edge subject"))
+    try:
+        correlation.derive_network_edges("lb-02", tls_observations=[probe_record])
+    except ValueError:
+        misattributed = True
+    else:
+        misattributed = False
+    probes.append(_probe(
+        "a-certificate-is-never-misattributed", misattributed,
+        "a TLS observation taken from lb-01 cannot be filed against lb-02"))
+    radius = correlation.device_blast_radius("lb-01", lb_edges)
+    probes.append(_probe(
+        "a-certificate-is-not-an-application",
+        radius["applications_affected"] == 0 and "cert:ab12cd34" in radius[
+            "certificates_at_risk"],
+        "blast radius counts applications that depend on the device and lists the "
+        "certificates at risk beside them, instead of counting a certificate as an "
+        "application"))
+
     return {"id": "evidence_relationships",
             "question": "is a hardware dependency proven by evidence, or assumed because both exist?",
             "phase": "H6", "probes": probes}
@@ -1327,6 +1386,9 @@ def measure() -> dict[str, Any]:
             "the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted "
             "replies: no appliance was contacted, and a real device's ENTITY-MIB or "
             "`ietf-hardware` model may be sparse, vendor-extended or absent entirely",
+            "network correlation reads a TLS observation and a device config it is given; "
+            "nothing yet pulls those from the certificate probes or the running "
+            "configuration of a live device, so a device that was never probed has no edges",
             "only the standard YANG models are read (`ietf-system`, `ietf-hardware`): "
             "vendor models expose extra facts — licence state, HA role, crypto policy — that "
             "this artifact does not collect",
@@ -1430,6 +1492,8 @@ def render_md(report: dict[str, Any]) -> str:
         "| HBOM / CBOM / NBOM / TechBOM | `services/api/api/estate_bom_sources.py`, "
         "`bom_maturity.py`, `routers/hbom.py` | projections, not inventories |",
         "| relationships | `hardware/relationships.py` | evidence required to form an edge |",
+        "| network correlation | `hardware/network_correlation.py` — a device to the "
+        "certificates it terminates, and to the HSM its config names | built, executed here |",
         "| drift | `hardware/drift.py`, `hardware/live/events.py` | firmware, capability, PQC |",
         "| safety | `hardware/safety.py` — `refuse_secret_material` | raises, never asserts |",
         "| HSM / TPM depth | `hardware/hsm_hw.py`, `hardware/tpm.py` | metadata only |",
@@ -1493,7 +1557,9 @@ def render_md(report: dict[str, Any]) -> str:
         "| H5 | network hardware: SNMP/NETCONF/REST per authorized class | built end to end on "
         "all three — SNMP/ENTITY-MIB, NETCONF `ietf-hardware`, RESTCONF `ietf-hardware`; "
         "vendor-specific YANG models not read |",
-        "| H6 | correlation: evidence-backed relationships, blast radius | built, executed here |",
+        "| H6 | correlation: evidence-backed relationships, blast radius | built, executed "
+        "here for applications and for network devices; certificate→application (which app "
+        "the TLS protects) is not correlated |",
         "| H7 | drift: firmware, crypto capability, PQC, correlated with cert/app/policy change | "
         "built, executed here |",
         "| H8 | qualification against a real bank estate | synthetic only; precision and recall "

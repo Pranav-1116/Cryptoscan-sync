@@ -1,6 +1,6 @@
 # Hardware discovery — from collectors to a twin, not to a second inventory
 
-`cryptoscan.hardware-discovery/1` · generated 2026-11-02T12:17:28.488853+00:00 · **5 pass · 2 partial · 0 fail**
+`cryptoscan.hardware-discovery/1` · generated 2026-11-02T12:23:01.052953+00:00 · **5 pass · 2 partial · 0 fail**
 
 The review this answers set one architectural rule above all others: hardware is not an independent scanner that emits an HBOM. Collectors feed an evidence engine; the evidence engine feeds the canonical estate; the estate feeds the digital twin; and HBOM, CBOM, NBOM and TechBOM are **projections of that one truth**. A second inventory per BOM document type is the failure mode, and the `single_source_of_truth` row below fails if one appears.
 
@@ -23,7 +23,7 @@ The review this answers set one architectural rule above all others: hardware is
 | hardware foundation — identity, fact schema, evidence | **is there a hardware fact schema and a stable identity behind it?** | **PASS** | 9 probe(s), all passing |
 | collectors — Linux, Windows, network | **do collectors exist for the estate a bank actually has, and does each emit fields?** | **PARTIAL** | 22 probe(s), failing: windows-reader |
 | security hardware — HSM and TPM | **is HSM/TPM discovery deep enough to be worth anything, and can it leak a key?** | **PARTIAL** | 12 probe(s), failing: vendor-rest-readers |
-| correlation — evidence-backed relationships | **is a hardware dependency proven by evidence, or assumed because both exist?** | **PASS** | 5 probe(s), all passing |
+| correlation — evidence-backed relationships | **is a hardware dependency proven by evidence, or assumed because both exist?** | **PASS** | 10 probe(s), all passing |
 | drift — firmware, capability, PQC | **does hardware drift name what moved — firmware, capability, PQC — or just that something did?** | **PASS** | 6 probe(s), all passing |
 | qualification — a synthetic bank estate | **does any of it survive a synthetic bank-sized estate?** | **PASS** | 4 probe(s), all passing |
 | one truth, multiple projections | **is HBOM a projection of the estate, or a second inventory?** | **PASS** | 3 probe(s), all passing |
@@ -44,6 +44,7 @@ Every box in the diagram above is a module, and the mapping is the point: a revi
 | digital twin | `hardware/hbom.py` versioned snapshots over observations | no table of its own |
 | HBOM / CBOM / NBOM / TechBOM | `services/api/api/estate_bom_sources.py`, `bom_maturity.py`, `routers/hbom.py` | projections, not inventories |
 | relationships | `hardware/relationships.py` | evidence required to form an edge |
+| network correlation | `hardware/network_correlation.py` — a device to the certificates it terminates, and to the HSM its config names | built, executed here |
 | drift | `hardware/drift.py`, `hardware/live/events.py` | firmware, capability, PQC |
 | safety | `hardware/safety.py` — `refuse_secret_material` | raises, never asserts |
 | HSM / TPM depth | `hardware/hsm_hw.py`, `hardware/tpm.py` | metadata only |
@@ -80,7 +81,7 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 | H3 | Windows: WMI/CIM, TPM APIs, never a PowerShell string built from input | **not built** |
 | H4 | HSM depth per vendor: PKCS#11 attributes, KMIP `Query`, vendor REST | observation fields built; readers not |
 | H5 | network hardware: SNMP/NETCONF/REST per authorized class | built end to end on all three — SNMP/ENTITY-MIB, NETCONF `ietf-hardware`, RESTCONF `ietf-hardware`; vendor-specific YANG models not read |
-| H6 | correlation: evidence-backed relationships, blast radius | built, executed here |
+| H6 | correlation: evidence-backed relationships, blast radius | built, executed here for applications and for network devices; certificate→application (which app the TLS protects) is not correlated |
 | H7 | drift: firmware, crypto capability, PQC, correlated with cert/app/policy change | built, executed here |
 | H8 | qualification against a real bank estate | synthetic only; precision and recall need ground truth |
 
@@ -153,6 +154,11 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 - **PASS** `an-unevidenced-edge-is-refused` — asking for an edge with no record raises UnevidencedRelationship
 - **PASS** `evidence-pointer-cannot-carry-a-secret` — an evidence reference naming a password is refused: the pointer is a location, not a value
 - **PASS** `blast-radius-walks-evidenced-edges` — HSM-01 failure reaches 1 application(s), 1 system(s), and the flow(s) ['card-authorisation']
+- **PASS** `network-device-terminates-a-certificate` — a load balancer gained 3 evidenced TERMINATES_TLS edge(s): ['cert:ab12cd34', 'cert:BANK-ROOT', 'cert:card-auth']
+- **PASS** `network-device-config-uses-the-hsm` — the same device config that names its certificate also named the HSM token, so lb-01 -USES_HSM-> HSM-01 exists on CONFIG evidence
+- **PASS** `an-ha-pair-shares-its-certificate` — two load balancers presenting one certificate are reported as sharing it, which is only visible because the certificate is the edge subject
+- **PASS** `a-certificate-is-never-misattributed` — a TLS observation taken from lb-01 cannot be filed against lb-02
+- **PASS** `a-certificate-is-not-an-application` — blast radius counts applications that depend on the device and lists the certificates at risk beside them, instead of counting a certificate as an application
 
 ### `hardware_drift` — PASS
 
@@ -174,7 +180,7 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 - **PASS** `drift-scales-with-change-not-with-estate` — 400 change event(s) from 120 upgraded assets in an estate of 600: per-device-type counts {'firewall': 3, 'hsm': 4, 'load_balancer': 3, 'san': 3, 'server': 3, 'tpm': 4}, and no record named an asset that did not change (0 leaked)
 - **PASS** `a-missing-observation-is-not-a-deletion` — identity is retained across observations; an asset that is not re-observed is not silently removed (retirement is its own decision)
 
-Measured: `{"assets": 600, "vendors": 4, "device_types": 6, "changes": 400, "seconds": 0.004}`
+Measured: `{"assets": 600, "vendors": 4, "device_types": 6, "changes": 400, "seconds": 0.005}`
 
 ### `single_source_of_truth` — PASS
 
@@ -202,6 +208,7 @@ Every injected defect was caught.
 - collector breadth feeds each collector a synthetic payload and drives the Linux reader against a fixture sysfs tree and a recorded transcript; no bank host was read, and real hosts differ — dmidecode absent, root denied, vendor quirks its allowlist has not seen
 - the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data
 - the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted replies: no appliance was contacted, and a real device's ENTITY-MIB or `ietf-hardware` model may be sparse, vendor-extended or absent entirely
+- network correlation reads a TLS observation and a device config it is given; nothing yet pulls those from the certificate probes or the running configuration of a live device, so a device that was never probed has no edges
 - only the standard YANG models are read (`ietf-system`, `ietf-hardware`): vendor models expose extra facts — licence state, HA role, crypto policy — that this artifact does not collect
 - the HSM readers run against recorded `pkcs11-tool` output and a hand-built KMIP response: no appliance was opened, and real Luna/nShield/Utimaco tokens differ in which mechanisms they list and which attributes they let an unprivileged session read
 - the synthetic estate measures identity, drift volume and runtime, not discovery precision or recall against real vendor firmware
