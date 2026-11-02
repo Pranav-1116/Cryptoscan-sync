@@ -8,6 +8,23 @@ read-only contract.
 
 from __future__ import annotations
 
+from universal_vendor.hardware.host.credentials import (
+    CredentialLeakRefused as CredentialEchoRefused,
+    refuse_credential_echo,
+    refuse_secret_shapes,
+)
+from universal_vendor.hardware.host.device_observation import to_observation
+from universal_vendor.hardware.host.netconf import (
+    NetconfCollector,
+    NetconfError,
+    SshNetconfTransport,
+    TransportUnavailable,
+)
+from universal_vendor.hardware.host.restconf import (
+    HttpsRestconfTransport,
+    RestconfCollector,
+    RestconfError,
+)
 from universal_vendor.hardware.host.snmp_bridge import (
     CredentialLeakRefused,
     NetworkDeviceFacts,
@@ -33,7 +50,18 @@ from universal_vendor.hardware.host.linux import (
 
 __all__ = [
     "ALLOWED_BINARIES",
+    "CredentialEchoRefused",
     "CredentialLeakRefused",
+    "HttpsRestconfTransport",
+    "NetconfCollector",
+    "NetconfError",
+    "RestconfCollector",
+    "RestconfError",
+    "SshNetconfTransport",
+    "TransportUnavailable",
+    "refuse_credential_echo",
+    "refuse_secret_shapes",
+    "to_observation",
     "NetworkDeviceFacts",
     "SnmpHardwareBridge",
     "SnmpUnavailable",

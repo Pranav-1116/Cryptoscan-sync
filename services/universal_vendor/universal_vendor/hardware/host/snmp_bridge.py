@@ -26,9 +26,15 @@ Two rules the code enforces rather than documents:
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from typing import Any, Callable
+
+from universal_vendor.hardware.host.credentials import (
+    CredentialLeakRefused,
+    refuse_credential_echo,
+    refuse_secret_shapes,
+)
+from universal_vendor.hardware.host.device_observation import to_observation
 
 SCHEMA = "cryptoscan.snmp-hardware/1"
 
@@ -39,14 +45,12 @@ _DISCOVERY_ATTRIBUTES = ("sys_descr", "sys_object_id", "sys_name", "sys_location
                          "interfaces", "routes", "entities", "security_mode", "reachable")
 
 
-class CredentialLeakRefused(RuntimeError):
-    """The bridge was about to return a payload containing the community string."""
-
-    def __init__(self, host: str) -> None:
-        self.host = host
-        super().__init__(
-            f"refusing to return hardware facts for {host}: the SNMP community string "
-            "appears in the payload. A credential is not inventory data")
+__all__ = [
+    "CredentialLeakRefused",
+    "NetworkDeviceFacts",
+    "SnmpHardwareBridge",
+    "SnmpUnavailable",
+]
 
 
 class SnmpUnavailable(RuntimeError):
@@ -59,6 +63,7 @@ class NetworkDeviceFacts:
 
     host: str
     reachable: bool = False
+    transport: str = "snmp"
     vendor: str | None = None
     model: str | None = None
     serial_reference: str | None = None
@@ -79,6 +84,7 @@ class NetworkDeviceFacts:
             "schema": SCHEMA,
             "host": self.host,
             "reachable": self.reachable,
+            "transport": self.transport,
             "vendor": self.vendor,
             "model": self.model,
             "serial_reference": self.serial_reference,
@@ -208,7 +214,9 @@ class SnmpHardwareBridge:
             # observation as its serial number — that is the NBOM/CBOM seam.
             "crypto": self._crypto_from_interfaces(facts.interfaces),
         }
-        self._refuse_credential(facts, community)
+        refuse_credential_echo(facts.context, community, host=host,
+                               kind="SNMP community string")
+        refuse_secret_shapes(facts.context, host=host)
         return facts
 
     # -- helpers --------------------------------------------------------- #
@@ -254,74 +262,8 @@ class SnmpHardwareBridge:
             "note": "cipher suites and TLS versions come from the TLS probe, not from SNMP",
         }
 
-    def _refuse_credential(self, facts: NetworkDeviceFacts, community: str) -> None:
-        if not community:
-            return
-        payload = json.dumps(facts.context, default=str)
-        if community in payload:
-            raise CredentialLeakRefused(facts.host)
-
     # -- projection ------------------------------------------------------ #
 
     def to_observation(self, facts: NetworkDeviceFacts) -> Any:
-        """Build the canonical observation, through a vendor plugin when one matches."""
-        from universal_vendor.hardware.models import (  # noqa: PLC0415
-            HardwareConfidence,
-            HardwareObservation,
-        )
-
-        if not facts.reachable:
-            return None
-        plugin = self._vendor_plugin(facts.vendor)
-        record: dict[str, Any] = {
-            "asset_id": facts.context["asset_id"],
-            "manufacturer": facts.vendor or "",
-            "model": facts.model or "",
-            "serial_reference": facts.serial_reference,
-            "firmware": facts.firmware,
-            "source": "network",
-            "confidence": HardwareConfidence.HIGH.value,
-            "vendor_specific": {
-                "snmp_sysdescr": facts.sys_descr,
-                "security_mode": facts.security_mode,
-                "interfaces": facts.interfaces,
-                "route_count": facts.route_count,
-            },
-        }
-        if plugin is not None:
-            normalised = plugin.normalize({**record, "device_type": plugin.category.value})
-            if isinstance(normalised, HardwareObservation):
-                return normalised
-        return HardwareObservation(
-            asset_id=record["asset_id"],
-            manufacturer=record["manufacturer"],
-            model=record["model"],
-            serial_reference=facts.serial_reference,
-            device_type=self._device_type(facts.context.get("device_type", "switch")),
-            firmware=facts.firmware,
-            source="network",
-            confidence=HardwareConfidence.HIGH.value,
-            vendor_specific=record["vendor_specific"],
-        )
-
-    @staticmethod
-    def _device_type(value: Any) -> str:
-        from universal_vendor.hardware.models import HardwareType  # noqa: PLC0415
-
-        try:
-            return HardwareType(str(value)).value
-        except ValueError:
-            return HardwareType.OTHER.value
-
-    @staticmethod
-    def _vendor_plugin(vendor: str | None) -> Any:
-        if not vendor:
-            return None
-        from universal_vendor.hardware import plugins as hardware_plugins  # noqa: PLC0415
-
-        for plugin_cls in hardware_plugins.ALL_HARDWARE_PLUGINS:
-            if plugin_cls.manufacturer.lower() == vendor.lower() and \
-                    plugin_cls.category.value in {"switch", "firewall", "router",
-                                                  "load_balancer", "network_appliance"}:
-                return plugin_cls()
-        return None
+        """Project network facts into the estate — one implementation, shared."""
+        return to_observation(facts)

@@ -132,9 +132,17 @@
 > firmware, rather than a marketing sentence in sysDescr. A switch arrives as a
 > canonical observation (Cisco C9300-48P, serial `FDO2140A1B2`, firmware
 > `17.9.4a`, TLS-termination seam) with the community string used and dropped:
-> the bridge refuses to return a payload that echoes it. The PARTIAL is now
-> precise: no WMI/CIM reader for Windows, and no NETCONF/REST transport for the
-> appliances that do not speak SNMP.
+> the bridge refuses to return a payload that echoes it.
+>
+> The appliances that do not answer SNMP are covered too:
+> `hardware/host/netconf.py` negotiates a NETCONF session and reads
+> `ietf-system`/`ietf-hardware` with a read-only `<get>` — there is no
+> `edit-config` path in the module to misuse — and `hardware/host/restconf.py`
+> reads the same YANG models over HTTPS, refusing a cleartext device URL. All
+> three transports produce one `NetworkDeviceFacts` and one observation
+> projection, so the estate cannot end up with three versions of the same
+> switch, and each refuses a device that echoes the credential in a field it
+> carries. The PARTIAL is now one probe: no WMI/CIM reader for Windows.
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

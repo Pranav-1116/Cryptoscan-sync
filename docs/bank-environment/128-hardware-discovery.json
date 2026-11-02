@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.hardware-discovery/1",
-  "generated_at": "2026-11-02T11:45:17.344221+00:00",
+  "generated_at": "2026-11-02T12:05:02.558406+00:00",
   "counts": {
     "PASS": 6,
     "PARTIAL": 1,
@@ -152,15 +152,34 @@
           "observed": "a device that echoes the community string in sysDescr is refused rather than inventoried"
         },
         {
-          "probe": "netconf-rest-transport",
-          "ok": false,
-          "observed": "no NETCONF or vendor REST transport: SNMP covers what SNMP exposes, and the appliances that only speak NETCONF still need a caller to fill the context"
+          "probe": "netconf-reads-a-firewall",
+          "ok": true,
+          "observed": "a firewall resolved to Cisco C9300-48P, serial FDO2140A1B2, firmware 17.9.4a over a negotiated NETCONF session (2 exchange(s))"
+        },
+        {
+          "probe": "netconf-is-read-only",
+          "ok": true,
+          "observed": "the only RPC this collector can send is a read-only <get>; there is no edit-config path in the module to misuse"
+        },
+        {
+          "probe": "restconf-reads-a-switch",
+          "ok": true,
+          "observed": "a switch resolved to Juniper EX4300-48T, serial JNP-7788 over RESTCONF and projected through the same observation path as SNMP"
+        },
+        {
+          "probe": "restconf-refuses-cleartext",
+          "ok": true,
+          "observed": "an http:// device URL is refused: a bank's inventory is not read over cleartext"
+        },
+        {
+          "probe": "netconf-refuses-a-credential-echo",
+          "ok": true,
+          "observed": "a device that echoes the credential in a field the collector carries is refused, not inventoried"
         }
       ],
       "verdict": "PARTIAL",
       "failed": [
-        "windows-reader",
-        "netconf-rest-transport"
+        "windows-reader"
       ]
     },
     {
@@ -278,7 +297,7 @@
         {
           "probe": "synthetic-estate-projects",
           "ok": true,
-          "observed": "600 synthetic hardware assets across 4 vendors and 6 device types, projected in 0.00s"
+          "observed": "600 synthetic hardware assets across 4 vendors and 6 device types, projected in 0.01s"
         },
         {
           "probe": "identity-does-not-collide",
@@ -301,7 +320,7 @@
         "vendors": 4,
         "device_types": 6,
         "changes": 400,
-        "seconds": 0.004
+        "seconds": 0.007
       },
       "verdict": "PASS",
       "failed": []
@@ -366,7 +385,8 @@
     "no bank hardware was touched: every HSM and TPM here is a synthetic payload, and no appliance, hypervisor or network device was contacted",
     "collector breadth feeds each collector a synthetic payload and drives the Linux reader against a fixture sysfs tree and a recorded transcript; no bank host was read, and real hosts differ \u2014 dmidecode absent, root denied, vendor quirks its allowlist has not seen",
     "the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data",
-    "the SNMP row runs against a fake socket: no switch was contacted, and a real appliance's ENTITY-MIB may be sparse, vendor-extended or absent entirely",
+    "the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted replies: no appliance was contacted, and a real device's ENTITY-MIB or `ietf-hardware` model may be sparse, vendor-extended or absent entirely",
+    "only the standard YANG models are read (`ietf-system`, `ietf-hardware`): vendor models expose extra facts \u2014 licence state, HA role, crypto policy \u2014 that this artifact does not collect",
     "the synthetic estate measures identity, drift volume and runtime, not discovery precision or recall against real vendor firmware",
     "encryption at rest, per-tenant key custody and vendor attestation are outside this artifact entirely"
   ]

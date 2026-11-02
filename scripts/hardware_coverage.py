@@ -119,7 +119,11 @@ def _load_package(root: Path):
     import universal_vendor.hardware.discovery as discovery  # noqa: PLC0415
     import universal_vendor.hardware.drift as drift  # noqa: PLC0415
     import universal_vendor.hardware.fingerprint as fingerprint  # noqa: PLC0415
+    import universal_vendor.hardware.host.credentials as host_credentials  # noqa: PLC0415
+    import universal_vendor.hardware.host.device_observation as device_observation  # noqa: PLC0415
     import universal_vendor.hardware.host.linux as host_linux  # noqa: PLC0415
+    import universal_vendor.hardware.host.netconf as host_netconf  # noqa: PLC0415
+    import universal_vendor.hardware.host.restconf as host_restconf  # noqa: PLC0415
     import universal_vendor.hardware.host.snmp_bridge as snmp_bridge  # noqa: PLC0415
     import universal_vendor.hardware.hsm_hw as hsm  # noqa: PLC0415
     import universal_vendor.hardware.models as models  # noqa: PLC0415
@@ -129,8 +133,10 @@ def _load_package(root: Path):
     import universal_vendor.hardware.tpm as tpm  # noqa: PLC0415
 
     return {"discovery": discovery, "drift": drift, "fingerprint": fingerprint,
-            "host_linux": host_linux, "hsm": hsm, "models": models, "plugins": plugins,
-            "snmp_bridge": snmp_bridge,
+            "device_observation": device_observation,
+            "host_credentials": host_credentials, "host_linux": host_linux,
+            "host_netconf": host_netconf, "host_restconf": host_restconf, "hsm": hsm,
+            "models": models, "plugins": plugins, "snmp_bridge": snmp_bridge,
             "relationships": relationships, "safety": safety, "tpm": tpm}
 
 
@@ -282,6 +288,37 @@ class _HostTranscript:
             return host_linux.CommandResult(tuple(argv), 127, "", "not installed",
                                             available=False)
         return host_linux.CommandResult(tuple(argv), 0, stdout, "")
+
+
+_FIXTURE_NETCONF_HELLO = (
+    '<hello xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><capabilities>'
+    "<capability>urn:ietf:params:netconf:base:1.0</capability>"
+    "<capability>urn:ietf:params:netconf:base:1.1</capability>"
+    "<capability>urn:ietf:params:xml:ns:yang:ietf-hardware</capability>"
+    "</capabilities><session-id>7</session-id></hello>"
+)
+
+_FIXTURE_NETCONF_REPLY = """<rpc-reply message-id="1"
+    xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><data>
+  <system xmlns="urn:ietf:params:xml:ns:yang:ietf-system">
+    <hostname>core-fw-01</hostname><location>DXB-DC1-ROW3</location>
+  </system>
+  <hardware xmlns="urn:ietf:params:xml:ns:yang:ietf-hardware">
+    <component><name>Chassis</name><class>chassis</class>
+      <serial-num>FDO2140A1B2</serial-num><model-name>C9300-48P</model-name>
+      <firmware-rev>17.9.4a</firmware-rev><manufacturer>Cisco</manufacturer></component>
+    <component><name>Fan tray 1</name><class>module</class>
+      <serial-num>FAN-0001</serial-num></component>
+  </hardware>
+</data></rpc-reply>"""
+
+_FIXTURE_RESTSYSTEM = {"ietf-system:system": {"hostname": "edge-sw-02",
+                                              "location": "DXB-DC2"}}
+_FIXTURE_RESTHARDWARE = {"ietf-hardware:hardware": {"component": [
+    {"name": "Chassis", "class": "chassis", "serial-num": "JNP-7788",
+     "model-name": "EX4300-48T", "firmware-rev": "21.4R3", "manufacturer": "Juniper"},
+    {"name": "Fan 1", "class": "module", "serial-num": "FAN-J1"},
+]}}
 
 
 def _snmp_modules() -> dict[str, Any] | None:
@@ -613,10 +650,72 @@ def row_collectors(modules: dict[str, Any], root: Path) -> dict[str, Any]:
     else:
         probes.append(_probe("snmp-reads-a-switch", False,
                              "the network scanner's SNMP client could not be imported"))
+    # H5 continued: the two transports that are not SNMP.
+    netconf = modules["host_netconf"]
+    restconf = modules["host_restconf"]
+    requests: list[str] = []
+
+    def netconf_exchange(host, request):
+        requests.append(request)
+        return _FIXTURE_NETCONF_HELLO if "<hello" in request else _FIXTURE_NETCONF_REPLY
+
+    netconf_facts = netconf.NetconfCollector(exchange=netconf_exchange).collect(
+        "core-fw-01", credential_ref="coverage-credential")
     probes.append(_probe(
-        "netconf-rest-transport", False,
-        "no NETCONF or vendor REST transport: SNMP covers what SNMP exposes, and the "
-        "appliances that only speak NETCONF still need a caller to fill the context"))
+        "netconf-reads-a-firewall",
+        netconf_facts.reachable and netconf_facts.serial_reference == "FDO2140A1B2"
+        and netconf_facts.model == "C9300-48P" and netconf_facts.firmware == "17.9.4a",
+        "a firewall resolved to Cisco C9300-48P, serial FDO2140A1B2, firmware 17.9.4a "
+        f"over a negotiated NETCONF session ({len(requests)} exchange(s))"
+        if netconf_facts.reachable else f"NETCONF produced nothing: {netconf_facts.unavailable}"))
+    probes.append(_probe(
+        "netconf-is-read-only",
+        all("<get>" in request for request in requests if "<hello" not in request)
+        and not any("edit-config" in request for request in requests),
+        "the only RPC this collector can send is a read-only <get>; there is no "
+        "edit-config path in the module to misuse"))
+
+    def restconf_fetch(base_url, path):
+        return _FIXTURE_RESTSYSTEM if path.endswith("ietf-system:system") \
+            else _FIXTURE_RESTHARDWARE
+
+    restconf_facts = restconf.RestconfCollector(fetch=restconf_fetch).collect(
+        "https://10.0.0.5", credential_ref="coverage-credential")
+    restconf_observation = modules["device_observation"].to_observation(restconf_facts)
+    probes.append(_probe(
+        "restconf-reads-a-switch",
+        restconf_facts.reachable and restconf_facts.serial_reference == "JNP-7788"
+        and restconf_facts.model == "EX4300-48T"
+        and restconf_observation is not None
+        and restconf_observation.device_type == "switch",
+        "a switch resolved to Juniper EX4300-48T, serial JNP-7788 over RESTCONF and "
+        "projected through the same observation path as SNMP"
+        if restconf_facts.reachable
+        else f"RESTCONF produced nothing: {restconf_facts.unavailable}"))
+    try:
+        restconf.HttpsRestconfTransport._url("http://10.0.0.5")
+    except restconf.RestconfError:
+        cleartext_refused = True
+    else:
+        cleartext_refused = False
+    probes.append(_probe(
+        "restconf-refuses-cleartext", cleartext_refused,
+        "an http:// device URL is refused: a bank's inventory is not read over "
+        "cleartext"))
+    echoed = _FIXTURE_NETCONF_REPLY.replace(
+        "<model-name>C9300-48P</model-name>", "<model-name>coverage-credential</model-name>")
+    try:
+        netconf.NetconfCollector(
+            exchange=lambda host, request: _FIXTURE_NETCONF_HELLO if "<hello" in request
+            else echoed).collect("core-fw-01", credential_ref="coverage-credential")
+    except modules["host_credentials"].CredentialLeakRefused:
+        credential_refused = True
+    else:
+        credential_refused = False
+    probes.append(_probe(
+        "netconf-refuses-a-credential-echo", credential_refused,
+        "a device that echoes the credential in a field the collector carries is "
+        "refused, not inventoried"))
     return {"id": "collector_breadth",
             "question": "do collectors exist for the estate a bank actually has, and does each emit fields?",
             "phase": "H2/H3/H5", "probes": probes}
@@ -1081,8 +1180,12 @@ def measure() -> dict[str, Any]:
             "allowlist has not seen",
             "the Linux reader is unprivileged by design, so on a hardened host its memory, "
             "disk-health and PCI facts degrade to `unavailable` reasons rather than to data",
-            "the SNMP row runs against a fake socket: no switch was contacted, and a real "
-            "appliance's ENTITY-MIB may be sparse, vendor-extended or absent entirely",
+            "the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted "
+            "replies: no appliance was contacted, and a real device's ENTITY-MIB or "
+            "`ietf-hardware` model may be sparse, vendor-extended or absent entirely",
+            "only the standard YANG models are read (`ietf-system`, `ietf-hardware`): "
+            "vendor models expose extra facts — licence state, HA role, crypto policy — that "
+            "this artifact does not collect",
             "the synthetic estate measures identity, drift volume and runtime, not discovery "
             "precision or recall against real vendor firmware",
             "encryption at rest, per-tenant key custody and vendor attestation are outside this "
@@ -1161,9 +1264,11 @@ def render_md(report: dict[str, Any]) -> str:
         "| the Linux reader | `hardware/host/linux.py` — `/sys` allowlist, dmidecode, lsblk, "
         "lspci, smartctl through an argv allowlist | built, executed here |",
         "| the Windows reader | — | **not built**; WMI/CIM is the gap |",
-        "| the network transport | `hardware/host/snmp_bridge.py` over the network scanner's "
-        "SNMPv2c client (`enterprise/vendors/snmp.py`, now with ENTITY-MIB) | built, executed "
-        "here over a real BER walk; NETCONF/REST still missing |",
+        "| the network transports | `hardware/host/snmp_bridge.py` over the network scanner's "
+        "SNMPv2c client (`enterprise/vendors/snmp.py`, now with ENTITY-MIB); "
+        "`hardware/host/netconf.py` and `hardware/host/restconf.py` for the devices that do "
+        "not answer SNMP | built, executed here; all three produce one `NetworkDeviceFacts` "
+        "and one observation projection |",
         "| identity + confidence | `hardware/identity.py` (signals, `first_seen`/`last_seen`), "
         "`hardware/fingerprint.py` | deterministic; confidence follows corroboration |",
         "| evidence engine | `hardware/fingerprint.py` — per-source weights; "
@@ -1234,8 +1339,9 @@ def render_md(report: dict[str, Any]) -> str:
         "built** |",
         "| H4 | HSM depth per vendor: PKCS#11 attributes, KMIP `Query`, vendor REST | observation "
         "fields built; readers not |",
-        "| H5 | network hardware: SNMP/NETCONF/REST per authorized class | SNMP built end to "
-        "end (serial, model, firmware from ENTITY-MIB); NETCONF/REST not built |",
+        "| H5 | network hardware: SNMP/NETCONF/REST per authorized class | built end to end on "
+        "all three — SNMP/ENTITY-MIB, NETCONF `ietf-hardware`, RESTCONF `ietf-hardware`; "
+        "vendor-specific YANG models not read |",
         "| H6 | correlation: evidence-backed relationships, blast radius | built, executed here |",
         "| H7 | drift: firmware, crypto capability, PQC, correlated with cert/app/policy change | "
         "built, executed here |",
@@ -1282,16 +1388,16 @@ def render_md(report: dict[str, Any]) -> str:
         "same allowlist discipline as the Linux reader, and the TPM APIs read through the "
         "OS surface rather than a vendor tool. It must be tested on Windows, which no CI "
         "here can do — so it will ship with the gap stated, not with a green row.",
-        "2. **H5 NETCONF and vendor REST** — SNMP now carries a switch's identity, but "
-        "NETCONF/REST-only appliances (many firewalls and load balancers) still need a "
-        "caller to fill the context. Same rule as the other transports: fixed operations, "
-        "credentials referenced not stored, and a stated reason when a device refuses.",
+        "2. **Vendor YANG and vendor REST models** — the standard `ietf-hardware` model "
+        "carries serial, model and firmware; it does not carry HA role, licence state or "
+        "crypto policy. Those live in vendor models (`Cisco-IOS-XE-*`, `junos-*`), and each "
+        "one needs its own parser and its own negative control before it is trusted.",
         "3. **H4 HSM depth per vendor** — partition, cluster and HA state are in the "
         "observation model; what is missing is a reader per vendor (PKCS#11 attributes, "
         "KMIP `Query`, vendor REST) and a burn-in against each.",
         "4. **H6 correlation for network hardware** — a switch is now in the estate, but "
-        "nothing yet links it to the certificates it terminates or the flows it carries; "
-        "the relationship engine can express that edge and has no network evidence source "
+        "nothing links it to the certificates it terminates or the flows it carries; the "
+        "relationship engine can express that edge and has no network evidence source "
         "feeding it yet.",
         "5. **H8 qualification against a real bank estate** — the synthetic run above is a "
         "floor. Precision and recall need ground truth only a customer can provide.",
@@ -1300,10 +1406,11 @@ def render_md(report: dict[str, Any]) -> str:
         "model, the security-hardware metadata model, the evidence rule for "
         "relationships and the drift vocabulary are implemented and executed here, and "
         "the projection architecture the review asked for is the one in the code. What is "
-        "*not* done is collector reach into Windows and hypervisor estates, NETCONF/REST "
-        "transports, per-vendor HSM readers, and a run against real hardware — the Linux "
-        "reader is driven by a fixture and a transcript, and the SNMP walk by a fake "
-        "socket. Each is named above rather than folded into the score.",
+        "*not* done is collector reach into Windows and hypervisor estates, per-vendor HSM "
+        "readers, vendor YANG models, and a run against real hardware — the Linux reader is "
+        "driven by a fixture and a transcript, the SNMP walk by a fake socket, and NETCONF "
+        "and RESTCONF by scripted replies. Each is named above rather than folded into the "
+        "score.",
         "",
     ]
     return "\n".join(lines)

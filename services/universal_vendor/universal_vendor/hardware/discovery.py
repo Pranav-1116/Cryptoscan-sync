@@ -88,6 +88,30 @@ class NetworkBasedDiscovery:
                     "mac_oui": context.get("mac_oui"),
                 },
             })
+        # NETCONF and RESTCONF produce the same facts as SNMP under a different
+        # key. Reading only "snmp" here is how a firewall reached the collector
+        # and stopped: the transport was implemented and the merge never asked
+        # for it.
+        device = context.get("network_device") or {}
+        if device:
+            records.append({
+                "asset_id": context.get("asset_id") or device.get("sysname")
+                or "network-device",
+                "manufacturer": device.get("manufacturer")
+                or context.get("manufacturer", ""),
+                "model": device.get("model") or context.get("model", ""),
+                "serial_reference": device.get("serial"),
+                "device_type": context.get("device_type", HardwareType.SWITCH.value),
+                "firmware": device.get("firmware"),
+                "source": self.method,
+                "confidence": HardwareConfidence.HIGH.value,
+                "vendor_specific": {
+                    "protocol": device.get("protocol"),
+                    "sysname": device.get("sysname"),
+                    "location": device.get("location"),
+                    "security_mode": device.get("security_mode"),
+                },
+            })
         if context.get("passive_observation"):
             records.append({
                 "asset_id": context.get("asset_id", "passive-host"),
