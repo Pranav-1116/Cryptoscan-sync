@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.hardware-discovery/1",
-  "generated_at": "2026-11-02T13:15:14.281639+00:00",
+  "generated_at": "2026-11-02T13:30:12.953357+00:00",
   "counts": {
     "PASS": 7,
     "PARTIAL": 0,
@@ -114,12 +114,17 @@
         {
           "probe": "linux-reader-parses-allowlisted-commands",
           "ok": true,
-          "observed": "1 memory module(s), 2 disk(s), SMART health and 1 PCI device(s) from 6 command(s): ['dmidecode', 'lscpu', 'lsblk', 'smartctl', 'smartctl', 'lspci']"
+          "observed": "1 memory module(s), 2 disk(s), SMART health and 1 PCI device(s) from 8 command(s): ['dmidecode', 'lscpu', 'lsblk', 'smartctl', 'smartctl', 'lspci', 'tpm2_getcap', 'opensc-tool']"
         },
         {
           "probe": "linux-reader-refuses-arbitrary-commands",
           "ok": true,
           "observed": "a shell, a metacharacter argument, a traversal device path and a non-device file were all refused (4/4)"
+        },
+        {
+          "probe": "linux-reader-reads-the-security-components-it-can-see",
+          "ok": true,
+          "observed": "TPM 2.0 from IFX firmware 7.63.8.13139 via tpm2_getcap, 1 smart-card reader with a card present via opensc-tool \u2014 and the argv allowlist refuses a second tpm2_getcap subcommand, so neither tool can be asked for anything deeper"
         },
         {
           "probe": "linux-reader-runs-no-shell",
@@ -132,9 +137,14 @@
           "observed": "identity Dell Inc. PowerEdge R760 serial SN-WIN-0001, BIOS 1.9.3 (2024-02-14), 2 disk firmware revisions and a TPM 2.0, 0, 1.16 \u2014 with the TPM capabilities WMI does not expose left absent rather than invented"
         },
         {
+          "probe": "windows-reader-enumerates-the-device-tree",
+          "ok": true,
+          "observed": "5/5 device-tree classes collected on Windows (pci, gpu, nic, storage_controller, smart_card), a AMD Radeon Pro V520 named by its controller class, a smart-card reader distinguished from a card, and RAID and a crypto accelerator left UNKNOWN because Windows names neither"
+        },
+        {
           "probe": "windows-reader-allowlist-is-closed",
           "ok": true,
-          "observed": "8 CIM classes may be read, each for named properties only; a class outside the table (Win32_Process) is refused rather than run, and no generated script contains a verb that evaluates text or starts a process"
+          "observed": "12 CIM classes may be read, each for named properties only; a class outside the table (Win32_Process) is refused rather than run, and no generated script contains a verb that evaluates text or starts a process"
         },
         {
           "probe": "windows-reader-runs-no-shell",
@@ -525,6 +535,8 @@
     "collector breadth feeds each collector a synthetic payload and drives the Linux reader against a fixture sysfs tree and a recorded transcript; no bank host was read, and real hosts differ \u2014 dmidecode absent, root denied, vendor quirks its allowlist has not seen",
     "the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data",
     "the Windows reader runs against a recorded CIM transcript on a Linux runner: the allowlist, the projection and the refusals are executed, but no Windows host was read \u2014 WMI can be disabled by policy, a vendor's `Win32_Tpm` may be absent, and appliance-specific classes are not in the table",
+    "the Windows device tree is projected from `PNPClass`, which is a Setup Class name and not a PCI class code: a controller Windows calls `SCSIAdapter` is recorded as a storage controller, and an array, an accelerator or a crypto offload has no class to read at all \u2014 those stay UNKNOWN rather than being inferred from a vendor string",
+    "a smart-card reader is not a smart card: `opensc-tool --list-readers` and `Win32_PnPEntity` establish that an interface exists and whether a card is seated, and neither reads the card's certificates \u2014 that needs a PC/SC session this collector does not open",
     "the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted replies: no appliance was contacted, and a real device's ENTITY-MIB or `ietf-hardware` model may be sparse, vendor-extended or absent entirely",
     "drift correlation now fills its hardware side from the live pipeline (`hardware/live/change_feed.py`, wired into `LiveHardwareController.ingest`), but the certificate, application and policy records still have to be handed in: those feeds are not subscribed, so an unaccompanied finding can mean the other feed has not been wired rather than that nothing moved",
     "network correlation reads a TLS observation and a device config it is given; nothing yet pulls those from the certificate probes or the running configuration of a live device, so a device that was never probed has no edges",

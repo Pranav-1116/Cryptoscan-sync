@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.hardware-breadth/1",
-  "generated_at": "2026-11-02T13:21:42.382944+00:00",
+  "generated_at": "2026-11-02T13:33:53.552214+00:00",
   "counts": {
     "PASS": 6,
     "PARTIAL": 0,
@@ -15,7 +15,7 @@
         {
           "probe": "fifteen-component-classes",
           "ok": true,
-          "observed": "every class the review named is reported for this host: cpu=PRESENT, memory=PRESENT, motherboard=PRESENT, bios=PRESENT, firmware=PRESENT, pci=PRESENT, gpu=PRESENT, nic=PRESENT, storage_controller=ABSENT, disk=PRESENT, raid=PRESENT, tpm=UNKNOWN, hsm=PRESENT, smart_card=ABSENT, crypto_accelerator=ABSENT"
+          "observed": "every class the review named is reported for this host: cpu=PRESENT, memory=PRESENT, motherboard=PRESENT, bios=PRESENT, firmware=PRESENT, pci=PRESENT, gpu=PRESENT, nic=PRESENT, storage_controller=ABSENT, disk=PRESENT, raid=PRESENT, tpm=PRESENT, hsm=PRESENT, smart_card=PRESENT, crypto_accelerator=ABSENT"
         },
         {
           "probe": "host-facts-reach-the-cpu-and-memory",
@@ -40,12 +40,22 @@
         {
           "probe": "an-unlooked-tpm-is-unknown-not-absent",
           "ok": true,
-          "observed": "no TPM reader ran for this host, so the TPM is UNKNOWN with that reason; a collector that never opens a TPM cannot report that a machine has none"
+          "observed": "with the reader stripped the TPM is UNKNOWN and says nobody looked; with tpm2_getcap in the transcript it is PRESENT (IFX firmware 7.63.8.13139) \u2014 the third state is what keeps the first answer honest"
         },
         {
-          "probe": "windows-reports-what-it-cannot-enumerate",
+          "probe": "a-smart-card-reader-is-not-a-card",
           "ok": true,
-          "observed": "Windows fills CPU, memory, BIOS, motherboard, disk and TPM from CIM, and reports PCI, GPU, RAID, storage controller and NIC as UNKNOWN because those classes are not on its allowlist"
+          "observed": "1 reader(s) from opensc-tool with card_present=True; the two facts are separate because an empty reader and an absent reader are different findings"
+        },
+        {
+          "probe": "windows-collects-its-device-tree",
+          "ok": true,
+          "observed": "Windows fills CPU, memory modules, BIOS, motherboard, disk and TPM from CIM, and the device tree now names PCI, GPU, NIC and storage controllers too \u2014 only RAID and a crypto accelerator stay UNKNOWN, because Windows exposes an array as a property of its controller and has no accelerator class at all"
+        },
+        {
+          "probe": "a-class-is-unknown-for-a-named-reason-on-every-platform",
+          "ok": true,
+          "observed": "both UNKNOWN classes on Windows carry the reason the platform gives, and a Windows reader that did not read the device tree says so instead of reporting an empty bus"
         },
         {
           "probe": "the-inventory-is-a-projection-not-a-store",
@@ -65,9 +75,9 @@
         "storage_controller": "ABSENT",
         "disk": "PRESENT",
         "raid": "PRESENT",
-        "tpm": "UNKNOWN",
+        "tpm": "PRESENT",
         "hsm": "PRESENT",
-        "smart_card": "ABSENT",
+        "smart_card": "PRESENT",
         "crypto_accelerator": "ABSENT"
       },
       "verdict": "PASS",
@@ -275,6 +285,11 @@
           "observed": "the same code path reads a real file, so the refusals above are not a reader that refuses everything"
         },
         {
+          "probe": "an-allowlisted-binary-still-has-a-fixed-argv",
+          "ok": true,
+          "observed": "3/3 non-allowlisted argument(s) refused (tpm2_getcap properties-variable, tpm2_getcap --tcti=device, opensc-tool --read-certificate) while the one shape each tool is run as still passes \u2014 a TPM subcommand or a card-certificate read is not reachable by asking the reader for it"
+        },
+        {
           "probe": "a-failing-row-degrades-the-rating-that-rested-on-it",
           "ok": true,
           "observed": "forcing `security_qualification` to FAIL removed green from 1/1 area(s) that rested on it"
@@ -346,7 +361,7 @@
         "before": "\ud83d\udfe2",
         "proven_by": "security_qualification",
         "proven_by_verdict": "PASS",
-        "rests_on": "guards executed on this runner: hostile path, hard link, FIFO, oversized input, mid-read mutation, PEM and human spellings of secret material",
+        "rests_on": "guards executed on this runner: hostile path, hard link, FIFO, oversized input, mid-read mutation, PEM and human spellings of secret material, and a per-argument allowlist on the two new readers",
         "open_gap": "none outstanding for the Linux reader; Windows traversal guards need a Windows host",
         "moved": false
       },
@@ -366,7 +381,7 @@
         "before": "\ud83d\udfe2",
         "proven_by": "component_breadth",
         "proven_by_verdict": "PASS",
-        "rests_on": "foundation: 15 component classes projected from DMI, lscpu, lspci, firmware and disk facts behind an argv allowlist",
+        "rests_on": "foundation: 15 component classes projected from DMI, lscpu, lspci, tpm2_getcap, opensc-tool, firmware and disk facts behind a per-argument allowlist",
         "open_gap": "breadth comes from allowlisted binaries, so a class with no binary is UNKNOWN",
         "moved": false
       },
@@ -436,8 +451,8 @@
         "before": "\ud83d\udfe0",
         "proven_by": "component_breadth",
         "proven_by_verdict": "PASS",
-        "rests_on": "review item A: CPU, memory, motherboard, BIOS, firmware, PCI, GPU, NIC, storage controller, disk, RAID, TPM, HSM, smart card and crypto accelerator now have a class, a reader or an honest UNKNOWN",
-        "open_gap": "no PC/SC reader and no accelerator probe: those two classes are projected, not collected",
+        "rests_on": "review item A: CPU, memory, motherboard, BIOS, firmware, PCI, GPU, NIC, storage controller, disk, RAID, TPM, HSM, smart card and crypto accelerator now have a class, a reader and a projection on both Linux and Windows",
+        "open_gap": "an accelerator has no enumerable class on either platform, RAID has none on Windows, and a smart-card reader is not the card's content",
         "moved": true
       },
       {
@@ -446,8 +461,8 @@
         "before": "\ud83d\udfe1",
         "proven_by": "component_breadth",
         "proven_by_verdict": "PASS",
-        "rests_on": "implemented and candidate: CIM allowlist executes and the projection is exercised, PCI/GPU/RAID/storage/NIC report UNKNOWN by design",
-        "open_gap": "no Windows host has run it",
+        "rests_on": "implemented and candidate: twelve allowlisted CIM reads, and the device tree now names PCI, GPU, NIC, storage controllers and smart-card readers",
+        "open_gap": "no Windows host has run it, and RAID/accelerator have no Windows class to read",
         "moved": false
       },
       {
@@ -456,8 +471,8 @@
         "before": "\ud83d\udfe1",
         "proven_by": "component_breadth",
         "proven_by_verdict": "PASS",
-        "rests_on": "missing: Win32_PnPEntity and Win32_VideoController would close the PCI, GPU and NIC unknowns",
-        "open_gap": "one allowlist entry plus a projection, then a host",
+        "rests_on": "missing: the device tree is read and projected against a recorded transcript, but no Windows host has produced one",
+        "open_gap": "a Windows host and a real transcript",
         "moved": false
       }
     ],
@@ -478,6 +493,8 @@
     "a token label shared by two appliances is refused rather than resolved; on a real estate that refusal is a labelling job, not a bug",
     "the business impact walk depends on service and business-system records a bank maintains; this artifact exercises the chain with CMDB-shaped fixtures and does not connect to a CMDB",
     "drift here is a single-appliance diff executed in-process; it does not prove what a fleet does when a firmware rollback lands on one unit of a cluster",
-    "the security row executes the collection guards on this runner as an unprivileged or elevated process, whichever it is; Windows traversal guards need a Windows host"
+    "the security row executes the collection guards on this runner as an unprivileged or elevated process, whichever it is; Windows traversal guards need a Windows host",
+    "the Windows device tree is projected from `PNPClass`, a Setup Class name and not a PCI class code: a smart-card reader is a reader (whether a card is seated is a separate fact) and a controller Windows calls `SCSIAdapter` is recorded as a storage controller, not as the array behind it",
+    "on Linux the two new readers run as the same unprivileged user as `lspci`, so a host with a policy that denies `/dev/tpm0` or hides the PC/SC socket reports TPM and smart-card as UNKNOWN with that reason rather than as absent"
   ]
 }

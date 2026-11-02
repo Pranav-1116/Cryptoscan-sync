@@ -228,9 +228,16 @@
 > (nobody looked, and here is why). That third state is the whole point: an
 > unprivileged collector that reports "no GPU, no TPM, no accelerator" is lying by
 > omission, and this one cannot. The Linux reader gained `lscpu` so the processor
-> is a fact rather than a gap, PCI class codes identify the GPU, RAID controller
-> and crypto accelerator, and on Windows the classes the CIM allowlist cannot see
-> are `UNKNOWN` with the missing class named.
+> is a fact rather than a gap, and PCI class codes identify the GPU, RAID
+> controller and crypto accelerator; `tpm2_getcap` and `opensc-tool` closed the TPM
+> and smart-card classes, behind a **per-argument** allowlist so that an
+> allowlisted binary cannot be asked for a second subcommand it happens to
+> support. On Windows the reader now reads twelve CIM classes: `Win32_PnPEntity`,
+> `Win32_VideoController`, `Win32_NetworkAdapter` and `Win32_PhysicalMemory` name
+> the PCI devices, the display controller, the adapters and the memory modules
+> socket by socket, so only RAID and a crypto accelerator remain `UNKNOWN` — the
+> two things Windows gives no class for — and each says why rather than reading as
+> an empty server.
 >
 > `hardware/usage_graph.py` draws `HSM-01 —USED_BY→ Payment API` only where a
 > configuration names both ends — the PKCS#11 token label, the KMIP server — and
@@ -247,11 +254,13 @@
 > no business mapping **named** rather than counted as zero.
 >
 > Running the collection guards rather than describing them found two real
-> defects: an HSM payload carrying a PEM block (`-----BEGIN PRIVATE KEY-----`) was
-> accepted because the guard only knew the `private_key` spelling, and the
-> controller recorded a PQC change under its canonical event name, so the same
-> change crossed the feed/controller seam twice and inflated the correlation
-> counts. Both are fixed, and both are now probes.
+> defects: an HSM payload carrying a PEM block was accepted because the guard only
+> knew the `private_key` spelling, and the controller recorded a PQC change under
+> its canonical event name, so the same change crossed the feed/controller seam
+> twice and inflated the correlation counts. Both are fixed, and both are now
+> probes. The Windows device-tree work was verified the same way — the transcript
+> is the reader's own input, and the projection's answer is what the artifact
+> prints, not what a paragraph claims.
 >
 > The artifact closes with the review's reclassification table, and the ratings
 > are **computed, not typed**: each area names the row that proves it plus a

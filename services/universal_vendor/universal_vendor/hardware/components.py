@@ -330,9 +330,14 @@ def from_linux(context: Mapping[str, Any], *,
         looked=bool(disks) or "disks" in (context.get("sources") or {})))
 
     # The security-hardware kinds are not the host reader's job: a host collector
-    # that opens a TPM is a collector with more privilege than it needs.
+    # that opens a TPM is a collector with more privilege than it needs. Two of
+    # them are an exception because a *reader* for them is allowlisted and cheap:
+    # tpm2_getcap and opensc-tool run as the same unprivileged user as lspci, and
+    # neither takes a path or a device node. An explicit record still wins.
+    supplied = {**dict(context.get("security_hardware") or {}),
+                **dict(security_hardware or {})}
     for kind in SECURITY_KINDS:
-        inventory.add(_security_component(kind, (security_hardware or {}).get(kind)))
+        inventory.add(_security_component(kind, supplied.get(kind)))
     return inventory
 
 
@@ -359,18 +364,19 @@ def from_windows(context: Mapping[str, Any], *,
         absent_reason="the host reports no processor",
         unknown_reason=None if processors else _reason_for(context, "Win32_Processor")))
 
-    # Windows reports a memory *total* from Win32_ComputerSystem and module detail
-    # only through Win32_PhysicalMemory, which is not in the allowlist yet. Saying
-    # so is better than reporting a total and calling the modules collected.
+    memory_modules = list(context.get("memory_modules") or ())
     total = context.get("memory_total_mb")
     inventory.add(_record(
-        kind="memory", present=bool(total), source="cim:Win32_ComputerSystem",
-        name=f"{total} MB" if total else None,
-        fields={"total_mb": total,
-                "modules": "not read: Win32_PhysicalMemory is not on the CIM allowlist"},
-        evidence=["cim:Win32_ComputerSystem"] if total else [],
+        kind="memory", present=bool(memory_modules or total),
+        source="cim:Win32_PhysicalMemory + Win32_ComputerSystem",
+        name=(f"{len(memory_modules)} module(s)" if memory_modules
+              else f"{total} MB" if total else None),
+        fields={"modules": memory_modules, "total_mb": total},
+        evidence=(["cim:Win32_PhysicalMemory"] if memory_modules
+                  else ["cim:Win32_ComputerSystem"] if total else []),
         absent_reason="the host reports no physical memory",
-        unknown_reason=None if total else _reason_for(context, "Win32_ComputerSystem")))
+        unknown_reason=None if (memory_modules or total)
+        else _reason_for(context, "Win32_PhysicalMemory")))
 
     board = dict((context.get("firmware") or {}))
     inventory.add(_record(
@@ -405,22 +411,90 @@ def from_windows(context: Mapping[str, Any], *,
         evidence=sorted(firmware), absent_reason="no component reported a firmware revision",
         unknown_reason=None if firmware else "no firmware revision was readable"))
 
-    # Windows does not enumerate PCI classes through an allowlisted CIM class. That
-    # is a gap in the reader, not an absence of hardware, and it is reported as
-    # UNKNOWN rather than as "this machine has no GPU".
-    for kind, what in (("pci", "the PCI bus"), ("gpu", "a display controller"),
-                       ("raid", "a RAID controller"),
-                       ("storage_controller", "a storage controller"),
-                       ("crypto_accelerator", "a crypto accelerator")):
-        inventory.add(Component(
-            kind=kind, status=UNKNOWN, source="not collected on Windows",
-            reason=f"{what} is not enumerable through the current CIM allowlist: "
-                   "Win32_PnPEntity and Win32_VideoController are not read"))
+    # Windows names a device by its Setup Class (``PNPClass``), not by a PCI class
+    # code, so the projection maps the class names it knows and ignores the rest.
+    # A class nobody read is UNKNOWN with the reason — never "this machine has no
+    # GPU" — which is the same rule the Linux projection applies to a dead bus.
+    pnp = list(context.get("pnp_devices") or ())
+    pnp_looked = "pnp_devices" in (context.get("sources") or {}) or bool(pnp)
 
+    def not_read(class_name: str, what: str) -> str:
+        return (f"Win32_PnPEntity ({class_name}) was not read for this host, so {what} "
+                "is unknown rather than absent")
+
+    def pnp_kind(*classes: str) -> list[dict[str, Any]]:
+        wanted = {name.lower() for name in classes}
+        return [device for device in pnp
+                if str(device.get("pnp_class") or "").lower() in wanted]
+
+    pci_devices = [device for device in pnp
+                   if str(device.get("device_id") or "").upper().startswith("PCI\\")]
+    inventory.add(_record(
+        kind="pci", present=bool(pci_devices), source="cim:Win32_PnPEntity",
+        name=f"{len(pci_devices)} device(s)", fields={"devices": pci_devices},
+        evidence=[f"cim:Win32_PnPEntity:{device.get('device_id')}" for device in pci_devices],
+        absent_reason="the PnP tree reports no PCI device",
+        unknown_reason=None if pnp_looked else not_read("device tree", "the PCI bus"),
+        looked=pnp_looked))
+
+    video = list(context.get("video_controllers") or ())
+    displays = pnp_kind("Display")
+    inventory.add(_record(
+        kind="gpu", present=bool(video or displays),
+        source="cim:Win32_VideoController + Win32_PnPEntity",
+        name=(video[0].get("name") if video
+              else displays[0].get("name") if displays else None),
+        fields={"controllers": video or displays},
+        evidence=["cim:Win32_VideoController"] if video else
+        [f"cim:Win32_PnPEntity:{device.get('device_id')}" for device in displays],
+        absent_reason="no display controller is present on this host",
+        unknown_reason=None if (video or displays or pnp_looked)
+        else not_read("win32_video_controller", "the display controller"),
+        looked=bool(video or displays) or pnp_looked))
+
+    controllers = pnp_kind("SCSIAdapter", "HDC")
+    inventory.add(_record(
+        kind="storage_controller", present=bool(controllers),
+        source="cim:Win32_PnPEntity",
+        name=controllers[0].get("name") if controllers else None,
+        fields={"controllers": controllers},
+        evidence=[f"cim:Win32_PnPEntity:{device.get('device_id')}" for device in controllers],
+        absent_reason="no storage controller is present on this host",
+        unknown_reason=None if (controllers or pnp_looked)
+        else not_read("storage controllers", "the storage controller"),
+        looked=bool(controllers) or pnp_looked))
+
+    # RAID is deliberately not inferred from a controller name: Windows exposes an
+    # array as a property of the controller, and a name that contains "RAID" is a
+    # vendor string, not a corroborated fact.
     inventory.add(Component(
-        kind="nic", status=UNKNOWN, source="not collected on Windows",
-        reason="Win32_NetworkAdapter is not on the CIM allowlist, so adapter "
-               "count and firmware are unknown rather than zero"))
+        kind="raid", status=UNKNOWN, source="not enumerated on Windows",
+        reason="Windows exposes an array as a property of its storage controller; "
+               "the controller is collected and the array is not, so the class is "
+               "UNKNOWN rather than inferred from a device name"))
+
+    adapters = [adapter for adapter in (context.get("network_adapters") or ())
+                if adapter.get("physical") is not False]
+    netclass = pnp_kind("Net")
+    inventory.add(_record(
+        kind="nic", present=bool(adapters or netclass),
+        source="cim:Win32_NetworkAdapter + Win32_PnPEntity",
+        name=f"{len(adapters)} adapter(s)" if adapters else None,
+        fields={"adapters": adapters or netclass},
+        evidence=["cim:Win32_NetworkAdapter"] if adapters else
+        [f"cim:Win32_PnPEntity:{device.get('device_id')}" for device in netclass],
+        absent_reason="the host has no physical network adapter",
+        unknown_reason=None if (adapters or netclass or pnp_looked)
+        else not_read("network adapters", "the network adapter set"),
+        looked=bool(adapters or netclass) or pnp_looked))
+
+    # A crypto accelerator on Windows is a "System"-class device whose function is
+    # named only by its driver; nothing in the allowlist distinguishes one from any
+    # other system device, so it stays UNKNOWN instead of matching on a name.
+    inventory.add(Component(
+        kind="crypto_accelerator", status=UNKNOWN, source="not enumerated on Windows",
+        reason="no allowlisted CIM class identifies a crypto accelerator; the PnP "
+               "class names are device categories, not functions"))
 
     disks = list(context.get("disks") or ())
     inventory.add(_record(
@@ -430,9 +504,27 @@ def from_windows(context: Mapping[str, Any], *,
         absent_reason="the host reports no disk drive",
         unknown_reason=None if disks else _reason_for(context, "Win32_DiskDrive")))
 
+    # A smart-card reader is a PnP device on Windows, so the class is established
+    # by the host reader — but a *reader* is not a *card*: whether a card is
+    # inserted needs an SCard query this allowlist does not have.
+    inventory.add(_record(
+        kind="smart_card", present=bool(pnp_kind("SmartCardReader")),
+        source="cim:Win32_PnPEntity",
+        name=(pnp_kind("SmartCardReader")[0].get("name")
+              if pnp_kind("SmartCardReader") else None),
+        fields={"readers": pnp_kind("SmartCardReader"),
+                "card_present": "not established by this reader"},
+        evidence=[f"cim:Win32_PnPEntity:{device.get('device_id')}"
+                  for device in pnp_kind("SmartCardReader")],
+        absent_reason="no smart-card reader is attached to this host",
+        unknown_reason=None if pnp_looked
+        else not_read("smart-card readers", "the smart-card interface"),
+        looked=bool(pnp_kind("SmartCardReader")) or pnp_looked))
+
     supplied = dict(security_hardware or {})
-    # On Windows the TPM *is* the host reader's job: Win32_Tpm is on the CIM
-    # allowlist. An explicit record still wins if a TPM reader ran too.
+    # The TPM is on the CIM allowlist on Windows, and the host reader reports it;
+    # an explicit record still wins if a dedicated TPM reader ran too.
+    supplied.setdefault("smart_card", None)
     if "tpm" not in supplied and isinstance(context.get("tpm"), Mapping):
         tpm = dict(context["tpm"])
         supplied["tpm"] = {**tpm, "source": str((context.get("sources") or {}).get(
@@ -470,7 +562,8 @@ def _security_component(kind: str, facts: Any) -> Component:
     fields = {key: value for key, value in facts.items()
               if key in {"present", "version", "manufacturer", "firmware", "model",
                          "serial_reference", "cluster", "ha_state", "pqc_capabilities",
-                         "supported_algorithms", "partition_metadata", "slots"}}
+                         "supported_algorithms", "partition_metadata", "slots",
+                         "readers", "card_present", "names"}}
     if not fields:
         return Component(kind=kind, status=UNKNOWN, source="unrecognised record",
                          reason=f"the {kind} record carries no field this projection reads")

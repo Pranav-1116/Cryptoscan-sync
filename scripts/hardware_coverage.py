@@ -127,6 +127,7 @@ def _load_package(root: Path):
     for name in [name for name in sys.modules if name.split(".")[0] == "universal_vendor"]:
         del sys.modules[name]
     import universal_vendor.hardware.discovery as discovery  # noqa: PLC0415
+    import universal_vendor.hardware.components as components  # noqa: PLC0415
     import universal_vendor.hardware.drift as drift  # noqa: PLC0415
     import universal_vendor.hardware.fingerprint as fingerprint  # noqa: PLC0415
     import universal_vendor.hardware.host.credentials as host_credentials  # noqa: PLC0415
@@ -149,7 +150,8 @@ def _load_package(root: Path):
     import universal_vendor.hardware.safety as safety  # noqa: PLC0415
     import universal_vendor.hardware.tpm as tpm  # noqa: PLC0415
 
-    return {"discovery": discovery, "drift": drift, "fingerprint": fingerprint,
+    return {"components": components, "discovery": discovery, "drift": drift,
+            "fingerprint": fingerprint,
             "device_observation": device_observation,
             "host_credentials": host_credentials, "host_linux": host_linux,
             "host_netconf": host_netconf, "host_restconf": host_restconf,
@@ -199,6 +201,26 @@ def _windows_transcript() -> dict[str, Any]:
                           "SecurityServicesRunning": [1, 2],
                           "SecurityServicesConfigured": [1, 2],
                           "CodeIntegrityPolicyEnforcementStatus": 2}],
+        "pnp_devices": [
+            {"DeviceID": "PCI\\VEN_1002&DEV_7310", "PNPClass": "Display",
+             "Manufacturer": "Advanced Micro Devices", "Name": "AMD Radeon Pro V520"},
+            {"DeviceID": "PCI\\VEN_14E4&DEV_16D7", "PNPClass": "Net",
+             "Manufacturer": "Broadcom", "Name": "Broadcom NetXtreme-E"},
+            {"DeviceID": "PCI\\VEN_1000&DEV_10E2", "PNPClass": "SCSIAdapter",
+             "Manufacturer": "Broadcom", "Name": "PERC H755 Front"},
+            {"DeviceID": "USB\\VID_0A5F", "PNPClass": "SmartCardReader",
+             "Manufacturer": "SCM Microsystems", "Name": "SCR3310 USB Smart Card Reader"},
+            {"DeviceID": "ACPI\\PNP0A08", "PNPClass": "System"}],
+        "video_controllers": [{"Name": "AMD Radeon Pro V520",
+                               "DeviceID": "PCI\\VEN_1002&DEV_7310",
+                               "DriverVersion": "31.0.12027.9001", "Status": "OK"}],
+        "network_adapters": [{"Name": "Broadcom NetXtreme-E",
+                              "MACAddress": "AA:BB:CC:DD:EE:02",
+                              "Speed": 25000000000, "PhysicalAdapter": True,
+                              "NetEnabled": True}],
+        "memory_modules": [{"Capacity": 68719476736, "Speed": 4800,
+                            "Manufacturer": "Samsung", "PartNumber": "M321R8GA0BB0",
+                            "DeviceLocator": "DIMM_A1", "MemoryType": 34}],
     }
 
 
@@ -352,6 +374,34 @@ def _write_fixture_host(root: Path) -> None:
                                            encoding="utf-8")
 
 
+_FIXTURE_LSCPU = """Architecture:            x86_64
+Model name:            Intel(R) Xeon(R) Gold 6430
+Vendor ID:             GenuineIntel
+CPU(s):                64
+Core(s) per socket:    32
+Socket(s):             2
+Virtualization:        VT-x
+L1d cache:             1.5 MiB
+"""
+
+_FIXTURE_TPM2_GETCAP = """TPM2_PT_FAMILY_INDICATOR:
+  raw: 0x322E3000
+  value: "2.0"
+TPM2_PT_MANUFACTURER:
+  raw: 0x49465800
+  value: "IFX"
+TPM2_PT_FIRMWARE_VERSION_1:
+  raw: 0x0007003F
+TPM2_PT_FIRMWARE_VERSION_2:
+  raw: 0x00083353
+"""
+
+_FIXTURE_OPENSC = """# Detected readers (pcsc)
+Nr.  Card  Features  Name
+0    Yes             SCM Microsystems Inc. SCR 3310 00 00
+"""
+
+
 class _HostTranscript:
     """A recorded host: answers by binary and remembers every argv it received."""
 
@@ -363,7 +413,9 @@ class _HostTranscript:
         host_linux = self.host_linux
         self.calls.append(tuple(argv))
         stdout = {"dmidecode": _FIXTURE_DMIDECODE_MEMORY, "lsblk": _FIXTURE_LSBLK,
-                  "lspci": _FIXTURE_LSPCI, "smartctl": _FIXTURE_SMART}.get(argv[0])
+                  "lspci": _FIXTURE_LSPCI, "smartctl": _FIXTURE_SMART,
+                  "lscpu": _FIXTURE_LSCPU, "tpm2_getcap": _FIXTURE_TPM2_GETCAP,
+                  "opensc-tool": _FIXTURE_OPENSC}.get(argv[0])
         if stdout is None:
             return host_linux.CommandResult(tuple(argv), 127, "", "not installed",
                                             available=False)
@@ -742,6 +794,23 @@ def row_collectors(modules: dict[str, Any], root: Path) -> dict[str, Any]:
         f"were all refused ({sum(refusals)}/4)"))
     source = (root / "services" / "universal_vendor" / "universal_vendor" / "hardware"
               / "host" / "linux.py").read_text(encoding="utf-8")
+    security_hardware = context.get("security_hardware") or {}
+    tpm = security_hardware.get("tpm") or {}
+    card = security_hardware.get("smart_card") or {}
+    argued = False
+    try:
+        host_linux.build_argv("tpm2_getcap", "properties-variable")
+    except host_linux.CommandNotAllowed:
+        argued = True
+    probes.append(_probe(
+        "linux-reader-reads-the-security-components-it-can-see",
+        tpm.get("manufacturer") == "IFX" and tpm.get("version") == "2.0"
+        and card.get("readers") == 1 and card.get("card_present") is True
+        and argued,
+        f"TPM {tpm.get('version')} from {tpm.get('manufacturer')} firmware "
+        f"{tpm.get('firmware')} via tpm2_getcap, {card.get('readers')} smart-card reader "
+        "with a card present via opensc-tool — and the argv allowlist refuses a second "
+        "tpm2_getcap subcommand, so neither tool can be asked for anything deeper"))
     probes.append(_probe(
         "linux-reader-runs-no-shell",
         "shell=False" in source
@@ -771,6 +840,26 @@ def row_collectors(modules: dict[str, Any], root: Path) -> dict[str, Any]:
         f"{len(context['disks'])} disk firmware revisions and a TPM "
         f"{context['tpm']['version']} — with the TPM capabilities WMI does not expose "
         "left absent rather than invented"))
+    # The device tree is what the first eight reads could not name: PCI classes,
+    # the display controller, the network adapters and the memory modules all
+    # arrive through Win32_PnPEntity and friends, projected here by the real
+    # component inventory rather than counted by hand.
+    components = modules["components"]
+    win_components = components.from_windows(context)
+    win_statuses = win_components.statuses()
+    collected = [kind for kind in ("pci", "gpu", "nic", "storage_controller", "smart_card")
+                 if win_statuses.get(kind) == "PRESENT"]
+    probes.append(_probe(
+        "windows-reader-enumerates-the-device-tree",
+        collected == ["pci", "gpu", "nic", "storage_controller", "smart_card"]
+        and win_statuses.get("raid") == "UNKNOWN"
+        and win_statuses.get("crypto_accelerator") == "UNKNOWN"
+        and win_components.by_kind()["memory"].name == "1 module(s)",
+        f"{len(collected)}/5 device-tree classes collected on Windows "
+        f"({', '.join(collected)}), a {win_components.by_kind()['gpu'].name} named by its "
+        "controller class, a smart-card reader distinguished from a card, and RAID and a "
+        "crypto accelerator left UNKNOWN because Windows names neither"))
+
     refused = False
     try:
         windows.script_for("Win32_Process")
@@ -783,7 +872,7 @@ def row_collectors(modules: dict[str, Any], root: Path) -> dict[str, Any]:
         for entry in windows.CIM_ALLOWLIST)
     probes.append(_probe(
         "windows-reader-allowlist-is-closed",
-        refused and allowlisted and len(windows.CIM_ALLOWLIST) == 8,
+        refused and allowlisted and len(windows.CIM_ALLOWLIST) == 12,
         f"{len(windows.CIM_ALLOWLIST)} CIM classes may be read, each for named properties "
         "only; a class outside the table (Win32_Process) is refused rather than run, and no "
         "generated script contains a verb that evaluates text or starts a process"))
@@ -1714,6 +1803,14 @@ def measure() -> dict[str, Any]:
             "allowlist, the projection and the refusals are executed, but no Windows host was "
             "read — WMI can be disabled by policy, a vendor's `Win32_Tpm` may be absent, and "
             "appliance-specific classes are not in the table",
+            "the Windows device tree is projected from `PNPClass`, which is a Setup Class name "
+            "and not a PCI class code: a controller Windows calls `SCSIAdapter` is recorded as a "
+            "storage controller, and an array, an accelerator or a crypto offload has no class "
+            "to read at all — those stay UNKNOWN rather than being inferred from a vendor string",
+            "a smart-card reader is not a smart card: `opensc-tool --list-readers` and "
+            "`Win32_PnPEntity` establish that an interface exists and whether a card is seated, "
+            "and neither reads the card's certificates — that needs a PC/SC session this "
+            "collector does not open",
             "the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted "
             "replies: no appliance was contacted, and a real device's ENTITY-MIB or "
             "`ietf-hardware` model may be sparse, vendor-extended or absent entirely",
@@ -1818,10 +1915,13 @@ def render_md(report: dict[str, Any]) -> str:
         "9 modules, 30 vendor plugins; `hardware/discovery.py` — three discovery methods | "
         "schema complete |",
         "| the Linux reader | `hardware/host/linux.py` — `/sys` allowlist, dmidecode, lsblk, "
-        "lspci, smartctl through an argv allowlist | built, executed here |",
-        "| the Windows reader | `hardware/host/windows.py` — `Get-CimInstance` over eight "
-        "allowlisted classes, named properties only, argv list with `shell=False` | built, "
-        "executed here against a recorded CIM transcript; no Windows host was available |",
+        "lspci, lscpu, smartctl, `tpm2_getcap` and `opensc-tool` behind a per-argument "
+        "allowlist | built, executed here |",
+        "| the Windows reader | `hardware/host/windows.py` — `Get-CimInstance` over twelve "
+        "allowlisted classes, named properties only, argv list with `shell=False`; the PnP "
+        "device tree, display controllers, network adapters and memory modules are what name "
+        "PCI, GPU, NIC and storage classes on Windows | built, executed here against a "
+        "recorded CIM transcript; no Windows host was available |",
         "| the network transports | `hardware/host/snmp_bridge.py` over the network scanner's "
         "SNMPv2c client (`enterprise/vendors/snmp.py`, now with ENTITY-MIB); "
         "`hardware/host/netconf.py` and `hardware/host/restconf.py` for the devices that do "

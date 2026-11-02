@@ -1,6 +1,6 @@
 # Hardware discovery — from collectors to a twin, not to a second inventory
 
-`cryptoscan.hardware-discovery/1` · generated 2026-11-02T13:15:14.281639+00:00 · **7 pass · 0 partial · 0 fail**
+`cryptoscan.hardware-discovery/1` · generated 2026-11-02T13:30:12.953357+00:00 · **7 pass · 0 partial · 0 fail**
 
 The review this answers set one architectural rule above all others: hardware is not an independent scanner that emits an HBOM. Collectors feed an evidence engine; the evidence engine feeds the canonical estate; the estate feeds the digital twin; and HBOM, CBOM, NBOM and TechBOM are **projections of that one truth**. A second inventory per BOM document type is the failure mode, and the `single_source_of_truth` row below fails if one appears.
 
@@ -21,7 +21,7 @@ The review this answers set one architectural rule above all others: hardware is
 | Phase | Question | Verdict | What was measured |
 |---|---|---|---|
 | hardware foundation — identity, fact schema, evidence | **is there a hardware fact schema and a stable identity behind it?** | **PASS** | 9 probe(s), all passing |
-| collectors — Linux, Windows, network | **do collectors exist for the estate a bank actually has, and does each emit fields?** | **PASS** | 25 probe(s), all passing |
+| collectors — Linux, Windows, network | **do collectors exist for the estate a bank actually has, and does each emit fields?** | **PASS** | 27 probe(s), all passing |
 | security hardware — HSM and TPM | **is HSM/TPM discovery deep enough to be worth anything, and can it leak a key?** | **PASS** | 15 probe(s), all passing |
 | correlation — evidence-backed relationships | **is a hardware dependency proven by evidence, or assumed because both exist?** | **PASS** | 10 probe(s), all passing |
 | drift — firmware, capability, PQC | **does hardware drift name what moved — firmware, capability, PQC — or just that something did?** | **PASS** | 14 probe(s), all passing |
@@ -35,8 +35,8 @@ Every box in the diagram above is a module, and the mapping is the point: a revi
 | Review piece | Where it lives | State |
 |---|---|---|
 | collectors (Linux, Windows, network, vendor) | `universal_vendor/hardware/plugins/` — 9 modules, 30 vendor plugins; `hardware/discovery.py` — three discovery methods | schema complete |
-| the Linux reader | `hardware/host/linux.py` — `/sys` allowlist, dmidecode, lsblk, lspci, smartctl through an argv allowlist | built, executed here |
-| the Windows reader | `hardware/host/windows.py` — `Get-CimInstance` over eight allowlisted classes, named properties only, argv list with `shell=False` | built, executed here against a recorded CIM transcript; no Windows host was available |
+| the Linux reader | `hardware/host/linux.py` — `/sys` allowlist, dmidecode, lsblk, lspci, lscpu, smartctl, `tpm2_getcap` and `opensc-tool` behind a per-argument allowlist | built, executed here |
+| the Windows reader | `hardware/host/windows.py` — `Get-CimInstance` over twelve allowlisted classes, named properties only, argv list with `shell=False`; the PnP device tree, display controllers, network adapters and memory modules are what name PCI, GPU, NIC and storage classes on Windows | built, executed here against a recorded CIM transcript; no Windows host was available |
 | the network transports | `hardware/host/snmp_bridge.py` over the network scanner's SNMPv2c client (`enterprise/vendors/snmp.py`, now with ENTITY-MIB); `hardware/host/netconf.py` and `hardware/host/restconf.py` for the devices that do not answer SNMP | built, executed here; all three produce one `NetworkDeviceFacts` and one observation projection |
 | identity + confidence | `hardware/identity.py` (signals, `first_seen`/`last_seen`), `hardware/fingerprint.py` | deterministic; confidence follows corroboration |
 | evidence engine | `hardware/fingerprint.py` — per-source weights; `universal_vendor/evidence.py` — content-hash chain; `HardwareObservation` keeps `discovery_sources` and `identity_conflicts` | every contributing source stays visible, conflicts are uncertainty not overwrite |
@@ -118,11 +118,13 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 - **PASS** `collector-network` — network inventory and TLS posture reached the record: ['serial', 'firmware', 'tls']
 - **PASS** `collector-storage` — storage inventory and encryption state reached the record: ['serial', 'firmware', 'disk_encryption']
 - **PASS** `linux-reader-reads-sysfs` — the Linux reader took manufacturer, serial and 2 interface(s) straight from a sysfs tree, with no binary involved
-- **PASS** `linux-reader-parses-allowlisted-commands` — 1 memory module(s), 2 disk(s), SMART health and 1 PCI device(s) from 6 command(s): ['dmidecode', 'lscpu', 'lsblk', 'smartctl', 'smartctl', 'lspci']
+- **PASS** `linux-reader-parses-allowlisted-commands` — 1 memory module(s), 2 disk(s), SMART health and 1 PCI device(s) from 8 command(s): ['dmidecode', 'lscpu', 'lsblk', 'smartctl', 'smartctl', 'lspci', 'tpm2_getcap', 'opensc-tool']
 - **PASS** `linux-reader-refuses-arbitrary-commands` — a shell, a metacharacter argument, a traversal device path and a non-device file were all refused (4/4)
+- **PASS** `linux-reader-reads-the-security-components-it-can-see` — TPM 2.0 from IFX firmware 7.63.8.13139 via tpm2_getcap, 1 smart-card reader with a card present via opensc-tool — and the argv allowlist refuses a second tpm2_getcap subcommand, so neither tool can be asked for anything deeper
 - **PASS** `linux-reader-runs-no-shell` — the only subprocess call site passes an argv list with shell=False
 - **PASS** `windows-reader-reads-cim` — identity Dell Inc. PowerEdge R760 serial SN-WIN-0001, BIOS 1.9.3 (2024-02-14), 2 disk firmware revisions and a TPM 2.0, 0, 1.16 — with the TPM capabilities WMI does not expose left absent rather than invented
-- **PASS** `windows-reader-allowlist-is-closed` — 8 CIM classes may be read, each for named properties only; a class outside the table (Win32_Process) is refused rather than run, and no generated script contains a verb that evaluates text or starts a process
+- **PASS** `windows-reader-enumerates-the-device-tree` — 5/5 device-tree classes collected on Windows (pci, gpu, nic, storage_controller, smart_card), a AMD Radeon Pro V520 named by its controller class, a smart-card reader distinguished from a card, and RAID and a crypto accelerator left UNKNOWN because Windows names neither
+- **PASS** `windows-reader-allowlist-is-closed` — 12 CIM classes may be read, each for named properties only; a class outside the table (Win32_Process) is refused rather than run, and no generated script contains a verb that evaluates text or starts a process
 - **PASS** `windows-reader-runs-no-shell` — PowerShell is invoked with an argv list and shell=False, and the module cannot build a command from input at all: the text comes from the class table, there is no encoded-command path and no write verb. The script a caller could not write is run, not typed
 - **PASS** `windows-reader-refuses-key-material` — a CIM reply carrying key material stops the read instead of being stored, on the same guard the Linux and HSM readers use
 - **PASS** `snmp-reads-a-switch` — a switch resolved to Cisco C9300-48P serial FDO2140A1B2 firmware 17.9.4a from ENTITY-MIB over a real BER walk (19 request(s))
@@ -227,6 +229,8 @@ Every injected defect was caught.
 - collector breadth feeds each collector a synthetic payload and drives the Linux reader against a fixture sysfs tree and a recorded transcript; no bank host was read, and real hosts differ — dmidecode absent, root denied, vendor quirks its allowlist has not seen
 - the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data
 - the Windows reader runs against a recorded CIM transcript on a Linux runner: the allowlist, the projection and the refusals are executed, but no Windows host was read — WMI can be disabled by policy, a vendor's `Win32_Tpm` may be absent, and appliance-specific classes are not in the table
+- the Windows device tree is projected from `PNPClass`, which is a Setup Class name and not a PCI class code: a controller Windows calls `SCSIAdapter` is recorded as a storage controller, and an array, an accelerator or a crypto offload has no class to read at all — those stay UNKNOWN rather than being inferred from a vendor string
+- a smart-card reader is not a smart card: `opensc-tool --list-readers` and `Win32_PnPEntity` establish that an interface exists and whether a card is seated, and neither reads the card's certificates — that needs a PC/SC session this collector does not open
 - the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted replies: no appliance was contacted, and a real device's ENTITY-MIB or `ietf-hardware` model may be sparse, vendor-extended or absent entirely
 - drift correlation now fills its hardware side from the live pipeline (`hardware/live/change_feed.py`, wired into `LiveHardwareController.ingest`), but the certificate, application and policy records still have to be handed in: those feeds are not subscribed, so an unaccompanied finding can mean the other feed has not been wired rather than that nothing moved
 - network correlation reads a TLS observation and a device config it is given; nothing yet pulls those from the certificate probes or the running configuration of a live device, so a device that was never probed has no edges

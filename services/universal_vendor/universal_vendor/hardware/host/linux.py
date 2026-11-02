@@ -52,7 +52,18 @@ SCHEMA = "cryptoscan.host-facts/1"
 
 #: The only programs this module may execute. Adding one is a code change with a
 #: review attached, not a configuration value.
-ALLOWED_BINARIES = frozenset({"dmidecode", "lsblk", "lspci", "lscpu", "smartctl"})
+ALLOWED_BINARIES = frozenset({"dmidecode", "lsblk", "lspci", "lscpu", "smartctl",
+                              "tpm2_getcap", "opensc-tool"})
+
+#: The exact arguments each binary may be given. A binary-level allowlist alone
+#: would still let a caller pass any flag the tool happens to support — a TCTI
+#: device path, a card's certificate read — so these two entries pin the argv.
+#: Binaries not named here (dmidecode, lsblk, lspci, lscpu, smartctl) are
+#: validated by their own narrow argument shapes below.
+ALLOWED_ARGUMENTS: dict[str, frozenset[tuple[str, ...]]] = {
+    "tpm2_getcap": frozenset({("properties-fixed",)}),
+    "opensc-tool": frozenset({("--list-readers",)}),
+}
 
 #: ``lscpu`` fields this reader keeps. The rest of its output — cache geometry,
 #: NUMA topology, vulnerability mitigations — is not a hardware component and is
@@ -141,6 +152,12 @@ def build_argv(*argv: str) -> tuple[str, ...]:
             raise CommandNotAllowed(
                 f"argument {part!r} is not a plain argv element (the collector never "
                 "passes a shell string)")
+    exact = ALLOWED_ARGUMENTS.get(binary)
+    if exact is not None and tuple(argv[1:]) not in exact:
+        raise CommandNotAllowed(
+            f"{binary} may only be run as {[tuple([binary, *args]) for args in sorted(exact)]}; "
+            f"{list(argv[1:])} is not one of them, so a flag that reaches deeper into the "
+            "machine is refused rather than passed")
     return tuple(argv)
 
 
@@ -329,6 +346,83 @@ def parse_smartctl(text: str) -> dict[str, Any]:
     }
 
 
+def parse_tpm2_getcap(text: str) -> dict[str, Any]:
+    """``tpm2_getcap properties-fixed`` -> the TPM's identity, nothing else.
+
+    The output is a flat list of ``TPM2_PT_*`` properties with a raw word and, for
+    the string-valued ones, a decoded value. Only four of them matter to an
+    inventory: the family indicator, the manufacturer, and the two halves of the
+    firmware version. Every other property (clock, startup clear, PCR banks,
+    algorithm bitmaps) is dropped — a TPM that is present is a fact; its internal
+    state is not the bank's business.
+    """
+    properties: dict[str, dict[str, str]] = {}
+    current: str | None = None
+    for line in (text or "").splitlines():
+        if not line.strip():
+            continue
+        if not line.startswith(" ") and line.rstrip().endswith(":"):
+            current = line.rstrip()[:-1].strip()
+            properties[current] = {}
+            continue
+        if current is None:
+            continue
+        key, _, value = line.strip().partition(":")
+        if key.strip() in {"raw", "value"}:
+            properties[current][key.strip()] = value.strip().strip('"')
+    if not properties:
+        return {}
+
+    def word(name: str) -> int | None:
+        raw = properties.get(name, {}).get("raw")
+        if not raw:
+            return None
+        try:
+            return int(raw, 16)
+        except ValueError:
+            return None
+
+    version_1, version_2 = word("TPM2_PT_FIRMWARE_VERSION_1"), word("TPM2_PT_FIRMWARE_VERSION_2")
+    firmware = None
+    if version_1 is not None:
+        firmware = f"{version_1 >> 16}.{version_1 & 0xFFFF}"
+        if version_2 is not None:
+            firmware += f".{version_2 >> 16}.{version_2 & 0xFFFF}"
+    return {
+        "present": True,
+        "version": properties.get("TPM2_PT_FAMILY_INDICATOR", {}).get("value"),
+        "manufacturer": properties.get("TPM2_PT_MANUFACTURER", {}).get("value"),
+        "firmware": firmware,
+        "source": "tpm2_getcap",
+        # tpm2_getcap properties-fixed cannot report PCR banks or algorithms; those
+        # live behind other subcommands this reader does not run.
+        "capabilities": None,
+        "supported_algorithms": None,
+        "pcr_capabilities": None,
+    }
+
+
+def parse_opensc_readers(text: str) -> list[dict[str, Any]]:
+    """``opensc-tool --list-readers`` -> readers, and whether a card is in one.
+
+    The tool prints a header, a column line and one row per reader. A reader with
+    no card is still a smart-card interface, which is why ``present`` and
+    ``card_present`` are separate facts.
+    """
+    readers: list[dict[str, Any]] = []
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or stripped.lower().startswith("nr."):
+            continue
+        parts = stripped.split(None, 2)
+        if len(parts) < 3 or not parts[0].isdigit():
+            continue
+        card = parts[1].lower() in {"yes", "true", "1"}
+        name = " ".join(parts[2].split())
+        readers.append({"index": parts[0], "card_present": card, "name": name})
+    return readers
+
+
 # --------------------------------------------------------------------------- #
 # the collector
 # --------------------------------------------------------------------------- #
@@ -487,6 +581,36 @@ class LinuxHostCollector:
         if nics:
             facts.sources["nics"] = "sysfs"
 
+        # Two security components the PCI bus cannot see. Both readers are
+        # allowlisted binaries, and neither is asked for anything a key lives in:
+        # tpm2_getcap is given only `properties-fixed`, opensc-tool only
+        # `--list-readers`.
+        security_hardware: dict[str, Any] = {}
+        result = self._run(facts, "tpm2_getcap", "properties-fixed")
+        if result.failed():
+            facts.unavailable.append(_reason("tpm2_getcap properties-fixed", result))
+        else:
+            tpm = parse_tpm2_getcap(result.stdout)
+            if tpm:
+                security_hardware["tpm"] = tpm
+                facts.sources["tpm"] = "tpm2_getcap"
+        result = self._run(facts, "opensc-tool", "--list-readers")
+        if result.failed():
+            facts.unavailable.append(_reason("opensc-tool --list-readers", result))
+        else:
+            readers_found = parse_opensc_readers(result.stdout)
+            security_hardware["smart_card"] = {
+                "present": bool(readers_found),
+                "readers": len(readers_found),
+                "card_present": any(reader["card_present"] for reader in readers_found),
+                "names": [reader["name"] for reader in readers_found],
+                "source": "opensc-tool",
+                # opensc-tool lists readers; it does not read a card's certificate,
+                # so nothing here describes the card itself.
+                **({} if readers_found else {"reason": "no smart-card reader is attached"}),
+            }
+            facts.sources["smart_card"] = "opensc-tool"
+
         context: dict[str, Any] = {
             "asset_id": asset_id or _clean(dmi.get("serial")) or _hostname(self.proc_root),
             "device_type": "server",
@@ -497,6 +621,7 @@ class LinuxHostCollector:
             "disks": disks,
             "nics": nics,
             "pci_devices": pci_devices,
+            "security_hardware": security_hardware,
         }
         refuse_secret_material(context, _FORBIDDEN_IN_OUTPUT,
                                surface="linux host collector")

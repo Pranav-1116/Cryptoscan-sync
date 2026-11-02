@@ -12,9 +12,11 @@ executed:
     accelerator — projected from what the readers actually return. Each class has
     three possible answers, and the row checks that the third one exists:
     PRESENT, ABSENT (looked, none there) and UNKNOWN (nobody looked, and here is
-    why). The Windows projection is executed against the same recorded facts the
-    reader produces, and the classes Windows cannot enumerate are reported as
-    UNKNOWN rather than as an empty server.
+    why). Both host readers are exercised: the Linux one through `tpm2_getcap` and
+    `opensc-tool` as well as the bus, and the Windows one through its twelve CIM
+    classes, whose device tree names PCI, GPU, NIC and storage controllers. The
+    two classes Windows gives no name to — an array and a crypto accelerator —
+    stay UNKNOWN and say so, rather than reading as an empty server.
 
 ``hsm_evidence_path`` (10)
     The twelve facts the review asked an HSM to carry, and the five it must never
@@ -42,7 +44,9 @@ executed:
 ``security_qualification`` (15)
     The guards the review credited, executed here rather than described: symlink,
     hardlink, special file, oversized input, input mutation, key material, secret
-    text, privilege, manifest tampering and promotion-by-assertion.
+    text, privilege, manifest tampering and promotion-by-assertion, plus the
+    per-argument allowlist that stops an allowlisted binary being handed a flag
+    that reaches deeper into the machine.
 
 Run::
 
@@ -90,6 +94,8 @@ def _load_modules() -> dict[str, Any]:
     from universal_vendor.hardware import safety  # noqa: PLC0415
     from universal_vendor.hardware import usage_graph  # noqa: PLC0415
     from universal_vendor.hardware.hbom import HbomGenerator  # noqa: PLC0415
+    from universal_vendor.hardware.host import linux as host_linux  # noqa: PLC0415
+    from universal_vendor.hardware.host import windows as host_windows  # noqa: PLC0415
     from universal_vendor.hardware.live import change_feed  # noqa: PLC0415
     from universal_vendor.hardware.live.controller import LiveHardwareController  # noqa: PLC0415
     from universal_vendor.hardware.models import HardwareObservation  # noqa: PLC0415
@@ -99,6 +105,7 @@ def _load_modules() -> dict[str, Any]:
             "usage_graph": usage_graph, "HbomGenerator": HbomGenerator,
             "change_feed": change_feed, "controller": LiveHardwareController,
             "HardwareObservation": HardwareObservation,
+            "host_linux": host_linux, "host_windows": host_windows,
             "host": _import_host()}
 
 
@@ -150,8 +157,18 @@ LINUX_CONTEXT: dict[str, Any] = {
         {"slot": "d8:00.0", "class": "RAID bus controller [0104]",
          "device": "PERC H755 [10e2]"},
     ],
+    "security_hardware": {
+        "tpm": {"present": True, "version": "2.0", "manufacturer": "IFX",
+                "firmware": "7.63.8.13139", "source": "tpm2_getcap",
+                "capabilities": None, "supported_algorithms": None,
+                "pcr_capabilities": None},
+        "smart_card": {"present": True, "readers": 1, "card_present": True,
+                       "names": ["SCM Microsystems Inc. SCR 3310 00 00"],
+                       "source": "opensc-tool"},
+    },
     "sources": {"dmi": "sysfs", "cpu": "lscpu", "memory_modules": "dmidecode",
-                "disks": "lsblk", "nics": "sysfs", "pci_devices": "lspci"},
+                "disks": "lsblk", "nics": "sysfs", "pci_devices": "lspci",
+                "tpm": "tpm2_getcap", "smart_card": "opensc-tool"},
     "unavailable": [],
 }
 
@@ -166,7 +183,28 @@ WINDOWS_CONTEXT: dict[str, Any] = {
     "disks": [{"model": "Dell NVMe ISE PS1010", "firmware": "1.1.0"}],
     "tpm": {"present": True, "version": "2.0, 0, 1.16", "manufacturer": "IFX",
             "firmware": "7.63.3353.0", "supported_algorithms": None},
-    "sources": {"identity": "cim", "cpu": "cim", "disks": "cim", "tpm": "cim"},
+    "memory_modules": [{"capacity_bytes": 68719476736, "speed_mts": 4800,
+                        "manufacturer": "Samsung", "part_number": "M321R8GA0BB0",
+                        "locator": "DIMM_A1", "memory_type": 34}],
+    "pnp_devices": [
+        {"device_id": "PCI\\VEN_1002&DEV_7310", "pnp_class": "Display",
+         "manufacturer": "Advanced Micro Devices", "name": "AMD Radeon Pro V520"},
+        {"device_id": "PCI\\VEN_14E4&DEV_16D7", "pnp_class": "Net",
+         "manufacturer": "Broadcom", "name": "Broadcom NetXtreme-E"},
+        {"device_id": "PCI\\VEN_1000&DEV_10E2", "pnp_class": "SCSIAdapter",
+         "manufacturer": "Broadcom", "name": "PERC H755 Front"},
+        {"device_id": "USB\\VID_0A5F", "pnp_class": "SmartCardReader",
+         "manufacturer": "SCM Microsystems", "name": "SCR3310 USB Smart Card Reader"},
+    ],
+    "video_controllers": [{"name": "AMD Radeon Pro V520",
+                           "device_id": "PCI\\VEN_1002&DEV_7310",
+                           "driver_version": "31.0.12027.9001", "status": "OK"}],
+    "network_adapters": [{"name": "Broadcom NetXtreme-E",
+                          "mac_address": "AA:BB:CC:DD:EE:02",
+                          "speed_bps": 25000000000, "physical": True}],
+    "sources": {"identity": "cim", "cpu": "cim", "disks": "cim", "tpm": "cim",
+                "pnp_devices": "cim", "video_controllers": "cim",
+                "network_adapters": "cim", "memory_modules": "cim"},
     "unavailable": [],
 }
 
@@ -209,9 +247,7 @@ def row_components(modules: dict[str, Any]) -> dict[str, Any]:
     components = modules["components"]
     probes: list[dict[str, Any]] = []
 
-    security = {"hsm": {"present": True, "source": "hsm_hw", **HSM_OBSERVATION},
-                "smart_card": {"present": False, "source": "pcsc",
-                               "reason": "no reader attached to this host"}}
+    security = {"hsm": {"present": True, "source": "hsm_hw", **HSM_OBSERVATION}}
     linux = components.from_linux(LINUX_CONTEXT, security_hardware=security)
     windows = components.from_windows(WINDOWS_CONTEXT)
 
@@ -259,20 +295,49 @@ def row_components(modules: dict[str, Any]) -> dict[str, Any]:
         and "lspci" in unread["gpu"].reason,
         "with lspci unavailable the GPU, RAID and storage classes are UNKNOWN and name the "
         "reason — not ABSENT, which would have read as 'this server has no GPU'"))
+    no_reader = {key: value for key, value in LINUX_CONTEXT.items()
+                 if key != "security_hardware"}
+    unlooked = components.from_linux(no_reader)
     probes.append(_probe(
         "an-unlooked-tpm-is-unknown-not-absent",
-        linux.by_kind()["tpm"].status == components.UNKNOWN
-        and "never looked" in linux.by_kind()["tpm"].reason,
-        "no TPM reader ran for this host, so the TPM is UNKNOWN with that reason; a collector "
-        "that never opens a TPM cannot report that a machine has none"))
+        unlooked.by_kind()["tpm"].status == components.UNKNOWN
+        and "never looked" in unlooked.by_kind()["tpm"].reason
+        and statuses["tpm"].status == components.PRESENT,
+        "with the reader stripped the TPM is UNKNOWN and says nobody looked; with "
+        f"tpm2_getcap in the transcript it is PRESENT ({statuses['tpm'].fields['manufacturer']} "
+        f"firmware {statuses['tpm'].fields['firmware']}) — the third state is what keeps the "
+        "first answer honest"))
+    card = statuses["smart_card"]
     probes.append(_probe(
-        "windows-reports-what-it-cannot-enumerate",
+        "a-smart-card-reader-is-not-a-card",
+        card.status == components.PRESENT and card.fields["readers"] == 1
+        and card.fields["card_present"] is True,
+        f"{card.fields['readers']} reader(s) from opensc-tool with card_present="
+        f"{card.fields['card_present']}; the two facts are separate because an empty reader "
+        "and an absent reader are different findings"))
+    probes.append(_probe(
+        "windows-collects-its-device-tree",
         windows.by_kind()["tpm"].status == components.PRESENT
-        and windows.by_kind()["gpu"].status == components.UNKNOWN
-        and windows.by_kind()["cpu"].status == components.PRESENT,
-        "Windows fills CPU, memory, BIOS, motherboard, disk and TPM from CIM, and reports PCI, "
-        "GPU, RAID, storage controller and NIC as UNKNOWN because those classes are not on its "
-        "allowlist"))
+        and windows.by_kind()["cpu"].status == components.PRESENT
+        and all(windows.by_kind()[kind].status == components.PRESENT
+                for kind in ("pci", "gpu", "nic", "storage_controller", "smart_card"))
+        and windows.by_kind()["memory"].name == "1 module(s)",
+        "Windows fills CPU, memory modules, BIOS, motherboard, disk and TPM from CIM, and the "
+        "device tree now names PCI, GPU, NIC and storage controllers too — only RAID and a "
+        "crypto accelerator stay UNKNOWN, because Windows exposes an array as a property of "
+        "its controller and has no accelerator class at all"))
+    probes.append(_probe(
+        "a-class-is-unknown-for-a-named-reason-on-every-platform",
+        all(windows.by_kind()[kind].reason for kind in ("raid", "crypto_accelerator"))
+        and "Win32_PnPEntity" in components.from_windows(
+            {**{key: value for key, value in WINDOWS_CONTEXT.items()
+                if key not in {"pnp_devices", "video_controllers", "network_adapters"}},
+             "sources": {key: value for key, value in WINDOWS_CONTEXT["sources"].items()
+                         if key not in {"pnp_devices", "video_controllers",
+                                        "network_adapters"}}}
+        ).by_kind()["gpu"].reason,
+        "both UNKNOWN classes on Windows carry the reason the platform gives, and a Windows "
+        "reader that did not read the device tree says so instead of reporting an empty bus"))
     probes.append(_probe(
         "the-inventory-is-a-projection-not-a-store",
         not any(store in (PACKAGE / "components.py").read_text(encoding="utf-8")
@@ -765,6 +830,26 @@ def row_security(modules: dict[str, Any]) -> dict[str, Any]:
         results["a regular file is read"],
         "the same code path reads a real file, so the refusals above are not a reader that "
         "refuses everything"))
+    # The two new readers are allowlisted *per argument*, not only per binary: a
+    # tool that is on the list is not a licence to pass it any flag it supports.
+    host_linux = modules["host_linux"]
+    pinned = []
+    for binary, extra in (("tpm2_getcap", "properties-variable"),
+                          ("tpm2_getcap", "--tcti=device"),
+                          ("opensc-tool", "--read-certificate")):
+        try:
+            host_linux.build_argv(binary, extra)
+        except host_linux.CommandNotAllowed:
+            pinned.append(f"{binary} {extra}")
+    probes.append(_probe(
+        "an-allowlisted-binary-still-has-a-fixed-argv",
+        len(pinned) == 3
+        and host_linux.build_argv("tpm2_getcap", "properties-fixed")
+        == ("tpm2_getcap", "properties-fixed"),
+        f"{len(pinned)}/3 non-allowlisted argument(s) refused ({', '.join(pinned)}) while the "
+        "one shape each tool is run as still passes — a TPM subcommand or a card-certificate "
+        "read is not reachable by asking the reader for it"))
+
     return {"id": "security_qualification",
             "question": "do the collection guards actually refuse — under a hostile path, a "
                         "moving file and an elevated process?",
@@ -841,7 +926,8 @@ def _reclassification(rows: list[dict[str, Any]]) -> dict[str, Any]:
     areas = [
         ("Linux collection security", "security_qualification", "🟢", "🟢",
          "guards executed on this runner: hostile path, hard link, FIFO, oversized "
-         "input, mid-read mutation, PEM and human spellings of secret material",
+         "input, mid-read mutation, PEM and human spellings of secret material, and a "
+         "per-argument allowlist on the two new readers",
          "none outstanding for the Linux reader; Windows traversal guards need a Windows host"),
         ("Linux evidence model", "component_breadth", "🟢", "🟢",
          "every component carries PRESENT/ABSENT/UNKNOWN with the reader and evidence "
@@ -849,18 +935,20 @@ def _reclassification(rows: list[dict[str, Any]]) -> dict[str, Any]:
          "the model is proved against fixtures, not against bank hosts"),
         ("Linux host collector", "component_breadth", "🟢", "🟢",
          "foundation: 15 component classes projected from DMI, lscpu, lspci, "
-         "firmware and disk facts behind an argv allowlist",
+         "tpm2_getcap, opensc-tool, firmware and disk facts behind a per-argument "
+         "allowlist",
          "breadth comes from allowlisted binaries, so a class with no binary is UNKNOWN"),
         ("Linux production qualification", "security_qualification", "🟡", "🟡",
          "the collector has never run on a bank-managed Linux host with the bank's "
          "privilege model", "a real host and a real manifest are required"),
         ("Windows collector code", "component_breadth", "🟡", "🟡",
-         "implemented and candidate: CIM allowlist executes and the projection is "
-         "exercised, PCI/GPU/RAID/storage/NIC report UNKNOWN by design",
-         "no Windows host has run it"),
+         "implemented and candidate: twelve allowlisted CIM reads, and the device tree "
+         "now names PCI, GPU, NIC, storage controllers and smart-card readers",
+         "no Windows host has run it, and RAID/accelerator have no Windows class to "
+         "read"),
         ("Windows production qualification", "component_breadth", "🟡", "🟡",
-         "missing: Win32_PnPEntity and Win32_VideoController would close the PCI, "
-         "GPU and NIC unknowns", "one allowlist entry plus a projection, then a host"),
+         "missing: the device tree is read and projected against a recorded transcript, "
+         "but no Windows host has produced one", "a Windows host and a real transcript"),
         ("OCI inventory", "component_breadth", "🟡", "🟡",
          "image metadata exists; it is inventory of images, not of hardware",
          "outside this artifact's probes"),
@@ -871,9 +959,9 @@ def _reclassification(rows: list[dict[str, Any]]) -> dict[str, Any]:
         ("Physical hardware breadth", "component_breadth", "🟡", "🟠",
          "review item A: CPU, memory, motherboard, BIOS, firmware, PCI, GPU, NIC, "
          "storage controller, disk, RAID, TPM, HSM, smart card and crypto accelerator "
-         "now have a class, a reader or an honest UNKNOWN",
-         "no PC/SC reader and no accelerator probe: those two classes are projected, "
-         "not collected"),
+         "now have a class, a reader and a projection on both Linux and Windows",
+         "an accelerator has no enumerable class on either platform, RAID has none on "
+         "Windows, and a smart-card reader is not the card's content"),
         ("HSM", "hsm_evidence_path", "🟡", "🟠",
          "review item 10: twelve metadata facts and five refusals through the scanner "
          "itself — never a private key, secret key, PIN, wrapped key or plaintext",
@@ -974,6 +1062,13 @@ def measure() -> dict[str, Any]:
             "a fleet does when a firmware rollback lands on one unit of a cluster",
             "the security row executes the collection guards on this runner as an unprivileged "
             "or elevated process, whichever it is; Windows traversal guards need a Windows host",
+            "the Windows device tree is projected from `PNPClass`, a Setup Class name and not a "
+            "PCI class code: a smart-card reader is a reader (whether a card is seated is a "
+            "separate fact) and a controller Windows calls `SCSIAdapter` is recorded as a "
+            "storage controller, not as the array behind it",
+            "on Linux the two new readers run as the same unprivileged user as `lspci`, so a "
+            "host with a policy that denies `/dev/tpm0` or hides the PC/SC socket reports TPM "
+            "and smart-card as UNKNOWN with that reason rather than as absent",
         ],
     }
 

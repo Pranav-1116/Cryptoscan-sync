@@ -74,6 +74,35 @@ WINDOWS = {
 }
 
 
+WINDOWS_PNP = {
+    "device_id": "PCI\\VEN_1002&DEV_7310",
+    "pnp_class": "Display",
+    "manufacturer": "Advanced Micro Devices",
+}
+
+WINDOWS_WITH_DEVICE_TREE = {
+    **WINDOWS,
+    "memory_modules": [{"capacity_bytes": 68719476736, "speed_mts": 4800,
+                        "manufacturer": "Samsung", "part_number": "M321R8GA0BB0",
+                        "locator": "DIMM_A1", "memory_type": 34}],
+    "pnp_devices": [
+        WINDOWS_PNP,
+        {"device_id": "PCI\\VEN_14E4&DEV_16D7", "pnp_class": "Net",
+         "manufacturer": "Broadcom", "name": "Broadcom NetXtreme-E"},
+        {"device_id": "PCI\\VEN_1000&DEV_10E2", "pnp_class": "SCSIAdapter",
+         "manufacturer": "Broadcom", "name": "PERC H755 Front"},
+        {"device_id": "USB\\VID_0A5F", "pnp_class": "SmartCardReader",
+         "manufacturer": "SCM Microsystems", "name": "SCM Microsystems SCR3310"},
+        {"device_id": "ACPI\\PNP0A08", "pnp_class": "System"},
+    ],
+    "video_controllers": [{"name": "AMD Radeon Pro V520", "device_id": "PCI\\VEN_1002&DEV_7310",
+                           "driver_version": "31.0.12027.9001", "status": "OK"}],
+    "network_adapters": [{"name": "Broadcom NetXtreme-E", "mac_address": "AA:BB:CC:DD:EE:02",
+                          "speed_bps": 25000000000, "physical": True, "net_enabled": True}],
+    "sources": {**WINDOWS["sources"], "pnp_devices": "cim", "video_controllers": "cim",
+                "network_adapters": "cim", "memory_modules": "cim"},
+}
+
 def statuses(inventory):
     return {kind: inventory.by_kind()[kind].status
             for kind in COMPONENT_KINDS if kind in inventory.by_kind()}
@@ -198,17 +227,40 @@ def test_the_windows_reader_reaches_the_same_kinds_it_has_readers_for():
     found = statuses(from_windows(WINDOWS))
     for kind in ("cpu", "memory", "motherboard", "bios", "firmware", "disk", "tpm"):
         assert found[kind] == PRESENT, kind
-    # Nothing on Windows enumerates PCI classes yet, so GPU/RAID/accelerator are
-    # UNKNOWN with the gap named — not "this server has no GPU".
-    for kind in ("pci", "gpu", "raid", "storage_controller", "crypto_accelerator", "nic"):
+    # This fixture carries no device tree, so the PnP-derived kinds are UNKNOWN
+    # with the missing class named — not "this server has no GPU".
+    for kind in ("pci", "gpu", "storage_controller", "nic"):
         assert found[kind] == UNKNOWN, kind
-        assert "allowlist" in from_windows(WINDOWS).by_kind()[kind].reason
+        assert "Win32_PnPEntity" in from_windows(WINDOWS).by_kind()[kind].reason
+    # RAID and an accelerator are UNKNOWN even with a full device tree: Windows
+    # exposes an array as a property of a controller and names no accelerator
+    # class, so both stay UNKNOWN rather than being inferred from a vendor string.
+    assert found["raid"] == UNKNOWN and found["crypto_accelerator"] == UNKNOWN
 
 
-def test_windows_memory_is_honest_about_module_level_detail():
-    memory = from_windows(WINDOWS).by_kind()["memory"]
-    assert memory.fields["total_mb"] == 262144
-    assert "Win32_PhysicalMemory" in memory.fields["modules"]
+def test_a_windows_device_tree_reaches_the_classes_cim_could_not_name():
+    inventory = from_windows(WINDOWS_WITH_DEVICE_TREE)
+    found = statuses(inventory)
+    for kind in ("pci", "gpu", "nic", "storage_controller", "smart_card"):
+        assert found[kind] == PRESENT, kind
+    gpu = inventory.by_kind()["gpu"]
+    assert gpu.name == "AMD Radeon Pro V520"
+    assert gpu.fields["controllers"][0]["driver_version"] == "31.0.12027.9001"
+    nic = inventory.by_kind()["nic"]
+    assert nic.fields["adapters"][0]["speed_bps"] == 25000000000
+    # A reader is not a card: presence of the PnP device is the fact, and whether
+    # a card is inserted is explicitly not established.
+    assert inventory.by_kind()["smart_card"].fields["card_present"].startswith("not established")
+    assert found["raid"] == UNKNOWN and "device name" in inventory.by_kind()["raid"].reason
+
+
+def test_windows_memory_reports_modules_when_it_has_them_and_a_total_when_it_does_not():
+    without = from_windows(WINDOWS).by_kind()["memory"]
+    assert without.fields["total_mb"] == 262144 and without.fields["modules"] == []
+    with_modules = from_windows(WINDOWS_WITH_DEVICE_TREE).by_kind()["memory"]
+    assert with_modules.name == "1 module(s)"
+    assert with_modules.fields["modules"][0]["part_number"] == "M321R8GA0BB0"
+    assert with_modules.source.startswith("cim:Win32_PhysicalMemory")
 
 
 def test_the_windows_tpm_record_is_metadata_only():

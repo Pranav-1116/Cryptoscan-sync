@@ -25,7 +25,9 @@ from universal_vendor.hardware.host.linux import (
     parse_dmidecode_system,
     parse_lsblk,
     parse_lspci,
+    parse_opensc_readers,
     parse_smartctl,
+    parse_tpm2_getcap,
     subprocess_runner,
     validate_device,
 )
@@ -44,6 +46,32 @@ Memory Device
 \tSize: No Module Installed
 \tLocator: DIMM_A2
 \tType: DDR5
+"""
+
+TPM2_GETCAP = """
+TPM2_PT_FAMILY_INDICATOR:
+  raw: 0x322E3000
+  value: "2.0"
+TPM2_PT_MANUFACTURER:
+  raw: 0x49465800
+  value: "IFX"
+TPM2_PT_VENDOR_STRING_1:
+  raw: 0x37363300
+  value: "763"
+TPM2_PT_FIRMWARE_VERSION_1:
+  raw: 0x0007003F
+TPM2_PT_FIRMWARE_VERSION_2:
+  raw: 0x00083353
+TPM2_PT_MANUFACTURER:
+  raw: 0x49465800
+  value: "IFX"
+"""
+
+OPENSC_READERS = """
+# Detected readers (pcsc)
+Nr.  Card  Features  Name
+0    Yes             SCM Microsystems Inc. SCR 3310 00 00
+1    No              Virtual PCD 00 00
 """
 
 DMIDECODE_SYSTEM = """
@@ -122,10 +150,13 @@ def _proc(root: Path, meminfo: str = "MemTotal:       65857124 kB\n") -> Path:
 class Transcript:
     """A recorded host: answers by binary, and remembers every argv it was given."""
 
-    def __init__(self, *, dmidecode_ok: bool = True, smart_ok: bool = True) -> None:
+    def __init__(self, *, dmidecode_ok: bool = True, smart_ok: bool = True,
+                 tpm: bool = True, smart_card: bool = True) -> None:
         self.calls: list[tuple[str, ...]] = []
         self.dmidecode_ok = dmidecode_ok
         self.smart_ok = smart_ok
+        self.tpm = tpm
+        self.smart_card = smart_card
 
     def __call__(self, argv, timeout):
         self.calls.append(tuple(argv))
@@ -143,6 +174,15 @@ class Transcript:
             return CommandResult(tuple(argv), 0, LSBLK, "")
         if argv[0] == "lspci":
             return CommandResult(tuple(argv), 0, LSPCI, "")
+        if argv[0] == "tpm2_getcap":
+            if not self.tpm:
+                return CommandResult(tuple(argv), 1, "",
+                                     "ERROR: tcti init allocation failed: resource unavailable")
+            return CommandResult(tuple(argv), 0, TPM2_GETCAP, "")
+        if argv[0] == "opensc-tool":
+            if not self.smart_card:
+                return CommandResult(tuple(argv), 0, "# Detected readers (pcsc)\n", "")
+            return CommandResult(tuple(argv), 0, OPENSC_READERS, "")
         if argv[0] == "smartctl":
             if not self.smart_ok:
                 return CommandResult(tuple(argv), 1, "", "/dev/nvme0n1: open failed")
@@ -183,6 +223,29 @@ def test_lspci_splits_numeric_from_textual_identity():
     assert devices[0]["vendor_id"] == "8086"
     assert devices[0]["vendor"].startswith("Intel")
     assert devices[1]["device_id"] == "16d7"
+
+
+def test_tpm2_getcap_keeps_identity_and_drops_every_other_property():
+    parsed = parse_tpm2_getcap(TPM2_GETCAP)
+    assert parsed["present"] is True
+    assert parsed["version"] == "2.0" and parsed["manufacturer"] == "IFX"
+    assert parsed["firmware"] == "7.63.8.13139"
+    # PCR banks and algorithm bitmaps are TPM state, not inventory facts.
+    assert parsed["pcr_capabilities"] is None
+    assert set(parsed) == {"present", "version", "manufacturer", "firmware", "source",
+                           "capabilities", "supported_algorithms", "pcr_capabilities"}
+
+
+def test_tpm2_getcap_tolerates_text_it_does_not_understand():
+    assert parse_tpm2_getcap("") == {}
+    assert parse_tpm2_getcap("not a tpm transcript") == {}
+
+
+def test_opensc_readers_separate_a_reader_from_a_card():
+    readers = parse_opensc_readers(OPENSC_READERS)
+    assert [reader["card_present"] for reader in readers] == [True, False]
+    assert readers[1]["name"] == "Virtual PCD 00 00"
+    assert parse_opensc_readers("# Detected readers (pcsc)\n") == []
 
 
 def test_smartctl_reads_health_without_self_test_logs():
@@ -254,9 +317,47 @@ def test_collects_a_host_from_sysfs_and_allowlisted_commands(tmp_path):
     # the allowlist keeps the processor facts and drops the rest.
     assert "l1d" not in context["cpu"] and "cpu op-mode(s)" not in context["cpu"]
     assert [call[0] for call in transcript.calls] == [
-        "dmidecode", "lscpu", "lsblk", "smartctl", "smartctl", "lspci"]
+        "dmidecode", "lscpu", "lsblk", "smartctl", "smartctl", "lspci",
+        "tpm2_getcap", "opensc-tool"]
     assert all(isinstance(call, tuple) for call in transcript.calls)
     assert facts.unavailable == []
+    tpm = context["security_hardware"]["tpm"]
+    assert tpm["present"] is True and tpm["manufacturer"] == "IFX"
+    assert tpm["version"] == "2.0" and tpm["firmware"] == "7.63.8.13139"
+    card = context["security_hardware"]["smart_card"]
+    assert card["readers"] == 2 and card["card_present"] is True
+    assert card["names"][0].startswith("SCM Microsystems")
+
+
+def test_a_read_tpm_is_a_reader_not_an_absence(tmp_path):
+    """A host that refuses the TPM is not a host without one."""
+    facts = LinuxHostCollector(sys_root=_sysfs(tmp_path / "sys"),
+                               proc_root=_proc(tmp_path / "proc"),
+                               runner=Transcript(tpm=False)).collect()
+    assert "tpm" not in facts.context["security_hardware"]
+    assert any("tpm2_getcap" in reason for reason in facts.unavailable)
+
+
+def test_no_smart_card_reader_is_an_absence_the_reader_can_prove(tmp_path):
+    facts = LinuxHostCollector(sys_root=_sysfs(tmp_path / "sys"),
+                               proc_root=_proc(tmp_path / "proc"),
+                               runner=Transcript(smart_card=False)).collect()
+    card = facts.context["security_hardware"]["smart_card"]
+    assert card["present"] is False and card["readers"] == 0
+    assert card["reason"] == "no smart-card reader is attached"
+
+
+def test_the_tpm_reader_asks_for_identity_only():
+    assert build_argv("tpm2_getcap", "properties-fixed") == ("tpm2_getcap", "properties-fixed")
+    for bad in ("properties-variable", "--tcti=device", "/dev/tpm0"):
+        with pytest.raises(CommandNotAllowed):
+            build_argv("tpm2_getcap", bad)
+
+
+def test_the_smart_card_reader_cannot_be_asked_for_a_card():
+    assert build_argv("opensc-tool", "--list-readers") == ("opensc-tool", "--list-readers")
+    with pytest.raises(CommandNotAllowed):
+        build_argv("opensc-tool", "--read-certificate")
 
 
 def test_dmi_falls_back_to_dmidecode_when_sysfs_is_empty(tmp_path):

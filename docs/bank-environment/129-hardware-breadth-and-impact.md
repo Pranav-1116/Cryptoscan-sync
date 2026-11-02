@@ -1,6 +1,6 @@
 # Hardware breadth, usage evidence and business impact
 
-`cryptoscan.hardware-breadth/1` · generated 2026-11-02T13:21:42.382944+00:00 · **6 pass · 0 partial · 0 fail**
+`cryptoscan.hardware-breadth/1` · generated 2026-11-02T13:33:53.552214+00:00 · **6 pass · 0 partial · 0 fail**
 
 Guide 128 answered *does the hardware architecture exist*. This one answers the harder follow-up: **host collection is not a complete hardware scanner**. A collector that returns a DMI blob, a disk list and a NIC list has collected facts; it has not told a bank what hardware it owns, which applications depend on it, or what breaks when a part fails.
 
@@ -12,12 +12,12 @@ Three ideas hold the artifact together, and each of them is a probe below:
 
 | Row | Question | Verdict | Probes |
 |---|---|---|---|
-| `component_breadth` | does the estate know what hardware a host contains, class by class — and does it admit which classes nobody looked at? | **PASS** | 8, 0 failing |
+| `component_breadth` | does the estate know what hardware a host contains, class by class — and does it admit which classes nobody looked at? | **PASS** | 10, 0 failing |
 | `hsm_evidence_path` | does an HSM carry the twelve facts a bank needs — and none of the five it must never carry? | **PASS** | 6, 0 failing |
 | `usage_evidence` | is 'this application uses this HSM' proven by a record that names both ends, or assumed because both exist? | **PASS** | 7, 0 failing |
 | `business_impact` | if this HSM fails, what breaks — and is the answer evidenced at every hop? | **PASS** | 7, 0 failing |
 | `drift_first_class` | is a hardware change first class — named, evidenced, versioned and correlated — or just a log line? | **PASS** | 8, 0 failing |
-| `security_qualification` | do the collection guards actually refuse — under a hostile path, a moving file and an elevated process? | **PASS** | 5, 0 failing |
+| `security_qualification` | do the collection guards actually refuse — under a hostile path, a moving file and an elevated process? | **PASS** | 6, 0 failing |
 
 ## Platform qualification
 
@@ -38,18 +38,18 @@ Each rating is computed, not asserted: it is the verdict of the row that proves 
 
 | Area | Rating | Was | Rests on | Still open |
 |---|---|---|---|---|
-| Linux collection security | 🟢 | 🟢 | guards executed on this runner: hostile path, hard link, FIFO, oversized input, mid-read mutation, PEM and human spellings of secret material (`security_qualification` PASS) | none outstanding for the Linux reader; Windows traversal guards need a Windows host |
+| Linux collection security | 🟢 | 🟢 | guards executed on this runner: hostile path, hard link, FIFO, oversized input, mid-read mutation, PEM and human spellings of secret material, and a per-argument allowlist on the two new readers (`security_qualification` PASS) | none outstanding for the Linux reader; Windows traversal guards need a Windows host |
 | Linux evidence model | 🟢 | 🟢 | every component carries PRESENT/ABSENT/UNKNOWN with the reader and evidence that produced it; nothing is inferred from a neighbour (`component_breadth` PASS) | the model is proved against fixtures, not against bank hosts |
-| Linux host collector | 🟢 | 🟢 | foundation: 15 component classes projected from DMI, lscpu, lspci, firmware and disk facts behind an argv allowlist (`component_breadth` PASS) | breadth comes from allowlisted binaries, so a class with no binary is UNKNOWN |
+| Linux host collector | 🟢 | 🟢 | foundation: 15 component classes projected from DMI, lscpu, lspci, tpm2_getcap, opensc-tool, firmware and disk facts behind a per-argument allowlist (`component_breadth` PASS) | breadth comes from allowlisted binaries, so a class with no binary is UNKNOWN |
 | Cloud KMS | 🟡 | 🟡 | managed-key inventory exists per provider, so the estate can name a key and its provider (`component_breadth` PASS) | green only where a probe covers it; nothing in this artifact does, and it is not physical hardware |
 | HSM | 🟡 | 🟠 | review item 10: twelve metadata facts and five refusals through the scanner itself — never a private key, secret key, PIN, wrapped key or plaintext (`hsm_evidence_path` PASS) | Luna REST is documented and cited; Utimaco, Entrust and Fortanix readers are named gaps |
 | Hardware drift | 🟡 | 🟡 | review item 13: FIRST-CLASS FOUNDATION — named changes, evidence ids, live bus correlation, twin version bump and a crypto delta (`drift_first_class` PASS) | single-appliance diff; a cluster rollback is not modelled |
 | Hardware relationships | 🟡 | 🟠 | review item 11: an edge exists only where a configuration names both ends, carries an evidence id, and is refused when unproven or ambiguous (`usage_evidence` PASS) | configuration-proven only: no session observation catches an application using an HSM it never configured |
 | Linux production qualification | 🟡 | 🟡 | the collector has never run on a bank-managed Linux host with the bank's privilege model (`security_qualification` PASS) | a real host and a real manifest are required |
 | OCI inventory | 🟡 | 🟡 | image metadata exists; it is inventory of images, not of hardware (`component_breadth` PASS) | outside this artifact's probes |
-| Physical hardware breadth | 🟡 | 🟠 | review item A: CPU, memory, motherboard, BIOS, firmware, PCI, GPU, NIC, storage controller, disk, RAID, TPM, HSM, smart card and crypto accelerator now have a class, a reader or an honest UNKNOWN (`component_breadth` PASS) | no PC/SC reader and no accelerator probe: those two classes are projected, not collected |
-| Windows collector code | 🟡 | 🟡 | implemented and candidate: CIM allowlist executes and the projection is exercised, PCI/GPU/RAID/storage/NIC report UNKNOWN by design (`component_breadth` PASS) | no Windows host has run it |
-| Windows production qualification | 🟡 | 🟡 | missing: Win32_PnPEntity and Win32_VideoController would close the PCI, GPU and NIC unknowns (`component_breadth` PASS) | one allowlist entry plus a projection, then a host |
+| Physical hardware breadth | 🟡 | 🟠 | review item A: CPU, memory, motherboard, BIOS, firmware, PCI, GPU, NIC, storage controller, disk, RAID, TPM, HSM, smart card and crypto accelerator now have a class, a reader and a projection on both Linux and Windows (`component_breadth` PASS) | an accelerator has no enumerable class on either platform, RAID has none on Windows, and a smart-card reader is not the card's content |
+| Windows collector code | 🟡 | 🟡 | implemented and candidate: twelve allowlisted CIM reads, and the device tree now names PCI, GPU, NIC, storage controllers and smart-card readers (`component_breadth` PASS) | no Windows host has run it, and RAID/accelerator have no Windows class to read |
+| Windows production qualification | 🟡 | 🟡 | missing: the device tree is read and projected against a recorded transcript, but no Windows host has produced one (`component_breadth` PASS) | a Windows host and a real transcript |
 
 Totals: 3 green · 9 amber · 0 orange · 0 red.
 
@@ -61,13 +61,15 @@ Security moves from 🔴 broad concern to 🟡 qualification still required: the
 
 *does the estate know what hardware a host contains, class by class — and does it admit which classes nobody looked at?* (review item A)
 
-- **PASS** `fifteen-component-classes` — every class the review named is reported for this host: cpu=PRESENT, memory=PRESENT, motherboard=PRESENT, bios=PRESENT, firmware=PRESENT, pci=PRESENT, gpu=PRESENT, nic=PRESENT, storage_controller=ABSENT, disk=PRESENT, raid=PRESENT, tpm=UNKNOWN, hsm=PRESENT, smart_card=ABSENT, crypto_accelerator=ABSENT
+- **PASS** `fifteen-component-classes` — every class the review named is reported for this host: cpu=PRESENT, memory=PRESENT, motherboard=PRESENT, bios=PRESENT, firmware=PRESENT, pci=PRESENT, gpu=PRESENT, nic=PRESENT, storage_controller=ABSENT, disk=PRESENT, raid=PRESENT, tpm=PRESENT, hsm=PRESENT, smart_card=PRESENT, crypto_accelerator=ABSENT
 - **PASS** `host-facts-reach-the-cpu-and-memory` — processor Intel(R) Xeon(R) Gold 6430 from lscpu, 2 memory module(s) from dmidecode -t memory
 - **PASS** `pci-classes-name-the-component` — GPU 'ASPEED Graphics [2000]', RAID 'PERC H755 [10e2]' and NICs from the PCI class codes; a non-RAID storage controller is ABSENT (the bus answered) rather than UNKNOWN
 - **PASS** `firmware-is-per-component` — 2 firmware revision(s) recorded against the component that carries each one
 - **PASS** `an-unread-bus-is-unknown-not-empty` — with lspci unavailable the GPU, RAID and storage classes are UNKNOWN and name the reason — not ABSENT, which would have read as 'this server has no GPU'
-- **PASS** `an-unlooked-tpm-is-unknown-not-absent` — no TPM reader ran for this host, so the TPM is UNKNOWN with that reason; a collector that never opens a TPM cannot report that a machine has none
-- **PASS** `windows-reports-what-it-cannot-enumerate` — Windows fills CPU, memory, BIOS, motherboard, disk and TPM from CIM, and reports PCI, GPU, RAID, storage controller and NIC as UNKNOWN because those classes are not on its allowlist
+- **PASS** `an-unlooked-tpm-is-unknown-not-absent` — with the reader stripped the TPM is UNKNOWN and says nobody looked; with tpm2_getcap in the transcript it is PRESENT (IFX firmware 7.63.8.13139) — the third state is what keeps the first answer honest
+- **PASS** `a-smart-card-reader-is-not-a-card` — 1 reader(s) from opensc-tool with card_present=True; the two facts are separate because an empty reader and an absent reader are different findings
+- **PASS** `windows-collects-its-device-tree` — Windows fills CPU, memory modules, BIOS, motherboard, disk and TPM from CIM, and the device tree now names PCI, GPU, NIC and storage controllers too — only RAID and a crypto accelerator stay UNKNOWN, because Windows exposes an array as a property of its controller and has no accelerator class at all
+- **PASS** `a-class-is-unknown-for-a-named-reason-on-every-platform` — both UNKNOWN classes on Windows carry the reason the platform gives, and a Windows reader that did not read the device tree says so instead of reporting an empty bus
 - **PASS** `the-inventory-is-a-projection-not-a-store` — every component is derived from facts the readers already produced; the module owns no table, so a component cannot drift away from the observation behind it
 
 ## `hsm_evidence_path` — PASS
@@ -126,6 +128,7 @@ Security moves from 🔴 broad concern to 🟡 qualification still required: the
 - **PASS** `the-secret-guards-refuse` — private key=refused, secret text=refused — the PEM spelling ('BEGIN PRIVATE KEY') is refused as well as the underscore form, which it was not until this drill ran it
 - **PASS** `privilege-and-promotion-guards-refuse` — manifest tampering=refused, privilege=refused, expiry=refused, runtime promotion=refused, algorithm promotion=refused, policy promotion=refused — an elevated process is refused, an expired manifest is refused, a tampered manifest no longer matches its digest, a snapshot cannot claim whole-host coverage, a CMDB claim cannot be promoted past MEDIUM and an unknown evidence kind cannot be invented
 - **PASS** `the-reader-is-identity-not-assertion` — the same code path reads a real file, so the refusals above are not a reader that refuses everything
+- **PASS** `an-allowlisted-binary-still-has-a-fixed-argv` — 3/3 non-allowlisted argument(s) refused (tpm2_getcap properties-variable, tpm2_getcap --tcti=device, opensc-tool --read-certificate) while the one shape each tool is run as still passes — a TPM subcommand or a card-certificate read is not reachable by asking the reader for it
 - **PASS** `a-failing-row-degrades-the-rating-that-rested-on-it` — forcing `security_qualification` to FAIL removed green from 1/1 area(s) that rested on it
 
 ## What this does not prove
@@ -139,6 +142,8 @@ Security moves from 🔴 broad concern to 🟡 qualification still required: the
 - the business impact walk depends on service and business-system records a bank maintains; this artifact exercises the chain with CMDB-shaped fixtures and does not connect to a CMDB
 - drift here is a single-appliance diff executed in-process; it does not prove what a fleet does when a firmware rollback lands on one unit of a cluster
 - the security row executes the collection guards on this runner as an unprivileged or elevated process, whichever it is; Windows traversal guards need a Windows host
+- the Windows device tree is projected from `PNPClass`, a Setup Class name and not a PCI class code: a smart-card reader is a reader (whether a card is seated is a separate fact) and a controller Windows calls `SCSIAdapter` is recorded as a storage controller, not as the array behind it
+- on Linux the two new readers run as the same unprivileged user as `lspci`, so a host with a policy that denies `/dev/tpm0` or hides the PC/SC socket reports TPM and smart-card as UNKNOWN with that reason rather than as absent
 
 ## What is still missing, in the review's own order
 

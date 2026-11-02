@@ -109,6 +109,25 @@ CIM_ALLOWLIST: tuple[CimQuery, ...] = (
              ("VirtualizationBasedSecurityStatus", "SecurityServicesRunning",
               "SecurityServicesConfigured", "CodeIntegrityPolicyEnforcementStatus"),
              "secure boot and VBS state"),
+    # The four reads below are what closes the component gaps the first eight
+    # could not: without them a Windows host reports its PCI bus, display
+    # controller, network adapters and memory modules as UNKNOWN. Each still
+    # asks for named properties only, so no device payload is collected.
+    CimQuery("pnp_devices", "root\\cimv2", "Win32_PnPEntity",
+             ("Name", "DeviceID", "PNPClass", "Manufacturer", "Service", "Status",
+              "ClassGuid"),
+             "the PnP device tree, which is how PCI classes are named on Windows"),
+    CimQuery("video_controllers", "root\\cimv2", "Win32_VideoController",
+             ("Name", "DeviceID", "DriverVersion", "AdapterRAM", "Status"),
+             "display controllers and their driver revision"),
+    CimQuery("network_adapters", "root\\cimv2", "Win32_NetworkAdapter",
+             ("Name", "DeviceID", "MACAddress", "Speed", "NetEnabled", "PhysicalAdapter",
+              "Manufacturer"),
+             "physical network adapters"),
+    CimQuery("memory_modules", "root\\cimv2", "Win32_PhysicalMemory",
+             ("Capacity", "Speed", "Manufacturer", "PartNumber", "DeviceLocator",
+              "MemoryType", "SerialNumber"),
+             "installed memory modules, socket by socket"),
 )
 
 ALLOWLIST: Mapping[str, CimQuery] = {query.key: query for query in CIM_ALLOWLIST}
@@ -362,6 +381,10 @@ class WindowsHostCollector:
         disks = self._read(facts, "disk_drives")
         tpm_records = self._read(facts, "tpm")
         guard = self._read(facts, "device_guard")
+        pnp = self._read(facts, "pnp_devices")
+        video = self._read(facts, "video_controllers")
+        adapters = self._read(facts, "network_adapters")
+        modules = self._read(facts, "memory_modules")
 
         if system:
             facts.sources["identity"] = "cim:Win32_ComputerSystem"
@@ -379,6 +402,14 @@ class WindowsHostCollector:
             facts.sources["tpm"] = "cim:Win32_Tpm"
         if guard:
             facts.sources["secure_boot"] = "cim:Win32_DeviceGuard"
+        if pnp:
+            facts.sources["pnp_devices"] = "cim:Win32_PnPEntity"
+        if video:
+            facts.sources["video_controllers"] = "cim:Win32_VideoController"
+        if adapters:
+            facts.sources["network_adapters"] = "cim:Win32_NetworkAdapter"
+        if modules:
+            facts.sources["memory_modules"] = "cim:Win32_PhysicalMemory"
 
         serial = (_clean(product[0].get("IdentifyingNumber")) if product else None) \
             or (_clean(bios[0].get("SerialNumber")) if bios else None) \
@@ -451,6 +482,43 @@ class WindowsHostCollector:
             # not perform, so the relationship is stated as the fact it is.
             "tpm_holds_boot_measurements": bool(tpm_records),
         }
+        memory_inventory = [{
+            "capacity_bytes": _int_or_none(record.get("Capacity")),
+            "speed_mts": _int_or_none(record.get("Speed")),
+            "manufacturer": _clean(record.get("Manufacturer")),
+            "part_number": _clean(record.get("PartNumber")),
+            "locator": _clean(record.get("DeviceLocator")),
+            "memory_type": _int_or_none(record.get("MemoryType")),
+        } for record in modules]
+        # ``PNPClass`` is the Windows Setup Class name, not a PCI class code. It
+        # is the only class label an allowlisted CIM read returns, so the
+        # projection maps the names it knows and ignores the rest rather than
+        # guessing a component from a vendor string.
+        pnp_devices = [{
+            "name": _clean(record.get("Name")),
+            "device_id": _clean(record.get("DeviceID")),
+            "pnp_class": _clean(record.get("PNPClass")),
+            "manufacturer": _clean(record.get("Manufacturer")),
+            "service": _clean(record.get("Service")),
+            "status": _clean(record.get("Status")),
+            "class_guid": _clean(record.get("ClassGuid")),
+        } for record in pnp]
+        video_controllers = [{
+            "name": _clean(record.get("Name")),
+            "device_id": _clean(record.get("DeviceID")),
+            "driver_version": _clean(record.get("DriverVersion")),
+            "adapter_ram_bytes": _int_or_none(record.get("AdapterRAM")),
+            "status": _clean(record.get("Status")),
+        } for record in video]
+        network_adapters = [{
+            "name": _clean(record.get("Name")),
+            "device_id": _clean(record.get("DeviceID")),
+            "mac_address": _clean(record.get("MACAddress")),
+            "speed_bps": _int_or_none(record.get("Speed")),
+            "net_enabled": record.get("NetEnabled"),
+            "physical": record.get("PhysicalAdapter"),
+            "manufacturer": _clean(record.get("Manufacturer")),
+        } for record in adapters]
         memory_bytes = _int_or_none(system[0].get("TotalPhysicalMemory")) if system else None
         hypervisor = system[0].get("HypervisorPresent") if system else None
 
@@ -461,6 +529,10 @@ class WindowsHostCollector:
             "firmware": firmware,
             "processors": cpu,
             "memory_total_mb": memory_bytes // (1024 * 1024) if memory_bytes else None,
+            "memory_modules": memory_inventory,
+            "pnp_devices": pnp_devices,
+            "video_controllers": video_controllers,
+            "network_adapters": network_adapters,
             "disks": disk_inventory,
             "tpm": tpm,
             "secure_boot": secure_boot,
