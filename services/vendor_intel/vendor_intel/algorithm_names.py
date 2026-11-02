@@ -23,8 +23,8 @@ Everything here is a pure function of a string; no repository or network access.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
-from typing import Any, Iterable, Sequence
+from dataclasses import dataclass, replace
+from typing import Any, Iterable, Mapping, Sequence
 
 SCHEMA = "cryptoscan.algorithm-identity/1"
 
@@ -205,13 +205,16 @@ def _shape(compact: str, raw: str) -> AlgorithmIdentity:
                              recognised=False, raw=raw)
 
 
-def algorithm_identity(name: Any) -> AlgorithmIdentity:
+def algorithm_identity(name: Any, *, extra: Mapping[str, str] | None = None) -> AlgorithmIdentity:
     """Parse one algorithm name into its identity.
 
     ``AES256``, ``aes_256``, ``AES-256`` and ``AES 256`` all return
     ``canonical="AES-256"``; ``AES-256-GCM`` returns the same family and size
     with ``mode="GCM"``, which is what lets the reconciler call the pair
     *less specific* instead of *equal*.
+
+    ``extra`` is a bank-supplied alias table (compact spelling -> canonical
+    name); see :func:`load_alias_table` for how one is validated.
     """
     raw = str(name if name is not None else "").strip()
     if not raw:
@@ -219,6 +222,12 @@ def algorithm_identity(name: Any) -> AlgorithmIdentity:
     compact = _compact(raw)
     if not compact:
         raise ValueError(f"{raw!r} contains no algorithm name")
+    aliases = extra or {}
+    if compact in aliases:
+        # A bank-supplied spelling wins over the builtin table, and it is
+        # resolved through the same path so an override cannot invent a family.
+        resolved = algorithm_identity(aliases[compact], extra=None)
+        return replace(resolved, raw=raw)
     compact = _SHA2_ALIASES.get(compact, _SECP_ALIASES.get(compact, compact))
     if compact in _EXPLICIT:
         canonical, family, size, mode, params = _EXPLICIT[compact]
@@ -235,7 +244,8 @@ def algorithm_identity(name: Any) -> AlgorithmIdentity:
     return _shape(compact, raw)
 
 
-def compare_algorithms(left: Any, right: Any) -> dict[str, Any]:
+def compare_algorithms(left: Any, right: Any, *,
+                       extra: Mapping[str, str] | None = None) -> dict[str, Any]:
     """How two spellings relate, in the vocabulary a reviewer can act on.
 
     ``SAME_IDENTITY`` and ``LESS_SPECIFIC`` mean no source is wrong;
@@ -244,8 +254,8 @@ def compare_algorithms(left: Any, right: Any) -> dict[str, Any]:
     which.
     """
     try:
-        a = algorithm_identity(left)
-        b = algorithm_identity(right)
+        a = algorithm_identity(left, extra=extra)
+        b = algorithm_identity(right, extra=extra)
     except ValueError as exc:
         return {"relation": "UNKNOWN_IDENTITY", "reason": str(exc),
                 "left": None, "right": None, "normalised": False}
@@ -278,15 +288,16 @@ def compare_algorithms(left: Any, right: Any) -> dict[str, Any]:
             "normalised": relation == "SAME_IDENTITY" and (a.normalised or b.normalised)}
 
 
-def same_algorithm(left: Any, right: Any) -> bool:
+def same_algorithm(left: Any, right: Any, *,
+                   extra: Mapping[str, str] | None = None) -> bool:
     """Same identity — not merely the same family. ``AES-128`` is not ``AES-256``."""
-    return compare_algorithms(left, right)["relation"] == "SAME_IDENTITY"
+    return compare_algorithms(left, right, extra=extra)["relation"] == "SAME_IDENTITY"
 
 
-def normalise_algorithm(name: Any) -> str:
+def normalise_algorithm(name: Any, *, extra: Mapping[str, str] | None = None) -> str:
     """The canonical spelling, or ``""`` when the name cannot be parsed."""
     try:
-        return algorithm_identity(name).canonical
+        return algorithm_identity(name, extra=extra).canonical
     except ValueError:
         return ""
 
@@ -319,3 +330,123 @@ def identity_summary(names: Sequence[Any]) -> dict[str, Any]:
             "be asserted to be a known primitive"
         ),
     }
+
+
+# --------------------------------------------------------------------------- #
+# a bank's own spellings
+# --------------------------------------------------------------------------- #
+
+
+class AliasConflict(ValueError):
+    """A supplied alias would redefine something this table already knows."""
+
+
+@dataclass(frozen=True)
+class AlgorithmTable:
+    """The builtin table plus a bank's own spellings, kept apart on purpose.
+
+    A bank's SBOM exporter will invent spellings — ``AES256_GCM``,
+    ``rsa-3k`` — and the answer is a reviewed table, not a fuzzy matcher. The
+    table is additive: a spelling the builtin table already defines cannot be
+    redefined, and a target that is not itself a known algorithm is refused, so
+    an override cannot quietly turn ``AES256`` into ``AES-128`` or invent a
+    post-quantum family that does not exist.
+    """
+
+    extra: Mapping[str, str] = ()
+
+    def __post_init__(self) -> None:
+        normalised: dict[str, str] = {}
+        for spelling, target in dict(self.extra).items():
+            compact = _compact(spelling)
+            if not compact:
+                raise AliasConflict(f"{spelling!r} contains no algorithm name")
+            if compact in _EXPLICIT or compact in _SHA2_ALIASES or compact in _SECP_ALIASES:
+                raise AliasConflict(
+                    f"{spelling!r} is already a builtin spelling of "
+                    f"{_EXPLICIT.get(compact, ('',))[0]}; a bank table may add spellings, not "
+                    "redefine known ones")
+            resolved = algorithm_identity(target)
+            if not resolved.recognised:
+                raise AliasConflict(
+                    f"{spelling!r} points at {target!r}, which this table does not know; add "
+                    "the family to the builtin table deliberately rather than aliasing into "
+                    "a name nobody can interpret")
+            if compact in normalised and normalised[compact] != target:
+                raise AliasConflict(f"{spelling!r} has two targets in one table")
+            normalised[compact] = target
+        object.__setattr__(self, "extra", normalised)
+
+    def identity(self, name: Any) -> AlgorithmIdentity:
+        return algorithm_identity(name, extra=self.extra)
+
+    def compare(self, left: Any, right: Any) -> dict[str, Any]:
+        return compare_algorithms(left, right, extra=self.extra)
+
+    def same(self, left: Any, right: Any) -> bool:
+        return same_algorithm(left, right, extra=self.extra)
+
+    def normalise(self, names: Iterable[Any]) -> list[str]:
+        out: list[str] = []
+        for name in names:
+            canonical = normalise_algorithm(name, extra=self.extra)
+            if canonical and canonical not in out:
+                out.append(canonical)
+        return out
+
+    def unknown(self, names: Iterable[Any]) -> list[str]:
+        """The names this table still cannot place — the review queue."""
+        queue: list[str] = []
+        for name in names:
+            text = str(name or "").strip()
+            if not text:
+                continue
+            if not self.identity(text).recognised and text not in queue:
+                queue.append(text)
+        return queue
+
+    def stub(self, names: Iterable[Any]) -> dict[str, Any]:
+        """A review stub: the spellings nobody recognises, with empty targets.
+
+        The file is emitted *unfilled* on purpose. A generator that guessed a
+        target would be doing exactly what this module refuses to do, and a
+        reviewer signing an empty value is a visible act; a reviewer signing an
+        auto-filled one is not.
+        """
+        queue = self.unknown(names)
+        return {
+            "schema": ALIAS_SCHEMA,
+            "aliases": {name: "" for name in queue},
+            "unresolved": len(queue),
+            "instructions": (
+                "fill each value with a canonical algorithm this table knows "
+                "(for example 'AES-256'), then load the file with load_alias_table; an empty "
+                "value, a duplicate or a redefinition raises rather than being ignored"),
+        }
+
+
+ALIAS_SCHEMA = "cryptoscan.algorithm-aliases/1"
+
+
+def load_alias_table(payload: Mapping[str, Any]) -> AlgorithmTable:
+    """Validate a bank alias file into a table.
+
+    Accepts either ``{"aliases": {...}}`` (the stub format) or a bare mapping.
+    An unfilled stub entry is an error: a file with an empty target is a file
+    somebody started and did not finish, and loading it as "no aliases" would
+    hide that.
+    """
+    if not isinstance(payload, Mapping):
+        raise AliasConflict("an alias table is a mapping of spelling -> canonical name")
+    raw = payload.get("aliases", payload) if "aliases" in payload else payload
+    if not isinstance(raw, Mapping):
+        raise AliasConflict("'aliases' must be a mapping of spelling -> canonical name")
+    empty = [str(key) for key, value in raw.items() if not str(value or "").strip()]
+    if empty:
+        raise AliasConflict(
+            f"{len(empty)} alias(es) have no target yet ({', '.join(sorted(empty)[:5])}); the "
+            "stub is meant to be filled in and reviewed, not loaded as-is")
+    return AlgorithmTable(extra={str(key): str(value) for key, value in raw.items()})
+
+
+DEFAULT_TABLE = AlgorithmTable()

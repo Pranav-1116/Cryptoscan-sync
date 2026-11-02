@@ -492,6 +492,8 @@ def assess_applicability(declaration: VendorDeclaration, deployment: ProductIden
 PARTIAL_STATES: frozenset[str] = frozenset({
     Applicability.PARTIAL_MATCH.value,  # a document for a different build
     "PARTIAL",                         # one source says less than another
+    "AMBIGUOUS",                       # two records claim it; neither is chosen
+    "UNATTRIBUTED",                    # nobody claims it, and nothing is inferred
 })
 
 
@@ -1096,6 +1098,80 @@ def evaluate_due_diligence(sections: Mapping[str, Any], *, as_of: date | None = 
         "review_age": age,
         "blockers": blockers,
         "status": "COMPLETE" if not missing and not blockers else "INCOMPLETE",
+    }
+
+
+#: What a section's *evidence* looks like, as opposed to its value.
+SECTION_EVIDENCE_STATES: tuple[str, ...] = ("SUPPORTED", "UNCITED", "UNRESOLVED", "MISSING")
+
+
+def _section_citations(value: Any) -> list[str]:
+    if isinstance(value, Mapping):
+        raw = value.get("evidence") or value.get("evidence_ids") or ()
+        if isinstance(raw, str):
+            return [raw]
+        return [str(item) for item in raw]
+    return []
+
+
+def audit_due_diligence_evidence(
+        sections: Mapping[str, Any], *,
+        evidence_index: Iterable[str] | None = None) -> dict[str, Any]:
+    """Is each due-diligence section *supported*, or merely filled in?
+
+    :func:`evaluate_due_diligence` answers "are the twenty-two sections
+    present", which is the question a procurement checklist asks. This answers
+    the one an auditor asks: **which of them can be produced as evidence.** A
+    section can be present and uncited — the vendor's name typed into a field
+    with nothing behind it — and that is a different answer from missing, and a
+    different answer again from a citation that does not resolve.
+
+    A section's value may be a plain value (present, uncited) or a mapping with
+    ``evidence``/``evidence_ids``. When ``evidence_index`` is supplied, every
+    citation is checked against it and an unknown id becomes ``UNRESOLVED``
+    rather than being counted as support.
+    """
+    index = {str(item) for item in evidence_index} if evidence_index is not None else None
+    rows: list[dict[str, Any]] = []
+    counts = {state: 0 for state in SECTION_EVIDENCE_STATES}
+    ledger: list[dict[str, Any]] = []
+    for name in DUE_DILIGENCE_SECTIONS:
+        value = sections.get(name)
+        citations = _section_citations(value)
+        if value in (None, "", [], {}):
+            state, reason = "MISSING", "the section is empty"
+        elif not citations:
+            state, reason = "UNCITED", (
+                "the section is filled in and cites nothing: a value with no evidence behind it "
+                "is an assertion, not a record")
+        elif index is not None:
+            unknown = [item for item in citations if item not in index]
+            if unknown:
+                state, reason = "UNRESOLVED", (
+                    f"{len(unknown)} citation(s) do not resolve in the evidence index: "
+                    + ", ".join(unknown[:3]))
+            else:
+                state, reason = "SUPPORTED", f"supported by {len(citations)} citation(s)"
+        else:
+            state, reason = "SUPPORTED", f"cites {len(citations)} record(s)"
+        counts[state] += 1
+        rows.append({"section": name, "state": state, "citations": citations,
+                     "reason": reason})
+        if state in {"UNCITED", "UNRESOLVED"}:
+            ledger.append({"state": "PARTIAL", "subject": name, "reasons": [reason]})
+    supported = counts["SUPPORTED"]
+    return {
+        "sections": len(DUE_DILIGENCE_SECTIONS),
+        "counts": counts,
+        "supported": supported,
+        "unsupported": counts["UNCITED"] + counts["UNRESOLVED"],
+        "rows": rows,
+        "ledger": ledger,
+        "statement": (
+            f"{supported} of {len(DUE_DILIGENCE_SECTIONS)} section(s) are supported by a "
+            f"citation; {counts['UNCITED']} are filled in and uncited, "
+            f"{counts['UNRESOLVED']} cite something that does not resolve and "
+            f"{counts['MISSING']} are empty"),
     }
 
 

@@ -339,6 +339,35 @@
 > enumerated in a ledger that cannot render it as a pass, and `--check` exits
 > non-zero on a partial as well as on a failure.
 
+> [The evidence pipeline](132-vendor-evidence-pipeline.md) (**6 pass · 0 partial ·
+> 0 fail**) is the part a bank actually runs: its own logs, its own register, and
+> a row somebody can defend. **The logs it already keeps**: a Zeek `ssl.log`
+> (`#fields` header, tabs, `-` for absent), a CSV export (mapped through an alias
+> table, unknown columns named) and an access log with `$ssl_cipher` appended are
+> read into session records — a file with a `premaster_secret` column is refused
+> outright, a row without a cipher is counted with its reason, and a file that
+> yields no session raises instead of reporting calm. **Which workload used it**:
+> peers join a register, so one endpoint and one application is `ATTRIBUTED` with
+> its CMDB citation, a shared appliance hosting two applications is `AMBIGUOUS`
+> with both named and neither chosen, an endpoint with no application is
+> `PARTIAL`, and an unregistered peer is `UNATTRIBUTED` — it keeps the
+> collector's asset and gains no application. The workload table prints its
+> coverage (57.1%) and keeps the remainder as an unknown workload rather than
+> spreading it over the applications that were identified. **Sub-vendors from the
+> SBOM**: a CycloneDX `supplier` (then `publisher`, then `group`, and never the
+> component's name) becomes an edge cited to `sbom:<serial>#<bom-ref>`; a
+> component with no supplier is listed, a component supplied by the parent is a
+> self-edge, and a duplicate is counted. **The bank's own spellings**: an alias
+> table may add `AESGCM256 -> AES-256-GCM` but may not redefine `AES256`, may not
+> point at a name nobody knows, and emits its review stub unfilled so that
+> signing an empty value is visible. **A section can be filled in and support
+> nothing**: the twenty-two-section completeness check says `COMPLETE` while the
+> evidence audit says 0 of 22 sections are supported — both numbers are printed,
+> and a citation that does not resolve in the evidence index is `UNRESOLVED`, not
+> support. The last row follows one log line through decode, attribution, claim,
+> VBOM row and coverage statement, so "1 post-quantum tick is evidence-backed" can
+> be traced back to `session:C0` in `ssl.log`.
+
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

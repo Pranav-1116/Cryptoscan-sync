@@ -39,7 +39,8 @@ PASS, PARTIAL, FAIL = "PASS", "PARTIAL", "FAIL"
 
 def _load_modules() -> dict[str, Any]:
     for entry in (str(SERVICES / "vendor_intel"), str(ROOT / "shared" / "shared_models"),
-                  str(ROOT / "shared" / "shared_config")):
+                  str(ROOT / "shared" / "shared_config"), str(SERVICES / "database"),
+                  str(SERVICES / "api")):
         if entry not in sys.path:
             sys.path.insert(0, entry)
     from vendor_intel import algorithm_names as an  # noqa: PLC0415

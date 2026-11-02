@@ -21,6 +21,7 @@ from vendor_intel.vendor_evidence import (
     SubVendorEdge,
     add_claims,
     assess_applicability,
+    audit_due_diligence_evidence,
     build_vbom_slice,
     evidence_backed_pqc_coverage,
     evaluate_due_diligence,
@@ -34,9 +35,13 @@ from vendor_intel.vendor_evidence import (
     vendor_risk,
 )
 from vendor_intel.algorithm_names import (
+    DEFAULT_TABLE,
+    AliasConflict,
     AlgorithmIdentity,
+    AlgorithmTable,
     algorithm_identity,
     compare_algorithms,
+    load_alias_table,
     normalise_algorithm,
     same_algorithm,
 )
@@ -47,6 +52,24 @@ from vendor_intel.declaration_extract import (
 )
 from vendor_intel.pdf_text import PdfTextError, extract_text
 from vendor_intel.runtime_usage import decode_cipher_suite, decode_group, ingest_sessions
+from vendor_intel.runtime_sources import (
+    SourceError,
+    detect_format,
+    load_sessions,
+    records_for_ingest,
+)
+from vendor_intel.sbom_edges import (
+    SbomShapeError,
+    component_vendor,
+    edges_for_footprint,
+    vendor_edges_from_cyclonedx,
+)
+from vendor_intel.usage_attribution import (
+    Endpoint,
+    attribute_sessions,
+    endpoints_from_inventory,
+    workload_summary,
+)
 
 __all__ = [
     "extract_crypto_mentions",
@@ -71,6 +94,7 @@ __all__ = [
     "SubVendorEdge",
     "add_claims",
     "assess_applicability",
+    "audit_due_diligence_evidence",
     "build_vbom_slice",
     "evidence_backed_pqc_coverage",
     "evaluate_due_diligence",
@@ -82,7 +106,11 @@ __all__ = [
     "to_vbom_rows",
     "vendor_footprint",
     "vendor_risk",
+    "DEFAULT_TABLE",
+    "AliasConflict",
     "AlgorithmIdentity",
+    "AlgorithmTable",
+    "load_alias_table",
     "algorithm_identity",
     "compare_algorithms",
     "normalise_algorithm",
@@ -95,4 +123,16 @@ __all__ = [
     "decode_cipher_suite",
     "decode_group",
     "ingest_sessions",
+    "SourceError",
+    "detect_format",
+    "load_sessions",
+    "records_for_ingest",
+    "SbomShapeError",
+    "component_vendor",
+    "edges_for_footprint",
+    "vendor_edges_from_cyclonedx",
+    "Endpoint",
+    "attribute_sessions",
+    "endpoints_from_inventory",
+    "workload_summary",
 ]

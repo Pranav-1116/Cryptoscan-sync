@@ -1,0 +1,249 @@
+{
+  "schema": "cryptoscan.vendor-evidence-guide/3",
+  "generated_at": "2026-11-02T15:34:18.342445+00:00",
+  "as_of": "2026-11-02",
+  "counts": {
+    "PASS": 6,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "rows": [
+    {
+      "id": "log_readers",
+      "question": "can a session record come from a log the bank already keeps?",
+      "phase": "6",
+      "probes": [
+        {
+          "probe": "a-zeek-log-becomes-session-records",
+          "ok": true,
+          "observed": "12 of 13 row(s) used, 1 skipped: no cipher: the handshake did not finish"
+        },
+        {
+          "probe": "the-log-carries-post-quantum-key-establishment",
+          "ok": true,
+          "observed": "12 session(s) -> ['ML-KEM-768'] at HIGH confidence; the curve column is where it appears"
+        },
+        {
+          "probe": "a-csv-is-mapped-and-its-unknown-columns-are-named",
+          "ok": true,
+          "observed": "2 row(s) used, 1 skipped, columns not used: ['hostname']"
+        },
+        {
+          "probe": "an-access-log-yields-protocol-cipher-and-curve",
+          "ok": true,
+          "observed": "one line decoded (TLS_AES_256_GCM_SHA384), one skipped with 'no timestamp or no cipher at the end of the line: th\u2026'"
+        },
+        {
+          "probe": "a-key-material-column-refuses-the-file",
+          "ok": true,
+          "observed": "the CSV is refused rather than partially read: column 'premaster_secret' looks like key material or payload; this reader takes metadata o"
+        },
+        {
+          "probe": "a-file-that-yields-nothing-raises-instead-of-reporting-calm",
+          "ok": true,
+          "observed": "1 row(s) were read and none carried a session: no timestamp or no cipher at the end of the line: this virtual "
+        },
+        {
+          "probe": "an-unrecognised-file-is-named-not-guessed",
+          "ok": true,
+          "observed": "detected None and refused: the log is not in a shape this reader knows (zeek_ssl_log, csv, nginx_access); d"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "workload_attribution",
+      "question": "does an observed session say which application used the primitive?",
+      "phase": "11/12",
+      "probes": [
+        {
+          "probe": "one-endpoint-one-application-is-attributed-with-its-citation",
+          "ok": true,
+          "observed": "12 session(s) -> ['Payments API'] on ['HSM-001'], backed by VE-215c15a655cc"
+        },
+        {
+          "probe": "a-shared-appliance-is-ambiguous-and-names-both",
+          "ok": true,
+          "observed": "AMBIGUOUS: Payments API, Reporting \u2014 the endpoint hosts 2 applications; a session on a shared appliance cannot say which one used the primitive"
+        },
+        {
+          "probe": "an-unregistered-peer-is-not-assigned-to-the-nearest-appliance",
+          "ok": true,
+          "observed": "10.9.9.9:443 -> UNATTRIBUTED with no application; the collector's asset is kept and the workload is not guessed"
+        },
+        {
+          "probe": "an-endpoint-with-no-application-is-partial",
+          "ok": true,
+          "observed": "PARTIAL: the asset is known and the workload is not \u2014 the endpoint is known and names no application, so the asset is identified and the workload is not"
+        },
+        {
+          "probe": "the-workload-table-keeps-the-remainder",
+          "ok": true,
+          "observed": "{'Payments API': 12} covers 66.7% of sessions; the other 6 are an unknown workload, not a rounding difference"
+        },
+        {
+          "probe": "every-half-answer-reaches-a-ledger",
+          "ok": true,
+          "observed": "3 ledger entr(ies): 10.0.0.7:443=AMBIGUOUS, 10.0.0.8:443=PARTIAL, 10.9.9.9:443=UNATTRIBUTED"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "sbom_sub_vendors",
+      "question": "does a sub-vendor edge come from the SBOM, or from folklore?",
+      "phase": "12",
+      "probes": [
+        {
+          "probe": "a-supplier-field-becomes-an-edge-with-a-citation",
+          "ok": true,
+          "observed": "Vendor-Z openssl-wrapper 1.0.3 from field supplier, cited as sbom:urn:uuid:9f2c#c1 (VE-127cfef8ba9a)"
+        },
+        {
+          "probe": "a-component-with-no-supplier-is-listed-not-inferred",
+          "ok": true,
+          "observed": "libfoo names no supplier, so no vendor is invented for it: the component carries no supplier, publisher or group; a component nam\u2026"
+        },
+        {
+          "probe": "the-parents-own-component-is-not-a-sub-vendor",
+          "ok": true,
+          "observed": "vendor-x-core is published by Vendor-X, so it is a self edge and not a dependency"
+        },
+        {
+          "probe": "the-edge-reaches-the-estate-through-the-embedded-vendor",
+          "ok": true,
+          "observed": "direct ['HSM-001'], inherited ['APP-07'] via ['Vendor-Z']; Vendor-X: 1 appliance(s) bought directly, 1 more reached through 1 sub-vendor(s); 2 system(s) in total, of which 1 critical"
+        },
+        {
+          "probe": "a-document-that-is-not-a-cyclonedx-bom-is-refused",
+          "ok": true,
+          "observed": "not a CycloneDX BOM: bomFormat='SPDX'"
+        },
+        {
+          "probe": "an-empty-bom-is-called-a-metadata-gap",
+          "ok": true,
+          "observed": "0 component(s) read for Vendor-X and no sub-vendor edge follows: that is a gap in the SBOM's supplier metadata, not evidence that nothing is embedded"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "alias_overrides",
+      "question": "can a bank teach the reader its own spellings without weakening it?",
+      "phase": "15",
+      "probes": [
+        {
+          "probe": "a-bank-spelling-resolves-through-the-supplied-table",
+          "ok": true,
+          "observed": "AESGCM256 -> AES-256-GCM and RSA-3K -> RSA-3072; the builtin table is unchanged"
+        },
+        {
+          "probe": "an-override-cannot-redefine-a-builtin",
+          "ok": true,
+          "observed": "'AES256' is already a builtin spelling of AES-256; a bank table may add spellings, not redefine known ones"
+        },
+        {
+          "probe": "an-alias-cannot-point-at-a-name-nobody-knows",
+          "ok": true,
+          "observed": "'X99' points at 'NOPE-1', which this table does not know; add the family to the builtin table deliberately rather than aliasing into a name nobody can interpret"
+        },
+        {
+          "probe": "the-review-stub-is-emitted-unfilled",
+          "ok": true,
+          "observed": "one unknown name queued with an empty target: {'Weird-99-xyz': ''}"
+        },
+        {
+          "probe": "an-unfilled-stub-cannot-be-loaded-as-no-aliases",
+          "ok": true,
+          "observed": "1 alias(es) have no target yet (Weird-99-xyz); the stub is meant to be filled in and reviewed, not l"
+        },
+        {
+          "probe": "a-filled-stub-loads-and-normalises",
+          "ok": true,
+          "observed": "MYCIPHER-1 -> AES-128, and ZZZ is still in the review queue"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "due_diligence_evidence",
+      "question": "is a due-diligence section filled in, or supported?",
+      "phase": "9",
+      "probes": [
+        {
+          "probe": "a-record-can-be-complete-and-support-nothing",
+          "ok": true,
+          "observed": "the completeness check says COMPLETE and the evidence audit says 0 of 22 sections are supported"
+        },
+        {
+          "probe": "citations-that-resolve-are-support",
+          "ok": true,
+          "observed": "22 section(s) supported against an evidence index of 20 record(s)"
+        },
+        {
+          "probe": "a-citation-that-does-not-resolve-is-not-support",
+          "ok": true,
+          "observed": "fips_claims cites VD-missing, which is not in the evidence index, so the section is UNRESOLVED rather than supported"
+        },
+        {
+          "probe": "every-uncited-section-is-a-listed-partial",
+          "ok": true,
+          "observed": "22 partial(s) enumerated, none dropped, none renderable as a pass"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "end_to_end",
+      "question": "can one log line be followed all the way to a VBOM row somebody can defend?",
+      "phase": "6/11/13",
+      "probes": [
+        {
+          "probe": "a-log-line-becomes-a-vbom-row",
+          "ok": true,
+          "observed": "ML-KEM-768 in the vendor block from 12 session citation(s), status RUNTIME_OBSERVED_ONLY"
+        },
+        {
+          "probe": "the-row-traces-back-to-a-named-session",
+          "ok": true,
+          "observed": "every citation names a session id from the log (session:C0, \u2026) rather than a document that restates the conclusion"
+        },
+        {
+          "probe": "the-coverage-statement-says-which-tick-is-backed",
+          "ok": true,
+          "observed": "1 post-quantum tick, 1 evidence-backed (['ML-KEM-768']) and 0 resting on a declaration"
+        },
+        {
+          "probe": "the-workload-behind-the-tick-is-named-or-not-claimed",
+          "ok": true,
+          "observed": "12 of 12 session(s) are attributed to a single application; 0 peer(s) are ambiguous, 0 name an asset but no application and 0 are unknown workloads \u2014 so the row can say which workload, or say that it cannot"
+        },
+        {
+          "probe": "the-document-carries-the-verdict-not-just-the-algorithm",
+          "ok": true,
+          "observed": "3449 bytes of VBOM document carrying the algorithm, the verification status and an evidence id"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "check_policy": {
+    "pass": 0,
+    "partial": 1,
+    "fail": 2
+  },
+  "limits": [
+    "the logs are fixtures written by this file. The readers are graded against the column names, separators and absent-value conventions those formats use, not against a bank's own parser quirks",
+    "attribution matches host and port exactly after normalisation. A NAT, a proxy or a load balancer between the session and the appliance will produce UNATTRIBUTED peers, which is the honest answer and not a defect to work around",
+    "a shared appliance hosting several applications is reported AMBIGUOUS. Splitting that further needs an application-level audit trail this module does not have",
+    "sub-vendor edges come from CycloneDX supplier metadata. A supplier field that is wrong makes the edge wrong; the citation is there so the claim can be checked against the vendor's own SBOM",
+    "the alias table is validated but its content is a judgement: a bank that aliases MYCIPHER-1 to AES-128 has asserted that, and the audit trail is the reviewed file",
+    "a due-diligence citation is checked for resolution only when the caller supplies an evidence index; without one, SUPPORTED means 'cites something', not 'cites something that exists'"
+  ]
+}

@@ -39,6 +39,11 @@ def test_schema_and_shape(report: dict) -> None:
     assert report["counts"]["FAIL"] == 0, [
         row["id"] for row in report["rows"] if row["verdict"] == "FAIL"]
     for row in report["rows"]:
+        if row["verdict"] == "SKIP":
+            # A skipped row is a row that was not executed — but it may not be
+            # silent about why, and it may not be counted as a pass.
+            assert row["unproven"], f"{row['id']} is SKIP without a stated reason"
+            continue
         assert row["probes"], f"{row['id']} has no probe"
 
 
