@@ -1,0 +1,483 @@
+{
+  "schema": "cryptoscan.hardware-breadth/1",
+  "generated_at": "2026-11-02T13:21:42.382944+00:00",
+  "counts": {
+    "PASS": 6,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "rows": [
+    {
+      "id": "component_breadth",
+      "question": "does the estate know what hardware a host contains, class by class \u2014 and does it admit which classes nobody looked at?",
+      "phase": "A",
+      "probes": [
+        {
+          "probe": "fifteen-component-classes",
+          "ok": true,
+          "observed": "every class the review named is reported for this host: cpu=PRESENT, memory=PRESENT, motherboard=PRESENT, bios=PRESENT, firmware=PRESENT, pci=PRESENT, gpu=PRESENT, nic=PRESENT, storage_controller=ABSENT, disk=PRESENT, raid=PRESENT, tpm=UNKNOWN, hsm=PRESENT, smart_card=ABSENT, crypto_accelerator=ABSENT"
+        },
+        {
+          "probe": "host-facts-reach-the-cpu-and-memory",
+          "ok": true,
+          "observed": "processor Intel(R) Xeon(R) Gold 6430 from lscpu, 2 memory module(s) from dmidecode -t memory"
+        },
+        {
+          "probe": "pci-classes-name-the-component",
+          "ok": true,
+          "observed": "GPU 'ASPEED Graphics [2000]', RAID 'PERC H755 [10e2]' and NICs from the PCI class codes; a non-RAID storage controller is ABSENT (the bus answered) rather than UNKNOWN"
+        },
+        {
+          "probe": "firmware-is-per-component",
+          "ok": true,
+          "observed": "2 firmware revision(s) recorded against the component that carries each one"
+        },
+        {
+          "probe": "an-unread-bus-is-unknown-not-empty",
+          "ok": true,
+          "observed": "with lspci unavailable the GPU, RAID and storage classes are UNKNOWN and name the reason \u2014 not ABSENT, which would have read as 'this server has no GPU'"
+        },
+        {
+          "probe": "an-unlooked-tpm-is-unknown-not-absent",
+          "ok": true,
+          "observed": "no TPM reader ran for this host, so the TPM is UNKNOWN with that reason; a collector that never opens a TPM cannot report that a machine has none"
+        },
+        {
+          "probe": "windows-reports-what-it-cannot-enumerate",
+          "ok": true,
+          "observed": "Windows fills CPU, memory, BIOS, motherboard, disk and TPM from CIM, and reports PCI, GPU, RAID, storage controller and NIC as UNKNOWN because those classes are not on its allowlist"
+        },
+        {
+          "probe": "the-inventory-is-a-projection-not-a-store",
+          "ok": true,
+          "observed": "every component is derived from facts the readers already produced; the module owns no table, so a component cannot drift away from the observation behind it"
+        }
+      ],
+      "measured": {
+        "cpu": "PRESENT",
+        "memory": "PRESENT",
+        "motherboard": "PRESENT",
+        "bios": "PRESENT",
+        "firmware": "PRESENT",
+        "pci": "PRESENT",
+        "gpu": "PRESENT",
+        "nic": "PRESENT",
+        "storage_controller": "ABSENT",
+        "disk": "PRESENT",
+        "raid": "PRESENT",
+        "tpm": "UNKNOWN",
+        "hsm": "PRESENT",
+        "smart_card": "ABSENT",
+        "crypto_accelerator": "ABSENT"
+      },
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "hsm_evidence_path",
+      "question": "does an HSM carry the twelve facts a bank needs \u2014 and none of the five it must never carry?",
+      "phase": "10",
+      "probes": [
+        {
+          "probe": "the-twelve-facts-an-hsm-must-carry",
+          "ok": true,
+          "observed": "12/12 facts present on the observation: vendor, model, firmware, device identity, HA state, partitions, algorithms, key types, certificates, capabilities and PQC"
+        },
+        {
+          "probe": "the-five-things-an-hsm-must-never-carry",
+          "ok": true,
+          "observed": "5/5 refusals through the HSM scanner itself: private key, secret key, pin, wrapped key, plaintext"
+        },
+        {
+          "probe": "certificate-dependencies-are-references",
+          "ok": true,
+          "observed": "certificate dependencies arrive as references, so the twin draws them as edges only where a record names both ends"
+        },
+        {
+          "probe": "application-relationships-are-edges-not-a-text-field",
+          "ok": true,
+          "observed": "an application\u2192HSM relationship is an evidenced edge in the usage graph, not a string on the observation: a text field could not carry the evidence id the twin needs"
+        },
+        {
+          "probe": "post-quantum-capability-is-named-not-implied",
+          "ok": true,
+          "observed": "PQC capability is explicit: ['ML-DSA-65'] on firmware 8.2.1"
+        },
+        {
+          "probe": "the-observation-is-scanner-shaped-not-invented-here",
+          "ok": true,
+          "observed": "the row reads the scanner's own observation (hsm, firmware 8.2.1), so guide 129 cannot drift from the HSM model in guide 128"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "usage_evidence",
+      "question": "is 'this application uses this HSM' proven by a record that names both ends, or assumed because both exist?",
+      "phase": "11",
+      "probes": [
+        {
+          "probe": "a-config-names-both-ends-and-that-is-the-edge",
+          "ok": true,
+          "observed": "1 application(s) use HSM-01: Payment API (HIGH, EV-9b3c809b2a5f)"
+        },
+        {
+          "probe": "an-application-that-merely-exists-has-no-edge",
+          "ok": true,
+          "observed": "Statement Worker shares the estate with the appliance and shares no configuration with it, so no edge exists \u2014 coexistence is not a dependency"
+        },
+        {
+          "probe": "a-label-nobody-discovered-is-a-finding-not-an-edge",
+          "ok": true,
+          "observed": "a config naming a token label no discovered appliance carries is reported UNRESOLVED, because a dependency on something the estate has not found is worth knowing"
+        },
+        {
+          "probe": "a-label-two-appliances-claim-is-refused",
+          "ok": true,
+          "observed": "when two appliances carry the same token label the edge is refused as AMBIGUOUS with both candidates named; picking one would be a guess wearing an evidence id"
+        },
+        {
+          "probe": "capability-is-evidenced-and-than-named",
+          "ok": true,
+          "observed": "4 SUPPORTS link(s) from the observation: RSA-3072 (RSA), ECDSA-P256 (ECDSA), AES-256 (AES), ML-DSA-65 (PQC)"
+        },
+        {
+          "probe": "an-evidence-free-edge-cannot-be-constructed",
+          "ok": true,
+          "observed": "the edge type itself refuses a construction with no evidence, so the graph cannot be filled by assertion even by a caller that skips the helpers"
+        },
+        {
+          "probe": "the-graph-reports-its-own-shape",
+          "ok": true,
+          "observed": "resolved=1, unresolved=1, ambiguous=0"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "business_impact",
+      "question": "if this HSM fails, what breaks \u2014 and is the answer evidenced at every hop?",
+      "phase": "12",
+      "probes": [
+        {
+          "probe": "the-chain-reaches-a-business-system",
+          "ok": true,
+          "observed": "HSM-01 \u2192 2 application(s) \u2192 1 service(s) \u2192 1 critical business system(s) (Card Authorization)"
+        },
+        {
+          "probe": "the-sentence-says-what-breaks",
+          "ok": true,
+          "observed": "HSM-01 failure reaches 2 application(s); 1 service(s); 1 critical business system(s) (Card Authorization)"
+        },
+        {
+          "probe": "every-hop-carries-its-evidence",
+          "ok": true,
+          "observed": "1 service hop(s), each with the evidence id of the application\u2192hardware edge and of the service mapping"
+        },
+        {
+          "probe": "an-unmapped-application-is-not-a-zero",
+          "ok": true,
+          "observed": "with no service record for the payment applications the answer names them as unmapped rather than reporting that a failure would reach nothing"
+        },
+        {
+          "probe": "a-service-mapping-without-evidence-is-refused",
+          "ok": true,
+          "observed": "the hop that reaches a business system needs its own record, so the business view cannot be asserted any more than the hardware edge can"
+        },
+        {
+          "probe": "confidence-is-the-weakest-hop",
+          "ok": true,
+          "observed": "the config-proven edge is HIGH and the CMDB service mapping is MEDIUM; the answer reports MEDIUM, because the chain is only as strong as its weakest citation"
+        },
+        {
+          "probe": "no-dependency-is-stated-as-no-dependency",
+          "ok": true,
+          "observed": "an appliance nothing proven depends on produces that sentence \u2014 not a reassuring zero that hides a missing collector"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "drift_first_class",
+      "question": "is a hardware change first class \u2014 named, evidenced, versioned and correlated \u2014 or just a log line?",
+      "phase": "13",
+      "probes": [
+        {
+          "probe": "firmware-8-2-1-to-8-3-0-names-three-things",
+          "ok": true,
+          "observed": "the bump produced ['FIRMWARE_CHANGED', 'CRYPTO_CAPABILITY_CHANGED', 'PQC_CAPABILITY_ADDED', 'HSM_CAPABILITY_CHANGED']"
+        },
+        {
+          "probe": "the-change-payloads-carry-no-key-material",
+          "ok": true,
+          "observed": "every change payload is firmware versions, algorithm names and evidence ids"
+        },
+        {
+          "probe": "the-change-reaches-the-live-bus",
+          "ok": true,
+          "observed": "4 drift row(s) became live events with evidence ids, through the same controller the estate runs"
+        },
+        {
+          "probe": "the-firmware-change-correlates-with-the-certificate-and-the-application",
+          "ok": true,
+          "observed": "the PQC row is CORRELATED with the TLS profile switch and the certificate reissue (verdicts ['SUSPICIOUS', 'CORRELATED', 'CORRELATED', 'CORRELATED'])"
+        },
+        {
+          "probe": "proximity-is-still-not-causation",
+          "ok": true,
+          "observed": "the correlation carries its own disclaimer, so a change board cannot read a timestamp as proof"
+        },
+        {
+          "probe": "the-feed-and-the-correlation-agree-about-what-happened",
+          "ok": true,
+          "observed": "the feed holds 4 hardware change(s) for the 4 rows the diff produced \u2014 no double counting across the seam"
+        },
+        {
+          "probe": "the-twin-versions-the-change",
+          "ok": true,
+          "observed": "the HBOM version moved 2 \u2192 3 when the firmware did, and the two documents differ \u2014 the drift is a version in the twin, not a row in a log"
+        },
+        {
+          "probe": "the-crypto-delta-is-in-the-change-itself",
+          "ok": true,
+          "observed": "the change names what the CBOM gains (ML-DSA-65) and what it loses (nothing), so a CBOM projection after the change has something to say"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "security_qualification",
+      "question": "do the collection guards actually refuse \u2014 under a hostile path, a moving file and an elevated process?",
+      "phase": "15",
+      "probes": [
+        {
+          "probe": "the-file-guards-refuse",
+          "ok": true,
+          "observed": "symlink=refused, hardlink=refused, special file=refused, oversized=refused, input mutation=refused \u2014 a symlink never reaches an open, a hard link is refused for aliasing, a FIFO is not a file, an oversized input stops at the limit and a file that changes mid-read is refused rather than half-read"
+        },
+        {
+          "probe": "the-secret-guards-refuse",
+          "ok": true,
+          "observed": "private key=refused, secret text=refused \u2014 the PEM spelling ('BEGIN PRIVATE KEY') is refused as well as the underscore form, which it was not until this drill ran it"
+        },
+        {
+          "probe": "privilege-and-promotion-guards-refuse",
+          "ok": true,
+          "observed": "manifest tampering=refused, privilege=refused, expiry=refused, runtime promotion=refused, algorithm promotion=refused, policy promotion=refused \u2014 an elevated process is refused, an expired manifest is refused, a tampered manifest no longer matches its digest, a snapshot cannot claim whole-host coverage, a CMDB claim cannot be promoted past MEDIUM and an unknown evidence kind cannot be invented"
+        },
+        {
+          "probe": "the-reader-is-identity-not-assertion",
+          "ok": true,
+          "observed": "the same code path reads a real file, so the refusals above are not a reader that refuses everything"
+        },
+        {
+          "probe": "a-failing-row-degrades-the-rating-that-rested-on-it",
+          "ok": true,
+          "observed": "forcing `security_qualification` to FAIL removed green from 1/1 area(s) that rested on it"
+        }
+      ],
+      "measured": {
+        "a regular file is read": true,
+        "symlink": true,
+        "hardlink": true,
+        "special file": true,
+        "oversized": true,
+        "input mutation": true,
+        "private key": true,
+        "secret text": true,
+        "manifest tampering": true,
+        "privilege": true,
+        "expiry": true,
+        "runtime promotion": true,
+        "algorithm promotion": true,
+        "policy promotion": true
+      },
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "platforms": [
+    {
+      "platform": "Linux",
+      "reader": "host/linux.py",
+      "state": "implemented, qualified against fixtures",
+      "note": "executed here on a fixture sysfs tree and a recorded command transcript"
+    },
+    {
+      "platform": "Windows",
+      "reader": "host/windows.py",
+      "state": "implemented, candidate",
+      "note": "allowlist and projection executed here; no Windows host has run it"
+    },
+    {
+      "platform": "Network",
+      "reader": "host/snmp_bridge.py, netconf, restconf",
+      "state": "implemented, qualified against scripted replies",
+      "note": "no appliance was contacted"
+    },
+    {
+      "platform": "HSM",
+      "reader": "hsm_readers/ (PKCS#11, KMIP Query, documented REST)",
+      "state": "implemented, qualified against recorded replies",
+      "note": "Luna REST is documented and cited; Utimaco/Entrust/Fortanix are named gaps"
+    },
+    {
+      "platform": "OCI",
+      "reader": "inventory/oci_image.py",
+      "state": "partial/candidate",
+      "note": "image metadata, not hardware; outside this artifact's probes"
+    },
+    {
+      "platform": "Cloud KMS",
+      "reader": "inventory/cloud_kms.py",
+      "state": "partial/candidate",
+      "note": "managed-key inventory, not physical hardware"
+    }
+  ],
+  "reclassification": {
+    "rows": [
+      {
+        "area": "Linux collection security",
+        "rating": "\ud83d\udfe2",
+        "before": "\ud83d\udfe2",
+        "proven_by": "security_qualification",
+        "proven_by_verdict": "PASS",
+        "rests_on": "guards executed on this runner: hostile path, hard link, FIFO, oversized input, mid-read mutation, PEM and human spellings of secret material",
+        "open_gap": "none outstanding for the Linux reader; Windows traversal guards need a Windows host",
+        "moved": false
+      },
+      {
+        "area": "Linux evidence model",
+        "rating": "\ud83d\udfe2",
+        "before": "\ud83d\udfe2",
+        "proven_by": "component_breadth",
+        "proven_by_verdict": "PASS",
+        "rests_on": "every component carries PRESENT/ABSENT/UNKNOWN with the reader and evidence that produced it; nothing is inferred from a neighbour",
+        "open_gap": "the model is proved against fixtures, not against bank hosts",
+        "moved": false
+      },
+      {
+        "area": "Linux host collector",
+        "rating": "\ud83d\udfe2",
+        "before": "\ud83d\udfe2",
+        "proven_by": "component_breadth",
+        "proven_by_verdict": "PASS",
+        "rests_on": "foundation: 15 component classes projected from DMI, lscpu, lspci, firmware and disk facts behind an argv allowlist",
+        "open_gap": "breadth comes from allowlisted binaries, so a class with no binary is UNKNOWN",
+        "moved": false
+      },
+      {
+        "area": "Cloud KMS",
+        "rating": "\ud83d\udfe1",
+        "before": "\ud83d\udfe1",
+        "proven_by": "component_breadth",
+        "proven_by_verdict": "PASS",
+        "rests_on": "managed-key inventory exists per provider, so the estate can name a key and its provider",
+        "open_gap": "green only where a probe covers it; nothing in this artifact does, and it is not physical hardware",
+        "moved": false
+      },
+      {
+        "area": "HSM",
+        "rating": "\ud83d\udfe1",
+        "before": "\ud83d\udfe0",
+        "proven_by": "hsm_evidence_path",
+        "proven_by_verdict": "PASS",
+        "rests_on": "review item 10: twelve metadata facts and five refusals through the scanner itself \u2014 never a private key, secret key, PIN, wrapped key or plaintext",
+        "open_gap": "Luna REST is documented and cited; Utimaco, Entrust and Fortanix readers are named gaps",
+        "moved": true
+      },
+      {
+        "area": "Hardware drift",
+        "rating": "\ud83d\udfe1",
+        "before": "\ud83d\udfe1",
+        "proven_by": "drift_first_class",
+        "proven_by_verdict": "PASS",
+        "rests_on": "review item 13: FIRST-CLASS FOUNDATION \u2014 named changes, evidence ids, live bus correlation, twin version bump and a crypto delta",
+        "open_gap": "single-appliance diff; a cluster rollback is not modelled",
+        "moved": false
+      },
+      {
+        "area": "Hardware relationships",
+        "rating": "\ud83d\udfe1",
+        "before": "\ud83d\udfe0",
+        "proven_by": "usage_evidence",
+        "proven_by_verdict": "PASS",
+        "rests_on": "review item 11: an edge exists only where a configuration names both ends, carries an evidence id, and is refused when unproven or ambiguous",
+        "open_gap": "configuration-proven only: no session observation catches an application using an HSM it never configured",
+        "moved": true
+      },
+      {
+        "area": "Linux production qualification",
+        "rating": "\ud83d\udfe1",
+        "before": "\ud83d\udfe1",
+        "proven_by": "security_qualification",
+        "proven_by_verdict": "PASS",
+        "rests_on": "the collector has never run on a bank-managed Linux host with the bank's privilege model",
+        "open_gap": "a real host and a real manifest are required",
+        "moved": false
+      },
+      {
+        "area": "OCI inventory",
+        "rating": "\ud83d\udfe1",
+        "before": "\ud83d\udfe1",
+        "proven_by": "component_breadth",
+        "proven_by_verdict": "PASS",
+        "rests_on": "image metadata exists; it is inventory of images, not of hardware",
+        "open_gap": "outside this artifact's probes",
+        "moved": false
+      },
+      {
+        "area": "Physical hardware breadth",
+        "rating": "\ud83d\udfe1",
+        "before": "\ud83d\udfe0",
+        "proven_by": "component_breadth",
+        "proven_by_verdict": "PASS",
+        "rests_on": "review item A: CPU, memory, motherboard, BIOS, firmware, PCI, GPU, NIC, storage controller, disk, RAID, TPM, HSM, smart card and crypto accelerator now have a class, a reader or an honest UNKNOWN",
+        "open_gap": "no PC/SC reader and no accelerator probe: those two classes are projected, not collected",
+        "moved": true
+      },
+      {
+        "area": "Windows collector code",
+        "rating": "\ud83d\udfe1",
+        "before": "\ud83d\udfe1",
+        "proven_by": "component_breadth",
+        "proven_by_verdict": "PASS",
+        "rests_on": "implemented and candidate: CIM allowlist executes and the projection is exercised, PCI/GPU/RAID/storage/NIC report UNKNOWN by design",
+        "open_gap": "no Windows host has run it",
+        "moved": false
+      },
+      {
+        "area": "Windows production qualification",
+        "rating": "\ud83d\udfe1",
+        "before": "\ud83d\udfe1",
+        "proven_by": "component_breadth",
+        "proven_by_verdict": "PASS",
+        "rests_on": "missing: Win32_PnPEntity and Win32_VideoController would close the PCI, GPU and NIC unknowns",
+        "open_gap": "one allowlist entry plus a projection, then a host",
+        "moved": false
+      }
+    ],
+    "security": "Security moves from \ud83d\udd34 broad concern to \ud83d\udfe1 qualification still required: the collection guards refuse rather than assert, and what remains is qualification on a bank host and a Windows runner, not an open security hole.",
+    "counts": {
+      "\ud83d\udfe2": 3,
+      "\ud83d\udfe1": 9,
+      "\ud83d\udfe0": 0,
+      "\ud83d\udd34": 0
+    }
+  },
+  "limits": [
+    "no bank hardware was touched: the Linux and Windows hosts are recorded facts, the HSM is a synthetic observation, and the application configurations are fixtures shaped like the real files",
+    "the component inventory grades what the readers can see, not what a machine has: a class nobody looked at is UNKNOWN, and UNKNOWN is not an absence",
+    "on Windows, PCI, GPU, RAID, storage-controller and NIC classes have no reader yet; that is a gap in the CIM allowlist and is reported as UNKNOWN rather than as a machine without those parts",
+    "smart cards and crypto accelerators are only as good as the reader that supplies them: this artifact projects a PC/SC or PCI record, it does not open a reader",
+    "the usage graph reads configuration files handed to it; nothing here watches a running process open a PKCS#11 session, so an application that uses the HSM without configuring it is invisible",
+    "a token label shared by two appliances is refused rather than resolved; on a real estate that refusal is a labelling job, not a bug",
+    "the business impact walk depends on service and business-system records a bank maintains; this artifact exercises the chain with CMDB-shaped fixtures and does not connect to a CMDB",
+    "drift here is a single-appliance diff executed in-process; it does not prove what a fleet does when a firmware rollback lands on one unit of a cluster",
+    "the security row executes the collection guards on this runner as an unprivileged or elevated process, whichever it is; Windows traversal guards need a Windows host"
+  ]
+}

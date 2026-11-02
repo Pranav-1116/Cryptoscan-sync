@@ -157,10 +157,25 @@ class HardwareEdge:
 #: whatever token name appeared 400 lines later in the same config.
 _WINDOW = r"[\s\S]{0,240}?"
 
+#: The value class excludes ``:`` on purpose. With ``:`` allowed, a nested block
+#:
+#:     pkcs11:
+#:       token:
+#:         label: PAYMENTS01
+#:
+#: captured ``label:`` as the appliance name, because ``\s*`` after the separator
+#: crossed the newline and swallowed the next key. That produced an edge to a
+#: device called ``label:`` — an edge to nothing, wearing evidence.
+_APPLIANCE = r"[A-Za-z0-9_.-]+"
+
+#: Keys that are never an appliance name, whatever the regex captured.
+_NOT_A_NAME = frozenset({"label", "token", "server", "host", "module", "slot",
+                         "endpoint", "name", "id", "pin", "password", "secret"})
+
 _HSM_CONFIG_SIGNALS: tuple[tuple[str, str], ...] = (
-    (rf"pkcs11{_WINDOW}(?:label|token)\s*[=:]\s*[\"']?([A-Za-z0-9_.:-]+)", "PKCS#11"),
-    (rf"kmip{_WINDOW}(?:server|host)\s*[=:]\s*[\"']?([A-Za-z0-9_.:-]+)", "KMIP"),
-    (r"hsm[_-]?(?:name|id|endpoint)\s*[=:]\s*[\"']?([A-Za-z0-9_.:-]+)", "HSM reference"),
+    (rf"pkcs11{_WINDOW}(?:label|token)\s*[=:][ \t]*[\"']?({_APPLIANCE})", "PKCS#11"),
+    (rf"kmip{_WINDOW}(?:server|host)\s*[=:][ \t]*[\"']?({_APPLIANCE})", "KMIP"),
+    (r"hsm[_-]?(?:name|id|endpoint)\s*[=:][ \t]*[\"']?(" + _APPLIANCE + ")", "HSM reference"),
 )
 
 #: A slot number is not an appliance. Without this, ``pkcs11: slot=1`` produced an
@@ -184,7 +199,7 @@ def derive_edges(application: str, *, config_text: str | None = None,
         for pattern, label in _HSM_CONFIG_SIGNALS:
             for match in re.finditer(pattern, config_text, re.IGNORECASE):
                 appliance = match.group(1)
-                if _NOT_AN_APPLIANCE.match(appliance):
+                if _NOT_AN_APPLIANCE.match(appliance) or appliance.lower() in _NOT_A_NAME:
                     continue
                 edges.append(HardwareEdge(
                     subject=application, hardware=appliance, kind="USES_HSM",

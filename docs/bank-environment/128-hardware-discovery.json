@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.hardware-discovery/1",
-  "generated_at": "2026-11-02T12:55:21.210221+00:00",
+  "generated_at": "2026-11-02T13:15:14.281639+00:00",
   "counts": {
     "PASS": 7,
     "PARTIAL": 0,
@@ -114,7 +114,7 @@
         {
           "probe": "linux-reader-parses-allowlisted-commands",
           "ok": true,
-          "observed": "1 memory module(s), 2 disk(s), SMART health and 1 PCI device(s) from 5 command(s): ['dmidecode', 'lsblk', 'smartctl', 'smartctl', 'lspci']"
+          "observed": "1 memory module(s), 2 disk(s), SMART health and 1 PCI device(s) from 6 command(s): ['dmidecode', 'lscpu', 'lsblk', 'smartctl', 'smartctl', 'lspci']"
         },
         {
           "probe": "linux-reader-refuses-arbitrary-commands",
@@ -448,7 +448,7 @@
         "vendors": 4,
         "device_types": 6,
         "changes": 400,
-        "seconds": 0.005
+        "seconds": 0.004
       },
       "verdict": "PASS",
       "failed": []
@@ -533,6 +533,7 @@
     "the vendor REST reader has one manifest \u2014 Thales Luna, whose reference guide was read \u2014 and it is exercised against replies shaped like that guide's examples; Utimaco, Entrust nShield and Fortanix DSM are named as undocumented, so an appliance from one of those vendors is still described by hand",
     "the Luna manifest reads the HSM and the single-partition resources only: the guide does not pin a partition *list* shape, so partition ids come from the operator's inventory rather than from a guessed parse",
     "the synthetic estate measures identity, drift volume and runtime, not discovery precision or recall against real vendor firmware",
+    "component breadth, application\u2192HSM usage and business impact are graded in [guide 129](129-hardware-breadth-and-impact.md); this artifact grades the discovery architecture those questions sit on top of",
     "encryption at rest, per-tenant key custody and vendor attestation are outside this artifact entirely"
   ]
 }

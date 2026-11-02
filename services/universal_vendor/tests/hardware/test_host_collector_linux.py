@@ -70,6 +70,20 @@ LSPCI = (
     '3b:00.0 "Network controller [0280]" "Broadcom Inc. [14e4]" "Device [16d7]" -r10\n'
 )
 
+LSCPU = """
+Architecture:            x86_64
+  CPU op-mode(s):        32-bit, 64-bit
+Vendor ID:               GenuineIntel
+  Model name:            Intel(R) Xeon(R) Gold 6430
+    CPU(s):              64
+    Core(s) per socket:  32
+    Socket(s):           2
+Virtualization features:
+  Virtualization:        VT-x
+Caches (sum of all):
+  L1d:                   3 MiB
+"""
+
 SMART = json.dumps({
     "model_name": "SAMSUNG MZQL2960HCJR", "serial_number": "S6B7NX0T",
     "firmware_version": "GDC5", "smart_status": {"passed": True}, "rotation_rate": 0,
@@ -123,6 +137,8 @@ class Transcript:
             if not self.dmidecode_ok:
                 return CommandResult(tuple(argv), 1, "", "/dev/mem: Permission denied")
             return CommandResult(tuple(argv), 0, DMIDECODE_MEMORY, "")
+        if argv[0] == "lscpu":
+            return CommandResult(tuple(argv), 0, LSCPU, "")
         if argv[0] == "lsblk":
             return CommandResult(tuple(argv), 0, LSBLK, "")
         if argv[0] == "lspci":
@@ -232,8 +248,13 @@ def test_collects_a_host_from_sysfs_and_allowlisted_commands(tmp_path):
     assert context["pci_devices"][0]["vendor_id"] == "8086"
     assert context["asset_id"] == "SN-0001"
 
+    assert context["cpu"]["model name"] == "Intel(R) Xeon(R) Gold 6430"
+    assert context["cpu"]["core(s) per socket"] == "32"
+    # lscpu prints cache and mitigation lines that are not hardware components;
+    # the allowlist keeps the processor facts and drops the rest.
+    assert "l1d" not in context["cpu"] and "cpu op-mode(s)" not in context["cpu"]
     assert [call[0] for call in transcript.calls] == [
-        "dmidecode", "lsblk", "smartctl", "smartctl", "lspci"]
+        "dmidecode", "lscpu", "lsblk", "smartctl", "smartctl", "lspci"]
     assert all(isinstance(call, tuple) for call in transcript.calls)
     assert facts.unavailable == []
 

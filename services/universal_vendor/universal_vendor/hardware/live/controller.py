@@ -250,9 +250,14 @@ class LiveHardwareController:
         if self.change_feed is not None and event.event_type.value in (
                 "CRYPTO_CAPABILITY_CHANGED", "HARDWARE_CHANGED", "FIRMWARE_CHANGED",
                 "HSM_CAPABILITY_CHANGED", "TPM_FIRMWARE_CHANGED"):
+            # Record the *drift* vocabulary, not the canonical one. A PQC row
+            # reaches the bus as CRYPTO_CAPABILITY_CHANGED with the drift type in
+            # its payload; recording the canonical name would make the same change
+            # look like a second change and double the correlation counts.
             self.change_feed.record_hardware({
                 "asset_id": envelope.asset_id,
-                "event_type": event.event_type.value,
+                "event_type": (event.payload.get("drift_event_type")
+                               or event.event_type.value),
                 "change_class": envelope.change_class,
                 "severity": envelope.impact.get("severity", "INFO"),
                 "pqc_affected": bool(event.payload.get("pqc")),

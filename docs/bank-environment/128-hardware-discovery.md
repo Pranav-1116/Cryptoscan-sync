@@ -1,6 +1,6 @@
 # Hardware discovery — from collectors to a twin, not to a second inventory
 
-`cryptoscan.hardware-discovery/1` · generated 2026-11-02T12:55:21.210221+00:00 · **7 pass · 0 partial · 0 fail**
+`cryptoscan.hardware-discovery/1` · generated 2026-11-02T13:15:14.281639+00:00 · **7 pass · 0 partial · 0 fail**
 
 The review this answers set one architectural rule above all others: hardware is not an independent scanner that emits an HBOM. Collectors feed an evidence engine; the evidence engine feeds the canonical estate; the estate feeds the digital twin; and HBOM, CBOM, NBOM and TechBOM are **projections of that one truth**. A second inventory per BOM document type is the failure mode, and the `single_source_of_truth` row below fails if one appears.
 
@@ -51,6 +51,9 @@ Every box in the diagram above is a module, and the mapping is the point: a revi
 | HSM / TPM depth | `hardware/hsm_hw.py`, `hardware/tpm.py` | metadata only |
 | HSM readers | `hardware/hsm_readers/pkcs11.py` (CK_TOKEN_INFO + mechanisms, PIN never on argv), `hardware/hsm_readers/kmip_query.py` (Query: vendor, operations, objects, profiles), `hardware/hsm_readers/rest.py` (documented vendor REST: a manifest per vendor with a citation per endpoint, refused for vendors whose documentation was not read) | built, executed here against recorded replies |
 | HSM *usage* (a different question) | `services/api/api/hsm_usage.py` — KMIP, spec 67 §17 | read-only, no `Get` |
+| component inventory | `hardware/components.py` — 15 component classes with PRESENT / ABSENT / UNKNOWN, projected from the host readers and the security-hardware readers | built, graded in [guide 129](129-hardware-breadth-and-impact.md) |
+| application → hardware usage | `hardware/usage_graph.py` — `USES_HSM` edges only from a configuration that names both ends, `SUPPORTS` links from the observation, ambiguity refused | built, graded in [guide 129](129-hardware-breadth-and-impact.md) |
+| business impact | `hardware/business_impact.py` — hardware → application → service → business system, with unmapped applications named instead of counted as zero | built, graded in [guide 129](129-hardware-breadth-and-impact.md) |
 
 ## What a collector may observe
 
@@ -115,7 +118,7 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 - **PASS** `collector-network` — network inventory and TLS posture reached the record: ['serial', 'firmware', 'tls']
 - **PASS** `collector-storage` — storage inventory and encryption state reached the record: ['serial', 'firmware', 'disk_encryption']
 - **PASS** `linux-reader-reads-sysfs` — the Linux reader took manufacturer, serial and 2 interface(s) straight from a sysfs tree, with no binary involved
-- **PASS** `linux-reader-parses-allowlisted-commands` — 1 memory module(s), 2 disk(s), SMART health and 1 PCI device(s) from 5 command(s): ['dmidecode', 'lsblk', 'smartctl', 'smartctl', 'lspci']
+- **PASS** `linux-reader-parses-allowlisted-commands` — 1 memory module(s), 2 disk(s), SMART health and 1 PCI device(s) from 6 command(s): ['dmidecode', 'lscpu', 'lsblk', 'smartctl', 'smartctl', 'lspci']
 - **PASS** `linux-reader-refuses-arbitrary-commands` — a shell, a metacharacter argument, a traversal device path and a non-device file were all refused (4/4)
 - **PASS** `linux-reader-runs-no-shell` — the only subprocess call site passes an argv list with shell=False
 - **PASS** `windows-reader-reads-cim` — identity Dell Inc. PowerEdge R760 serial SN-WIN-0001, BIOS 1.9.3 (2024-02-14), 2 disk firmware revisions and a TPM 2.0, 0, 1.16 — with the TPM capabilities WMI does not expose left absent rather than invented
@@ -195,7 +198,7 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 - **PASS** `drift-scales-with-change-not-with-estate` — 400 change event(s) from 120 upgraded assets in an estate of 600: per-device-type counts {'firewall': 3, 'hsm': 4, 'load_balancer': 3, 'san': 3, 'server': 3, 'tpm': 4}, and no record named an asset that did not change (0 leaked)
 - **PASS** `a-missing-observation-is-not-a-deletion` — identity is retained across observations; an asset that is not re-observed is not silently removed (retirement is its own decision)
 
-Measured: `{"assets": 600, "vendors": 4, "device_types": 6, "changes": 400, "seconds": 0.005}`
+Measured: `{"assets": 600, "vendors": 4, "device_types": 6, "changes": 400, "seconds": 0.004}`
 
 ### `single_source_of_truth` — PASS
 
@@ -232,6 +235,7 @@ Every injected defect was caught.
 - the vendor REST reader has one manifest — Thales Luna, whose reference guide was read — and it is exercised against replies shaped like that guide's examples; Utimaco, Entrust nShield and Fortanix DSM are named as undocumented, so an appliance from one of those vendors is still described by hand
 - the Luna manifest reads the HSM and the single-partition resources only: the guide does not pin a partition *list* shape, so partition ids come from the operator's inventory rather than from a guessed parse
 - the synthetic estate measures identity, drift volume and runtime, not discovery precision or recall against real vendor firmware
+- component breadth, application→HSM usage and business impact are graded in [guide 129](129-hardware-breadth-and-impact.md); this artifact grades the discovery architecture those questions sit on top of
 - encryption at rest, per-tenant key custody and vendor attestation are outside this artifact entirely
 
 ## What I would build next, in the order the review proposed

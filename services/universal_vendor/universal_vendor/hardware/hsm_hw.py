@@ -28,8 +28,14 @@ try:  # guarded import: reuse vendor HSM plugin models when available
 except Exception:  # pragma: no cover
     _VENDOR_HSM_PLUGINS = []
 
-_FORBIDDEN = ("private_key", "master_key", "pin", "secret", "password",
-              "key_material", "token_value", "key_value")
+#: Tokens refused in an HSM payload. The space-separated spellings matter: PEM
+#: armour announces a key with "BEGIN PRIVATE KEY" in upper case, and a guard that
+#: only knew the underscore spelling accepted the whole block. Found by running the
+#: guard against a PEM payload rather than by reading it.
+_FORBIDDEN = ("private_key", "private key", "master_key", "master key",
+              "secret_key", "secret key", "wrapped_key", "wrapped key",
+              "pin", "secret", "password", "passphrase", "plaintext",
+              "key_material", "key material", "token_value", "key_value")
 
 
 class HsmHardwareScanner:

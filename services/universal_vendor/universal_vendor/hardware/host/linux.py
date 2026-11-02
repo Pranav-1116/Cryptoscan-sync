@@ -52,7 +52,13 @@ SCHEMA = "cryptoscan.host-facts/1"
 
 #: The only programs this module may execute. Adding one is a code change with a
 #: review attached, not a configuration value.
-ALLOWED_BINARIES = frozenset({"dmidecode", "lsblk", "lspci", "smartctl"})
+ALLOWED_BINARIES = frozenset({"dmidecode", "lsblk", "lspci", "lscpu", "smartctl"})
+
+#: ``lscpu`` fields this reader keeps. The rest of its output — cache geometry,
+#: NUMA topology, vulnerability mitigations — is not a hardware component and is
+#: dropped rather than carried around.
+LSCPU_FIELDS = ("architecture", "model name", "vendor id", "cpu(s)",
+                "core(s) per socket", "socket(s)", "virtualization")
 
 #: sysfs files this reader may open, by fact name. A closed set: the class has no
 #: `read(path)` method, so there is no way to reach anything outside it.
@@ -291,6 +297,22 @@ def _hex_id(value: str) -> str | None:
     return match.group(1).lower() if match else None
 
 
+def parse_lscpu(text: str) -> dict[str, str]:
+    """``lscpu`` -> the processor facts this estate records.
+
+    Only :data:`LSCPU_FIELDS` survive. An unread field is a field the estate never
+    sees, which is the trade this reader makes everywhere else: the allowlist is
+    the contract, not the tool's output.
+    """
+    facts: dict[str, str] = {}
+    for line in (text or "").splitlines():
+        key, _, value = line.partition(":")
+        name = " ".join(key.strip().lower().split())
+        if name in LSCPU_FIELDS and value.strip():
+            facts[name] = value.strip()
+    return facts
+
+
 def parse_smartctl(text: str) -> dict[str, Any]:
     """``smartctl -j -i -H`` -> drive identity and health, no self-test logs."""
     try:
@@ -433,6 +455,14 @@ class LinuxHostCollector:
         if memory_total is not None:
             facts.sources["memory_total"] = "proc-meminfo"
 
+        cpu: dict[str, str] = {}
+        result = self._run(facts, "lscpu")
+        if result.failed():
+            facts.unavailable.append(_reason("lscpu", result))
+        else:
+            cpu = parse_lscpu(result.stdout)
+            facts.sources["cpu"] = "lscpu" if cpu else "empty"
+
         disks: list[dict[str, Any]] = []
         result = self._run(facts, "lsblk", "--json", "--output",
                            "NAME,PATH,SERIAL,MODEL,REV,TYPE,SIZE,ROTA")
@@ -461,6 +491,7 @@ class LinuxHostCollector:
             "asset_id": asset_id or _clean(dmi.get("serial")) or _hostname(self.proc_root),
             "device_type": "server",
             "dmi": dmi,
+            "cpu": cpu,
             "memory_modules": memory_modules,
             "memory_total_mb": memory_total,
             "disks": disks,

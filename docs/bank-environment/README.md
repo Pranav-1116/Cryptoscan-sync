@@ -217,6 +217,52 @@
 > would produce a reader that returns an empty observation and calls it success.
 > A partition list is deliberately not parsed: the guide does not pin that shape,
 > so partition ids come from the operator's inventory.
+>
+> [Hardware breadth, usage and impact](129-hardware-breadth-and-impact.md)
+> (**6 pass · 0 partial · 0 fail**) answers the sharper follow-up: *host
+> collection is not a complete hardware scanner*. `hardware/components.py` reports
+> all fifteen component classes a bank audits — CPU, memory, motherboard, BIOS,
+> firmware, PCI, GPU, NIC, storage controller, disk, RAID, TPM, HSM, smart card,
+> crypto accelerator — and gives each one **three** possible answers rather than
+> two: `PRESENT`, `ABSENT` (the reader looked and there is none) and `UNKNOWN`
+> (nobody looked, and here is why). That third state is the whole point: an
+> unprivileged collector that reports "no GPU, no TPM, no accelerator" is lying by
+> omission, and this one cannot. The Linux reader gained `lscpu` so the processor
+> is a fact rather than a gap, PCI class codes identify the GPU, RAID controller
+> and crypto accelerator, and on Windows the classes the CIM allowlist cannot see
+> are `UNKNOWN` with the missing class named.
+>
+> `hardware/usage_graph.py` draws `HSM-01 —USED_BY→ Payment API` only where a
+> configuration names both ends — the PKCS#11 token label, the KMIP server — and
+> records the file and block as the evidence. A label no discovered appliance
+> carries is `UNRESOLVED` (a dependency on something the estate has not found is
+> worth knowing); a label two appliances claim is `AMBIGUOUS` and refused, with
+> both candidates named, because picking one would be a guess wearing an evidence
+> id. Capability is `SUPPORTS` — a link between an appliance and an algorithm,
+> modelled separately so blast radius never counts `RSA-3072` as a device.
+> `hardware/business_impact.py` walks the chain the review drew, hardware →
+> application → service → business system, and prints the sentence an operator
+> reads at 03:00: *"HSM-01 failure reaches 2 application(s); 1 service(s); 1
+> critical business system(s) (Card Authorization)"* — with applications that have
+> no business mapping **named** rather than counted as zero.
+>
+> Running the collection guards rather than describing them found two real
+> defects: an HSM payload carrying a PEM block (`-----BEGIN PRIVATE KEY-----`) was
+> accepted because the guard only knew the `private_key` spelling, and the
+> controller recorded a PQC change under its canonical event name, so the same
+> change crossed the feed/controller seam twice and inflated the correlation
+> counts. Both are fixed, and both are now probes.
+>
+> The artifact closes with the review's reclassification table, and the ratings
+> are **computed, not typed**: each area names the row that proves it plus a
+> ceiling, so a green area whose probe fails degrades in the same run — and a
+> probe forces one row to `FAIL` to prove the downgrade actually happens. The
+> result is 3 green (Linux collection security, Linux evidence model, Linux host
+> collector as a foundation), 9 amber, 0 orange, 0 red: physical hardware breadth,
+> HSM, hardware relationships and hardware drift all move off 🟠, and security
+> moves from a 🔴 broad concern to 🟡 **qualification still required** — the
+> guards refuse rather than assert, and what is left is a bank Linux host, a
+> Windows runner and the two readers named above.
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

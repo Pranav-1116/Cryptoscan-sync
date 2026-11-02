@@ -1741,6 +1741,9 @@ def measure() -> dict[str, Any]:
             "operator's inventory rather than from a guessed parse",
             "the synthetic estate measures identity, drift volume and runtime, not discovery "
             "precision or recall against real vendor firmware",
+            "component breadth, application→HSM usage and business impact are graded in "
+            "[guide 129](129-hardware-breadth-and-impact.md); this artifact grades the discovery "
+            "architecture those questions sit on top of",
             "encryption at rest, per-tenant key custody and vendor attestation are outside this "
             "artifact entirely",
         ],
@@ -1853,6 +1856,15 @@ def render_md(report: dict[str, Any]) -> str:
         "documentation was not read) | built, executed here against recorded replies |",
         "| HSM *usage* (a different question) | `services/api/api/hsm_usage.py` — KMIP, spec 67 "
         "§17 | read-only, no `Get` |",
+        "| component inventory | `hardware/components.py` — 15 component classes with PRESENT / "
+        "ABSENT / UNKNOWN, projected from the host readers and the security-hardware readers | "
+        "built, graded in [guide 129](129-hardware-breadth-and-impact.md) |",
+        "| application → hardware usage | `hardware/usage_graph.py` — `USES_HSM` edges only from a "
+        "configuration that names both ends, `SUPPORTS` links from the observation, ambiguity "
+        "refused | built, graded in [guide 129](129-hardware-breadth-and-impact.md) |",
+        "| business impact | `hardware/business_impact.py` — hardware → application → service → "
+        "business system, with unmapped applications named instead of counted as zero | built, "
+        "graded in [guide 129](129-hardware-breadth-and-impact.md) |",
         "",
         "## What a collector may observe",
         "",
