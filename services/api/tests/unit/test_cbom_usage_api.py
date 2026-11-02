@@ -241,6 +241,42 @@ def test_the_graph_needs_a_subject(client):
     assert resp.status_code == 422
 
 
+def test_promotion_keeps_a_capability_out_of_the_document(client):
+    body = _post(client, "/promote", {
+        "components": [{"name": "openssl", "version": "3.0.13", "evidence_id": "SBOM-1",
+                        "algorithms": ["AES-256-GCM", "RSA-2048"]}],
+        "evidence": [{"class": "RUNTIME_OBSERVED", "evidence_id": "RUNTIME-1",
+                      "algorithm": "AES-256-GCM", "parameters": {"key_size": 256}}],
+        "document_name": "payments-api",
+    }).json()
+    assert [asset["algorithm"] for asset in body["promotion"]["assets"]] == ["AES-256-GCM"]
+    assert [row["algorithm"] for row in body["promotion"]["candidates"]] == ["RSA-2048"]
+    names = [component["name"] for component in body["document"]["components"]]
+    assert names == ["AES-256-GCM"]
+    assert body["inventory"]["algorithms"] == {"AES-256-GCM": ["RUNTIME"]}
+
+
+def test_promotion_refuses_an_unattributable_component(client):
+    body = _post(client, "/promote", {
+        "components": [{"name": "openssl", "algorithms": ["AES-256-GCM"]}],
+    }).json()
+    assert body["promotion"]["refused"] and body["document"]["components"] == []
+    assert "cannot be attributed" in body["promotion"]["refused"][0]["reason"]
+
+
+def test_promotion_marks_verified_when_both_observers_agree(client):
+    body = _post(client, "/promote", {
+        "components": [{"name": "openssl", "evidence_id": "SBOM-1",
+                        "algorithms": ["AES-256-GCM"]}],
+        "evidence": [
+            {"class": "RUNTIME_OBSERVED", "evidence_id": "R-1", "algorithm": "AES-256-GCM"},
+            {"class": "NETWORK_OBSERVED", "evidence_id": "N-1", "algorithm": "AES-256-GCM"},
+        ],
+    }).json()
+    assert body["promotion"]["assets"][0]["promotion_level"] == "VERIFIED"
+    assert body["promotion"]["levels"] == {"VERIFIED": 1}
+
+
 def test_hsm_capability_is_not_an_operation(client):
     capability = _post(client, "/hsm-evidence", {"kind": "CAPABILITY"}).json()
     assert capability["class"] == "VENDOR_DECLARED" and capability["observed"] is False

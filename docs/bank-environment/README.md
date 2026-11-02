@@ -555,6 +555,22 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [From "this library can do AES" to "this is an asset"](142-cbom-usage-promotion.md)
+> (**4 pass · 0 partial · 0 fail**, 20 probes) closes review item 6 — the one that
+> decides whether a CBOM can be trusted. `cbom.promotion` implements the chain the
+> review asks for, capability → candidate → **evidence promotes**, and makes the
+> boundary visible: a candidate becomes a CBOM asset only when an observing class
+> (static, configuration, runtime, network) reports the algorithm; everything else
+> is returned as a candidate and deliberately **kept out of the document**, because
+> a document is what a reviewer reads as fact. Every promoted asset carries a
+> promotion level — `CAPABILITY` < `STATIC`/`CONFIGURED` < `RUNTIME`/`NETWORK` <
+> `VERIFIED` when the two independent mechanisms agree — plus the evidence ids that
+> earned it. The document stays valid CycloneDX 1.5: standard fields carry the
+> algorithm and its `algorithmProperties`, while every platform claim is a
+> `cryptoscan:` property. An unattributable component (one with no evidence id) is
+> refused rather than promoted quietly, and candidates are counted in metadata so a
+> reader can see how much was left out. `POST /cbom/promote` exposes it.
+
 > [Durability, archives, obligations, deployment](136-sbom-durability-archives-obligations-deployment.md)
 > (**5 pass · 0 partial · 0 fail**, 68 probes, 4 placement, 9 archive and 13
 > licence-model cases) takes the four limits guide 135 named and makes each one

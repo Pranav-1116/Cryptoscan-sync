@@ -121,6 +121,26 @@ class CbomGraphResponse(BaseModel):
     graph: dict
 
 
+class CbomPromoteRequest(BaseModel):
+    components: list[dict] = Field(..., description=(
+        "crypto-capable components with their evidence id: name, version, algorithms[] and "
+        "evidence_id. A component with no evidence id is refused, because its capabilities "
+        "cannot be attributed to a document"))
+    evidence: list[dict] = Field(default_factory=list, description=(
+        "collector evidence events (see /cbom/usage/collect); only an observing class "
+        "promotes a candidate into the document"))
+    purposes: dict = Field(default_factory=dict, description="algorithm -> purpose")
+    primitives: dict = Field(default_factory=dict, description="algorithm -> primitive")
+    oids: dict = Field(default_factory=dict, description="algorithm -> OID")
+    document_name: str = Field("cryptoscan-promotion", description="metadata.component name")
+
+
+class CbomPromoteResponse(BaseModel):
+    promotion: dict
+    inventory: dict
+    document: dict
+
+
 class CbomHsmRequest(BaseModel):
     kind: str = Field(..., description=(
         "CAPABILITY, CONFIGURED_KEY or OPERATION — the three HSM/KMS answers, only the last "
@@ -243,6 +263,26 @@ def cbom_usage_graph(body: CbomGraphRequest,
     engine = GraphEngine()
     applied = ug.apply_graph(engine, edges["edges"])
     return {"edges": edges, "applied": applied, "graph": engine.to_vis()}
+
+
+@router.post("/promote", response_model=CbomPromoteResponse)
+def cbom_promote(body: CbomPromoteRequest,
+                 user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Promote observed algorithms into CBOM assets, and keep the rest candidates.
+
+    A library that supports AES does not mint ``AES-256 USED``: candidates are
+    returned separately and are deliberately absent from the document, which is
+    what a reviewer reads as fact. Each promoted asset carries its promotion
+    level (CAPABILITY < STATIC/CONFIGURED < RUNTIME/NETWORK < VERIFIED) and the
+    evidence ids that earned it, and the platform's claims sit in ``cryptoscan:``
+    properties rather than in the standard's fields.
+    """
+    from cbom import promotion as promo
+
+    promoted = promo.promote(body.components, body.evidence, purposes=body.purposes,
+                             primitives=body.primitives, oids=body.oids)
+    return {"promotion": promoted, "inventory": promo.asset_inventory(promoted),
+            "document": promo.to_cbom(promoted, name=body.document_name)}
 
 
 @router.post("/hsm-evidence")

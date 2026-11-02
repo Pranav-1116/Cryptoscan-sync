@@ -1,0 +1,156 @@
+{
+  "schema": "cryptoscan.cbom-usage-promotion-guide/1",
+  "generated_at": "2026-11-02T17:51:45.149117+00:00",
+  "counts": {
+    "PASS": 4,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 20,
+  "rows": [
+    {
+      "id": "ladder",
+      "question": "does a promotion level mean what it says?",
+      "phase": "review 13 / 17",
+      "probes": [
+        {
+          "probe": "a-capability-is-the-bottom-of-the-ladder",
+          "ok": true,
+          "observed": "IMPORTED and VENDOR_DECLARED both earn CAPABILITY and no more"
+        },
+        {
+          "probe": "static-and-configured-sit-above-capability",
+          "ok": true,
+          "observed": "the code or the configuration was seen to select it"
+        },
+        {
+          "probe": "runtime-and-network-together-are-verified",
+          "ok": true,
+          "observed": "two independent mechanisms, not one louder one"
+        },
+        {
+          "probe": "the-strongest-class-decides-the-level",
+          "ok": true,
+          "observed": "the ladder is a max, not an average"
+        },
+        {
+          "probe": "no-evidence-is-no-level",
+          "ok": true,
+          "observed": "an asset with no evidence is not promoted at any level"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "capability_is_not_an_asset",
+      "question": "does an SBOM still mint assets it cannot prove?",
+      "phase": "review 6 / 13 / 21",
+      "probes": [
+        {
+          "probe": "a-library-with-no-observations-promotes-nothing",
+          "ok": true,
+          "observed": "0 CBOM asset(s) promoted from evidence, 4 candidate(s) left out of the document; a capability is not an invocation"
+        },
+        {
+          "probe": "only-the-observed-algorithm-is-promoted",
+          "ok": true,
+          "observed": "1 CBOM asset(s) promoted from evidence, 3 candidate(s) left out of the document; a capability is not an invocation"
+        },
+        {
+          "probe": "an-imported-event-cannot-promote",
+          "ok": true,
+          "observed": "the document that declared the capability is not evidence of use"
+        },
+        {
+          "probe": "a-component-with-no-evidence-id-is-refused",
+          "ok": true,
+          "observed": "the component has no evidence id, so its capabilities cannot be attributed to a document"
+        },
+        {
+          "probe": "evidence-for-another-algorithm-promotes-nothing-else",
+          "ok": true,
+          "observed": "the matching is by algorithm, not by component"
+        },
+        {
+          "probe": "a-refused-event-does-not-promote",
+          "ok": true,
+          "observed": "a runtime claim with no evidence id promotes nothing"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_document",
+      "question": "is the produced CBOM a claim or a capability list?",
+      "phase": "review 6 / 20",
+      "probes": [
+        {
+          "probe": "only-promoted-assets-are-components",
+          "ok": true,
+          "observed": "2 component(s), 2 candidate(s)"
+        },
+        {
+          "probe": "candidates-are-counted-in-metadata-not-written-as-components",
+          "ok": true,
+          "observed": "{\"cryptoscan:candidates_excluded\": \"2\", \"cryptoscan:promoted_assets\": \"2\", \"cryptoscan:promotion_schema\": \"cryptoscan.cbom-promotion/1\"}"
+        },
+        {
+          "probe": "a-promoted-asset-is-a-cyclonedx-cryptographic-asset",
+          "ok": true,
+          "observed": "crypto/algorithm/aes-256-gcm"
+        },
+        {
+          "probe": "platform-claims-live-in-properties-not-standard-fields",
+          "ok": true,
+          "observed": "cryptoscan:confidence, cryptoscan:evidence_id, cryptoscan:observed_classes, cryptoscan:promotion_level, cryptoscan:usage"
+        },
+        {
+          "probe": "the-evidence-that-earned-the-asset-travels-with-it",
+          "ok": true,
+          "observed": "[\"RUNTIME-1\"]"
+        },
+        {
+          "probe": "the-inventory-says-what-the-document-may-be-read-as",
+          "ok": true,
+          "observed": "2 algorithm(s) in the document across 2 promotion level(s); 2 candidate(s) are not in it"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "api_exposure",
+      "question": "can an operator produce a defensible CBOM?",
+      "phase": "review 6",
+      "probes": [
+        {
+          "probe": "the-promote-route-exists-and-is-typed",
+          "ok": true,
+          "observed": "POST /cbom/promote"
+        },
+        {
+          "probe": "the-route-returns-document-inventory-and-refusals",
+          "ok": true,
+          "observed": "promotion + inventory + document in one answer"
+        },
+        {
+          "probe": "the-route-uses-the-promotion-module",
+          "ok": true,
+          "observed": "one implementation, not a copy in the router"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "promotion is only as good as the collector that reported the observation. The document says VERIFIED when runtime and network agreed; it cannot say whether both collectors were looking at the same deployment",
+    "the algorithm list a component declares is the caller's. This module refuses an unattributable component, but it cannot verify that openssl really supports every algorithm the SBOM claims",
+    "a candidate that is never promoted stays a candidate forever. That is honest and also a blind spot: an algorithm used in a path no collector watches is invisible in the document rather than present-but-unproven",
+    "the produced document is CycloneDX 1.5 and is not validated against the 1.6 schema here; the platform's own properties are namespaced, but a strict consumer may still reject them",
+    "level is per algorithm, not per call site: two applications sharing one algorithm produce two assets with the same name unless the caller separates them by component",
+    "promotion does not decide migration or risk. A VERIFIED weak algorithm is still weak; that judgement belongs to the assessment and PQC engines, not to this ladder"
+  ]
+}
