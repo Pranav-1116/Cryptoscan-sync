@@ -521,3 +521,74 @@ def test_network_assets_refuse_a_hop_with_no_observer(client):
         "applications": ["payments-api"]}).json()
     assert body["assets"]["assets"] == []
     assert body["assets"]["refused"]
+
+
+def test_termination_paths_are_three_relationships(client):
+    body = _post(client, "/termination-paths", {"hops": [
+        {"from": "Client", "to": "External LB", "tls_version": "1.3",
+         "cipher_suite": "TLS_AES_256_GCM_SHA384", "evidence_id": "NET-1"},
+        {"from": "External LB", "to": "API Gateway", "tls_version": "1.2",
+         "cipher_suite": "ECDHE-RSA-AES128-GCM-SHA256", "evidence_id": "NET-2"},
+        {"from": "API Gateway", "to": "Payments API", "tls_version": "1.3",
+         "cipher_suite": "TLS_AES_256_GCM_SHA384", "evidence_id": "NET-3"},
+    ]}).json()
+    relationships = body["paths"]["relationships"]
+    assert [row["tls_version"] for row in relationships] == ["1.3", "1.2", "1.3"]
+    assert body["summary"]["downgrades"] == 1
+    assert body["paths"]["merged"]["refused"] is True
+    assert body["paths"]["gaps"] == []
+
+
+def test_termination_paths_do_not_bridge_a_gap(client):
+    body = _post(client, "/termination-paths", {"hops": [
+        {"from": "Client", "to": "External LB", "tls_version": "1.3",
+         "cipher_suite": "TLS_AES_256_GCM_SHA384", "evidence_id": "NET-1"},
+        {"from": "Somewhere", "to": "Payments API", "tls_version": "1.3",
+         "cipher_suite": "TLS_AES_256_GCM_SHA384", "evidence_id": "NET-2"},
+    ]}).json()
+    assert body["summary"]["relationships"] == 2
+    assert len(body["paths"]["gaps"]) == 2
+
+
+def test_termination_paths_refuse_a_hop_with_no_suite(client):
+    body = _post(client, "/termination-paths", {"hops": [
+        {"from": "Client", "to": "External LB", "tls_version": "1.3",
+         "evidence_id": "NET-1"}]}).json()
+    assert body["paths"]["relationships"] == []
+    assert "suite" in body["paths"]["refused"][0]["reason"]
+
+
+def test_completeness_keeps_unmeasured_and_empty_apart(client):
+    body = _post(client, "/completeness", {"components": [
+        {"component": "payments", "tasks": [
+            {"task": "semgrep-crypto", "status": "COMPLETE"}],
+         "claims": [{"task": "semgrep-crypto", "algorithm": "AES-128-CBC",
+                     "evidence_id": "EV-1"}]},
+        {"component": "clean", "tasks": [
+            {"task": "semgrep-crypto", "status": "COMPLETE"}], "claims": []},
+        {"component": "unscanned", "tasks": [], "claims": []},
+    ]}).json()
+    states = {row["component"]: row["state"] for row in body["components"]}
+    assert states == {"payments": "COMPLETE", "clean": "EMPTY", "unscanned": "UNMEASURED"}
+    assert body["inventory"]["may_report_total"] is False
+    assert body["inventory"]["unmeasurable"] == ["unscanned"]
+
+
+def test_completeness_reports_a_contradiction_not_a_majority(client):
+    body = _post(client, "/completeness", {"components": [
+        {"component": "payments", "tasks": [
+            {"task": "syft-sbom", "status": "COMPLETE", "found": False},
+            {"task": "semgrep-crypto", "status": "COMPLETE"}],
+         "claims": [{"task": "semgrep-crypto", "algorithm": "AES-128-CBC",
+                     "evidence_id": "EV-1"}]},
+    ]}).json()
+    row = body["components"][0]
+    assert row["state"] == "CONTRADICTED"
+    assert row["contradictions"][0]["empty_from"] == "syft-sbom"
+    assert row["quotable"] is False
+
+
+def test_completeness_of_nothing_quotes_nothing(client):
+    body = _post(client, "/completeness", {"components": []}).json()
+    assert body["inventory"]["components"] == 0
+    assert body["inventory"]["may_report_total"] is False

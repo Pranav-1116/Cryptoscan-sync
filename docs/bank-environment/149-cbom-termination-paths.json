@@ -1,0 +1,290 @@
+{
+  "schema": "cryptoscan.cbom-termination-paths-guide/1",
+  "generated_at": "2026-11-02T18:42:53.810227+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 32,
+  "path": {
+    "nodes": [
+      "Client",
+      "External LB",
+      "API Gateway",
+      "Payments API"
+    ],
+    "relationships": [
+      {
+        "from": "Client",
+        "to": "External LB",
+        "tls_version": "1.3",
+        "cipher_suite": "TLS_AES_256_GCM_SHA384",
+        "algorithms": [
+          "AES-256-GCM",
+          "SHA-384"
+        ],
+        "evidence_ids": [
+          "NET-9281"
+        ]
+      },
+      {
+        "from": "External LB",
+        "to": "API Gateway",
+        "tls_version": "1.2",
+        "cipher_suite": "ECDHE-RSA-AES128-GCM-SHA256",
+        "algorithms": [
+          "AES-128-GCM",
+          "SHA-256",
+          "ECDHE",
+          "RSA"
+        ],
+        "evidence_ids": [
+          "NET-9282"
+        ]
+      },
+      {
+        "from": "API Gateway",
+        "to": "Payments API",
+        "tls_version": "1.3",
+        "cipher_suite": "TLS_AES_256_GCM_SHA384",
+        "algorithms": [
+          "AES-256-GCM",
+          "SHA-384"
+        ],
+        "evidence_ids": [
+          "NET-9283"
+        ]
+      }
+    ],
+    "summary": {
+      "schema": "cryptoscan.cbom-termination-paths/1",
+      "paths": 1,
+      "relationships": 3,
+      "changes": 4,
+      "downgrades": 1,
+      "weakest_hops": [
+        "path 1 hop 2: TLS 1.2 after TLS 1.3"
+      ],
+      "gaps": 0,
+      "refused": 0,
+      "merge_refused": true,
+      "statement": "3 cryptographic relationship(s) across 1 path(s); 1 version downgrade(s); the path is not collapsed into one attribute"
+    }
+  },
+  "rows": [
+    {
+      "id": "three_relationships",
+      "question": "is one path three facts, or one attribute?",
+      "phase": "review 9",
+      "probes": [
+        {
+          "probe": "the-path-is-chained-not-collected",
+          "ok": true,
+          "observed": "Client \u2192 External LB \u2192 API Gateway \u2192 Payments API"
+        },
+        {
+          "probe": "three-hops-are-three-relationships",
+          "ok": true,
+          "observed": "3 cryptographic relationship(s) across 1 path(s); 4 change(s) between adjacent hops"
+        },
+        {
+          "probe": "each-hop-keeps-its-own-tls-version",
+          "ok": true,
+          "observed": "1.3, 1.2, 1.3"
+        },
+        {
+          "probe": "each-hop-keeps-its-own-suite",
+          "ok": true,
+          "observed": "ECDHE-RSA-AES128-GCM-SHA256"
+        },
+        {
+          "probe": "the-middle-hop-owns-aes-128-and-nobody-else-does",
+          "ok": true,
+          "observed": "the bulk cipher belongs to the hop that negotiated it"
+        },
+        {
+          "probe": "every-relationship-carries-its-own-evidence",
+          "ok": true,
+          "observed": "NET-9281, NET-9282, NET-9283"
+        },
+        {
+          "probe": "a-relationship-statement-names-its-hop",
+          "ok": true,
+          "observed": "External LB \u2192 API Gateway is its own relationship: TLS 1.2 AES-128-GCM, SHA-256, ECDHE, RSA"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_change",
+      "question": "does the path show where it weakens?",
+      "phase": "review 9",
+      "probes": [
+        {
+          "probe": "the-downgrade-in-the-middle-is-named",
+          "ok": true,
+          "observed": "TLS 1.2 after TLS 1.3"
+        },
+        {
+          "probe": "the-upgrade-after-the-downgrade-is-named-too",
+          "ok": true,
+          "observed": "a path can weaken and recover in the same breath"
+        },
+        {
+          "probe": "the-bulk-cipher-change-is-what-is-reported",
+          "ok": true,
+          "observed": "comparing whole suites would report a change on every hop"
+        },
+        {
+          "probe": "a-same-version-hop-with-a-new-suite-is-a-suite-change",
+          "ok": true,
+          "observed": "TLS 1.3 \u2192 TLS 1.3 with a different suite is still a change"
+        },
+        {
+          "probe": "every-version-spelling-ranks-the-same",
+          "ok": true,
+          "observed": "[[\"TLS_VERSION_UPGRADE\"], [\"TLS_VERSION_UPGRADE\"], [\"TLS_VERSION_UPGRADE\"], [\"TLS_VERSION_UPGRADE\"]]"
+        },
+        {
+          "probe": "an-unparseable-version-does-not-invent-a-downgrade",
+          "ok": true,
+          "observed": "SSLV3 is not ranked below TLS 1.3; it is not ranked at all"
+        },
+        {
+          "probe": "the-summary-names-the-weakest-hop",
+          "ok": true,
+          "observed": "path 1 hop 2: TLS 1.2 after TLS 1.3"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_merge",
+      "question": "is the naive collapse visible and refused?",
+      "phase": "review 9 / 17",
+      "probes": [
+        {
+          "probe": "the-union-is-computed-so-it-can-be-seen",
+          "ok": true,
+          "observed": "AES-256-GCM, SHA-384, AES-128-GCM, SHA-256, ECDHE, RSA"
+        },
+        {
+          "probe": "the-merged-claim-is-refused",
+          "ok": true,
+          "observed": "collapsing this path would claim AES-256-GCM, SHA-384, AES-128-GCM, SHA-256, ECDHE, RSA for every node on it; no hop negotiates that set, so the claim describes no hop"
+        },
+        {
+          "probe": "the-refusal-says-why-it-describes-nothing",
+          "ok": true,
+          "observed": "a union of three hops is a description of no hop"
+        },
+        {
+          "probe": "a-single-hop-cannot-differ-from-itself",
+          "ok": true,
+          "observed": "collapsing this path would claim AES-128-GCM, SHA-256, ECDHE, RSA for every node on it; no hop negotiates that set, so the claim describes no hop"
+        },
+        {
+          "probe": "there-is-nothing-to-collapse-without-a-path",
+          "ok": true,
+          "observed": "there is no path to collapse"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "gaps",
+      "question": "what is refused rather than bridged?",
+      "phase": "review 9 / 12",
+      "probes": [
+        {
+          "probe": "a-hop-with-no-connector-is-a-gap-not-a-path",
+          "ok": true,
+          "observed": "2 path(s), 2 gap(s)"
+        },
+        {
+          "probe": "the-gap-says-the-chain-was-not-invented",
+          "ok": true,
+          "observed": "no other recorded hop connects to this one, so its position on the path is unknown; the chain is not invented around it"
+        },
+        {
+          "probe": "a-hop-with-no-suite-is-refused",
+          "ok": true,
+          "observed": "a hop with no negotiated suite is not a cryptographic relationship"
+        },
+        {
+          "probe": "a-hop-with-no-evidence-is-refused",
+          "ok": true,
+          "observed": "a hop with no evidence id cannot be shown on a path"
+        },
+        {
+          "probe": "a-hop-with-no-start-node-is-refused",
+          "ok": true,
+          "observed": "a hop needs the node it starts from"
+        },
+        {
+          "probe": "a-tunnelling-hop-passes-through-and-terminates-nothing",
+          "ok": true,
+          "observed": "a middlebox that tunnels TLS owns no suite on that hop"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_document",
+      "question": "can a reviewer see the weak hop in the output?",
+      "phase": "review 9 / 12",
+      "probes": [
+        {
+          "probe": "one-component-per-path-hop-and-algorithm",
+          "ok": true,
+          "observed": "8 component(s), one per path, hop and algorithm; a suite on one hop is never written as another hop's property"
+        },
+        {
+          "probe": "the-component-names-its-hop-version-and-evidence",
+          "ok": true,
+          "observed": "{\"cryptoscan:evidence_id\": \"NET-9282\", \"cryptoscan:from\": \"External LB\", \"cryptoscan:tls_version\": \"1.2\", \"cryptoscan:to\": \"API Gateway\"}"
+        },
+        {
+          "probe": "no-component-names-an-application",
+          "ok": true,
+          "observed": "the path names hops, not the application behind them"
+        },
+        {
+          "probe": "every-algorithm-edge-belongs-to-a-hop",
+          "ok": true,
+          "observed": "no algorithm edge starts at an application, a system or a host"
+        },
+        {
+          "probe": "the-hops-are-ordered-by-precedes-edges",
+          "ok": true,
+          "observed": "the order is data, not an assumption about the list"
+        },
+        {
+          "probe": "every-edge-is-network-observed-with-evidence",
+          "ok": true,
+          "observed": "a hop with no evidence never becomes an edge"
+        },
+        {
+          "probe": "the-estate-chain-builds-the-path-from-the-same-hops",
+          "ok": true,
+          "observed": "the chain and the standalone path agree on the same hops"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the path is built from the hops the collector reported, in the order it reported them. A missing hop is a gap, not a guess \u2014 but a collector that silently skips a proxy produces a complete-looking path with the wrong topology",
+    "a hop is attributed to the node that observed it, not to the node that terminated it. Without a probe from the far side, 'External LB \u2192 API Gateway' is the LB's view of that connection",
+    "the version comparison ranks TLS 1.0 to 1.3. A suite downgrade within one version is reported as a bulk-cipher change, which is the fact, but it does not say whether the change was allowed by policy \u2014 that comparison is a separate, reviewable decision",
+    "PASSES_THROUGH depends on the collector saying so. A middlebox that terminates and re-originates without declaring it looks like a terminator, and its algorithms are then attributed one hop too far",
+    "the merged claim is refused, not repaired. A downstream tool that unions the components it receives can still produce the claim this module refuses",
+    "nothing here covers mTLS identity, pinned certificates or session resumption: those are properties of the relationship this module does not model"
+  ]
+}

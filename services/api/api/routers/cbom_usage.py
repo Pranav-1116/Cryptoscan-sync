@@ -248,6 +248,33 @@ class CbomNetworkAssetsResponse(BaseModel):
     summary: dict
 
 
+class CbomTerminationPathsRequest(BaseModel):
+    hops: list[dict] = Field(default_factory=list, description=(
+        "TLS hops in path order: from, to, endpoint, observed_on, tls_version, "
+        "cipher_suite, evidence_id, and optionally terminates/mode for a middlebox that "
+        "tunnels instead of terminating"))
+
+
+class CbomTerminationPathsResponse(BaseModel):
+    paths: dict
+    components: dict
+    edges: dict
+    summary: dict
+
+
+class CbomCompletenessRequest(BaseModel):
+    components: list[dict] = Field(default_factory=list, description=(
+        "per-component inspection records: {component, tasks: [{task, status, found}], "
+        "claims: [{task, algorithm, evidence_id, location}]}. A task that did not "
+        "finish makes the component INCOMPLETE; a task reporting 'nothing found' while "
+        "another reports a finding makes it CONTRADICTED"))
+
+
+class CbomCompletenessResponse(BaseModel):
+    inventory: dict
+    components: list[dict]
+
+
 class CbomHsmRequest(BaseModel):
     kind: str = Field(..., description=(
         "CAPABILITY, CONFIGURED_KEY or OPERATION — the three HSM/KMS answers, only the last "
@@ -468,6 +495,51 @@ def cbom_pqc_handoff(body: CbomPqcHandoffRequest,
     if body.document is not None:
         return pq.handoff_from_cbom(body.document, as_of=body.as_of)
     return pq.handoff(body.assets, as_of=body.as_of)
+
+
+@router.post("/completeness", response_model=CbomCompletenessResponse)
+def cbom_completeness(body: CbomCompletenessRequest,
+                      user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Was the component looked at, did every task finish, and do the tasks agree?
+
+    A component with no findings is only "a component without cryptography" when
+    something finished looking. ``UNMEASURED`` (nobody looked), ``INCOMPLETE`` (a
+    task stopped early), ``CONTRADICTED`` (one task says clean, another found
+    something) and ``EMPTY`` (every task finished and found nothing) are four
+    different answers, and only ``COMPLETE`` and ``EMPTY`` may be counted when a
+    total is quoted.
+    """
+    from cbom import inventory_completeness as ic
+
+    rows = [ic.component(item.get("claims") or [], item.get("tasks") or [],
+                         name=item.get("component"))
+            for item in body.components if isinstance(item, dict)]
+    return {"inventory": ic.inventory(rows), "components": rows}
+
+
+@router.post("/termination-paths", response_model=CbomTerminationPathsResponse)
+def cbom_termination_paths(body: CbomTerminationPathsRequest,
+                           user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Client → LB → gateway → application as three relationships, not one attribute.
+
+    ``Client --TLS1.3 AES-256-GCM--> LB --TLS1.2 AES-128-GCM--> gateway --TLS1.3
+    AES-256-GCM--> application`` is three cryptographic relationships, and the
+    middle one is weaker than both ends. Collapsing them into "the application uses
+    AES-256-GCM" hides the only hop a reviewer needed to see; reporting the union
+    ("AES-256-GCM, AES-128-GCM") hides *where* the weak suite lives. This returns
+    one relationship per hop, the changes between adjacent hops, and an explicit
+    refusal of the merged claim. A hop that connects to nothing is a gap, not a
+    one-hop path.
+    """
+    from cbom import termination_paths as tp
+
+    paths = tp.build(body.hops)
+    return {
+        "paths": paths,
+        "components": tp.to_components(paths),
+        "edges": tp.to_edges(paths),
+        "summary": tp.summary(paths),
+    }
 
 
 @router.post("/network-assets", response_model=CbomNetworkAssetsResponse)

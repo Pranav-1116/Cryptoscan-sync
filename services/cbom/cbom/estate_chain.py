@@ -40,10 +40,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 from cbom import coverage_render as cr
+from cbom import inventory_completeness as ic
 from cbom import kms_collectors as kc
 from cbom import network_assets as na
 from cbom import pqc_handoff as pq
 from cbom import process_tracing as pt
+from cbom import termination_paths as tp
 from cbom import promotion as promo
 from cbom import usage_collectors as uc
 from cbom import usage_evidence as ue
@@ -232,6 +234,14 @@ def run(estate: Mapping[str, Any]) -> dict[str, Any]:
                               applications=estate.get("applications") or ())
     network_block["components"] = na.to_components(network_block)["components"]
     network_block["audit"] = na.audit_graph(graph, network_block)
+    network_block["paths"] = tp.build(network.get("hops") or [])
+    network_block["path_summary"] = tp.summary(network_block["paths"])
+
+    # 6b. completeness: what may be said about the components nobody finished scanning
+    completeness = ic.inventory([
+        ic.component(item.get("claims") or [], item.get("tasks") or [],
+                     name=item.get("component"))
+        for item in estate.get("inspection") or [] if isinstance(item, Mapping)])
 
     # 7. the checks, over everything above
     documented = _usage_by_algorithm(document)
@@ -303,6 +313,7 @@ def run(estate: Mapping[str, Any]) -> dict[str, Any]:
         "graph": graph,
         "network": network_block,
         "coverage": {**coverage_block, "quotable": cr.quotable_counts(coverage_block)},
+        "completeness": completeness,
         "checks": checks,
         "statement": (
             f"{name}: {len(promoted['assets'])} documented asset(s), "

@@ -407,3 +407,56 @@ def test_a_network_observation_does_not_break_the_seven_checks():
     result = _running()
     assert result["network"]["audit"]["overclaims"] == []
     assert ec.summary(result)["status"] == "HOLDS"
+
+
+def test_the_chain_builds_the_termination_path_from_the_same_hops():
+    estate = _estate(probes=[
+        {"from": "Client", "to": "External LB", "observed_on": "External LB",
+         "endpoint": "payments.bank.example:443", "status": "OK", "evidence_id": "NET-1",
+         "crypto": {"cipher_suite": "TLS_AES_256_GCM_SHA384", "tls_version": "1.3"}},
+        {"from": "External LB", "to": "payments-api", "observed_on": "External LB",
+         "endpoint": "payments-api.internal:8443", "status": "OK", "evidence_id": "NET-2",
+         "crypto": {"cipher_suite": "ECDHE-RSA-AES128-GCM-SHA256", "tls_version": "1.2"}},
+    ])
+    result = ec.run(estate)
+    paths = result["network"]["paths"]
+    assert paths["paths"][0]["nodes"] == ["Client", "External LB", "payments-api"]
+    assert result["network"]["path_summary"]["relationships"] == 2
+    assert result["network"]["path_summary"]["downgrades"] == 1
+
+
+def test_the_chain_never_collapses_the_path_into_one_algorithm():
+    estate = _estate(probes=[
+        {"from": "Client", "to": "External LB", "observed_on": "External LB",
+         "endpoint": "a:443", "status": "OK", "evidence_id": "NET-1",
+         "crypto": {"cipher_suite": "TLS_AES_256_GCM_SHA384", "tls_version": "1.3"}},
+        {"from": "External LB", "to": "payments-api", "observed_on": "External LB",
+         "endpoint": "b:443", "status": "OK", "evidence_id": "NET-2",
+         "crypto": {"cipher_suite": "ECDHE-RSA-AES128-GCM-SHA256", "tls_version": "1.2"}},
+    ])
+    merged = ec.run(estate)["network"]["paths"]["merged"]
+    assert merged["refused"] is True
+    assert "AES-128-GCM" in merged["algorithms"]
+
+
+def test_the_chain_reports_component_completeness():
+    estate = _estate(inspection=[
+        {"component": "payments", "tasks": [
+            {"task": "semgrep-crypto", "status": "COMPLETE"},
+            {"task": "syft-sbom", "status": "COMPLETE", "found": False}],
+         "claims": [{"task": "semgrep-crypto", "algorithm": "AES-128-CBC",
+                     "evidence_id": "STATIC-1"}]},
+        {"component": "legacy-batch", "tasks": [
+            {"task": "semgrep-crypto", "status": "TIMEOUT"}], "claims": []},
+    ])
+    completeness = ec.run(estate)["completeness"]
+    assert completeness["components"] == 2
+    assert completeness["counts"]["CONTRADICTED"] == 1
+    assert completeness["counts"]["INCOMPLETE"] == 1
+    assert completeness["may_report_total"] is False
+
+
+def test_an_estate_with_no_inspection_claims_no_completeness_total():
+    completeness = _running()["completeness"]
+    assert completeness["components"] == 0
+    assert completeness["may_report_total"] is False

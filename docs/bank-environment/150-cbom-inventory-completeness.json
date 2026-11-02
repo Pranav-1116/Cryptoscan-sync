@@ -1,0 +1,199 @@
+{
+  "schema": "cryptoscan.cbom-inventory-completeness-guide/1",
+  "generated_at": "2026-11-02T18:42:53.988240+00:00",
+  "counts": {
+    "PASS": 4,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 22,
+  "sample": {
+    "schema": "cryptoscan.cbom-inventory-completeness/1",
+    "components": 4,
+    "counts": {
+      "COMPLETE": 1,
+      "CONTRADICTED": 0,
+      "EMPTY": 1,
+      "INCOMPLETE": 1,
+      "UNMEASURED": 1
+    },
+    "quotable": 2,
+    "measured": 3,
+    "complete_share": 25.0,
+    "may_report_total": false,
+    "unmeasurable": [
+      "unscanned-batch"
+    ],
+    "statement": "4 component(s): 1 complete, 1 empty, 1 incomplete, 0 contradicted, 1 unmeasured; no total may be quoted for the inventory"
+  },
+  "states": [
+    "UNMEASURED",
+    "INCOMPLETE",
+    "EMPTY",
+    "CONTRADICTED",
+    "COMPLETE"
+  ],
+  "readings": {
+    "UNMEASURED": "nobody looked, so the absence of findings is not evidence of absence",
+    "INCOMPLETE": "part of the component was not inspected, so the absence of findings covers only the part that was",
+    "EMPTY": "every task finished and found nothing, which is a measurement",
+    "CONTRADICTED": "the tasks disagree, so neither the findings nor the absence of them is settled",
+    "COMPLETE": "every task finished and the findings are the component's inventory"
+  },
+  "rows": [
+    {
+      "id": "four_readings",
+      "question": "are \"we did not look\" and \"we found nothing\" the same sentence?",
+      "phase": "review 18 / 19",
+      "probes": [
+        {
+          "probe": "a-component-nobody-scanned-is-unmeasured",
+          "ok": true,
+          "observed": "legacy-batch was never inspected; no task ran, so nothing is claimed about it"
+        },
+        {
+          "probe": "an-unfinished-task-makes-the-component-incomplete",
+          "ok": true,
+          "observed": "payments is partly inspected: syft-sbom did not finish, so the 1 finding(s) cover only the part that was"
+        },
+        {
+          "probe": "every-task-finished-finding-nothing-is-a-measurement",
+          "ok": true,
+          "observed": "clean: every one of 2 task(s) finished and none found cryptography, which is a measurement and not an assumption"
+        },
+        {
+          "probe": "agreement-is-complete",
+          "ok": true,
+          "observed": "gateway: 1 task(s) finished and produced 1 finding(s) across AES-128-CBC"
+        },
+        {
+          "probe": "every-state-has-a-reading-of-what-an-absence-means",
+          "ok": true,
+          "observed": "UNMEASURED: nobody looked, so the absence of finding\u2026; INCOMPLETE: part of the component was not inspected,\u2026; EMPTY: every task finished and found nothing, w\u2026; CONTRADICTED: the tasks disagree, so neither the findi\u2026; COMPLETE: every task finished and the findings are\u2026"
+        },
+        {
+          "probe": "the-four-states-stay-four-states",
+          "ok": true,
+          "observed": "UNMEASURED \u2192 INCOMPLETE \u2192 EMPTY \u2192 CONTRADICTED \u2192 COMPLETE"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "contradiction",
+      "question": "what happens when two tools disagree about the same component?",
+      "phase": "review 18 / 19",
+      "probes": [
+        {
+          "probe": "one-task-saying-clean-against-another-finding-is-a-contradiction",
+          "ok": true,
+          "observed": "syft-sbom reported no cryptography while semgrep-crypto reported AES-128-CBC; the disagreement is reported, not averaged"
+        },
+        {
+          "probe": "the-contradiction-carries-both-evidence-ids",
+          "ok": true,
+          "observed": "EV-1"
+        },
+        {
+          "probe": "a-contradiction-is-not-a-majority-vote",
+          "ok": true,
+          "observed": "2 contradiction(s) from three tasks"
+        },
+        {
+          "probe": "an-unfinished-task-is-the-weaker-claim-and-wins",
+          "ok": true,
+          "observed": "both are recorded; the state reports the one that limits what may be said"
+        },
+        {
+          "probe": "two-tasks-agreeing-are-one-algorithm-with-both-evidences",
+          "ok": true,
+          "observed": "{\"algorithm\": \"AES-128-CBC\", \"evidence_ids\": [\"EV-1\", \"EV-2\"], \"tasks\": [\"semgrep-crypto\", \"syft-sbom\"]}"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "unweighable",
+      "question": "which claims cannot be counted, and why?",
+      "phase": "review 18 / 12",
+      "probes": [
+        {
+          "probe": "a-finding-from-an-unfinished-task-is-a-candidate",
+          "ok": true,
+          "observed": "the task did not finish, so its finding is a candidate and not quotable"
+        },
+        {
+          "probe": "a-finding-from-a-task-that-never-ran-is-refused",
+          "ok": true,
+          "observed": "the claim names a task that never ran on this component"
+        },
+        {
+          "probe": "a-finding-with-no-evidence-id-is-refused",
+          "ok": true,
+          "observed": "the claim has no evidence id"
+        },
+        {
+          "probe": "a-finding-that-names-no-task-cannot-be-weighed",
+          "ok": true,
+          "observed": "a claim that names no task cannot be weighed against the tasks that ran"
+        },
+        {
+          "probe": "a-claim-that-is-not-an-object-is-refused",
+          "ok": true,
+          "observed": "a claim must be an object"
+        },
+        {
+          "probe": "a-task-with-no-status-is-unfinished",
+          "ok": true,
+          "observed": "silence about a task's outcome is not an outcome"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_total",
+      "question": "which total may be quoted, and from which rows?",
+      "phase": "review 18",
+      "probes": [
+        {
+          "probe": "a-measured-empty-component-makes-a-total-quotable",
+          "ok": true,
+          "observed": "2 component(s): 1 complete, 1 empty, 0 incomplete, 0 contradicted, 0 unmeasured; every component is settled (complete or measured empty), so a total may be quoted"
+        },
+        {
+          "probe": "an-unmeasured-component-stops-the-total",
+          "ok": true,
+          "observed": "2 component(s): 1 complete, 0 empty, 0 incomplete, 0 contradicted, 1 unmeasured; no total may be quoted for the inventory"
+        },
+        {
+          "probe": "an-incomplete-component-stops-the-total-too",
+          "ok": true,
+          "observed": "2 component(s): 1 complete, 0 empty, 1 incomplete, 0 contradicted, 0 unmeasured; no total may be quoted for the inventory"
+        },
+        {
+          "probe": "the-counts-are-per-state-not-a-percentage",
+          "ok": true,
+          "observed": "{\"COMPLETE\": 1, \"CONTRADICTED\": 0, \"EMPTY\": 0, \"INCOMPLETE\": 1, \"UNMEASURED\": 0}"
+        },
+        {
+          "probe": "an-empty-inventory-quotes-nothing",
+          "ok": true,
+          "observed": "0 component(s): 0 complete, 0 empty, 0 incomplete, 0 contradicted, 0 unmeasured; no total may be quoted for the inventory"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the module weighs the tasks it is told about. A component whose collector was never registered looks UNMEASURED, which is honest, but a component whose collector was registered and silently skipped looks COMPLETE or EMPTY",
+    "'found: false' is a claim the tool must make. A tool that finishes without saying whether it looked at everything can only ever produce INCOMPLETE or COMPLETE, never a contradiction, and the contradiction is the useful row",
+    "a contradiction is reported per algorithm, not per location. Two tools disagreeing about AES-128-CBC in the same file produce one row, and the reviewer still has to read the evidence",
+    "the state is per component, not per file or per directory. A component that was 99% scanned is INCOMPLETE, which is the right answer and also loses the information about which 1% is missing \u2014 the task's own reason field carries that, if the collector fills it",
+    "EMPTY is quotable, but it says only that the tasks that ran found nothing. It does not say the tasks were the right ones, and no completeness model can answer that",
+    "the inventory total is a statement about components, not about systems. Joining it to the estate coverage rollup is the coverage renderer's job, and the two totals must not be added together"
+  ]
+}

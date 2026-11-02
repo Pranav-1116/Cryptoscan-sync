@@ -555,6 +555,42 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [Component completeness: unmeasured is not clean](150-cbom-inventory-completeness.md)
+> (**4 pass · 0 partial · 0 fail**, 22 probes) closes the other half of review items 18
+> and 19 at the level a CBOM is actually assembled: the **component**, not the system.
+> ``cbom.inventory_completeness`` asks three questions per component — was it inspected
+> at all, did every task that ran finish, do the tasks agree — and returns
+> `UNMEASURED` (nobody looked: the absence of findings is not evidence of absence),
+> `INCOMPLETE` (one task stopped early, whatever the finished ones found), `EMPTY`
+> (every task finished and found nothing, which *is* a measurement) or `CONTRADICTED`
+> (one tool reported clean while another reported a finding — both evidence ids kept,
+> never a majority vote). A claim from a task that never finished is a **candidate**,
+> not a finding; a claim naming a task that never ran, carrying no evidence id, or
+> naming no task at all is **refused**. Only `COMPLETE` and measured `EMPTY` components
+> may be counted, so `inventory()` derives `may_report_total` from the rows instead of
+> asserting it. The estate chain reports the same block for an estate's inspection
+> records, and `POST /cbom/completeness` exposes it, typed, behind the reader roles.
+
+> [TLS termination paths: three relationships, never one attribute](149-cbom-termination-paths.md)
+> (**5 pass · 0 partial · 0 fail**, 32 probes) closes review item 9.
+> `Client --TLS1.3 AES-256-GCM--> External LB --TLS1.2 AES-128-GCM--> API Gateway
+> --TLS1.3 AES-256-GCM--> Payments API` is **three** cryptographic relationships, and
+> the middle hop is weaker than both ends. `cbom.termination_paths` chains the hops
+> (a hop that connects to nothing is a **gap**, not a one-hop path), keeps one
+> relationship per hop with its own version, suite, algorithms and evidence, and
+> names the change between adjacent hops — a `TLS_VERSION_DOWNGRADE`, a
+> `BULK_CIPHER_CHANGED`, or a `SUITE_CHANGED` at the same version. Versions are
+> compared by bulk cipher, because a TLS 1.3 suite names two algorithms and a TLS
+> 1.2 suite four; comparing whole suites would report a change on every hop. The
+> naive merge is computed **and refused**: `merged_claim` shows the union a careless
+> tool would assert and says it "describes no hop". Components are emitted per
+> (path, hop, algorithm) so `path:1#hop:2#AES-128-GCM` cannot be read as the
+> application's algorithm; edges are hop-scoped (`hop:A→B NEGOTIATES algorithm:X`,
+> plus `PRECEDES` for order) and never start at an application or a system, and a
+> tunnelling middlebox is `PASSES_THROUGH` rather than a terminator. The estate
+> chain builds the same path from the same hops. `POST /cbom/termination-paths`
+> exposes it, typed, behind the same reader roles.
+
 > [Network crypto assets: the interface owns the hop](148-cbom-network-assets.md)
 > (**6 pass · 0 partial · 0 fail**, 39 probes) closes review item 8, which is one
 > sentence with a large consequence: if the network sees `TLS_AES_256_GCM_SHA384`
