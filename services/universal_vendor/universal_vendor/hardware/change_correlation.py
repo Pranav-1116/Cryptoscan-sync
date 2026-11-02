@@ -220,8 +220,10 @@ def correlate_changes(hardware_changes: Iterable[Any], other_changes: Iterable[A
         missing = [domain for domain in expected if domain not in companion_domains]
 
         suspicious: list[str] = []
-        if change.event_type in {"FIRMWARE_CHANGED", "HARDWARE_CHANGED",
-                                 "HSM_CAPABILITY_CHANGED"}:
+        # Only changes that are *not* capability changes can be suspicious for
+        # lacking one. An HSM_CAPABILITY_CHANGED row means the capability moved,
+        # so treating it as "capability did not move" would invert its meaning.
+        if change.event_type in {"FIRMWARE_CHANGED", "HARDWARE_CHANGED"}:
             # A certificate moved on this subject while the hardware that holds
             # its key did not. Either the key moved, or the linkage was never real.
             moved_crypto = [record for record in related

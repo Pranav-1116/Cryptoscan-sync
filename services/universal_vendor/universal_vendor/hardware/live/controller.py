@@ -74,6 +74,7 @@ class LiveHardwareController:
         alerts: Optional[HardwareAlertCorrelator] = None,
         pqc: Optional[HardwarePqcImpactEngine] = None,
         correlation: Optional[Any] = None,
+        change_feed: Optional[Any] = None,
         discovery_router: Optional[LiveDiscoveryRouter] = None,
         evidence_scan_id: str = "live-hardware",
         risk_hook: Optional[Callable[[str, HardwareRiskScore], None]] = None,
@@ -92,6 +93,10 @@ class LiveHardwareController:
         self.alerts = alerts or HardwareAlertCorrelator()
         self.pqc = pqc or HardwarePqcImpactEngine()
         self.correlation = correlation
+        # Optional: when present, every change event is also recorded for the
+        # drift correlation window, so a finding can be reported in the same
+        # response that carried the event.
+        self.change_feed = change_feed
         self.discovery_router = discovery_router or LiveDiscoveryRouter()
         self.evidence_scan_id = evidence_scan_id
         self._risk_hook = risk_hook
@@ -237,6 +242,26 @@ class LiveHardwareController:
         if event.event_type.value in ("NIC_CHANGED",) and self.correlation is not None:
             network_relationships = self._network_relationships(envelope.asset_id)
 
+        # §8/§9: record the change for correlation, and report what moved beside
+        # it. Only crypto-relevant events are recorded — a NIC rename needs no
+        # change-board companion, and recording everything would drown the few
+        # rows that matter.
+        change_correlation = None
+        if self.change_feed is not None and event.event_type.value in (
+                "CRYPTO_CAPABILITY_CHANGED", "HARDWARE_CHANGED", "FIRMWARE_CHANGED",
+                "HSM_CAPABILITY_CHANGED", "TPM_FIRMWARE_CHANGED"):
+            self.change_feed.record_hardware({
+                "asset_id": envelope.asset_id,
+                "event_type": event.event_type.value,
+                "change_class": envelope.change_class,
+                "severity": envelope.impact.get("severity", "INFO"),
+                "pqc_affected": bool(event.payload.get("pqc")),
+                "detail": event.payload.get("detail") or {},
+                "evidence": list(event.payload.get("evidence") or []),
+                "detected_at": event.observed_at,
+            })
+            change_correlation = self.change_feed.findings_for(envelope.asset_id)
+
         return {
             "envelope": envelope.to_dict(),
             "state_verdict": verdict,
@@ -249,6 +274,7 @@ class LiveHardwareController:
             "pqc_assessment": pqc_assessment,
             "targeted_plan": plan,
             "network_relationships": network_relationships,
+            "change_correlation": change_correlation,
         }
 
     # ── §4 heartbeats ─────────────────────────────────────────────────
@@ -304,6 +330,17 @@ class LiveHardwareController:
         if agent_id:
             return [self.heartbeats.health(agent_id)]
         return self.heartbeats.agents()
+
+    def correlation_report(self, *, window_minutes: int = 120) -> Optional[dict[str, Any]]:
+        """What moved beside the hardware changes this controller has seen."""
+        if self.change_feed is None:
+            return None
+        return self.change_feed.correlation(window_minutes=window_minutes)
+
+    def pqc_migration_readiness(self, *, window_minutes: int = 1440) -> Optional[dict[str, Any]]:
+        if self.change_feed is None:
+            return None
+        return self.change_feed.pqc_readiness(window_minutes=window_minutes)
 
     def event_count(self) -> int:
         return self._event_count

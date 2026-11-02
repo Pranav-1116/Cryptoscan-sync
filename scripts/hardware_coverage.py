@@ -40,6 +40,10 @@ those phases, and it does it by *running* the parts that can run:
 ``hardware_drift`` (H7)
     Two observations of one asset are diffed: firmware per component, model change
     as a replacement, capability change, and the post-quantum add/remove rows.
+    The last four probes check the wiring rather than the library: a diff reaches
+    the live bus through a real controller, a change crossing the feed/controller
+    seam is counted once, a change the mapping does not know is still emitted,
+    and proximity alone never mints a relationship edge.
 
 ``qualification`` (H8)
     A synthetic estate is generated (vendors × types × firmware variants), run
@@ -128,6 +132,8 @@ def _load_package(root: Path):
     import universal_vendor.hardware.change_correlation as change_correlation  # noqa: PLC0415
     import universal_vendor.hardware.network_correlation as network_correlation  # noqa: PLC0415
     import universal_vendor.hardware.host.snmp_bridge as snmp_bridge  # noqa: PLC0415
+    import universal_vendor.hardware.live.change_feed as change_feed  # noqa: PLC0415
+    import universal_vendor.hardware.live.controller as live_controller  # noqa: PLC0415
     import universal_vendor.hardware.hsm_hw as hsm  # noqa: PLC0415
     import universal_vendor.hardware.models as models  # noqa: PLC0415
     import universal_vendor.hardware.plugins as plugins  # noqa: PLC0415
@@ -139,7 +145,8 @@ def _load_package(root: Path):
             "device_observation": device_observation,
             "host_credentials": host_credentials, "host_linux": host_linux,
             "host_netconf": host_netconf, "host_restconf": host_restconf, "hsm": hsm,
-            "change_correlation": change_correlation, "hsm_readers": hsm_readers,
+            "change_correlation": change_correlation, "change_feed": change_feed,
+            "live_controller": live_controller, "hsm_readers": hsm_readers,
             "network_correlation": network_correlation,
             "models": models, "plugins": plugins, "snmp_bridge": snmp_bridge,
             "relationships": relationships, "safety": safety, "tpm": tpm}
@@ -1164,6 +1171,66 @@ def row_drift(modules: dict[str, Any], root: Path) -> dict[str, Any]:
         "a change five minutes outside the window is not a companion, and the result says "
         "in its own words that proximity is not causation"))
 
+    # H7 continued: the correlation is not a library nobody calls. The feed puts
+    # every drift row on the live bus, and the same response carries the verdict.
+    feed_module = modules["change_feed"]
+    controller_module = modules["live_controller"]
+    wiring_feed = feed_module.HardwareChangeFeed()
+    controller = controller_module.LiveHardwareController(change_feed=wiring_feed)
+    outcome = feed_module.ingest_changes(
+        controller, wiring_feed,
+        hsm(supported_algorithms=["RSA-2048", "RSA-3072", "ECDSA-P256"]),
+        hsm(firmware={"HSM": "8.4.0"}, evidence_history=["EV-1", "EV-2"],
+            supported_algorithms=["RSA-2048", "RSA-3072", "ECDSA-P256", "ML-DSA-65"]))
+    emitted = [event["state_verdict"] for event in outcome["ingested"]]
+    probes.append(_probe(
+        "drift-reaches-the-live-bus",
+        len(emitted) == len(outcome["feed"]["changes"]) == controller.event_count()
+        and all(event["evidence_id"] for event in outcome["ingested"])
+        and all(event["change_correlation"] is not None for event in outcome["ingested"]),
+        f"{len(emitted)} drift rows became live events, each chained to evidence and each "
+        "carrying its correlation verdict in the same response"))
+
+    twice = feed_module.HardwareChangeFeed()
+    record = twice.record_change("APPLICATION", "HSM-01", "TLS_PROFILE_CHANGED",
+                                 "2026-11-02T09:16:00+00:00")
+    twice.record_hardware({"asset_id": "HSM-01", "event_type": "PQC_CAPABILITY_ADDED",
+                           "detected_at": "2026-11-02T09:14:00+00:00",
+                           "detail": {"algorithms": ["ML-DSA-65"]}, "evidence": ["EV-2"]})
+    twice.record_hardware({"asset_id": "HSM-01", "event_type": "PQC_CAPABILITY_ADDED",
+                           "detected_at": "2026-11-02T09:14:00+00:00",
+                           "detail": {"algorithms": ["ML-DSA-65"]}, "evidence": ["EV-2"]})
+    probes.append(_probe(
+        "the-same-change-is-not-counted-twice",
+        twice.counts() == {"hardware_changes": 1, "other_changes": 1, "aliases": 0}
+        and record.at == "2026-11-02T09:16:00+00:00",
+        "a change that crosses the feed/controller seam twice is one row, because a "
+        "correlation count that double-counts its own input is worse than no count"))
+
+    quiet_feed = feed_module.HardwareChangeFeed()
+    quiet = controller_module.LiveHardwareController(change_feed=quiet_feed)
+    quiet_outcome = feed_module.ingest_changes(
+        quiet, quiet_feed, hsm(),
+        hsm(firmware={"HSM": "8.4.0"}, evidence_history=["EV-1", "EV-2"]))
+    window = quiet_feed.correlation()["results"]
+    probes.append(_probe(
+        "proximity-never-mints-an-edge",
+        len(quiet_outcome["feed"]["changes"]) == 1 and len(window) == 1
+        and all(row["verdict"] != "CORRELATED" for row in window)
+        and quiet_outcome["feed"]["events"] == ["FIRMWARE_CHANGED"],
+        "a firmware bump with nothing beside it stays one event and one unaccompanied "
+        "row — proximity is reported as proximity, and no relationship edge is minted "
+        "from a timestamp"))
+
+    unmapped = feed_module.to_hardware_event({"asset_id": "SW-01", "device_type": "switch",
+                                             "event_type": "PORT_NEGOTIATION_CHANGED"})
+    probes.append(_probe(
+        "an-unknown-change-is-not-dropped",
+        unmapped.event_type.value == "HARDWARE_CHANGED"
+        and unmapped.payload["drift_event_type"] == "PORT_NEGOTIATION_CHANGED",
+        "a change the mapping does not recognise is emitted as HARDWARE_CHANGED with the "
+        "original type in its payload instead of vanishing"))
+
     return {"id": "hardware_drift",
             "question": "does hardware drift name what moved — firmware, capability, PQC — or just that something did?",
             "phase": "H7", "probes": probes}
@@ -1430,9 +1497,11 @@ def measure() -> dict[str, Any]:
             "the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted "
             "replies: no appliance was contacted, and a real device's ENTITY-MIB or "
             "`ietf-hardware` model may be sparse, vendor-extended or absent entirely",
-            "drift correlation compares the change records it is handed; it does not yet "
-            "subscribe to the certificate and application drift feeds, so an unaccompanied "
-            "finding can mean the other feed has not been wired rather than that nothing moved",
+            "drift correlation now fills its hardware side from the live pipeline "
+            "(`hardware/live/change_feed.py`, wired into `LiveHardwareController.ingest`), but "
+            "the certificate, application and policy records still have to be handed in: those "
+            "feeds are not subscribed, so an unaccompanied finding can mean the other feed has "
+            "not been wired rather than that nothing moved",
             "network correlation reads a TLS observation and a device config it is given; "
             "nothing yet pulls those from the certificate probes or the running "
             "configuration of a live device, so a device that was never probed has no edges",
@@ -1543,8 +1612,9 @@ def render_md(report: dict[str, Any]) -> str:
         "certificates it terminates, and to the HSM its config names | built, executed here |",
         "| drift | `hardware/drift.py`, `hardware/live/events.py` | firmware, capability, PQC |",
         "| drift correlation | `hardware/change_correlation.py` — a hardware change beside "
-        "certificate/app/policy movement in the same window, and the PQC adoption question | "
-        "built, executed here |",
+        "certificate/app/policy movement in the same window, and the PQC adoption question; "
+        "`hardware/live/change_feed.py` puts every drift row on the live event bus and "
+        "fills the correlation window from the pipeline | built, executed here |",
         "| safety | `hardware/safety.py` — `refuse_secret_material` | raises, never asserts |",
         "| HSM / TPM depth | `hardware/hsm_hw.py`, `hardware/tpm.py` | metadata only |",
         "| HSM readers | `hardware/hsm_readers/pkcs11.py` (CK_TOKEN_INFO + mechanisms, PIN "
@@ -1611,8 +1681,9 @@ def render_md(report: dict[str, Any]) -> str:
         "here for applications and for network devices; certificate→application (which app "
         "the TLS protects) is not correlated |",
         "| H7 | drift: firmware, crypto capability, PQC, correlated with cert/app/policy change | "
-        "built, executed here; correlation consumes the records it is given, it does not yet "
-        "read the certificate and application change feeds itself |",
+        "built, executed here; drift rows reach the live bus and the correlation window from the "
+        "pipeline, but the certificate and application sides are records handed in, not feeds "
+        "subscribed to |",
         "| H8 | qualification against a real bank estate | synthetic only; precision and recall "
         "need ground truth |",
         "",

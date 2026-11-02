@@ -1,6 +1,6 @@
 # Hardware discovery — from collectors to a twin, not to a second inventory
 
-`cryptoscan.hardware-discovery/1` · generated 2026-11-02T12:28:16.548209+00:00 · **5 pass · 2 partial · 0 fail**
+`cryptoscan.hardware-discovery/1` · generated 2026-11-02T12:34:43.996821+00:00 · **5 pass · 2 partial · 0 fail**
 
 The review this answers set one architectural rule above all others: hardware is not an independent scanner that emits an HBOM. Collectors feed an evidence engine; the evidence engine feeds the canonical estate; the estate feeds the digital twin; and HBOM, CBOM, NBOM and TechBOM are **projections of that one truth**. A second inventory per BOM document type is the failure mode, and the `single_source_of_truth` row below fails if one appears.
 
@@ -24,7 +24,7 @@ The review this answers set one architectural rule above all others: hardware is
 | collectors — Linux, Windows, network | **do collectors exist for the estate a bank actually has, and does each emit fields?** | **PARTIAL** | 22 probe(s), failing: windows-reader |
 | security hardware — HSM and TPM | **is HSM/TPM discovery deep enough to be worth anything, and can it leak a key?** | **PARTIAL** | 12 probe(s), failing: vendor-rest-readers |
 | correlation — evidence-backed relationships | **is a hardware dependency proven by evidence, or assumed because both exist?** | **PASS** | 10 probe(s), all passing |
-| drift — firmware, capability, PQC | **does hardware drift name what moved — firmware, capability, PQC — or just that something did?** | **PASS** | 10 probe(s), all passing |
+| drift — firmware, capability, PQC | **does hardware drift name what moved — firmware, capability, PQC — or just that something did?** | **PASS** | 14 probe(s), all passing |
 | qualification — a synthetic bank estate | **does any of it survive a synthetic bank-sized estate?** | **PASS** | 4 probe(s), all passing |
 | one truth, multiple projections | **is HBOM a projection of the estate, or a second inventory?** | **PASS** | 3 probe(s), all passing |
 
@@ -46,7 +46,7 @@ Every box in the diagram above is a module, and the mapping is the point: a revi
 | relationships | `hardware/relationships.py` | evidence required to form an edge |
 | network correlation | `hardware/network_correlation.py` — a device to the certificates it terminates, and to the HSM its config names | built, executed here |
 | drift | `hardware/drift.py`, `hardware/live/events.py` | firmware, capability, PQC |
-| drift correlation | `hardware/change_correlation.py` — a hardware change beside certificate/app/policy movement in the same window, and the PQC adoption question | built, executed here |
+| drift correlation | `hardware/change_correlation.py` — a hardware change beside certificate/app/policy movement in the same window, and the PQC adoption question; `hardware/live/change_feed.py` puts every drift row on the live event bus and fills the correlation window from the pipeline | built, executed here |
 | safety | `hardware/safety.py` — `refuse_secret_material` | raises, never asserts |
 | HSM / TPM depth | `hardware/hsm_hw.py`, `hardware/tpm.py` | metadata only |
 | HSM readers | `hardware/hsm_readers/pkcs11.py` (CK_TOKEN_INFO + mechanisms, PIN never on argv), `hardware/hsm_readers/kmip_query.py` (Query: vendor, operations, objects, profiles) | built, executed here; vendor REST not built |
@@ -83,7 +83,7 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 | H4 | HSM depth per vendor: PKCS#11 attributes, KMIP `Query`, vendor REST | observation fields built; readers not |
 | H5 | network hardware: SNMP/NETCONF/REST per authorized class | built end to end on all three — SNMP/ENTITY-MIB, NETCONF `ietf-hardware`, RESTCONF `ietf-hardware`; vendor-specific YANG models not read |
 | H6 | correlation: evidence-backed relationships, blast radius | built, executed here for applications and for network devices; certificate→application (which app the TLS protects) is not correlated |
-| H7 | drift: firmware, crypto capability, PQC, correlated with cert/app/policy change | built, executed here; correlation consumes the records it is given, it does not yet read the certificate and application change feeds itself |
+| H7 | drift: firmware, crypto capability, PQC, correlated with cert/app/policy change | built, executed here; drift rows reach the live bus and the correlation window from the pipeline, but the certificate and application sides are records handed in, not feeds subscribed to |
 | H8 | qualification against a real bank estate | synthetic only; precision and recall need ground truth |
 
 ## Row by row
@@ -175,6 +175,10 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 - **PASS** `a_capability_nobody_uses_is_named` — the same capability with nothing beside it is reported as unaccompanied rather than as a migration
 - **PASS** `adoption-is-not-assumed` — a capability that arrived and is unused is stated as an available migration, not as an achievement
 - **PASS** `proximity-is-bounded-and-declared` — a change five minutes outside the window is not a companion, and the result says in its own words that proximity is not causation
+- **PASS** `drift-reaches-the-live-bus` — 4 drift rows became live events, each chained to evidence and each carrying its correlation verdict in the same response
+- **PASS** `the-same-change-is-not-counted-twice` — a change that crosses the feed/controller seam twice is one row, because a correlation count that double-counts its own input is worse than no count
+- **PASS** `proximity-never-mints-an-edge` — a firmware bump with nothing beside it stays one event and one unaccompanied row — proximity is reported as proximity, and no relationship edge is minted from a timestamp
+- **PASS** `an-unknown-change-is-not-dropped` — a change the mapping does not recognise is emitted as HARDWARE_CHANGED with the original type in its payload instead of vanishing
 
 ### `qualification` — PASS
 
@@ -185,7 +189,7 @@ The review drew a line, and it is enforced by code rather than by a promise in a
 - **PASS** `drift-scales-with-change-not-with-estate` — 400 change event(s) from 120 upgraded assets in an estate of 600: per-device-type counts {'firewall': 3, 'hsm': 4, 'load_balancer': 3, 'san': 3, 'server': 3, 'tpm': 4}, and no record named an asset that did not change (0 leaked)
 - **PASS** `a-missing-observation-is-not-a-deletion` — identity is retained across observations; an asset that is not re-observed is not silently removed (retirement is its own decision)
 
-Measured: `{"assets": 600, "vendors": 4, "device_types": 6, "changes": 400, "seconds": 0.004}`
+Measured: `{"assets": 600, "vendors": 4, "device_types": 6, "changes": 400, "seconds": 0.005}`
 
 ### `single_source_of_truth` — PASS
 
@@ -213,7 +217,7 @@ Every injected defect was caught.
 - collector breadth feeds each collector a synthetic payload and drives the Linux reader against a fixture sysfs tree and a recorded transcript; no bank host was read, and real hosts differ — dmidecode absent, root denied, vendor quirks its allowlist has not seen
 - the Linux reader is unprivileged by design, so on a hardened host its memory, disk-health and PCI facts degrade to `unavailable` reasons rather than to data
 - the SNMP row runs against a fake socket and NETCONF/RESTCONF against scripted replies: no appliance was contacted, and a real device's ENTITY-MIB or `ietf-hardware` model may be sparse, vendor-extended or absent entirely
-- drift correlation compares the change records it is handed; it does not yet subscribe to the certificate and application drift feeds, so an unaccompanied finding can mean the other feed has not been wired rather than that nothing moved
+- drift correlation now fills its hardware side from the live pipeline (`hardware/live/change_feed.py`, wired into `LiveHardwareController.ingest`), but the certificate, application and policy records still have to be handed in: those feeds are not subscribed, so an unaccompanied finding can mean the other feed has not been wired rather than that nothing moved
 - network correlation reads a TLS observation and a device config it is given; nothing yet pulls those from the certificate probes or the running configuration of a live device, so a device that was never probed has no edges
 - only the standard YANG models are read (`ietf-system`, `ietf-hardware`): vendor models expose extra facts — licence state, HA role, crypto policy — that this artifact does not collect
 - the HSM readers run against recorded `pkcs11-tool` output and a hand-built KMIP response: no appliance was opened, and real Luna/nShield/Utimaco tokens differ in which mechanisms they list and which attributes they let an unprivileged session read

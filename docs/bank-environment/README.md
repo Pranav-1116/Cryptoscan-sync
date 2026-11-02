@@ -177,6 +177,19 @@
 > causation, and nothing here mints an edge — an edge needs evidence naming both
 > ends, which a timestamp is not.
 >
+> That correlation is wired into the live pipeline, not left as a library the SOC
+> would have to remember to call: `hardware/live/change_feed.py` turns every drift
+> row into a live hardware event, feeds it through `LiveHardwareController.ingest`
+> so it lands in the timeline, the evidence chain and the next HBOM version, and
+> returns the correlation verdict in the same response that carried the event. The
+> canonical taxonomy has no PQC event type, so post-quantum rows ride
+> `CRYPTO_CAPABILITY_CHANGED` with `payload["pqc"]` rather than inventing a type
+> the state engine would accept and then ignore; a drift row the mapping does not
+> know is emitted as `HARDWARE_CHANGED` with its original type in the payload
+> instead of vanishing. A change crossing the feed/controller seam twice is
+> counted once — a correlation count that double-counts its own input is worse
+> than no count.
+>
 > Two PARTIALs remain, and both are probes: no WMI/CIM reader for Windows, and
 > no vendor REST reader for the cluster/HA state that only a vendor API
 > exposes.
