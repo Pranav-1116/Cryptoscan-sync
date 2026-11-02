@@ -110,6 +110,17 @@
 > itself. The PARTIAL is deliberate — the store file is still plaintext, so this is
 > enforcement, **not encryption**, and no test can change that. Evidence tampering is covered by
 > [guide 112](112-evidence-integrity.md).
+>
+> [Hardware discovery](128-hardware-discovery.md) (**6 pass · 1 partial · 0 fail**)
+> answers the review that opened with one rule: hardware is not a scanner that
+> emits an HBOM. The HSM observation now carries cluster, HA state, partitions,
+> algorithm capabilities and PQC (ML-KEM/ML-DSA) — metadata only, and the guard
+> that refuses key material raises instead of asserting, so `python -O` no longer
+> deletes it. A hardware relationship without an evidence record is refused
+> (`UnevidencedRelationship`), drift names firmware, crypto capability and PQC as
+> separate events, and a synthetic 600-asset estate projects in 0.02 s. The
+> PARTIAL is the collector row: every collector fills the schema, and none of
+> them yet reads `/sys`, dmidecode, WMI/CIM or SNMP on a real host.
 
 **Code-traced guide · 2026-10-18 · SBOM / NBOM / CBOM / TechBOM / HBOM / VBOM**
 

@@ -32,7 +32,15 @@ class HardwareFingerprint:
     device_type: str = "other"
     firmware: Optional[str] = None
     evidence_sources: list[str] = field(default_factory=list)
-    confidence: str = HardwareConfidence.LOW.value
+    confidence: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        # Confidence is a function of corroboration, not a field somebody
+        # remembers to fill in. Left unset it follows the evidence score, so
+        # three independent sources cannot report LOW while one weak USB
+        # descriptor reports the same.
+        if self.confidence is None:
+            self.confidence = _confidence_for(self.score)
 
     @property
     def score(self) -> float:
@@ -90,7 +98,6 @@ def fingerprint_hardware(signals: dict[str, Any]) -> HardwareFingerprint:
         device_type=str(signals.get("device_type") or "other"),
         firmware=firmware,
         evidence_sources=sources,
-        confidence=_confidence_for(score),
     )
 
 

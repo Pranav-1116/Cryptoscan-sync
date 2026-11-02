@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any, Optional
 
 from universal_vendor.hardware.models import HardwareType
+from universal_vendor.hardware.safety import refuse_secret_material
 
 try:  # guarded import: reuse vendor HSM plugin models when available
     from universal_vendor.plugins.hsm import (
@@ -37,9 +38,7 @@ class HsmHardwareScanner:
 
     def scan(self, raw: dict[str, Any]) -> dict[str, Any]:
         """Parse HSM metadata. Refuses any secret material."""
-        lowered = str(raw).lower()
-        for token in _FORBIDDEN:
-            assert token not in lowered, f"HSM hardware scanner refused {token}"
+        refuse_secret_material(raw, _FORBIDDEN, surface="HSM hardware scanner")
         observation = {
             "device_type": HardwareType.HSM.value,
             "manufacturer": raw.get("manufacturer", ""),
@@ -51,12 +50,21 @@ class HsmHardwareScanner:
             "certificate_dependencies": list(raw.get("certificate_dependencies") or []),
             "partition_metadata": raw.get("partition_metadata"),
             "pqc_capability": raw.get("pqc_capability", "UNKNOWN"),
+            # §4 depth: an HSM is a cluster member before it is a model number, and
+            # "which of the two appliances failed" is the question an operator asks
+            "serial_reference": raw.get("serial_reference"),
+            "cluster": raw.get("cluster"),
+            "ha_state": raw.get("ha_state", "UNKNOWN"),
+            "pqc_algorithms": list(raw.get("pqc_algorithms") or []),
+            "firmware_verified_at": raw.get("firmware_verified_at"),
             "vendor_specific": {k: v for k, v in raw.items()
                                 if k not in (
                                     "manufacturer", "model", "firmware",
                                     "crypto_capabilities", "supported_algorithms",
                                     "key_type_metadata", "certificate_dependencies",
-                                    "partition_metadata", "pqc_capability")},
+                                    "partition_metadata", "pqc_capability",
+                                    "serial_reference", "cluster", "ha_state",
+                                    "pqc_algorithms", "firmware_verified_at")},
         }
         return observation
 

@@ -282,9 +282,12 @@ def test_tpm_parse_metadata():
 
 
 def test_tpm_never_extract_secret_material():
+    from universal_vendor.hardware.safety import SecretMaterialRefused
     from universal_vendor.hardware.tpm import TpmScanner
 
-    with pytest.raises(AssertionError):
+    # a raised refusal, not an assert: `python -O` would strip an assertion, and
+    # this is the one guard in the product that must not be optimisable away
+    with pytest.raises(SecretMaterialRefused):
         TpmScanner().parse({"present": True,
                             "owner_auth": "hunter2-secret"})
 
@@ -317,12 +320,13 @@ def test_hsm_scan_metadata_only():
 
 def test_hsm_never_keys_or_secrets():
     from universal_vendor.hardware.hsm_hw import HsmHardwareScanner
+    from universal_vendor.hardware.safety import SecretMaterialRefused
 
     scanner = HsmHardwareScanner()
-    with pytest.raises(AssertionError):
+    with pytest.raises(SecretMaterialRefused):
         scanner.scan({"manufacturer": "Thales", "model": "Luna",
                       "private_key": "top-secret"})
-    with pytest.raises(AssertionError):
+    with pytest.raises(SecretMaterialRefused):
         scanner.scan({"manufacturer": "Thales", "model": "Luna",
                       "master_key": "mk-123"})
 

@@ -57,7 +57,16 @@ class _ServerPluginBase(UniversalHardwarePlugin):
             serial_reference=dmi.get("serial"),
             firmware=dmi.get("bios_version"),
             hardware_revision=dmi.get("hardware_revision"),
-            vendor_specific={"dmi": dmi, "bmc": context.get("bmc")},
+            vendor_specific={
+                "dmi": dmi, "bmc": context.get("bmc"),
+                # The review asks for memory and disk, and a DMI chassis record
+                # does not carry either: they arrive as their own collector
+                # records (SMBIOS type 17, NVMe/SAS enumeration) and are kept
+                # beside the DMI block rather than dropped on the floor.
+                "memory_modules": context.get("memory_modules") or [],
+                "disks": context.get("disks") or [],
+                "nics": context.get("nics") or [],
+            },
         )]
 
     def discover_firmware(self, context: dict[str, Any]) -> list[dict[str, Any]]:

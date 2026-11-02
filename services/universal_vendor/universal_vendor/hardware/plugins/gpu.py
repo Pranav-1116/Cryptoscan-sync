@@ -41,7 +41,11 @@ class _GpuPluginBase(UniversalHardwarePlugin):
         return [self._raw(
             asset_id=context.get("asset_id", "gpu"),
             model=context.get("model") or self.product,
-            vendor_specific={"pci": context.get("pci")})]
+            # An accelerator is sold on its VRAM: an H100 with no memory figure
+            # is a name, not an inventory line.
+            vendor_specific={"pci": context.get("pci"),
+                             "memory_gb": context.get("memory_gb"),
+                             "compute_capability": context.get("compute_capability")})]
 
     def discover_capabilities(self, context: dict[str, Any]) -> list[dict[str, Any]]:
         capabilities = context.get("capabilities")

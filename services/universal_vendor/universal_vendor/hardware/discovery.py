@@ -41,6 +41,12 @@ class AgentBasedDiscovery:
                     "pci_devices": context.get("pci_devices") or [],
                     "usb_devices": context.get("usb_devices") or [],
                     "bmc": context.get("bmc"),
+                    # DMI describes the chassis and the firmware, not what is
+                    # inside it. Memory modules, disks and NICs are separate
+                    # reads on the same host and must survive the merge.
+                    "memory_modules": context.get("memory_modules") or [],
+                    "disks": context.get("disks") or [],
+                    "nics": context.get("nics") or [],
                 },
             })
         if context.get("pci_devices") and not dmi:

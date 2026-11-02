@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from universal_vendor.hardware.models import TpmInfo
+from universal_vendor.hardware.safety import refuse_secret_material
 
 _FORBIDDEN_TPM_MATERIAL = ("endorsement_key", "srk", "attestation_key",
                            "storage_root_key", "auth_value", "secret")
@@ -21,9 +22,7 @@ _FORBIDDEN_TPM_MATERIAL = ("endorsement_key", "srk", "attestation_key",
 class TpmScanner:
     def parse(self, raw: dict[str, Any]) -> TpmInfo:
         """Parse public TPM metadata. Refuses secret material."""
-        lowered = str(raw).lower()
-        for token in _FORBIDDEN_TPM_MATERIAL:
-            assert token not in lowered, f"TPM scanner refused {token} material"
+        refuse_secret_material(raw, _FORBIDDEN_TPM_MATERIAL, surface="TPM scanner")
         return TpmInfo(
             present=bool(raw.get("present", False)),
             version=str(raw.get("version") or "") or None,

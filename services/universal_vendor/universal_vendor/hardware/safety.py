@@ -22,6 +22,38 @@ _NEVER_RULES = (
 )
 
 
+class SecretMaterialRefused(RuntimeError):
+    """A collector was handed key material and refused it.
+
+    This is a *security boundary*, so it is a raised exception and never an
+    ``assert``: ``python -O`` strips assertions, which would silently turn the
+    guard off in exactly the deployment that cares about it. The exception is
+    deliberately not a ``ValueError`` — a caller that catches ``ValueError`` for
+    "bad input" must not accidentally swallow a refusal to handle a private key.
+    """
+
+    def __init__(self, surface: str, token: str) -> None:
+        self.surface = surface
+        self.token = token
+        super().__init__(
+            f"{surface} refused a payload containing {token!r}: the collector "
+            "reads metadata only, and key material never leaves the device")
+
+
+def refuse_secret_material(raw: Any, forbidden: tuple[str, ...], *, surface: str) -> None:
+    """Raise :class:`SecretMaterialRefused` if ``raw`` carries secret material.
+
+    Matching is on the lowered string form of the payload, keys included, so a
+    nested ``{"key": {"private_key": ...}}`` is caught as well as a top-level
+    field. It over-matches on purpose: a false refusal costs an operator one
+    configuration change, a false acceptance puts key material in an artifact.
+    """
+    lowered = str(raw).lower()
+    for token in forbidden:
+        if token in lowered:
+            raise SecretMaterialRefused(surface, token)
+
+
 @dataclass
 class SafetyProfile:
     vendor: str = "*"

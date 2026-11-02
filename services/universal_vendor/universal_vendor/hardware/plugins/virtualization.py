@@ -42,7 +42,11 @@ class _VirtHostPluginBase(UniversalHardwarePlugin):
             asset_id=context.get("asset_id", "hypervisor"),
             model=context.get("model") or self.product,
             vendor_specific={"guests": context.get("guests"),
-                             "cpu": context.get("cpu")})]
+                             "cpu": context.get("cpu"),
+                             # Two identical hosts are distinguished by the
+                             # cluster they serve; without it a vMotion target
+                             # and its source are one asset.
+                             "cluster": context.get("cluster")})]
 
     def discover_crypto(self, context: dict[str, Any]) -> list[dict[str, Any]]:
         tpm = context.get("tpm")
