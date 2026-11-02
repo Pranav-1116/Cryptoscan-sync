@@ -3,8 +3,8 @@
   "negative_control": {
     "stripped_counts": {
       "PASS": 0,
-      "PARTIAL": 6,
-      "FAIL": 3
+      "PARTIAL": 5,
+      "FAIL": 4
     },
     "stripped_verdicts": {
       "contract_coverage": "PARTIAL",
@@ -13,17 +13,17 @@
       "large_graphs": "PARTIAL",
       "realtime": "PARTIAL",
       "authorization_views": "FAIL",
-      "auditability": "PARTIAL",
+      "auditability": "FAIL",
       "degraded_coverage": "FAIL",
       "page_test_coverage": "FAIL"
     },
     "note": "the same graders run against a copy with failure branches, empty-state copy, gating, pagination, resume and tests removed"
   },
   "version": "frontend-hardening/1.0",
-  "generated_at": "2026-11-01T02:37:44.149200+00:00",
+  "generated_at": "2026-11-02T10:30:18.031198+00:00",
   "counts": {
-    "PASS": 5,
-    "PARTIAL": 4,
+    "PASS": 8,
+    "PARTIAL": 1,
     "FAIL": 0
   },
   "rows": [
@@ -32,35 +32,31 @@
       "question": "how much of the API surface does the console reach, and how tightly is it typed?",
       "verdict": "PARTIAL",
       "measured": {
-        "served_paths": 1141,
-        "distinct_paths_called": 536,
+        "served_paths": 1147,
+        "distinct_paths_called": 537,
         "reachable_from_console": 537,
-        "coverage_percent": 47.1,
+        "coverage_percent": 46.8,
         "calls_with_no_route": 0,
         "typed_call_sites": 141,
-        "loose_record_types": 328
+        "loose_record_types": 329
       },
       "gaps": [],
-      "note": "the console covers half the surface, which is expected: it is an operator console, not a complete API client, and the uncovered half is CLI and drill traffic",
-      "limit": "reach is not correctness: a page that calls an endpoint and misreads the payload is counted here"
+      "note": "reach is a product decision, not a defect: this is an operator console, not a complete API client, and the uncovered half is CLI and drill traffic \u2014 every call it does make names a route the API serves",
+      "limit": "the gap this row really measures is typing: a few hundred call sites return `Record<string, unknown>`, so most payloads the console reads are an unchecked claim; the percentage is reach and says nothing about whether a page misreads what it reached"
     },
     {
       "id": "error_handling",
       "question": "when a read fails, does the console say so rather than render an empty list?",
-      "verdict": "PARTIAL",
+      "verdict": "PASS",
       "measured": {
         "files_reading_an_api": 15,
-        "error_render_sites": 407,
-        "explicit_not_read_messages": 327,
-        "alert_roles": 48,
-        "files_that_read_without_a_failure_branch": [
-          "frontend/src/lib/apiUi.tsx"
-        ],
-        "silent_count": 1
+        "error_render_sites": 415,
+        "explicit_not_read_messages": 335,
+        "alert_roles": 52,
+        "files_that_read_without_a_failure_branch": [],
+        "silent_count": 0
       },
-      "gaps": [
-        "1 component(s) read an API with no failure branch"
-      ],
+      "gaps": [],
       "note": "most surfaces distinguish 'not read' from 'nothing there', which is the distinction that matters on a bank screen",
       "limit": "static: a branch that exists but is unreachable would still be counted"
     },
@@ -70,9 +66,9 @@
       "verdict": "PASS",
       "measured": {
         "empty_state_testids": 1,
-        "status_roles": 103,
-        "explanatory_copy_sites": 60,
-        "explained_states_total": 164,
+        "status_roles": 109,
+        "explanatory_copy_sites": 61,
+        "explained_states_total": 171,
         "empty_state_assertions_in_tests": 3
       },
       "gaps": [],
@@ -90,7 +86,7 @@
         "silent_truncation_count": 0,
         "silent_truncation_percent": 0.0,
         "scroll_bounds": 81,
-        "pagination_sites": 56,
+        "pagination_sites": 60,
         "truncation_notices": 92
       },
       "gaps": [],
@@ -139,7 +135,7 @@
           "frontend/src/pages/InviteAccept.tsx",
           "frontend/src/pages/Tenancy.tsx"
         ],
-        "denied_state_copy": 125
+        "denied_state_copy": 126
       },
       "gaps": [],
       "note": "visibility is derived from the session's roles and a refused request renders as a refusal rather than an empty table",
@@ -148,23 +144,25 @@
     {
       "id": "auditability",
       "question": "can an operator see who did what, and when, from the console?",
-      "verdict": "PARTIAL",
+      "verdict": "PASS",
       "measured": {
-        "audit_surfaces": [],
+        "audit_surfaces": [
+          "frontend/src/pages/Audit.tsx"
+        ],
         "audit_callers": [
           "frontend/src/App.navigation.test.tsx",
           "frontend/src/App.test.tsx",
           "frontend/src/App.tsx",
+          "frontend/src/components/Layout.tsx",
+          "frontend/src/pages/Audit.test.tsx",
+          "frontend/src/pages/Audit.tsx",
           "frontend/src/pages/Evidence.test.tsx",
-          "frontend/src/pages/Evidence.tsx",
-          "frontend/src/pages/Security.tsx"
+          "frontend/src/pages/Evidence.tsx"
         ],
-        "audit_api_calls": 18,
-        "actor_timestamp_fields": 100
+        "audit_api_calls": 26,
+        "actor_timestamp_fields": 122
       },
-      "gaps": [
-        "no dedicated audit page; the trail is read inside the administration and evidence surfaces"
-      ],
+      "gaps": [],
       "note": "audit and approval surfaces read the API's own record rather than a client log",
       "limit": "the audit rows themselves are produced server-side; this row only checks the console reads them"
     },
@@ -174,7 +172,7 @@
       "verdict": "PASS",
       "measured": {
         "coverage_mentions": 482,
-        "unknown_copy_sites": 917
+        "unknown_copy_sites": 921
       },
       "gaps": [],
       "note": "coverage and UNKNOWN are rendered as their own states across the estate and BOM screens, which is the distinction the review asked for",
@@ -183,32 +181,32 @@
     {
       "id": "page_test_coverage",
       "question": "how many console pages have a rendered test?",
-      "verdict": "PARTIAL",
+      "verdict": "PASS",
       "measured": {
-        "pages": 100,
-        "test_files": 90,
-        "pages_with_a_test": 49,
-        "coverage_percent": 49.0,
+        "pages": 102,
+        "test_files": 108,
+        "pages_with_a_test": 65,
+        "coverage_percent": 63.7,
         "pages_without_a_test": [
-          "Agility",
-          "Alerts",
-          "AssuranceCoverage",
-          "AssuranceQualification",
-          "AssuranceRecords",
-          "AssuranceSampling",
-          "AssuranceTrace",
-          "Automation",
-          "Catalog",
-          "Cloud",
-          "CryptoAssets",
-          "CryptoChanges",
-          "Executive",
-          "Hardware",
-          "Identity"
+          "Integrations",
+          "InviteAccept",
+          "Libraries",
+          "LiveAssetIntelligence",
+          "LiveEnvironment",
+          "Migration",
+          "Nbom",
+          "Onboarding",
+          "Organization",
+          "PlatformP2",
+          "Pqc",
+          "PqcMap",
+          "Protocols",
+          "ResetPassword",
+          "Resilience"
         ]
       },
       "gaps": [
-        "51 page(s) have no rendered test"
+        "37 page(s) have no rendered test"
       ],
       "note": "",
       "limit": ""

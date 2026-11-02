@@ -182,7 +182,17 @@ export const PRIMARY_SECTIONS: NavSection[] = [
           { to: "/assurance-qualification", label: "Qualification", icon: ShieldCheck },
         ],
       },
-      { to: "/security-center", label: "Audit log", icon: ListChecks },
+      {
+        to: "/security-center",
+        label: "Security center",
+        icon: ShieldCheck,
+        children: [
+          { to: "/security-center", label: "Posture", icon: ShieldCheck },
+          // the trail sits beside the controls it records; a section that grows a
+          // row per page stops being a tree (Layout.navigation keeps that floor)
+          { to: "/audit", label: "Audit trail", icon: ListChecks },
+        ],
+      },
     ],
   },
   {

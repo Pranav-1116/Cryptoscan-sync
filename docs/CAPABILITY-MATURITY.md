@@ -4,7 +4,7 @@
 > `scripts/gen_capability_maturity.py`. Served live at
 > `GET /api/v1/platform/capabilities`.
 
-**89 shipped surfaces, all supported.** The navigation carries no maturity
+**90 shipped surfaces, all supported.** The navigation carries no maturity
 badges: a product's sidebar is not the place to negotiate what is proven. What
 used to be a `beta` or `preview` label is now the **stated limit** column below,
 which is the part that actually told an operator something. A support statement
@@ -65,6 +65,7 @@ role-guarded actions.
 | `/assurance-records` | Governance | Reads immutable assurance revisions, but does not originate or independently approve them. |
 | `/assurance-sampling` | Governance | Shows frozen predictions without a score; domain-owner sampling review is not submitted from this page. |
 | `/assurance-trace` | Governance | Displays retained relationship evidence and unresolved links, not a verified runtime call graph. |
+| `/audit` | Governance | Who did what, when: the hash-chained audit trail with its chain verdict, filterable by actor and action. |
 | `/banking-regulatory` | Governance | Banking/SWIFT CSP mapping over the policy engine; regulator-specific packs still growing. |
 | `/compliance` | Governance | Requirement-by-requirement reports from policy evidence, 6 templates. |
 | `/crypto-assurance` | Governance | KeyAssure checks; 1.7k LOC but a single test module. |
@@ -80,7 +81,7 @@ role-guarded actions.
 | `/crypto-assets` | Intelligence | Crypto inventory from the normalized findings table. |
 | `/crypto-changes` | Intelligence | Change timeline from drift + scan history. |
 | `/dependency-graph` | Intelligence | Same graph engine as /graph. |
-| `/digital-twin` | Intelligence | Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. Simulation is scenario-specific: the PQC migration foundation is real, the generic enterprise engine is not implemented, and GET /estate/evidence/twin/simulation-scenarios states which of the ten scenarios compute and what each cannot see. |
+| `/digital-twin` | Intelligence | Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. Simulation is scenario-specific: the PQC migration foundation is real, the generic enterprise engine is not implemented, and the scenario-models read states which of the ten scenarios compute and what each cannot see. |
 | `/drift` | Intelligence | Baseline approval + drift events + CI gate; 15 test files. |
 | `/estate-twin` | Intelligence | Walks the twin's own chain over one stored snapshot: estate, assets, relationships, crypto graph, evidence graph, history, impact and simulation. Each link reports POPULATED, EMPTY, NOT_EVALUATED or AWAITING_INPUT as the server measured it, and a link the server could not read is never drawn as empty; it needs a stored discovery run and computes no score of its own. |
 | `/findings` | Intelligence | Policy-evaluated findings with evidence links. |

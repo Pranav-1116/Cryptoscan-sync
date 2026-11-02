@@ -7,7 +7,7 @@ export default function KeyReconciliationPanel() {
   const [scans, setScans] = useState<ScanSummaryRow[]>([]);
   const [scanId, setScanId] = useState("");
   const [report, setReport] = useState<KeyReconciliation | null>(null);
-  const [state, setState] = useState<"loading" | "ready" | "none" | "offline">("loading");
+  const [state, setState] = useState<"loading" | "ready" | "none" | "offline" | "unreadable">("loading");
 
   useEffect(() => {
     let alive = true;
@@ -15,6 +15,10 @@ export default function KeyReconciliationPanel() {
       const r = await apiScansRecent(50);
       if (!alive) return;
       if (r.source !== "live" || !r.data) { setState("offline"); return; }
+      // a live answer is not automatically the shape this panel reads: guarding the
+      // array kept a malformed payload from throwing an unhandled rejection and
+      // leaving the panel on "Loading…" with no way to tell why
+      if (!Array.isArray(r.data.scans)) { setState("unreadable"); return; }
       const inv = r.data.scans.filter((s) => (s.statistics?.evidence_sources?.KEY_INVENTORY ?? 0) > 0);
       setScans(inv);
       if (inv.length) setScanId(inv[0].scan_id); else setState("none");
@@ -42,11 +46,12 @@ export default function KeyReconciliationPanel() {
         <select value={scanId} onChange={(e) => setScanId(e.target.value)} style={{ fontSize: 12, padding: "4px 8px" }} aria-label="inventory scan">
           {scans.map((sc) => <option key={sc.scan_id} value={sc.scan_id}>{sc.target_location} · {(sc.scan_end || "").slice(0, 16)} · {sc.statistics?.evidence_sources?.KEY_INVENTORY} keys</option>)}
         </select>
-        {report && <span style={{ fontSize: 11, color: "var(--dim)" }}>against {report.source_scans.length} source scan(s)</span>}
+        {report && <span style={{ fontSize: 11, color: "var(--dim)" }}>against {Array.isArray(report.source_scans) ? report.source_scans.length : 0} source scan(s)</span>}
       </div>
       {state === "offline" && <p style={{ color: "var(--dim)", fontSize: 13 }}>Backend offline.</p>}
       {state === "none" && <p style={{ color: "var(--dim)", fontSize: 13 }}>No key-inventory scan yet — scan the key-export drop with <code>CRYPTOSCAN_KEY_INVENTORY=1</code>.</p>}
-      {state === "loading" && <p style={{ color: "var(--dim)", fontSize: 13 }}>Loading…</p>}
+      {state === "loading" && <p role="status" style={{ color: "var(--dim)", fontSize: 13 }}>Loading…</p>}
+      {state === "unreadable" && <p role="alert" style={{ color: "var(--dim)", fontSize: 13 }}>The scan list answered without a readable set of scans, so this panel cannot say whether a key inventory exists — that is not the same as none existing.</p>}
       {state === "ready" && report && s && (
         <>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 14 }}>

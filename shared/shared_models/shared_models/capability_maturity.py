@@ -78,6 +78,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "pqc": {"tier": "ga", "area": "Intelligence", "why": "Quantum classification lives in shared_models (176 tests) and runs as a pipeline stage."},
     "security-policy": {"tier": "ga", "area": "Governance", "why": "YAML policy packs (BASELINE/PCI/NIST 131A/CNSA 2.0/FIPS/HIPAA), 82 tests, no AI."},
     "compliance": {"tier": "ga", "area": "Governance", "why": "Requirement-by-requirement reports from policy evidence, 6 templates."},
+    "audit": {"tier": "ga", "area": "Governance", "why": "Who did what, when: the hash-chained audit trail with its chain verdict, filterable by actor and action."},
     "evidence": {"tier": "ga", "area": "Governance", "why": "SHA-256 content/chain/manifest hashes, audit packs, verify endpoint."},
     "reports": {"tier": "ga", "area": "Output", "why": "JSON/HTML/PDF reports and schedules over the evidence chain."},
     "live": {"tier": "ga", "area": "Overview", "why": "Connection age, stored changes, six BOM downloads and correlated attack patterns. A quiet estate and a stopped agent look identical, so the age is stated; level 3 (incident) is never assigned by the platform, and a pattern reports which collectors corroborate it without raising its level."},
@@ -127,7 +128,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "resilience": {"tier": "ga", "area": "Administration", "why": "Backup/DR/air-gap status; scripts are tested, the page is new."},
     "security": {"tier": "ga", "area": "Administration", "why": "Security settings surface; overlaps security-center."},
     "role-dashboard": {"tier": "ga", "area": "Overview", "why": "Per-role landing view."},
-    "digital-twin": {"tier": "ga", "area": "Intelligence", "why": "Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. Simulation is scenario-specific: the PQC migration foundation is real, the generic enterprise engine is not implemented, and GET /estate/evidence/twin/simulation-scenarios states which of the ten scenarios compute and what each cannot see."},
+    "digital-twin": {"tier": "ga", "area": "Intelligence", "why": "Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. Simulation is scenario-specific: the PQC migration foundation is real, the generic enterprise engine is not implemented, and the scenario-models read states which of the ten scenarios compute and what each cannot see."},
 
 
     # Newly routed surfaces keep their measured gap in the why, where an operator reads it.

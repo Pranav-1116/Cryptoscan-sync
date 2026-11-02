@@ -29,6 +29,7 @@ export const CAPABILITIES_JSON = {
   "assurance-records": "ga",
   "assurance-sampling": "ga",
   "assurance-trace": "ga",
+  "audit": "ga",
   "automation": "ga",
   "banking-regulatory": "ga",
   "catalog": "ga",
@@ -152,6 +153,10 @@ export const CAPABILITY_LIMITS = {
     "area": "Governance",
     "limit": "Displays retained relationship evidence and unresolved links, not a verified runtime call graph."
   },
+  "audit": {
+    "area": "Governance",
+    "limit": "Who did what, when: the hash-chained audit trail with its chain verdict, filterable by actor and action."
+  },
   "automation": {
     "area": "Administration",
     "limit": "Playbooks + ITSM/SIEM delivery; 2.3k LOC, 6 test files."
@@ -218,7 +223,7 @@ export const CAPABILITY_LIMITS = {
   },
   "digital-twin": {
     "area": "Intelligence",
-    "limit": "Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. Simulation is scenario-specific: the PQC migration foundation is real, the generic enterprise engine is not implemented, and the twin's simulation-scenarios record states which of the ten scenarios compute and what each cannot see."
+    "limit": "Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. Simulation is scenario-specific: the PQC migration foundation is real, the generic enterprise engine is not implemented, and the scenario-models read states which of the ten scenarios compute and what each cannot see."
   },
   "drift": {
     "area": "Intelligence",

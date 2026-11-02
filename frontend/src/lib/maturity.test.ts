@@ -13,13 +13,24 @@ describe("capability maturity", () => {
   it("classifies every page route; aliases redirect to classified destinations", () => {
     const redirects = Array.from(appTsx.matchAll(/<Route path="\/([a-z0-9-]+)" element={<Navigate to="\/([a-z0-9-]+)" replace \/>} \/>/g));
     const aliases = new Map(redirects.map((m) => [m[1], m[2]]));
+    // /audit used to redirect to the security centre; it is its own page now
+    // (guide 118), so only the technology-BOM alias is left
     expect([...aliases.entries()]).toEqual([
-      ["audit", "security-center"],
       ["techbom", "live-asset-intelligence"],
     ]);
     const missing = [...routes].filter((r) => !(r in CAPABILITIES_JSON) && !aliases.has(r));
     expect(missing).toEqual([]);
     expect([...aliases.values()].every((destination) => destination in CAPABILITIES_JSON)).toBe(true);
+  });
+
+  it("keeps raw API paths out of register prose — the console prints this text verbatim", () => {
+    // /scope renders every capability's statement, so a path that leaks into a
+    // description becomes a raw API path on a bank screen; this assertion has
+    // caught that twice now
+    const leaks = Object.values(CAPABILITY_LIMITS)
+      .filter((entry) => /\/api\/(?:v\d+\b|docs\b)|\b(?:GET|POST|PUT|PATCH|DELETE|SSE)\s+\/[a-z]/i.test(entry.limit))
+      .map((entry) => entry.limit.slice(0, 80));
+    expect(leaks).toEqual([]);
   });
 
   it("does not classify routes that do not exist", () => {

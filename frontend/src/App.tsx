@@ -26,6 +26,7 @@ const Certificates = lazy(() => import("./pages/Certificates"));
 const Cloud = lazy(() => import("./pages/Cloud"));
 const Cmdb = lazy(() => import("./pages/Cmdb"));
 const AssuranceCoverage = lazy(() => import("./pages/AssuranceCoverage"));
+const Audit = lazy(() => import("./pages/Audit"));
 const AssuranceQualification = lazy(() => import("./pages/AssuranceQualification"));
 const AssuranceRecords = lazy(() => import("./pages/AssuranceRecords"));
 const AssuranceSampling = lazy(() => import("./pages/AssuranceSampling"));
@@ -162,7 +163,7 @@ function RoutedPages() {
       <Route path="/banking-regulatory" element={<BankingRegulatory />} />
       <Route path="/accuracy" element={<Accuracy />} />
       {/* Legacy bookmarks resolve inside the authenticated shell, without duplicating pages. */}
-      <Route path="/audit" element={<Navigate to="/security-center" replace />} />
+      <Route path="/audit" element={<Audit />} />
       <Route path="/remediation" element={<Remediation />} />
       <Route path="/techbom" element={<Navigate to="/live-asset-intelligence" replace />} />
       <Route path="/admin" element={<Admin />} />

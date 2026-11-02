@@ -54,9 +54,11 @@
 > without a session, a span export watched against a real HTTP sink, and a
 > notification delivered from a rule through Alertmanager's own config into a
 > counted `/metrics` series; and
-> [guide 118](118-frontend-hardening.md) audits nine console behaviours
-> (**5 pass · 4 partial · 0 fail**) with a negative control that strips the console
-> and makes every pass disappear.
+> [guide 118](118-frontend-hardening.md) grades nine console behaviours
+> (**8 pass · 1 partial · 0 fail**) with a negative control that strips the console
+> and makes every pass disappear — and this pass gave the audit trail an actual
+> **page** that shows the hash chain's verdict, never a green badge for a chain it
+> did not read.
 >
 > **Security, executed rather than asserted** — [guide 119](119-security-blockers.md)
 > grades the eight security blockers a bank asks about. All eight are now

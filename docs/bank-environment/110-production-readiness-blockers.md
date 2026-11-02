@@ -27,7 +27,7 @@ rather than an opinion.
 | 5 | Complete authorization model | **PARTIAL** | `116-collector-authority.md`: six questions × eleven collector planes, generated from the code, with two **executed probes** (CIDR and loopback refused 422; a second collection refused `BudgetExhausted`) | the matrix grades **0 planes PROVEN, 1 PARTIAL, 10 GAP**: permission, revision and window are not enforced uniformly per family |
 | 6 | Performance at bank scale | **PARTIAL** (measured this pass) | `114-scale-qualification.md`: 100k assets / 1M facts measured; 479 assets/s to the 20k request cap; five of seven reads under 1 s at 100k/1M | ingest is capped at 20,000 assets per request, slicing an estate retires the earlier slices, and the observation summary still takes 1.2 s at 1M facts |
 | 7 | Observability | **PASS** (re-drilled this pass) | `117-observability-coverage.md`: **10 pass / 0 partial / 0 fail** over ten surfaces, 46 series from `/metrics`, 2 alert groups / 15 rules, and the three former gaps executed: `/healthz/workers`, an OTLP span export watched against a real sink, and a notification delivered from a rule through Alertmanager's config into a counted series | no Prometheus or Alertmanager process ran here: evaluation, grouping and retries are the bank's, and log shipping to a SIEM stays a deployment question |
-| 8 | Frontend production hardening | **PARTIAL** (audited this pass) | `118-frontend-hardening.md`: **5 pass / 4 partial / 0 fail** across nine behaviours, negative control strips the console and every PASS disappears | 537 of 1,141 endpoints reachable (47.1%), 49 of 100 pages have a rendered test, no dedicated audit page |
+| 8 | Frontend production hardening | **PASS, one row partial** (re-audited this pass) | `118-frontend-hardening.md`: **8 pass / 1 partial / 0 fail** across nine behaviours, negative control strips the console and every PASS disappears | typing, not reach, is what is left: 141 typed call sites against 329 `Record<string, unknown>` returns; 604 endpoints have no console caller by design |
 
 Each blocker is taken in turn below: what is proven, what is not, and the one
 increment that would move its grade.
@@ -439,23 +439,23 @@ what is proven is the delivery half. The span payload went to a local sink, not 
 APM collector. Log shipping is graded READ: structured logging and redaction
 exist in the checkout, and what leaves the host is a deployment question.
 
-## 8. Frontend production hardening — **PARTIAL** (audited this pass)
+## 8. Frontend production hardening — **PASS, one row partial** (re-audited this pass)
 
 **Proven.** `scripts/frontend_audit.py` regenerates
 `118-frontend-hardening.{json,md}`: nine behaviours read from `frontend/src`,
-graded **5 PASS · 4 PARTIAL · 0 FAIL** —
+graded **8 PASS · 1 PARTIAL · 0 FAIL** —
 
 | Behaviour | Verdict | Measured |
 |---|---|---|
-| API contract coverage | PARTIAL | **537 of 1,141** endpoints reachable (47.1%), **141** typed call sites, **0** console calls with no route |
-| error handling | PARTIAL | 407 failure branches; **1** reader that could not surface a failure |
-| empty states | PASS | 164 explained empty states (103 as `role="status"`), 3 asserted by tests |
-| large graphs / lists | PASS | 40 collection cuts in 23 files, **0 silent**, 56 pagination sites |
+| API contract coverage | PARTIAL | **537 of 1,147** endpoints reachable (46.8%), **141** typed call sites, **0** console calls with no route |
+| error handling | PASS | 415 failure branches; **0** readers that cannot surface a failure |
+| empty states | PASS | 171 explained empty states (109 as `role="status"`), 3 asserted by tests |
+| large graphs / lists | PASS | 40 collection cuts in 23 files, **0 silent**, 60 pagination sites |
 | realtime | PASS | stream + `Last-Event-ID` resume + reconnect, with a jsdom test |
 | authorization-aware views | PASS | 68 gating sites across 5 surfaces, 125 refusal-state strings |
-| auditability | PARTIAL | 18 audit API calls in 6 files, **no dedicated audit page** |
+| auditability | PASS | **`/audit` is a page**: the hash-chained trail with its chain verdict, 26 audit API calls in 8 files |
 | degraded coverage | PASS | 482 coverage/UNKNOWN mentions — "nothing there" and "nothing observed" are different states |
-| page test coverage | PARTIAL | **49 of 100** pages have a rendered test |
+| page test coverage | PASS | **65 of 102** pages have a rendered test (63.7%) |
 
 **Defects found and fixed, not just measured.**
 
@@ -472,22 +472,68 @@ graded **5 PASS · 4 PARTIAL · 0 FAIL** —
 - The page smoke test was **red at `039d1403`** and had been for a while: the
   maturity register's prose contained a raw API path
   (`GET /estate/evidence/twin/simulation-scenarios`), which the console's own
-  "no raw API path on a screen" assertion catches. The prose was reworded; all
-  91 page smoke tests pass.
+  "no raw API path on a screen" assertion catches. The prose was reworded and
+  `lib/maturity.test.ts` now asserts the property, so a regenerated register
+  cannot reintroduce the leak.
+- **`KeyReconciliationPanel` threw on a live answer it could not read.** It called
+  `r.data.scans.filter(...)` on whatever came back, so a payload without `scans`
+  raised an unhandled rejection and left the panel on *Loading…* — the screen read
+  as "still checking" when the honest state was "this panel cannot tell". It now
+  has an explicit unreadable state, and
+  `components/KeyReconciliationPanel.test.tsx` pins all three states.
+
+**Built this pass — the audit trail's own surface.**
+
+`frontend/src/pages/Audit.tsx` replaces the `/audit` redirect. The platform writes
+a hash-chained audit record and guide 112 proved it is tamper-evident, but the
+console could only read it from inside the evidence screen. The page shows
+timestamp, actor, action, target, outcome and source address, filters **through the
+API** (a filtered history is a smaller history, not a partial one), pages 50 rows
+at a time and says so, and carries the chain verdict beside the table in three
+honest states: **verified** (quoting the server's own `checked`/`entry_count`),
+**TAMPERED** (with `break_at_sequence` and the reason), and **CHAIN NOT VERIFIED**
+for an unanswered or verdict-less verify call — never a green badge for a chain
+nobody read. A trail that could not be read says so instead of rendering an empty
+table: "no events" and "could not read the events" are opposite claims on an audit
+screen. `Audit.test.tsx` covers all of them, plus the filters leaving the browser
+as query parameters.
+
+**Fifteen pages with no rendered test now have one** — Agility, Alerts,
+AssuranceCoverage, AssuranceQualification, AssuranceRecords, AssuranceSampling,
+AssuranceTrace, Automation, Catalog, Cloud, CryptoAssets, CryptoChanges,
+Executive, Hardware and Identity — through `src/test/pageSmoke.tsx`, which mounts a
+page against a live-but-empty API and fails if it throws, renders nothing, or puts
+`NaN`/`undefined`/`Infinity` on a bank screen. That is a floor, not a claim about
+correctness, and it paid for itself immediately by finding the panel defect above.
+
+**The `error_handling` row no longer counts the hook's own module as a silent
+reader.** `lib/apiUi.tsx` *is* the failure branch — the `catch` that builds
+`{error, detail}` — and the row was flagging it because it looked for render sites.
+`lib/apiUi.error.test.tsx` now proves the behaviour instead of the row asserting its
+absence: a throwing reader becomes `REQUEST_FAILED` with the message, clears
+`running`, and invents no data.
 
 **The negative control.** The same graders run against a copy of the console with
-its failure branches, empty-state copy, gating, pagination, resume and tests
-stripped: **PASS 0 · PARTIAL 6 · FAIL 3**, and every row that claimed a behaviour
-stops claiming it. An audit that cannot fail is decoration.
+its failure branches, empty-state copy, gating, pagination, resume, audit trail and
+tests stripped: **PASS 0 · PARTIAL 5 · FAIL 4**, and every row that claimed a
+behaviour stops claiming it — including auditability, which the control used to
+leave PASSing because the trail was never part of what got stripped. An audit that
+cannot fail is decoration, so
+`scripts/tests/test_frontend_hardening_artifact.py` asserts that floor and the
+trail's surface.
 
-**Not proven.** 604 endpoints still have no console caller (declared API-only, not
-missing by accident); 51 pages have no rendered test; there is no dedicated audit
-page; no browser was involved, so DOM cost at 100k nodes is unmeasured; and a
-failure branch that exists but never triggers still counts as present.
+**Not proven, and the one partial named.** Typing is the real gap in the contract
+row: **141 typed call sites against 329 `Record<string, unknown>` returns**, so most
+payloads the console reads are an unchecked claim — reach (46.8%) is a product
+decision, not a defect, and the uncovered half is CLI and drill traffic. 604
+endpoints still have no console caller. 37 pages still have no rendered test, and
+the fifteen added here are smoke-level rather than behavioural. No browser was
+involved, so DOM cost at 100k nodes is unmeasured; a failure branch that exists but
+never triggers still counts as present.
 
-**What closes it.** Rendered tests for the 51 uncovered pages, an audit/approval
-page reading the server's own trail, a browser-level run at 100k nodes, and an
-explicit "API-only" register for the 604 uncovered endpoints.
+**What closes it.** Typing the remaining 329 call sites from the OpenAPI schema,
+behavioural tests for the 37 uncovered pages, a browser-level run at 100k nodes,
+and an explicit "API-only" register for the 604 uncovered endpoints.
 
 ## The order I would take them
 
@@ -525,10 +571,13 @@ explicit "API-only" register for the 604 uncovered endpoints.
    probe, span export and Alertmanager receiver all built **and executed** —
    10 of 10 surfaces answer, 0 partial. Remaining in #7: nothing in code; a bank
    points the bundled Alertmanager at its own pager.
-8. ~~**Frontend audit (#8)**~~ — **done this pass** (guide 118): nine behaviours
-   graded, a leaked failure path and 29 uncaptioned tables fixed, a red smoke
-   test fixed. Remaining in #8: 51 pages without a rendered test, an audit page,
-   and a browser run at estate scale.
+8. ~~**Frontend audit (#8)**~~ — **done this pass** (guide 118, second pass on
+   it): the audit trail is a page with the chain verdict and an honest unverified
+   state, fifteen pages gained rendered tests (49% → 63.7%), a panel that hung on
+   a payload it could not read was fixed, and the silent-reader row stopped
+   flagging the hook that implements the branch. **8 PASS · 1 PARTIAL · 0 FAIL.**
+   Remaining in #8: typing the 329 untyped call sites, tests for the 37 pages still
+   uncovered, and a browser run at estate scale.
 
 **Still open, and not moved this pass:** the 15 collector families in #1, the
 in-stage cancellation, cluster-wide admission and real-Redis backlog in #2, the

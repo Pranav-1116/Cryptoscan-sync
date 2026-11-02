@@ -126,11 +126,13 @@ def contract_coverage() -> Row:
                   "calls_with_no_route": len(unknown),
                   "typed_call_sites": typed, "loose_record_types": loose},
         gaps=[f"{len(unknown)} console call(s) name a path the API does not serve"] if unknown else [],
-        note=("the console covers half the surface, which is expected: it is an operator "
-              "console, not a complete API client, and the uncovered half is CLI and drill "
-              "traffic"),
-        limit="reach is not correctness: a page that calls an endpoint and misreads the "
-              "payload is counted here",
+        note=("reach is a product decision, not a defect: this is an operator console, "
+              "not a complete API client, and the uncovered half is CLI and drill traffic "
+              "— every call it does make names a route the API serves"),
+        limit=("the gap this row really measures is typing: a few hundred call sites "
+               "return `Record<string, unknown>`, so most payloads the console reads are "
+               "an unchecked claim; the percentage is reach and says nothing about "
+               "whether a page misreads what it reached"),
     )
 
 
@@ -145,8 +147,14 @@ def error_handling() -> Row:
                       _files(".tsx"))
     alert_roles = _count(r"role=\"alert\"", pages)
     # a page that renders a number without a failure branch is the failure mode
+    # `lib/apiUi.tsx` is where the failure branch lives — its `catch` builds the
+    # `{error, detail}` every page renders — so counting it as a silent reader was a
+    # false positive. `lib/apiUi.error.test.tsx` proves the branch instead of this
+    # row asserting its absence.
     silent = [_rel(path) for path in pages
               if "useApi<" in path.read_text(encoding="utf-8", errors="ignore")
+              and "export function useApi" not in
+              path.read_text(encoding="utf-8", errors="ignore")
               and not re.search(r"\.error|\.detail|role=\"alert\"",
                                 path.read_text(encoding="utf-8", errors="ignore"))]
     return Row(
@@ -387,6 +395,9 @@ def negative_control() -> dict[str, Any]:
                        r"hasPermission|isAdmin|role ===|roles\.includes|permissions\.|can\(|"
                        r"setPage\(|pageSize|truncated|Last-Event-ID|lastEventId|"
                        r"new EventSource|coverage|NOT_OBSERVED|NOT_ATTEMPTED|degraded|"
+                       # the audit trail's own reads and labels, so the auditability
+                       # row cannot survive a copy with the behaviour taken out
+                       r"/audit|audit|chain|verdict|sequence|"
                        r"[Uu]nknown")
     for path in sorted(target.rglob("*.ts*")):
         if ".test." in path.name:
@@ -503,11 +514,13 @@ def render_md(report: dict[str, Any]) -> str:
     lines += [
         "",
         "**The verdict this audit supports:** the console handles failure, emptiness, "
-        "bounded lists, realtime resume and degraded coverage far better than the reach "
-        "number suggested. What it does **not** do uniformly is reflect the operator's "
-        "authority — gating exists, but it is not applied across the write surfaces — and "
-        "about a third of the pages have no rendered test. Both are named above rather than "
-        "folded into an average.",
+        "bounded lists, realtime resume, operator authority and the audit trail far better "
+        "than the reach number suggested, and the audit trail now has a surface of its own "
+        "instead of a redirect. What is **not** closed is typing: most payloads the console "
+        "reads are still `Record<string, unknown>`, so the percentage above measures how "
+        "much of the API it touches, not whether it reads the answer correctly. That, the "
+        "pages without a rendered test, and a browser run at estate scale are named above "
+        "rather than folded into an average.",
         "",
     ]
     return "\n".join(lines)
