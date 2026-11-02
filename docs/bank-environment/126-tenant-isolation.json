@@ -1,7 +1,7 @@
 {
   "schema": "cryptoscan.tenant-isolation/2",
   "version": "tenant-isolation/2.0",
-  "generated_at": "2026-11-02T10:56:05.172688+00:00",
+  "generated_at": "2026-11-02T11:06:37.708365+00:00",
   "counts": {
     "PASS": 7,
     "PARTIAL": 1,
@@ -51,12 +51,12 @@
         {
           "probe": "new-row-stamped-with-the-active-tenant",
           "ok": true,
-          "observed": "a row created without a tenant_id was stamped 9770632e-2b62-49c2-be91-3bafdcb17726"
+          "observed": "a row created without a tenant_id was stamped 41f36e5f-711c-46ce-ad01-18545727c93f"
         },
         {
           "probe": "explicit-foreign-tenant-id-refused",
           "ok": true,
-          "observed": "refused: row is attributed to tenant 'a0947665-4765-49dd-bda2-f30336b1960e', but active scope is '9770632e-2b62-49c2-be91-3bafdcb17726'"
+          "observed": "refused: row is attributed to tenant '71a80ac6-e781-4f49-b873-efc2d69ee05c', but active scope is '41f36e5f-711c-46ce-ad01-18545727c93f'"
         },
         {
           "probe": "control-forged-row-absent-from-the-store",
@@ -113,7 +113,7 @@
         {
           "probe": "member-resolves-own-tenant",
           "ok": true,
-          "observed": "A's session resolved to 9770632e-2b62-49c2-be91-3bafdcb17726"
+          "observed": "A's session resolved to 41f36e5f-711c-46ce-ad01-18545727c93f"
         },
         {
           "probe": "header-for-another-tenant-does-not-scope",
@@ -123,7 +123,7 @@
         {
           "probe": "control-own-header-still-works",
           "ok": true,
-          "observed": "B's own session with B's header resolved to a0947665-4765-49dd-bda2-f30336b1960e"
+          "observed": "B's own session with B's header resolved to 71a80ac6-e781-4f49-b873-efc2d69ee05c"
         },
         {
           "probe": "no-session-no-scope",

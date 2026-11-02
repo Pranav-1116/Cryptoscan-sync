@@ -463,7 +463,9 @@ def probe_database_enforcement() -> tuple[list[Probe], dict[str, Any]] | None:
     sys.path.insert(0, str(REPO_ROOT / "scripts"))
     try:
         from pg_qualification import postgres_server  # noqa: PLC0415
-    except Exception:  # pragma: no cover - import guard
+    except Exception as error:  # noqa: BLE001 — reported as SKIP, not swallowed
+        print(f"database_enforcement skipped: cannot import the server helper "
+              f"({type(error).__name__}: {error})", file=sys.stderr)
         return None
 
     from sqlalchemy import create_engine, text

@@ -1,14 +1,14 @@
 # Multi-tenant isolation — two tenants, every direction
 
-`cryptoscan.tenant-isolation/2` · generated 2026-11-02T10:56:05.172688+00:00 · **7 pass · 1 partial · 0 fail**
+`cryptoscan.tenant-isolation/2` · generated 2026-11-02T11:06:37.708365+00:00 · **7 pass · 1 partial · 0 fail**
 
 | Question | Verdict | Evidence |
 |---|---|---|
 | **can tenant A read a row that belongs to tenant B?** | **PASS** | inside tenant A, a plain select returned 1 row(s): ['drill-alpha-only'] |
-| **can tenant A write a row into tenant B?** | **PASS** | a row created without a tenant_id was stamped 9770632e-2b62-49c2-be91-3bafdcb17726 |
+| **can tenant A write a row into tenant B?** | **PASS** | a row created without a tenant_id was stamped 41f36e5f-711c-46ce-ad01-18545727c93f |
 | **can tenant A update or delete a row it cannot see?** | **PASS** | updating B's row from A's scope touched 0 row(s) |
 | **does a query that forgets the predicate fail closed?** | **PASS** | refused: raw or Core SQL touching tenant-scoped table 'tenant_usage_events' inside a tenant scope; use the ORM (auto-filtered) or an explicit db.tenancy.platform_scope() block |
-| **does a valid session plus a spoofed header buy the other tenant's scope?** | **PASS** | A's session resolved to 9770632e-2b62-49c2-be91-3bafdcb17726 |
+| **does a valid session plus a spoofed header buy the other tenant's scope?** | **PASS** | A's session resolved to 41f36e5f-711c-46ce-ad01-18545727c93f |
 | **is the isolation the filter's doing, or the data's?** | **PASS** | from a platform scope the same query returns ['drill-alpha-only', 'drill-beta-only'] — so the rows are only separated by the scope, which is exactly what the rows above measure |
 | **does PostgreSQL enforce the boundary, or only the Python scope?** | **PASS** | PostgreSQL 16.2: 157 of 157 table(s) with a tenant_id have RLS enabled and forced, with 157 policy row(s) |
 | **is the isolation cryptographic, or logical and enforced by code?** | **PARTIAL** | reading the database file directly returns both tenants' rows in plaintext: ['drill-alpha-only', 'drill-beta-only'] — the isolation is enforced by a scope in code and, on PostgreSQL, by row-level policies, but it is not cryptographic: the file has no key |
@@ -29,8 +29,8 @@
 
 *can tenant A write a row into tenant B?*
 
-- **PASS** `new-row-stamped-with-the-active-tenant` — a row created without a tenant_id was stamped 9770632e-2b62-49c2-be91-3bafdcb17726
-- **PASS** `explicit-foreign-tenant-id-refused` — refused: row is attributed to tenant 'a0947665-4765-49dd-bda2-f30336b1960e', but active scope is '9770632e-2b62-49c2-be91-3bafdcb17726'
+- **PASS** `new-row-stamped-with-the-active-tenant` — a row created without a tenant_id was stamped 41f36e5f-711c-46ce-ad01-18545727c93f
+- **PASS** `explicit-foreign-tenant-id-refused` — refused: row is attributed to tenant '71a80ac6-e781-4f49-b873-efc2d69ee05c', but active scope is '41f36e5f-711c-46ce-ad01-18545727c93f'
 - **PASS** `control-forged-row-absent-from-the-store` — 0 forged row(s) persisted
 
 ### `cross_tenant_mutation` — PASS
@@ -51,9 +51,9 @@
 
 *does a valid session plus a spoofed header buy the other tenant's scope?*
 
-- **PASS** `member-resolves-own-tenant` — A's session resolved to 9770632e-2b62-49c2-be91-3bafdcb17726
+- **PASS** `member-resolves-own-tenant` — A's session resolved to 41f36e5f-711c-46ce-ad01-18545727c93f
 - **PASS** `header-for-another-tenant-does-not-scope` — refused: Unknown tenant
-- **PASS** `control-own-header-still-works` — B's own session with B's header resolved to a0947665-4765-49dd-bda2-f30336b1960e
+- **PASS** `control-own-header-still-works` — B's own session with B's header resolved to 71a80ac6-e781-4f49-b873-efc2d69ee05c
 - **PASS** `no-session-no-scope` — an unauthenticated request resolves no tenant — the auth gate refuses it before any query runs
 
 ### `controls` — PASS
