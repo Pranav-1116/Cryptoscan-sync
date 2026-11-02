@@ -382,3 +382,43 @@ def test_pqc_handoff_reads_a_document_and_defaults_to_unobserved(client):
     assert body["rows"][0]["quantum_status"] == "QUANTUM_SENSITIVE"
     assert body["as_of"]
 
+
+
+TRACE = {"application": "payments-api", "pid": 9182, "provider": "OpenSSL",
+         "provider_version": "3.0.13", "operation": "EVP_EncryptInit_ex",
+         "algorithm": "AES-256-GCM", "key_size": 256, "mode": "GCM",
+         "observed_at": "2026-11-02T10:42:11Z", "evidence_id": "RUNTIME-92821"}
+
+
+def test_runtime_traces_keep_the_whole_chain(client):
+    body = _post(client, "/runtime-traces", {"operations": [TRACE]}).json()
+    trace = body["traces"][0]
+    assert trace["chain"]["process"] == "process:payments-api/9182"
+    assert trace["chain"]["provider"] == "provider:OpenSSL@3.0.13"
+    component = body["components"][0]
+    assert component["name"] == "AES-256-GCM"
+    assert {row["name"] for row in component["properties"]} >= {
+        "cryptoscan:runtime_confirmed", "cryptoscan:process", "cryptoscan:operation"}
+    kinds = {edge["kind"] for edge in body["graph"]["edges"]}
+    assert {"RUNS_PROCESS", "LOADS_PROVIDER", "PERFORMS_OPERATION", "RESOLVES_TO",
+            "USES_CRYPTO"} <= kinds
+
+
+def test_a_chain_without_a_process_is_refused(client):
+    body = _post(client, "/runtime-traces", {
+        "operations": [{key: value for key, value in TRACE.items() if key != "pid"}],
+    }).json()
+    assert body["traces"] == [] and body["refused"]
+    assert "pid" in body["refused"][0]["reason"]
+    assert body["summary"]["refused"] == 1
+
+
+def test_the_loaded_provider_version_is_correlated_not_resolved(client):
+    body = _post(client, "/runtime-traces", {
+        "operations": [TRACE],
+        "declared": [{"name": "openssl", "version": "3.0.11", "evidence_id": "SBOM-1"}],
+    }).json()
+    row = body["correlations"][0]
+    assert row["state"] == "VERSION_MISMATCH"
+    assert row["runtime_version"] == "3.0.13" and row["declared_versions"] == ["3.0.11"]
+    assert set(row["evidence_ids"]) == {"SBOM-1", "RUNTIME-92821"}

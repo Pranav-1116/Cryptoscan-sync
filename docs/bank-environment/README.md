@@ -555,6 +555,23 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [Process-level runtime tracing: the chain is the evidence](146-cbom-process-tracing.md)
+> (**5 pass · 0 partial · 0 fail**, 24 probes) closes review item 7 — the gap the
+> review calls the biggest one. `cbom.process_tracing` keeps the whole chain:
+> application → PID → provider (with version) → operation → algorithm →
+> parameters → timestamp → evidence id. A row missing any link is **refused**, not
+> promoted, because a partial chain is a claim. The provider version is data: a
+> trace that reports `OpenSSL` but no version is kept and marked uncomparable, and
+> `correlate` compares what the process actually loaded against what the SBOM
+> declares — SBOM 3.0.11 vs runtime 3.0.13 is a `VERSION_MISMATCH` carrying both
+> evidence ids, never a resolved value, with `RUNTIME_ONLY` and `SBOM_ONLY` named
+> separately. A complete chain becomes a **runtime-confirmed** cryptographic asset
+> (one per application/process/provider/operation/algorithm/parameters, with an
+> occurrence count and every evidence id, and no invented quantum verdict), and the
+> twin gets the chain as `RUNS_PROCESS` / `LOADS_PROVIDER` /
+> `PERFORMS_OPERATION` / `RESOLVES_TO` edges plus the application → algorithm
+> shortcut. `POST /cbom/runtime-traces` exposes it.
+
 > [Coverage in the CBOM, and what an empty CBOM actually says](145-cbom-coverage-render.md)
 > (**5 pass · 0 partial · 0 fail**, 24 probes) closes review items 18 and 19.
 > 12 RSA assets over 62 of 100 applications is not "the bank has 12 RSA assets":

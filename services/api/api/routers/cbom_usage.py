@@ -141,6 +141,27 @@ class CbomPromoteResponse(BaseModel):
     document: dict
 
 
+class CbomRuntimeTraceRequest(BaseModel):
+    operations: list[dict] = Field(default_factory=list, description=(
+        "recorded crypto operations with the whole chain: application, pid, provider, "
+        "provider_version, operation, algorithm, key_size/mode, observed_at, evidence_id"))
+    declared: list[dict] = Field(default_factory=list, description=(
+        "SBOM library declarations (name, version, evidence_id) to correlate the loaded "
+        "provider against"))
+
+
+class CbomRuntimeTraceResponse(BaseModel):
+    traces: list[dict]
+    refused: list[dict]
+    providers: list[dict]
+    unknown_version: list[str]
+    correlations: list[dict]
+    correlation_counts: dict
+    components: list[dict]
+    graph: dict
+    summary: dict
+
+
 class CbomKmsRequest(BaseModel):
     rows: list[dict] = Field(default_factory=list, description=(
         "provider key-inventory rows: key_ref (or key_id/arn), algorithm, key_size, curve, "
@@ -319,6 +340,36 @@ def cbom_promote(body: CbomPromoteRequest,
                              primitives=body.primitives, oids=body.oids)
     return {"promotion": promoted, "inventory": promo.asset_inventory(promoted),
             "document": promo.to_cbom(promoted, name=body.document_name)}
+
+
+@router.post("/runtime-traces", response_model=CbomRuntimeTraceResponse)
+def cbom_runtime_traces(body: CbomRuntimeTraceRequest,
+                        user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Process-level runtime traces -> runtime-confirmed assets, providers and edges.
+
+    The chain the review asks for is kept whole (application → process → provider →
+    operation → algorithm), a row missing any link is refused rather than promoted,
+    and the loaded provider version is correlated with the SBOM's declaration — a
+    mismatch is reported, never resolved.
+    """
+    from cbom import process_tracing as pt
+
+    traced = pt.trace(body.operations)
+    providers = pt.provider_observations(traced["traces"])
+    correlation = pt.correlate(providers, body.declared)
+    components = pt.to_components(traced["traces"])
+    projection = pt.graph(traced["traces"])
+    return {
+        "traces": traced["traces"],
+        "refused": traced["refused"],
+        "providers": providers["providers"],
+        "unknown_version": providers["unknown_version"],
+        "correlations": correlation["correlations"],
+        "correlation_counts": correlation["counts"],
+        "components": components["components"],
+        "graph": projection,
+        "summary": pt.summary(traced, providers, correlation),
+    }
 
 
 @router.post("/kms/keys", response_model=CbomKmsResponse)

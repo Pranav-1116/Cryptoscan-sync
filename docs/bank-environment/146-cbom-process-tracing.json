@@ -1,0 +1,186 @@
+{
+  "schema": "cryptoscan.cbom-process-tracing-guide/1",
+  "generated_at": "2026-11-02T18:20:46.898356+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 24,
+  "rows": [
+    {
+      "id": "the_chain",
+      "question": "is a runtime trace the whole chain, or a claim about one?",
+      "phase": "review 7",
+      "probes": [
+        {
+          "probe": "the-review-chain-is-kept-whole",
+          "ok": true,
+          "observed": "application:payments-api \u2192 process:payments-api/9182 \u2192 provider:OpenSSL@3.0.13 \u2192 operation:EVP_EncryptInit_ex \u2192 algorithm:AES-256-GCM"
+        },
+        {
+          "probe": "the-parameters-survive-the-chain",
+          "ok": true,
+          "observed": "{\"key_size\": 256, \"mode\": \"GCM\"}"
+        },
+        {
+          "probe": "a-trace-without-a-process-is-refused",
+          "ok": true,
+          "observed": "a runtime trace is missing pid"
+        },
+        {
+          "probe": "an-unparseable-timestamp-is-refused-not-replaced",
+          "ok": true,
+          "observed": "a timestamp that cannot be parsed is not a timestamp"
+        },
+        {
+          "probe": "the-summary-counts-processes-not-operations",
+          "ok": true,
+          "observed": "two PIDs, three operations"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_provider",
+      "question": "does the tracer separate 'OpenSSL' from 'OpenSSL 3.0.13'?",
+      "phase": "review 7",
+      "probes": [
+        {
+          "probe": "a-provider-is-what-it-was-seen-doing",
+          "ok": true,
+          "observed": "OpenSSL 3.0.13 was observed performing AES-256-GCM in 1 process(es)"
+        },
+        {
+          "probe": "operations-are-counted-per-provider",
+          "ok": true,
+          "observed": "a provider that encrypts and decrypts is one provider with two operations"
+        },
+        {
+          "probe": "an-unversioned-provider-says-it-cannot-be-compared",
+          "ok": true,
+          "observed": "OpenSSL (version not reported) was observed performing AES-256-GCM in 1 process(es); without a version it cannot be compared with an SBOM"
+        },
+        {
+          "probe": "the-provider-version-is-not-invented",
+          "ok": true,
+          "observed": "provider_version stays null when the collector did not report it"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "correlation",
+      "question": "does the twin say which provider version the process loaded?",
+      "phase": "review 7 / 8",
+      "probes": [
+        {
+          "probe": "the-review-version-mismatch-is-reported-not-resolved",
+          "ok": true,
+          "observed": "1 provider correlation(s): VERSION_MISMATCH=1; a version mismatch is reported, not resolved"
+        },
+        {
+          "probe": "both-sides-keep-their-evidence",
+          "ok": true,
+          "observed": "RUNTIME-92821, SBOM-1"
+        },
+        {
+          "probe": "an-agreeing-provider-is-a-match",
+          "ok": true,
+          "observed": "the loaded provider matches the declared version"
+        },
+        {
+          "probe": "runtime-only-and-sbom-only-are-both-named",
+          "ok": true,
+          "observed": "2 provider correlation(s): RUNTIME_ONLY=1, SBOM_ONLY=1"
+        },
+        {
+          "probe": "an-unversioned-runtime-provider-cannot-match",
+          "ok": true,
+          "observed": "the runtime provider version was not reported, so agreement with the SBOM cannot be established"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_asset",
+      "question": "does a runtime observation become a runtime-confirmed asset?",
+      "phase": "review 7",
+      "probes": [
+        {
+          "probe": "repeated-operations-are-one-asset-with-a-count",
+          "ok": true,
+          "observed": "1 runtime-confirmed crypto asset(s) from 2 evidence reference(s); every one carries the process and provider chain"
+        },
+        {
+          "probe": "a-different-process-is-a-different-asset",
+          "ok": true,
+          "observed": "the process is part of the asset identity"
+        },
+        {
+          "probe": "the-asset-is-runtime-confirmed-with-the-chain-attached",
+          "ok": true,
+          "observed": "runtime/payments-api/9182/EVP_EncryptInit_ex/AES-256-GCM/OpenSSL/3.0.13"
+        },
+        {
+          "probe": "an-asset-with-no-parameters-claims-no-parameter-set",
+          "ok": true,
+          "observed": "an empty parameter object would read as 'known to be empty'"
+        },
+        {
+          "probe": "the-asset-writes-no-quantum-verdict",
+          "ok": true,
+          "observed": "the PQC handoff owns that decision, not the collector"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_twin",
+      "question": "does the chain reach the digital twin as evidenced relationships?",
+      "phase": "review 7 / 20",
+      "probes": [
+        {
+          "probe": "the-graph-walks-the-whole-chain",
+          "ok": true,
+          "observed": "5 runtime relationship(s) across 5 node(s); every edge is RUNTIME_OBSERVED and carries its evidence id"
+        },
+        {
+          "probe": "the-shortcut-exists-for-the-obvious-question",
+          "ok": true,
+          "observed": "which applications encrypt with AES-256-GCM, without walking four edges"
+        },
+        {
+          "probe": "every-edge-is-observed-and-carries-evidence",
+          "ok": true,
+          "observed": "repeat observations merge their evidence ids"
+        },
+        {
+          "probe": "nodes-are-typed-by-their-prefix",
+          "ok": true,
+          "observed": "the twin can filter by kind"
+        },
+        {
+          "probe": "the-route-exists-typed-and-role-gated",
+          "ok": true,
+          "observed": "POST /cbom/runtime-traces"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the platform reads traces; it does not install the tracer. A process that never called a hooked operation produces no trace, which is indistinguishable from a process that did not run crypto \u2014 only coverage of the tracing tells them apart",
+    "pid identifies a process instance, not an application version. Two deployments of payments-api look alike unless the collector also reports a build id or image digest, which this module does not require",
+    "a provider version is only as good as the collector's lookup: a statically linked library or a vendored copy may report the wrong version, and the correlation would then be confidently wrong",
+    "correlation matches on library name. 'OpenSSL' vs 'openssl' is normalised, but 'BoringSSL' and 'OpenSSL' are different providers and a fork that renames itself will read as RUNTIME_ONLY",
+    "component identity is (application, process, provider, operation, algorithm, parameters). An operation repeated across two hosts is one asset with a count, so per-host provenance needs the host property, not the component",
+    "runtime traces prove an operation happened; they do not prove which key, which purpose or which data. Key-level runtime evidence is the KMS collector's job",
+    "the graph is a projection for one submission, not a stored twin. Persisting it, and diffing successive runtime states for drift, is not in this increment"
+  ]
+}

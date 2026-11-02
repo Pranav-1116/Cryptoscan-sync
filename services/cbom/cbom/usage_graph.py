@@ -75,6 +75,16 @@ def _edge(source: str, kind: str, target: str, *, evidence: list[str],
     }
 
 
+def evidence_edge(source: str, kind: str, target: str, *, evidence: list[str],
+                  classes: list[str], **extra: Any) -> dict[str, Any]:
+    """Public form of the edge shape, for other twin projections (process tracing).
+
+    Same fields, same provenance rule: one shape for every crypto relationship the
+    platform draws, so two projections cannot disagree about what an edge carries.
+    """
+    return _edge(source, kind, target, evidence=evidence, classes=classes, **extra)
+
+
 def usage_edges(profiles: Iterable[Mapping[str, Any]], *, system: str | None = None,
                 application: str | None = None,
                 component: str | None = None) -> dict[str, Any]:
