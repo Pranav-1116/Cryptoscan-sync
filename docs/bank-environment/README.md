@@ -555,6 +555,23 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [Coverage in the CBOM, and what an empty CBOM actually says](145-cbom-coverage-render.md)
+> (**5 pass · 0 partial · 0 fail**, 24 probes) closes review items 18 and 19.
+> 12 RSA assets over 62 of 100 applications is not "the bank has 12 RSA assets":
+> `cbom.coverage_render` turns the estate rollup into a coverage block, writes it
+> into the document as `cryptoscan:coverage` / `coverage_pct` /
+> `coverage_completeness` / `assets_discovered`, and answers the only question a
+> report may ask — `quotable_counts` says **TOTAL** or **FLOOR**, and only a fully
+> inspected estate gets TOTAL. The statement names the never-scanned, the failed
+> and the stale, because those are the systems whose cryptography is unknown rather
+> than absent. An empty CBOM now carries its reasons instead of a reader's
+> assumption: `NO_CRYPTO_DETECTED`, `NO_INVENTORY_INGESTED`,
+> `PATHS_UNSUPPORTED_OR_EXCLUDED`, `SCAN_FAILED`, `COVERAGE_INCOMPLETE` — and only
+> the first is a statement about cryptography, available solely when detectors ran,
+> files were read, nothing errored and nothing was skipped. The estate CBOM and
+> `GET /cbom/coverage` carry the block; the scan CBOM export explains its own
+> emptiness.
+
 > [PQC readiness is not the CBOM, and a boolean is not a status](144-cbom-pqc-handoff.md)
 > (**5 pass · 0 partial · 0 fail**, 24 probes) closes review items 14 and 15.
 > `quantumVulnerable: true|false|null` failed three ways: it said `false` for

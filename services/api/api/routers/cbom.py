@@ -445,7 +445,18 @@ def cbom_coverage(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    return SystemRepository(db).coverage_summary()
+    """Scan coverage, plus what an asset count over that coverage may say.
+
+    ``inventory.statement`` is the sentence an operator can quote, and
+    ``quotable.phrasing`` says whether the count is a total or a floor.
+    """
+    from cbom.coverage_render import inventory_coverage, quotable_counts
+    from db.models.crypto_asset import CryptoAsset
+
+    summary = SystemRepository(db).coverage_summary()
+    assets = int(db.query(CryptoAsset).count() or 0)
+    block = inventory_coverage(summary, assets=assets)
+    return {**summary, "inventory": block, "quotable": quotable_counts(block)}
 
 
 class ScanUncoveredRequest(BaseModel):
@@ -517,6 +528,12 @@ def cbom_portfolio(
         {"name": "cryptoscan:systems", "value": str(len({row.get("system_id") for row in records if row.get("system_id")}))},
         {"name": "cryptoscan:assets", "value": str(len(records))},
     ]
+    # Review item 18: an estate CBOM states its coverage in the document, so the
+    # asset count cannot be read downstream as "the bank has N".
+    from cbom.coverage_render import document_properties, inventory_coverage
+    coverage_block = inventory_coverage(SystemRepository(db).coverage_summary(),
+                                        assets=total_assets)
+    metadata_properties += document_properties(coverage_block)
     from api.routers.cbom_legacy_controlled import retained_metadata
     metadata_properties += retained_metadata(db)
     if truncated:

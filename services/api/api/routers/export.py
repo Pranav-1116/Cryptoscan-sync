@@ -234,7 +234,19 @@ def export_cbom(
     }
     if dependencies:
         bom["dependencies"] = dependencies
-    return bom
+    # Review item 19: an empty CBOM says why it is empty. Over a completed scan
+    # that is a statement about the inspected paths; over a failed or partial one
+    # it is not a statement about cryptography at all.
+    from cbom.coverage_render import render_empty
+    stats = scan.statistics or {}
+    status = str(getattr(scan, "status", "") or "").upper()
+    return render_empty(
+        bom,
+        components=len(bom.get("components") or []),
+        errors=stats.get("errors") or (status if status in {"FAILED", "ERROR"} else None),
+        files_scanned=int(stats.get("files_scanned") or 0),
+        files_skipped=int(stats.get("files_skipped") or 0),
+    )
 
 
 def _cascade_dependencies(root_ref: str, cascade: dict, rows) -> tuple[list[dict], list[dict]]:

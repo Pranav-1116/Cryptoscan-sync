@@ -1,0 +1,185 @@
+{
+  "schema": "cryptoscan.cbom-coverage-render-guide/1",
+  "generated_at": "2026-11-02T18:14:27.655186+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 24,
+  "rows": [
+    {
+      "id": "the_floor",
+      "question": "can an asset count be quoted without the coverage that qualifies it?",
+      "phase": "review 18",
+      "probes": [
+        {
+          "probe": "a-partial-estate-cannot-quote-a-total",
+          "ok": true,
+          "observed": "62/100 inspected, 62.0%"
+        },
+        {
+          "probe": "the-statement-says-what-was-discovered-not-what-exists",
+          "ok": true,
+          "observed": "480 crypto asset(s) discovered; 62/100 application(s) inspected (62%); the count is what was discovered, not what exists; 25 never scanned, 8 failed, 12 stale"
+        },
+        {
+          "probe": "the-unscanned-and-the-failed-are-named",
+          "ok": true,
+          "observed": "25 application(s) were never scanned; their cryptography is unknown, not absent; 8 application(s) failed their scan; a failure is not an empty result"
+        },
+        {
+          "probe": "a-complete-estate-may-quote-a-total",
+          "ok": true,
+          "observed": "40 crypto asset(s) across the estate"
+        },
+        {
+          "probe": "an-unmeasured-estate-makes-no-claim",
+          "ok": true,
+          "observed": "3 crypto asset(s) discovered over 0/0 application(s) (0.0%)"
+        },
+        {
+          "probe": "coverage-never-exceeds-the-estate",
+          "ok": true,
+          "observed": "inspected is clamped to total rather than reporting 180%"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "document_statement",
+      "question": "does the document itself carry the coverage, not only the API?",
+      "phase": "review 18",
+      "probes": [
+        {
+          "probe": "the-coverage-block-travels-as-one-property",
+          "ok": true,
+          "observed": "PARTIAL / 62.0%"
+        },
+        {
+          "probe": "the-scalars-exist-for-readers-that-do-not-parse-it",
+          "ok": true,
+          "observed": "assets + completeness + pct beside the block"
+        },
+        {
+          "probe": "the-estate-document-carries-the-coverage",
+          "ok": true,
+          "observed": "POST-export portfolio BOM states 62/100 rather than 'the bank has'"
+        },
+        {
+          "probe": "the-coverage-endpoint-answers-the-quotable-question",
+          "ok": true,
+          "observed": "GET /cbom/coverage returns the block and its phrasing"
+        },
+        {
+          "probe": "attaching-coverage-is-idempotent-and-non-mutating",
+          "ok": true,
+          "observed": "re-rendering replaces instead of duplicating"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "empty_reasons",
+      "question": "does an empty CBOM say which of the five things happened?",
+      "phase": "review 19",
+      "probes": [
+        {
+          "probe": "five-different-statements-not-one",
+          "ok": true,
+          "observed": "NO_CRYPTO_DETECTED, NO_INVENTORY_INGESTED, PATHS_UNSUPPORTED_OR_EXCLUDED, SCAN_FAILED, COVERAGE_INCOMPLETE"
+        },
+        {
+          "probe": "no-crypto-detected-requires-a-clean-inspected-scan",
+          "ok": true,
+          "observed": "the document has no components: the detectors ran and found no cryptographic material in the paths that were inspected; this is a statement about the inspected paths, not about the estate"
+        },
+        {
+          "probe": "an-empty-document-nobody-filled-in-says-exactly-that",
+          "ok": true,
+          "observed": "the document has no components: no scan or inventory reached this system, so nothing was ever looked for; it is not evidence that no cryptography exists"
+        },
+        {
+          "probe": "a-failed-scan-is-never-an-empty-result",
+          "ok": true,
+          "observed": "the document has no components: the scan reported errors; an empty result over a failed scan says nothing; it is not evidence that no cryptography exists"
+        },
+        {
+          "probe": "skipped-paths-are-named",
+          "ok": true,
+          "observed": "the document has no components: part of the tree was skipped (unsupported file types, exclusions or unreadable paths); it is not evidence that no cryptography exists"
+        },
+        {
+          "probe": "partial-coverage-is-a-caveat-beside-the-finding",
+          "ok": true,
+          "observed": "the document has no components: the detectors ran and found no cryptographic material in the paths that were inspected; the estate was only partly inspected, so an empty result here says nothing about the rest; it is not evidence that no cryptography exists"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "document_empty",
+      "question": "is the explanation in the artefact a reader receives?",
+      "phase": "review 19",
+      "probes": [
+        {
+          "probe": "the-document-carries-the-reason",
+          "ok": true,
+          "observed": "the document has no components: the scan reported errors; an empty result over a failed scan says nothing; it is not evidence that no cryptography exists"
+        },
+        {
+          "probe": "the-document-says-it-is-not-an-absence",
+          "ok": true,
+          "observed": "an empty document is not a clean bill of health"
+        },
+        {
+          "probe": "rendering-does-not-rewrite-the-document",
+          "ok": true,
+          "observed": "only the explanation properties are added"
+        },
+        {
+          "probe": "a-non-empty-document-is-left-alone",
+          "ok": true,
+          "observed": "no explanation is attached where none is needed"
+        },
+        {
+          "probe": "the-export-path-renders-it",
+          "ok": true,
+          "observed": "a scan CBOM with no components says why"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "api_exposure",
+      "question": "did the coverage land without widening the API surface?",
+      "phase": "review 18",
+      "probes": [
+        {
+          "probe": "the-coverage-route-keeps-its-original-fields",
+          "ok": true,
+          "observed": "the estate rollup is still the top level of the response"
+        },
+        {
+          "probe": "no-new-operation-was-added",
+          "ok": true,
+          "observed": "the surface grew by payload, not by endpoint"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "coverage is about systems that exist in the register. A business application nobody registered is invisible to the denominator, so a 100% figure means 'everything we know about was scanned', not 'everything that exists was scanned'",
+    "inspected means a scan produced current or stale evidence. A scan that ran and found nothing counts as inspected, which is right for coverage and easy to misread as completeness of the CBOM",
+    "the empty-BOM reasons are inferred from counters the collectors report. A collector that does not report files_scanned or files_skipped will produce a weaker explanation, never a stronger one",
+    "an incomplete estate keeps NO_CRYPTO_DETECTED as a reason and adds COVERAGE_INCOMPLETE; a reader who stops at the first reason still over-reads it, so the statement is the field to quote",
+    "the property block is JSON in a string, because CycloneDX properties are name/value pairs. Consumers must parse it to see per-status counts",
+    "the export path explains an empty scan CBOM; the portfolio document states coverage. Other document builders (vendor, host, mainframe) still do not, and this guide does not claim they do"
+  ]
+}
