@@ -141,6 +141,24 @@ class CbomPromoteResponse(BaseModel):
     document: dict
 
 
+class CbomKmsRequest(BaseModel):
+    rows: list[dict] = Field(default_factory=list, description=(
+        "provider key-inventory rows: key_ref (or key_id/arn), algorithm, key_size, curve, "
+        "purpose, provider, location, status, created_at, rotated_at, evidence_id. A row "
+        "carrying key material is refused, never sanitised"))
+    uses: list[dict] = Field(default_factory=list, description=(
+        "recorded key operations: key_ref, operation, evidence_id, observed_at. An operation "
+        "on a key that is not in the inventory is refused"))
+    as_of: str | None = Field(None, description="ISO date the rotation policy is judged at")
+    max_age_days: int = Field(365, ge=30, le=3650, description="policy rotation age")
+
+
+class CbomKmsResponse(BaseModel):
+    keys: dict
+    usage: dict
+    posture: dict
+
+
 class CbomHsmRequest(BaseModel):
     kind: str = Field(..., description=(
         "CAPABILITY, CONFIGURED_KEY or OPERATION — the three HSM/KMS answers, only the last "
@@ -283,6 +301,34 @@ def cbom_promote(body: CbomPromoteRequest,
                              primitives=body.primitives, oids=body.oids)
     return {"promotion": promoted, "inventory": promo.asset_inventory(promoted),
             "document": promo.to_cbom(promoted, name=body.document_name)}
+
+
+@router.post("/kms/keys", response_model=CbomKmsResponse)
+def cbom_kms_keys(body: CbomKmsRequest,
+                  user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """KMS/HSM key inventory: configured keys, recorded operations, and posture.
+
+    Three answers, never one: a key that exists is ``CONFIGURED``, an operation
+    that used it is ``RUNTIME_OBSERVED``, and a module that *supports* an
+    algorithm is only a capability. Metadata only — a row carrying key material
+    is refused, and an operation on a key nobody inventoried is refused because
+    it means the inventory is incomplete, not that the operation is wrong.
+    """
+    from datetime import date as _date
+
+    from cbom import kms_collectors as kc
+
+    as_of = None
+    if body.as_of:
+        try:
+            as_of = _date.fromisoformat(body.as_of[:10])
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"as_of is not a date: {exc}")
+    keys = kc.key_records_from_kms(body.rows)
+    usage = kc.usage_events_from_keys(keys["records"], body.uses)
+    return {"keys": keys, "usage": usage,
+            "posture": kc.posture(keys["records"], as_of=as_of,
+                                  max_age_days=body.max_age_days)}
 
 
 @router.post("/hsm-evidence")

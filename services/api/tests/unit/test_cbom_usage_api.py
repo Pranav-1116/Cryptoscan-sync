@@ -288,3 +288,65 @@ def test_hsm_capability_is_not_an_operation(client):
 
 def test_an_hsm_operation_without_evidence_is_422(client):
     assert _post(client, "/hsm-evidence", {"kind": "OPERATION"}).status_code == 422
+
+
+KMS_ROW = {"provider": "AWS_KMS", "key_ref": "arn:aws:kms:eu:1:key/abc", "algorithm": "AES",
+           "key_size": 256, "purpose": "TLS", "status": "ENABLED",
+           "created_at": "2025-01-05", "evidence_id": "KMS-1"}
+
+
+def test_kms_configured_key_and_operation_are_two_events(client):
+    body = _post(client, "/kms/keys", {
+        "rows": [KMS_ROW],
+        "uses": [{"key_ref": KMS_ROW["key_ref"], "operation": "decrypt",
+                  "evidence_id": "USE-1", "observed_at": "2026-01-01T10:00:00Z"}],
+        "as_of": "2026-06-01",
+    }).json()
+    classes = [event["class"] for event in body["usage"]["events"]]
+    assert classes == ["CONFIGURED", "RUNTIME_OBSERVED"]
+    assert body["usage"]["configured"] == 1 and body["usage"]["operated"] == 1
+    assert body["usage"]["events"][1]["operation"] == "DECRYPT"
+
+
+def test_kms_an_unused_key_is_configured_not_used(client):
+    body = _post(client, "/kms/keys", {"rows": [KMS_ROW], "as_of": "2026-06-01"}).json()
+    assert body["usage"]["operated"] == 0
+    assert "a configured key is not usage" in body["usage"]["statement"]
+
+
+def test_kms_refuses_key_material_instead_of_sanitising_it(client):
+    body = _post(client, "/kms/keys", {
+        "rows": [{**KMS_ROW, "private_key": "-----BEGIN PRIVATE KEY-----"}],
+        "as_of": "2026-06-01",
+    }).json()
+    assert body["keys"]["records"] == [] and body["keys"]["refused"]
+    assert "never material" in body["keys"]["refused"][0]["reason"]
+
+
+def test_kms_refuses_an_operation_on_an_uninventoried_key(client):
+    body = _post(client, "/kms/keys", {
+        "rows": [KMS_ROW],
+        "uses": [{"key_ref": "arn:aws:kms:eu:1:key/other", "operation": "sign",
+                  "evidence_id": "USE-9", "observed_at": "2026-01-01"}],
+    }).json()
+    assert body["usage"]["operated"] == 0
+    assert "inventory is incomplete" in body["usage"]["refused"][0]["reason"]
+
+
+def test_kms_posture_reports_rotation_against_the_policy(client):
+    body = _post(client, "/kms/keys", {
+        "rows": [KMS_ROW,
+                 {**KMS_ROW, "key_ref": "old", "algorithm": "RSA", "key_size": 1024,
+                  "created_at": "2019-01-01"}],
+        "as_of": "2026-06-01",
+        "max_age_days": 365,
+    }).json()
+    posture = body["posture"]
+    assert posture["by_algorithm"] == {"AES": 1, "RSA": 1}
+    assert [row["key_ref"] for row in posture["weak_keys"]] == ["old"]
+    assert {row["key_ref"] for row in posture["rotation_overdue"]} == {KMS_ROW["key_ref"], "old"}
+    assert posture["as_of"] == "2026-06-01"
+
+
+def test_kms_rejects_an_unparseable_as_of(client):
+    assert _post(client, "/kms/keys", {"rows": [], "as_of": "not-a-date"}).status_code == 422

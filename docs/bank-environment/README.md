@@ -555,6 +555,20 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [Supported, existing, used: three answers for a key](143-cbom-kms-collectors.md)
+> (**4 pass · 0 partial · 0 fail**, 20 probes) closes review item 11's key
+> question. `cbom.kms_collectors` reads KMS/HSM inventory rows into metadata
+> records — **never** key material, and a row carrying any is refused, not
+> sanitised — then separates the three facts a CBOM is usually faked on:
+> `VENDOR_DECLARED` (the module *supports* RSA-4096, no key implied),
+> `CONFIGURED` (a key exists in the provider, no use implied) and
+> `RUNTIME_OBSERVED` (an operation was recorded — the only one of the three that
+> is usage). A configured key therefore promotes to `CONFIGURED` and no higher
+> until an operation names it. Operations on keys nobody inventoried are refused,
+> because that means the inventory is incomplete rather than the operation being
+> wrong, and `posture` reports weak sizes, rotation past the bank's own policy
+> age, and keys whose age is `UNKNOWN` instead of assuming them fresh.
+> `POST /cbom/kms/keys` exposes it, typed and role-gated.
 > [From "this library can do AES" to "this is an asset"](142-cbom-usage-promotion.md)
 > (**4 pass · 0 partial · 0 fail**, 20 probes) closes review item 6 — the one that
 > decides whether a CBOM can be trusted. `cbom.promotion` implements the chain the

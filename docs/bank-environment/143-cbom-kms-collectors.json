@@ -1,0 +1,157 @@
+{
+  "schema": "cryptoscan.cbom-kms-collectors-guide/1",
+  "generated_at": "2026-11-02T17:54:24.567749+00:00",
+  "counts": {
+    "PASS": 4,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 20,
+  "rows": [
+    {
+      "id": "three_answers",
+      "question": "can the CBOM tell a supported algorithm from an existing key from a used one?",
+      "phase": "review 11",
+      "probes": [
+        {
+          "probe": "the-three-answers-are-three-classes",
+          "ok": true,
+          "observed": "a capability is a declaration; a configured key is an observation of the inventory; only an operation is usage"
+        },
+        {
+          "probe": "an-inventoried-key-is-configured-and-not-used",
+          "ok": true,
+          "observed": "1 key record(s) across 1 provider(s), metadata only"
+        },
+        {
+          "probe": "a-key-nobody-used-produces-no-runtime-event",
+          "ok": true,
+          "observed": "1 configured key(s), 0 recorded operation(s); a configured key is not usage"
+        },
+        {
+          "probe": "a-recorded-operation-is-runtime-and-names-the-key",
+          "ok": true,
+          "observed": "1 configured key(s), 1 recorded operation(s)"
+        },
+        {
+          "probe": "the-two-layers-reach-the-usage-profile-separately",
+          "ok": true,
+          "observed": "AES (key_size=256, mode=GCM): observed; observed by USE-1, KMS-1"
+        },
+        {
+          "probe": "a-key-that-exists-is-configured-not-runtime",
+          "ok": true,
+          "observed": "promoted level CONFIGURED; the ladder needs an operation to reach RUNTIME"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "never_the_key",
+      "question": "does the collector store key references only, and refuse what it cannot attribute?",
+      "phase": "review 11 / 12",
+      "probes": [
+        {
+          "probe": "a-row-with-key-material-is-refused-not-sanitised",
+          "ok": true,
+          "observed": "the row carries private_key; a CBOM stores key references, never material"
+        },
+        {
+          "probe": "a-row-with-no-key-reference-is-refused",
+          "ok": true,
+          "observed": "a key record needs a key_ref; the material itself is never stored"
+        },
+        {
+          "probe": "a-key-with-no-evidence-id-is-not-a-configured-event",
+          "ok": true,
+          "observed": "the inventory row has no evidence id"
+        },
+        {
+          "probe": "a-disabled-key-is-inventoried-but-not-usable",
+          "ok": true,
+          "observed": "inventory keeps it; configuration does not claim it"
+        },
+        {
+          "probe": "an-operation-on-an-uninventoried-key-is-refused",
+          "ok": true,
+          "observed": "the operation names a key that is not in the inventory; the inventory is incomplete, not the operation"
+        },
+        {
+          "probe": "an-operation-without-evidence-or-time-is-refused",
+          "ok": true,
+          "observed": "a key operation is missing evidence_id, observed_at"
+        },
+        {
+          "probe": "an-unknown-provider-is-kept-and-marked",
+          "ok": true,
+          "observed": "coerced into the nearest known provider would be a guess"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "posture",
+      "question": "does the inventory say what is weak, what is stale, and what it does not know?",
+      "phase": "review 11",
+      "probes": [
+        {
+          "probe": "weak-sizes-and-old-curves-are-named",
+          "ok": true,
+          "observed": "2 weak key(s)"
+        },
+        {
+          "probe": "rotation-is-judged-against-the-banks-policy-age",
+          "ok": true,
+          "observed": "3 key(s) inventoried across 3 algorithm(s); 2 weak, 1 past 365 days without rotation, 1 with no recorded age"
+        },
+        {
+          "probe": "a-key-with-no-recorded-age-is-unknown-not-fresh",
+          "ok": true,
+          "observed": "unknown age: ['unknown-age']"
+        },
+        {
+          "probe": "posture-counts-what-the-inventory-actually-names",
+          "ok": true,
+          "observed": "{\"AES\": 1, \"ECDSA\": 1, \"RSA\": 1}"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "api_exposure",
+      "question": "can an operator feed a KMS inventory in and get three separate answers?",
+      "phase": "review 11",
+      "probes": [
+        {
+          "probe": "the-kms-route-exists-and-is-typed",
+          "ok": true,
+          "observed": "POST /cbom/kms/keys"
+        },
+        {
+          "probe": "the-route-requires-a-cbom-reader-role",
+          "ok": true,
+          "observed": "role-gated, not merely authenticated"
+        },
+        {
+          "probe": "the-route-uses-the-collector-not-a-copy",
+          "ok": true,
+          "observed": "one implementation, shared with the scripts and tests"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the collector reads rows it is given. It does not call AWS KMS, Azure Key Vault, GCP KMS or a PKCS#11 device itself, so 'the inventory is complete' is the caller's claim and the CBOM cannot check it",
+    "metadata is only as current as the export. A key created after the inventory run is invisible, and an operation on it is refused as uninventoried rather than attributed to the nearest key",
+    "rotation posture uses one policy age for the whole inventory. A bank with per-key-class policies gets one number here, so the finding is a trigger to look, not a breach",
+    "'usable' is decided from a fixed status vocabulary (ENABLED/ACTIVE/AVAILABLE/IN_USE). A provider with different states is inventoried and marked unusable, which under-claims rather than over-claims",
+    "the distinction supported/exists/used is per key record, not per call site. Two applications using one KMS key produce one record; separating them needs the application column filled in the export",
+    "private material is refused by field-name heuristics (private_key, secret, password, material, ...). A provider that returns key bytes in an innocuously named column would get past the filter, so the export should never contain them",
+    "posture does not decide what to migrate: a weak-but-disabled key is still counted as weak, and the migration judgement belongs to the quantum and assessment engines"
+  ]
+}
