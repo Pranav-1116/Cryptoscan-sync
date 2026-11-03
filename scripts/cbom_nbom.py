@@ -392,9 +392,9 @@ def row_endpoint_identity(modules: dict[str, Any]) -> dict[str, Any]:
                ["payments-api"] and
                [row["name"] for row in chains[auth]["levels"]["service"]] == ["auth-api"],
                f"{public} → payments-api, {auth} → auth-api"),
-        _probe("the-chain-reads-endpoint-service-application-system",
-               [band for band, rows in chains[public]["levels"].items() if rows][:3] ==
-               ["service", "application", "system"],
+        _probe("the-chain-reads-endpoint-service-process-application-system",
+               [band for band, rows in chains[public]["levels"].items() if rows][:4] ==
+               ["service", "process", "application", "system"],
                chains[public]["statement"]),
         _probe("a-stable-id-survives-renumbering-a-readable-one-does-not",
                n.stable_id(first) == n.stable_id({"key": first["key"],

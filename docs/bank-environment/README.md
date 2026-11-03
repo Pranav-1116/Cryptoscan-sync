@@ -584,6 +584,35 @@
 > certificates** are nodes too (`HOLDS_CERTIFICATE`), bounded so a key reference cannot be
 > passed off as one.
 
+> [The rest of the NBOM review](170-nbom-gaps.md)
+> (**11 pass · 0 partial · 0 fail**, 45 probes) is the second read of the same twenty-two
+> points, and nine things were still thin. **The ids the review asks for** now exist per
+> kind — `NET-ENDPOINT-001`, `SERVICE-001`, `APPLICATION-001`, `SYSTEM-001` — beside the
+> graph's `TECH-EP-001` and the content-addressed `NETWORK_ENDPOINT-9281`, three names for
+> one node with exactly one of them safe to key on. **Routes, not edges**: `paths()` walks
+> from a listener to an application and reports every TLS boundary on the way
+> (`TERMINATES_TLS`, `RE_ENCRYPTS`, the suites that crossed each) — *waf-01:443 → waf-01:8080
+> → lb-01:443 → api-gw-01:8443 → payments-api:8443 → Payments API* — marked **proven** only
+> when every hop is, **declared** when one is not, and a tunnel whose recorded state is
+> `DOWN` is not a route at all. **The fourth state**: `configured()` records a listener's
+> policy and `policy_gap()` compares it with the session that was observed, so a listener
+> that may speak TLS 1.3 and fell back to 1.2 is a finding with two versions in it
+> (`BELOW_CONFIGURED_FLOOR`, `SUITE_NOT_IN_POLICY`, `NO_POLICY_RECORDED`), and a policy that
+> accepts nothing is refused (`TLS_POLICY_INVERTED`). **Runtime against network** is now an
+> operation: `runtime_vs_network()` returns the wire set, the process set, the intersection
+> and both differences — this estate negotiates AES-256-GCM on 443 and encrypts with
+> AES-128-CBC inside. **Evidence on a network edge** is a record (`collector`,
+> `collector_version`, `evidence_type`, `hash`) that becomes an `EVIDENCE` node and an
+> `EVIDENCED_BY` edge, so `edge_record()` names `LB-CONFIG-01 (CONFIGURED)` on the edge
+> itself; a record with no collector or no hash is refused. **Exposure** counts what a
+> session *negotiated* and never what a device merely supports (X25519 and ECDSA-P256
+> exposed; AES-128-GCM supported and not counted), handing the migration verdict to the PQC
+> engine. **VBOM → CBOM**: a product supports a capability at `VENDOR_DECLARED`, and a
+> product claiming an *operation* is refused by type. **History**: `timeline()` gives every
+> edge its state and both timestamps and joins to the drift feed, and **coverage per
+> segment** lets the weakest segment decide — EDGE `COMPLETE`, CARDHOLDER `PARTIAL`, overall
+> `PARTIAL`, never rounded to healthy.
+
 > [The network is a graph](169-nbom.md)
 > (**18 pass · 0 partial · 0 fail**, 81 probes) is the answer to the NBOM review
 > (`nbom-review-2026-11-03.md`), which is twenty-two points and, underneath them, four

@@ -302,3 +302,12 @@ BUSINESS SYSTEM → APPLICATION → PROCESS → SERVICE → ENDPOINT → WAF →
 With network-specific relationships: `CONNECTS_TO`, `ROUTES_TO`, `TERMINATES_TLS`,
 `RE_ENCRYPTS`, `PASSTHROUGH`, `PROTECTS`, `AUTHENTICATES`, `USES_CERTIFICATE`, `USES_HSM`,
 `USES_KMS`. And evidence on every edge.
+
+---
+
+A second read of the same text found nine things the first pass had answered only in
+prose — the ids the review asks for, routes rather than edges, `CONFIGURED` as a state of
+its own, the runtime/network comparison as an operation, evidence records on network
+edges, exposure, the vendor's capability, history, and coverage per segment. Each is now
+built, and guide 170 (`docs/bank-environment/170-nbom-gaps.md`,
+**11 pass · 0 partial · 0 fail**) measures it.

@@ -1,0 +1,725 @@
+{
+  "schema": "cryptoscan.cbom-nbom-gaps-guide/1",
+  "generated_at": "2026-11-03T02:41:09.986779+00:00",
+  "counts": {
+    "PASS": 11,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 45,
+  "statement": "6 network endpoint(s), 26 evidenced edge(s), 2 TLS boundary mode(s) in use, 6 proven route(s); 0 claim(s) refused",
+  "ids": {
+    "APPLICATION": {
+      "Payments API": "APPLICATION-001"
+    },
+    "BUSINESS_SYSTEM": {
+      "Payments System": "SYSTEM-001"
+    },
+    "NETWORK_ENDPOINT": {
+      "api-gw-01:8443": "NET-ENDPOINT-001",
+      "lb-01:443": "NET-ENDPOINT-002",
+      "payments-api:8443": "NET-ENDPOINT-003"
+    },
+    "SERVICE": {
+      "payments-api": "SERVICE-001"
+    }
+  },
+  "routes": {
+    "api-gw-01:8443": {
+      "proven": 1,
+      "declared": 0,
+      "paths": [
+        "api-gw-01:8443 \u2192 payments-api:8443 \u2192 Payments API (no TLS boundary)"
+      ]
+    },
+    "lb-01:443": {
+      "proven": 1,
+      "declared": 0,
+      "paths": [
+        "lb-01:443 \u2192 api-gw-01:8443 \u2192 payments-api:8443 \u2192 Payments API (RE_ENCRYPTS; ECDHE-RSA-AES128-GCM-SHA256)"
+      ]
+    },
+    "payments-api:8443": {
+      "proven": 1,
+      "declared": 0,
+      "paths": [
+        "payments-api:8443 \u2192 Payments API (no TLS boundary)"
+      ]
+    },
+    "payments.bank.example:443": {
+      "proven": 1,
+      "declared": 0,
+      "paths": [
+        "payments.bank.example:443 \u2192 payments-api \u2192 Payments API (no TLS boundary)"
+      ]
+    },
+    "waf-01:443": {
+      "proven": 1,
+      "declared": 0,
+      "paths": [
+        "waf-01:443 \u2192 waf-01:8080 \u2192 lb-01:443 \u2192 api-gw-01:8443 \u2192 payments-api:8443 \u2192 Payments API (TERMINATES_TLS, RE_ENCRYPTS; TLS_AES_256_GCM_SHA384, ECDHE-RSA-AES128-GCM-SHA256)"
+      ]
+    },
+    "waf-01:8080": {
+      "proven": 1,
+      "declared": 0,
+      "paths": [
+        "waf-01:8080 \u2192 lb-01:443 \u2192 api-gw-01:8443 \u2192 payments-api:8443 \u2192 Payments API (RE_ENCRYPTS; ECDHE-RSA-AES128-GCM-SHA256)"
+      ]
+    }
+  },
+  "policy_findings": {
+    "api-gw-01:8443": {
+      "NO_POLICY_RECORDED": 1
+    },
+    "lb-01:443": {
+      "NO_POLICY_RECORDED": 1
+    },
+    "payments-api:8443": {
+      "NO_POLICY_RECORDED": 1
+    },
+    "payments.bank.example:443": {
+      "BELOW_CONFIGURED_FLOOR": 1,
+      "SUITE_NOT_IN_POLICY": 1,
+      "TLS_DOWNGRADED": 1
+    },
+    "waf-01:443": {
+      "NO_POLICY_RECORDED": 1
+    },
+    "waf-01:8080": {
+      "NO_POLICY_RECORDED": 1
+    }
+  },
+  "runtime_vs_network": {
+    "query": "payments.bank.example:443",
+    "network": [
+      {
+        "key": "CIPHER_SUITE:tls_aes_256_gcm_sha384:production",
+        "id": "TECH-SUITE-001",
+        "kind": "CIPHER_SUITE",
+        "name": "TLS_AES_256_GCM_SHA384",
+        "stable_id": "CIPHER_SUITE-2589",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "tls_version": "TLS1.3",
+          "kex": "X25519",
+          "auth": "ECDSA-P256",
+          "bulk": "AES-256-GCM",
+          "mac": "SHA-384"
+        }
+      },
+      {
+        "key": "CRYPTO_ASSET:aes-256-gcm:production",
+        "id": "TECH-CRY-002",
+        "kind": "CRYPTO_ASSET",
+        "name": "AES-256-GCM",
+        "stable_id": "CRYPTO_ASSET-1278",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "AES",
+          "key_size": 256,
+          "evidence_type": "NETWORK_OBSERVED"
+        }
+      },
+      {
+        "key": "CRYPTO_ASSET:ecdsa-p256:production",
+        "id": "TECH-CRY-005",
+        "kind": "CRYPTO_ASSET",
+        "name": "ECDSA-P256",
+        "stable_id": "CRYPTO_ASSET-2460",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "ECDSA",
+          "evidence_type": "NETWORK_OBSERVED"
+        }
+      },
+      {
+        "key": "CRYPTO_ASSET:sha-384:production",
+        "id": "TECH-CRY-007",
+        "kind": "CRYPTO_ASSET",
+        "name": "SHA-384",
+        "stable_id": "CRYPTO_ASSET-7956",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "SHA",
+          "evidence_type": "NETWORK_OBSERVED"
+        }
+      },
+      {
+        "key": "CRYPTO_ASSET:x25519:production",
+        "id": "TECH-CRY-008",
+        "kind": "CRYPTO_ASSET",
+        "name": "X25519",
+        "stable_id": "CRYPTO_ASSET-1532",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "ECDH",
+          "evidence_type": "NETWORK_OBSERVED"
+        }
+      }
+    ],
+    "runtime": [
+      {
+        "key": "CRYPTO_ASSET:aes-128-cbc:production",
+        "id": "TECH-CRY-001",
+        "kind": "CRYPTO_ASSET",
+        "name": "AES-128-CBC",
+        "stable_id": "CRYPTO_ASSET-2364",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "AES",
+          "key_size": 128,
+          "mode": "CBC",
+          "evidence_type": "RUNTIME_OBSERVED"
+        }
+      }
+    ],
+    "both": [],
+    "network_only": [
+      {
+        "key": "CIPHER_SUITE:tls_aes_256_gcm_sha384:production",
+        "id": "TECH-SUITE-001",
+        "kind": "CIPHER_SUITE",
+        "name": "TLS_AES_256_GCM_SHA384",
+        "stable_id": "CIPHER_SUITE-2589",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "tls_version": "TLS1.3",
+          "kex": "X25519",
+          "auth": "ECDSA-P256",
+          "bulk": "AES-256-GCM",
+          "mac": "SHA-384"
+        }
+      },
+      {
+        "key": "CRYPTO_ASSET:aes-256-gcm:production",
+        "id": "TECH-CRY-002",
+        "kind": "CRYPTO_ASSET",
+        "name": "AES-256-GCM",
+        "stable_id": "CRYPTO_ASSET-1278",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "AES",
+          "key_size": 256,
+          "evidence_type": "NETWORK_OBSERVED"
+        }
+      },
+      {
+        "key": "CRYPTO_ASSET:ecdsa-p256:production",
+        "id": "TECH-CRY-005",
+        "kind": "CRYPTO_ASSET",
+        "name": "ECDSA-P256",
+        "stable_id": "CRYPTO_ASSET-2460",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "ECDSA",
+          "evidence_type": "NETWORK_OBSERVED"
+        }
+      },
+      {
+        "key": "CRYPTO_ASSET:sha-384:production",
+        "id": "TECH-CRY-007",
+        "kind": "CRYPTO_ASSET",
+        "name": "SHA-384",
+        "stable_id": "CRYPTO_ASSET-7956",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "SHA",
+          "evidence_type": "NETWORK_OBSERVED"
+        }
+      },
+      {
+        "key": "CRYPTO_ASSET:x25519:production",
+        "id": "TECH-CRY-008",
+        "kind": "CRYPTO_ASSET",
+        "name": "X25519",
+        "stable_id": "CRYPTO_ASSET-1532",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "ECDH",
+          "evidence_type": "NETWORK_OBSERVED"
+        }
+      }
+    ],
+    "runtime_only": [
+      {
+        "key": "CRYPTO_ASSET:aes-128-cbc:production",
+        "id": "TECH-CRY-001",
+        "kind": "CRYPTO_ASSET",
+        "name": "AES-128-CBC",
+        "stable_id": "CRYPTO_ASSET-2364",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "AES",
+          "key_size": 128,
+          "mode": "CBC",
+          "evidence_type": "RUNTIME_OBSERVED"
+        }
+      }
+    ],
+    "statement": "5 on the wire, 1 in the process, 0 in both",
+    "not_proven": [
+      "that an algorithm in both places is the same dependency: the handshake belongs to the listener and the library to the process"
+    ]
+  },
+  "exposure": {
+    "endpoints": [
+      {
+        "endpoint": "payments.bank.example:443",
+        "exposed": [
+          "ECDSA-P256",
+          "X25519"
+        ],
+        "blockers": [
+          "F5 BIG-IP i5800"
+        ]
+      }
+    ],
+    "statement": "1 endpoint(s) negotiate quantum-sensitive cryptography: payments.bank.example:443 (ECDSA-P256, X25519)",
+    "not_proven": [
+      "that a quantum computer is available: this is exposure, and the migration judgement belongs to the PQC engine"
+    ]
+  },
+  "coverage": {
+    "expected": 500,
+    "observed": 420,
+    "unavailable": 50,
+    "unknown": 30,
+    "permission_denied": 0,
+    "forbidden": 0,
+    "unaccounted": 0,
+    "verdict": "PARTIAL",
+    "propagates": {
+      "nbom": "PARTIAL",
+      "cbom_network_evidence": "PARTIAL",
+      "digital_twin_network": "PARTIAL"
+    },
+    "statement": "expected 500 endpoint(s): observed 420, unavailable 50, unknown 30, permission denied 0 \u2014 coverage PARTIAL",
+    "rule": "an unavailable endpoint is not an absent endpoint: it is counted in the denominator and reported as unseen, and every view that reads this projection inherits PARTIAL until it is accounted for"
+  },
+  "coverage_by_segment": {
+    "segments": {
+      "BRANCH": {
+        "expected": 30,
+        "observed": 30,
+        "unavailable": 0,
+        "unknown": 0,
+        "permission_denied": 0,
+        "forbidden": 0,
+        "unaccounted": 0,
+        "verdict": "COMPLETE",
+        "propagates": {
+          "nbom": "COMPLETE",
+          "cbom_network_evidence": "COMPLETE",
+          "digital_twin_network": "COMPLETE"
+        },
+        "statement": "expected 30 endpoint(s): observed 30, unavailable 0, unknown 0, permission denied 0 \u2014 coverage COMPLETE",
+        "rule": "an unavailable endpoint is not an absent endpoint: it is counted in the denominator and reported as unseen, and every view that reads this projection inherits PARTIAL until it is accounted for"
+      },
+      "CARDHOLDER": {
+        "expected": 100,
+        "observed": 60,
+        "unavailable": 40,
+        "unknown": 0,
+        "permission_denied": 0,
+        "forbidden": 0,
+        "unaccounted": 0,
+        "verdict": "PARTIAL",
+        "propagates": {
+          "nbom": "PARTIAL",
+          "cbom_network_evidence": "PARTIAL",
+          "digital_twin_network": "PARTIAL"
+        },
+        "statement": "expected 100 endpoint(s): observed 60, unavailable 40, unknown 0, permission denied 0 \u2014 coverage PARTIAL",
+        "rule": "an unavailable endpoint is not an absent endpoint: it is counted in the denominator and reported as unseen, and every view that reads this projection inherits PARTIAL until it is accounted for"
+      },
+      "EDGE": {
+        "expected": 20,
+        "observed": 20,
+        "unavailable": 0,
+        "unknown": 0,
+        "permission_denied": 0,
+        "forbidden": 0,
+        "unaccounted": 0,
+        "verdict": "COMPLETE",
+        "propagates": {
+          "nbom": "COMPLETE",
+          "cbom_network_evidence": "COMPLETE",
+          "digital_twin_network": "COMPLETE"
+        },
+        "statement": "expected 20 endpoint(s): observed 20, unavailable 0, unknown 0, permission denied 0 \u2014 coverage COMPLETE",
+        "rule": "an unavailable endpoint is not an absent endpoint: it is counted in the denominator and reported as unseen, and every view that reads this projection inherits PARTIAL until it is accounted for"
+      }
+    },
+    "verdict": "PARTIAL",
+    "weakest": [
+      "CARDHOLDER"
+    ],
+    "statement": "3 segment(s), overall PARTIAL: BRANCH COMPLETE, CARDHOLDER PARTIAL, EDGE COMPLETE"
+  },
+  "counts_by_kind": {
+    "APPLICATION": 1,
+    "BUSINESS_SYSTEM": 1,
+    "CERTIFICATE": 1,
+    "CERTIFICATE_AUTHORITY": 1,
+    "CIPHER_SUITE": 1,
+    "CRYPTO_ASSET": 8,
+    "CRYPTO_CAPABILITY": 1,
+    "CRYPTO_LIBRARY": 1,
+    "EVIDENCE": 1,
+    "IPSEC_TUNNEL": 2,
+    "NETWORK_ENDPOINT": 6,
+    "NETWORK_SEGMENT": 1,
+    "PROCESS": 1,
+    "SERVICE": 1,
+    "VENDOR_PRODUCT": 1,
+    "VPN_GATEWAY": 3
+  },
+  "refusals": [],
+  "rows": [
+    {
+      "id": "ids",
+      "question": "do the review's ids exist beside the graph's ids",
+      "phase": "1",
+      "probes": [
+        {
+          "probe": "the-review-s-id-scheme-exists-per-kind",
+          "ok": true,
+          "observed": "APPLICATION, CERTIFICATE, CERTIFICATE-AUTHORITY, CIPHER-SUITE, CRYPTO-ASSET, CRYPTO-LIBRARY, EVIDENCE, IPSEC-TUNNEL, NET-ENDPOINT, NETWORK-SEGMENT, PROCESS, SERVICE, SYSTEM, VENDOR-PRODUCT, VPN-GATEWAY"
+        },
+        {
+          "probe": "three-id-families-name-one-node-and-only-one-is-for-keying",
+          "ok": true,
+          "observed": "TECH-EP-004 (graph), NET-ENDPOINT-004 (view), NETWORK_ENDPOINT-5437 (content)"
+        },
+        {
+          "probe": "numbering-is-per-kind-so-a-service-never-collides-with-an-application",
+          "ok": true,
+          "observed": "one prefix per kind, numbered from 001"
+        },
+        {
+          "probe": "the-ids-are-stable-for-a-stable-estate",
+          "ok": true,
+          "observed": "a second build over the same estate assigns the same ids"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "paths",
+      "question": "is the network a set of edges or a set of routes",
+      "phase": "3, 15",
+      "probes": [
+        {
+          "probe": "a-route-is-a-sequence-of-edges-from-a-listener-to-an-application",
+          "ok": true,
+          "observed": "waf-01:443 \u2192 waf-01:8080 \u2192 lb-01:443 \u2192 api-gw-01:8443 \u2192 payments-api:8443 \u2192 Payments API (TERMINATES_TLS, RE_ENCRYPTS; TLS_AES_256_GCM_SHA384, ECDHE-RSA-AES128-GCM-SHA256)"
+        },
+        {
+          "probe": "the-route-carries-every-tls-boundary-on-it",
+          "ok": true,
+          "observed": "modes ['TERMINATES_TLS', 'RE_ENCRYPTS']"
+        },
+        {
+          "probe": "each-boundary-names-the-suite-that-crossed-it",
+          "ok": true,
+          "observed": "suites ['TLS_AES_256_GCM_SHA384', 'ECDHE-RSA-AES128-GCM-SHA256']"
+        },
+        {
+          "probe": "a-route-that-depends-on-one-declared-hop-is-reported-declared",
+          "ok": true,
+          "observed": "proven 0, declared 1, weakest IMPORTED"
+        },
+        {
+          "probe": "a-tunnel-that-is-down-is-not-a-route",
+          "ok": true,
+          "observed": "0 route(s) from dr-site-to-payments: 0 proven, 0 declared"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "policy",
+      "question": "is CONFIGURED a state of its own",
+      "phase": "6",
+      "probes": [
+        {
+          "probe": "a-policy-is-a-fourth-state-beside-supported-negotiated-and-observed",
+          "ok": true,
+          "observed": "min TLS1.3, suites [TLS_AES_256_GCM_SHA384], client_auth NONE"
+        },
+        {
+          "probe": "a-session-below-the-policy-is-a-finding-not-a-success",
+          "ok": true,
+          "observed": "policy TLS1.3, negotiated TLS1.2 \u2192 BELOW_CONFIGURED_FLOOR"
+        },
+        {
+          "probe": "a-suite-outside-the-policy-is-its-own-finding",
+          "ok": true,
+          "observed": "ECDHE-RSA-AES128-GCM-SHA256 is not on the configured list"
+        },
+        {
+          "probe": "a-listener-with-no-policy-says-so-rather-than-assuming-one",
+          "ok": true,
+          "observed": "waf-01:443 \u2192 NO_POLICY_RECORDED"
+        },
+        {
+          "probe": "a-policy-that-accepts-nothing-is-refused",
+          "ok": true,
+          "observed": "min TLS1.3 > max TLS1.2 \u2192 TLS_POLICY_INVERTED"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "runtime-vs-network",
+      "question": "is the two-observation comparison an operation",
+      "phase": "7",
+      "probes": [
+        {
+          "probe": "the-wire-and-the-process-are-two-observations",
+          "ok": true,
+          "observed": "5 on the wire, 1 in the process, 0 in both"
+        },
+        {
+          "probe": "the-difference-is-reported-as-a-difference",
+          "ok": true,
+          "observed": "network only ['AES-256-GCM', 'ECDSA-P256', 'SHA-384', 'TLS_AES_256_GCM_SHA384', 'X25519'], runtime only ['AES-128-CBC']"
+        },
+        {
+          "probe": "the-intersection-is-computed-not-assumed",
+          "ok": true,
+          "observed": "0 asset(s) in both"
+        },
+        {
+          "probe": "the-honest-caveat-travels-with-the-answer",
+          "ok": true,
+          "observed": "not_proven names the listener/process split"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "evidence",
+      "question": "does an edge name the collector behind it",
+      "phase": "16",
+      "probes": [
+        {
+          "probe": "a-record-needs-a-collector",
+          "ok": true,
+          "observed": "no collector \u2192 EVIDENCE_WITHOUT_COLLECTOR"
+        },
+        {
+          "probe": "a-record-needs-a-hash",
+          "ok": true,
+          "observed": "no hash \u2192 EVIDENCE_WITHOUT_HASH"
+        },
+        {
+          "probe": "the-record-is-a-node-an-edge-can-point-at",
+          "ok": true,
+          "observed": "EVID-92841 is a node, lb-01:443 EVIDENCED_BY it"
+        },
+        {
+          "probe": "an-edge-names-its-collector-and-its-evidence-class",
+          "ok": true,
+          "observed": "4 edge(s) resolve a collector, e.g. LB-CONFIG-01 (CONFIGURED)"
+        },
+        {
+          "probe": "every-edge-still-carries-the-nine-fields",
+          "ok": true,
+          "observed": "26 edge(s), 9 field(s) each"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "exposure",
+      "question": "is quantum exposure measured or mentioned",
+      "phase": "5",
+      "probes": [
+        {
+          "probe": "what-a-session-negotiated-is-what-is-exposed",
+          "ok": true,
+          "observed": "ECDSA-P256, X25519"
+        },
+        {
+          "probe": "a-capability-that-was-never-negotiated-is-not-counted",
+          "ok": true,
+          "observed": "AES-128-GCM is supported, not negotiated, and is not counted"
+        },
+        {
+          "probe": "the-exposure-statement-names-the-endpoint-and-the-algorithms",
+          "ok": true,
+          "observed": "1 endpoint(s) negotiate quantum-sensitive cryptography: payments.bank.example:443 (ECDSA-P256, X25519)"
+        },
+        {
+          "probe": "the-migration-judgement-is-left-to-the-engine-that-owns-it",
+          "ok": true,
+          "observed": "not_proven hands the verdict to the PQC engine"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "vendor-capability",
+      "question": "does the vendor join the crypto view",
+      "phase": "19",
+      "probes": [
+        {
+          "probe": "a-product-declares-a-capability-at-the-class-a-datasheet-deserves",
+          "ok": true,
+          "observed": "F5 BIG-IP i5800 SUPPORTS TLS 1.3 termination (VENDOR_DECLARED)"
+        },
+        {
+          "probe": "vbom-is-joined-to-cbom-through-the-capability",
+          "ok": true,
+          "observed": "VENDOR_PRODUCT \u2192 SUPPORTS \u2192 CRYPTO_CAPABILITY"
+        },
+        {
+          "probe": "a-product-cannot-claim-an-operation-its-device-performed",
+          "ok": true,
+          "observed": "VENDOR_PRODUCT PERFORMS CRYPTO_CAPABILITY \u2192 TYPE_MISMATCH"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "timeline",
+      "question": "does an edge have a history",
+      "phase": "17",
+      "probes": [
+        {
+          "probe": "every-edge-has-a-state-and-a-first-and-last-seen",
+          "ok": true,
+          "observed": "26 edge(s) with history; no previous projection was supplied"
+        },
+        {
+          "probe": "an-edge-with-timestamps-is-active-not-unknown",
+          "ok": true,
+          "observed": "5 ACTIVE, 21 UNKNOWN"
+        },
+        {
+          "probe": "the-history-can-be-joined-to-a-drift-feed",
+          "ok": true,
+          "observed": "the same projection against itself produces no changes"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "segments",
+      "question": "does one healthy segment hide one sick one",
+      "phase": "21",
+      "probes": [
+        {
+          "probe": "coverage-is-reported-per-segment-not-only-in-total",
+          "ok": true,
+          "observed": "3 segment(s), overall PARTIAL: BRANCH COMPLETE, CARDHOLDER PARTIAL, EDGE COMPLETE"
+        },
+        {
+          "probe": "the-weakest-segment-decides-the-whole",
+          "ok": true,
+          "observed": "EDGE COMPLETE, CARDHOLDER PARTIAL, overall PARTIAL"
+        },
+        {
+          "probe": "the-weakest-segment-is-named",
+          "ok": true,
+          "observed": "weakest segment: ['CARDHOLDER']"
+        },
+        {
+          "probe": "the-total-coverage-is-not-rounded-by-the-healthy-segments",
+          "ok": true,
+          "observed": "expected 500 endpoint(s): observed 420, unavailable 50, unknown 30, permission denied 0 \u2014 coverage PARTIAL"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "tunnel",
+      "question": "is a tunnel a path or a record",
+      "phase": "14",
+      "probes": [
+        {
+          "probe": "a-tunnel-records-its-state",
+          "ok": true,
+          "observed": "tunnel states: {'branch-to-payments': 'UP', 'dr-site-to-payments': 'DOWN'}"
+        },
+        {
+          "probe": "a-state-this-model-does-not-know-is-refused",
+          "ok": true,
+          "observed": "DEGRADED \u2192 UNKNOWN_TUNNEL_STATUS"
+        },
+        {
+          "probe": "a-pre-shared-key-is-material-and-is-refused",
+          "ok": true,
+          "observed": "psk \u2192 KEY_MATERIAL_REFUSED"
+        },
+        {
+          "probe": "a-down-tunnel-tunnels-nowhere-that-matters",
+          "ok": true,
+          "observed": "the UP tunnel is a route; the DOWN tunnel is not"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "vocabulary",
+      "question": "does the graph carry what the second read needed",
+      "phase": "22",
+      "probes": [
+        {
+          "probe": "the-relations-the-second-read-leans-on-are-in-the-graph",
+          "ok": true,
+          "observed": "HOLDS_CERTIFICATE, EVIDENCED_BY, SUPPORTS, RUNS_APPLICATION"
+        },
+        {
+          "probe": "a-network-asset-can-be-evidenced-like-a-device",
+          "ok": true,
+          "observed": "EVIDENCED_BY starts at NETWORK_ENDPOINT"
+        },
+        {
+          "probe": "a-vendor-product-can-support-a-capability",
+          "ok": true,
+          "observed": "SUPPORTS starts at VENDOR_PRODUCT"
+        },
+        {
+          "probe": "a-process-is-a-level-in-the-chain-the-review-draws",
+          "ok": true,
+          "observed": "1 service \u2192 1 process \u2192 1 application \u2192 1 system \u2192 6 crypto"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the fixture is the review's own path: the shapes are real, the rows are not",
+    "a policy finding compares what was configured with what was observed once; a session that rolled back to a lower version after this capture is not in it",
+    "a route is the shortest evidenced chain, not the only one: an estate with a mesh has as many routes as it has policies",
+    "exposure counts algorithms a session negotiated, and a capability is not counted twice \u2014 but nothing here decides which one must be migrated first",
+    "a segment's denominator comes from a CMDB the platform does not own, so the weakest segment is only as honest as that list",
+    "a down tunnel is excluded from routes and still counted in the graph: unavailable is not absent"
+  ]
+}

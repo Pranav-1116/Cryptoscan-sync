@@ -1,6 +1,6 @@
 # The network is a graph
 
-`cryptoscan.cbom-nbom-guide/1` · generated 2026-11-03T02:27:55.655948+00:00 · **18 pass · 0 partial · 0 fail** · 81 probes
+`cryptoscan.cbom-nbom-guide/1` · generated 2026-11-03T02:41:09.719908+00:00 · **18 pass · 0 partial · 0 fail** · 81 probes
 
 The NBOM review's twenty-two points, answered by putting the network into the
 graph the rest of the estate lives in. An address is a location, the backend is a
@@ -17,7 +17,7 @@ l1 → l2                 PASSTHROUGH        the handshake crosses untouched
 proxy → application     PROXY_FOR          the TLS belongs to the proxy
 ```
 
-10 network endpoint(s), 74 evidenced edge(s), 3 TLS boundary mode(s) in use; 0 claim(s) refused
+10 network endpoint(s), 74 evidenced edge(s), 3 TLS boundary mode(s) in use, 2 proven route(s); 0 claim(s) refused
 
 ## What the projection holds
 
@@ -30,7 +30,7 @@ proxy → application     PROXY_FOR          the TLS belongs to the proxy
 | `CERTIFICATE` | 3 |
 | `CERTIFICATE_AUTHORITY` | 2 |
 | `CIPHER_SUITE` | 3 |
-| `CRYPTO_ASSET` | 12 |
+| `CRYPTO_ASSET` | 14 |
 | `CRYPTO_CAPABILITY` | 3 |
 | `CRYPTO_LIBRARY` | 1 |
 | `DATABASE` | 1 |
@@ -61,7 +61,7 @@ proxy → application     PROXY_FOR          the TLS belongs to the proxy
 | `TLS_CHACHA20_POLY1305_SHA256` | supported only |
 | `TLS_AES_128_GCM_SHA256` | supported only |
 
-**The chain from the endpoint** — 1 service → 1 application → 1 system → 3 device → 1 database → 2 keys → 7 crypto → 6 vendor
+**The chain from the endpoint** — 1 service → 2 process → 1 application → 1 system → 4 device → 1 database → 2 keys → 8 crypto → 8 vendor
 
 **Coverage** — expected 500 endpoint(s): observed 420, unavailable 50, unknown 30, permission denied 0 — coverage PARTIAL
 
@@ -99,7 +99,7 @@ proxy → application     PROXY_FOR          the TLS belongs to the proxy
 - **PASS** `an-endpoint-is-host-and-port-and-an-address-alone-is-refused` — 10.10.10.20 with no port → ENDPOINT_WITHOUT_HOST_OR_PORT
 - **PASS** `one-address-hosts-two-virtual-hosts-as-two-endpoints` — 10.10.10.20 carries 3 listener(s), two of them virtual hosts with their own SNI and their own service
 - **PASS** `each-endpoint-reaches-its-own-service-not-the-first-one` — payments.bank.example:443 → payments-api, auth.bank.example:443 → auth-api
-- **PASS** `the-chain-reads-endpoint-service-application-system` — 1 service → 1 application → 1 system → 3 device → 1 database → 2 keys → 7 crypto → 6 vendor
+- **PASS** `the-chain-reads-endpoint-service-process-application-system` — 1 service → 2 process → 1 application → 1 system → 4 device → 1 database → 2 keys → 8 crypto → 8 vendor
 - **PASS** `a-stable-id-survives-renumbering-a-readable-one-does-not` — TECH-EP-007 reads; NETWORK_ENDPOINT-5437 holds
 
 ## `routing-evidence` — PASS
@@ -209,7 +209,7 @@ proxy → application     PROXY_FOR          the TLS belongs to the proxy
 
 *is the network a list of endpoints or a graph* (review nbom 15–16)
 
-- **PASS** `the-projection-is-a-graph-not-a-list` — 70 node(s), 74 edge(s)
+- **PASS** `the-projection-is-a-graph-not-a-list` — 72 node(s), 74 edge(s)
 - **PASS** `every-network-edge-carries-a-port-and-a-protocol` — 25 of 25 network edge(s) name a port
 - **PASS** `the-adjacency-can-be-walked-from-the-internet-inward` — Payments API → DB-01 and Payments API → HSM-001
 - **PASS** `the-edge-record-carries-the-fields-the-review-names` — 9 field(s) on each of 74 edge(s)
@@ -258,8 +258,8 @@ proxy → application     PROXY_FOR          the TLS belongs to the proxy
 *does the biggest missing chain exist end to end* (review nbom 22)
 
 - **PASS** `the-review-s-whole-vocabulary-exists` — 10 of 10 relations exist
-- **PASS** `the-chain-reaches-the-business-system-the-database-and-the-keys` — 1 service → 1 application → 1 system → 3 device → 1 database → 2 keys → 7 crypto → 6 vendor
-- **PASS** `the-chain-also-reaches-the-crypto-behind-the-session` — 7 crypto node(s) behind the endpoint
+- **PASS** `the-chain-reaches-the-business-system-the-database-and-the-keys` — 1 service → 2 process → 1 application → 1 system → 4 device → 1 database → 2 keys → 8 crypto → 8 vendor
+- **PASS** `the-chain-also-reaches-the-crypto-behind-the-session` — 8 crypto node(s) behind the endpoint
 - **PASS** `every-layer-of-the-review-s-stack-is-a-kind-in-one-graph` — 14 layers, one ASSET_TYPES tuple
 - **PASS** `no-edge-in-the-graph-was-drawn-without-a-basis` — 74 edge(s), each with a basis
 

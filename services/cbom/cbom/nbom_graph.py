@@ -36,6 +36,7 @@ source of the next one.
 from __future__ import annotations
 
 import hashlib
+from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
@@ -86,7 +87,8 @@ HANDSHAKE_BASES: tuple[str, ...] = ("tls-handshake", "packet-capture", "passive-
 
 #: dependency relations, in the order the review's chain reads (nbom 22)
 SPINE: tuple[str, ...] = (
-    "CONTAINS", "PROVIDES", "RUNS", "RUNS_PROCESS", "EXPOSES", "LISTENS_ON", "ROUTES_TO",
+    "CONTAINS", "PROVIDES", "RUNS", "RUNS_PROCESS", "RUNS_APPLICATION", "EXPOSES",
+    "LISTENS_ON", "ROUTES_TO",
     "FORWARDS_TO", "TERMINATES_TLS", "RE_ENCRYPTS", "PASSTHROUGH", "PROTECTS",
     "AUTHENTICATES", "PROXY_FOR", "CONNECTS_TO", "TUNNELS_TO", "STORES_IN", "USES_HSM",
     "USES_KMS", "USES_KEY", "USES_CERTIFICATE", "PRESENTS", "CONTAINS_KEY",
@@ -135,7 +137,12 @@ def merge(*parts: Any) -> dict[str, Any]:
     claims: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str, str]] = set()
     for item in parts:
-        for raw in (item or {}).get("assets") or []:
+        # a part is {assets, claims}; a bare row is one asset and is accepted too, so a
+        # caller never loses an asset to the shape of the bundle it arrived in
+        rows = ([item] if isinstance(item, Mapping)
+                and "kind" in item and "name" in item
+                else (item or {}).get("assets") or [])
+        for raw in rows:
             row = tb.asset(
                 raw.get("kind"), raw.get("name"),
                 environment=raw.get("environment") or "PRODUCTION",
@@ -753,15 +760,22 @@ def ipsec_tunnel(*, name: Any, gateway_row: Mapping[str, Any], peer_row: Mapping
                  authentication: Mapping[str, Any] | None = None,
                  proposals: Iterable[Mapping[str, Any]] = (),
                  basis: Any = "vpn-config", evidence_ids: Iterable[Any] | None = None,
-                 **attributes: Any) -> dict[str, Any]:
+                 status: Any = "UP", **attributes: Any) -> dict[str, Any]:
     """A tunnel: IKE version, encryption, integrity, DH group, and how it authenticates.
 
     ``proposals`` are what the gateways *would* accept (``SUPPORTS``); the four chosen
     parameters are what the tunnel *negotiated* (``NEGOTIATES``), and the two are never
     merged into one list.
     """
+    status_text = str(status or "UP").strip().upper()
+    if status_text not in ("UP", "DOWN", "UNKNOWN"):
+        raise tb.ClaimRefused("UNKNOWN_TUNNEL_STATUS",
+                              f"{status} is not a tunnel state; a tunnel is UP, DOWN or "
+                              "UNKNOWN, and only one of those carries traffic")
+    # a pre-shared key is key material: the reference is collected, the secret is not
+    _forbid_key_material(dict(attributes), where=f"tunnel {name}")
     row = tb.asset("IPSEC_TUNNEL", name, evidence_ids=evidence_ids, ike_version=ike_version,
-                   **attributes)
+                   tunnel_state=status_text, **attributes)
     assets: list[Mapping[str, Any]] = [row, gateway_row, peer_row]
     claims = [
         tb.claim(gateway_row["name"], "TUNNELS_TO", peer_row["name"], basis=basis,
@@ -848,6 +862,7 @@ def edge_record(bom: Mapping[str, Any], claim: Mapping[str, Any]) -> dict[str, A
     source = bom["by_key"][claim["from_key"]]
     target = bom["by_key"][claim["to_key"]]
     facts = claim.get("facts") or {}
+    evidence = _collector_for(bom, (claim.get("evidence_ids") or [None])[0])
     body = {
         "id": claim["id"],
         "source": claim["from"],
@@ -861,14 +876,37 @@ def edge_record(bom: Mapping[str, Any], claim: Mapping[str, Any]) -> dict[str, A
         "port": facts.get("port") or _attribute("port", target, source),
         "evidence_id": (claim.get("evidence_ids") or [None])[0],
         "evidence_ids": list(claim.get("evidence_ids") or []),
+        "evidence_type": evidence.get("evidence_type") or claim["confidence"],
+        "collector": evidence.get("collector"),
+        "collector_version": evidence.get("collector_version"),
         "basis": claim["basis"],
         "confidence": claim["confidence"],
-        "observed_at": claim.get("observed_at"),
+        "observed_at": claim.get("observed_at") or evidence.get("observed_at"),
         "first_seen": claim.get("first_seen"),
         "last_seen": claim.get("last_seen"),
         "facts": facts,
     }
     return body
+
+
+def _resolve_one(bom: Mapping[str, Any], query: Any) -> str:
+    """Any reference to one node: key, id, name or stable id — and never a guess."""
+    text = str(query or "").strip().lower()
+    matches = [row["key"] for row in bom["assets"]
+               if row["key"].lower() == text or str(row["id"]).lower() == text
+               or row["name"].lower() == text or stable_id(row).lower() == text]
+    if not matches:
+        raise tb.ClaimRefused("UNKNOWN_NODE", f"{query} is not a node in this projection")
+    if len(matches) > 1:
+        raise tb.ClaimRefused("AMBIGUOUS_NODE",
+                              f"{query} names {len(matches)} nodes; qualify it by kind")
+    return matches[0]
+
+
+def _matches(row: Mapping[str, Any], query: Any) -> bool:
+    text = str(query or "").strip().lower()
+    return text in (row["key"].lower(), str(row["id"]).lower(), row["name"].lower(),
+                    stable_id(row).lower())
 
 
 def _attribute(name: str, *rows: Mapping[str, Any]) -> Any:
@@ -917,37 +955,34 @@ def dependency_chain(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]:
     """
     keys = _endpoint_keys(bom, query)
     levels: dict[str, list[dict[str, Any]]] = {
-        "endpoint": [], "service": [], "application": [], "system": [],
+        "endpoint": [], "service": [], "process": [], "application": [], "system": [],
         "device": [], "database": [], "keys": [], "crypto": [], "vendor": [],
     }
     seen: set[str] = set(keys)
-    frontier: list[str] = sorted(keys)
+    queue: deque[str] = deque(sorted(keys))
     spine = {relation for relation in SPINE}
-    while frontier:
-        for key in frontier:
-            for claim in bom["claims"]:
-                if claim["relation"] not in spine:
-                    continue
-                # walk both ways: forward is "what this depends on", and the reverse is
-                # "what depends on this" — a service is reached from its application by
-                # walking PROVIDES backwards, which is what makes the chain reach a system
-                if claim["from_key"] == key:
-                    neighbour = claim["to_key"]
-                elif claim["to_key"] == key:
-                    neighbour = claim["from_key"]
-                else:
-                    continue
-                target = bom["by_key"][neighbour]
-                bucket = _bucket(target["kind"])
-                if bucket and bucket != "endpoint":
-                    levels[bucket].append(_summary(target))
-        frontier = []
-        for bucket, rows in levels.items():
-            for row in rows:
-                if row["key"] in seen:
-                    continue
-                seen.add(row["key"])
-                frontier.append(row["key"])
+    while queue:
+        key = queue.popleft()
+        for claim in bom["claims"]:
+            if claim["relation"] not in spine:
+                continue
+            # walk both ways: forward is "what this depends on", and the reverse is
+            # "what depends on this" — a service is reached from its application by
+            # walking PROVIDES backwards, which is what makes the chain reach a system
+            if claim["from_key"] == key:
+                neighbour = claim["to_key"]
+            elif claim["to_key"] == key:
+                neighbour = claim["from_key"]
+            else:
+                continue
+            if neighbour in seen:
+                continue
+            seen.add(neighbour)
+            target = bom["by_key"][neighbour]
+            bucket = _bucket(target["kind"])
+            if bucket and bucket != "endpoint":
+                levels[bucket].append(_summary(target))
+            queue.append(neighbour)
     for name, rows in levels.items():
         levels[name] = sorted({row["key"]: row for row in rows}.values(),
                               key=lambda row: row["id"])
@@ -962,7 +997,8 @@ def dependency_chain(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]:
 def _bucket(kind: str) -> str | None:
     return {
         "NETWORK_ENDPOINT": "endpoint", "SERVICE": "service", "APPLICATION": "application",
-        "BUSINESS_SYSTEM": "system", "LOAD_BALANCER": "device", "WAF": "device",
+        "BUSINESS_SYSTEM": "system", "PROCESS": "process", "LOAD_BALANCER": "device",
+        "WAF": "device",
         "API_GATEWAY": "device", "SERVICE_MESH": "device", "DATABASE": "database",
         "HSM": "keys", "KMS": "keys", "KEY_REFERENCE": "keys",
         "CRYPTO_ASSET": "crypto", "CIPHER_SUITE": "crypto", "VENDOR": "vendor",
@@ -1150,8 +1186,23 @@ def build(estate_doc: Mapping[str, Any]) -> dict[str, Any]:
         if claim["relation"] in ("TERMINATES_TLS", "RE_ENCRYPTS", "PASSTHROUGH"):
             modes[claim["relation"]] = modes.get(claim["relation"], 0) + 1
     networks = graph(bom)
-    coverage_block = (estate_doc.get("gaps") or [{}])[0].get("coverage") if \
-        estate_doc.get("gaps") else None
+    gaps = itertools_gaps(estate_doc)
+    coverage_block = gaps.get("coverage")
+    segments = gaps.get("segments")
+    routes: dict[str, Any] = {}
+    for row in endpoints.values():
+        try:
+            routes[row["name"]] = paths(bom, source=row["key"])
+        except tb.ClaimRefused:  # pragma: no cover - an endpoint is its own source
+            continue
+    policy: dict[str, Any] = {}
+    for row in endpoints.values():
+        try:
+            finding = policy_gap(bom, query=row["key"])
+        except tb.ClaimRefused:  # pragma: no cover - endpoint keys always resolve
+            continue
+        if finding["findings"]:
+            policy[row["name"]] = finding
     return {
         "schema": SCHEMA,
         "projection": True,
@@ -1163,18 +1214,34 @@ def build(estate_doc: Mapping[str, Any]) -> dict[str, Any]:
         "claims": bom["claims"],
         "refusals": bom["refusals"],
         "counts": bom["counts"],
+        "ids": nbom_ids(bom),
         "endpoints": [_summary(row) for row in endpoints.values()],
         "chains": chains,
+        "routes": routes,
+        "policy_findings": policy,
+        "exposure": pqc_exposure(bom),
         "graph": networks,
         "tls_modes": dict(sorted(modes.items())),
         "lifecycle": lifecycle(bom),
         "coverage": coverage_block,
+        "coverage_by_segment": (coverage_by_segment(segments) if segments else None),
         "statement": (
             f"{len(endpoints)} network endpoint(s), {networks['edge_count']} evidenced "
-            f"edge(s), {len(modes)} TLS boundary mode(s) in use; "
+            f"edge(s), {len(modes)} TLS boundary mode(s) in use, "
+            f"{sum(row['proven'] for row in routes.values())} proven route(s); "
             f"{len(bom['refusals'])} claim(s) refused"),
         "not_proven": list(NOT_PROVEN),
     }
+
+
+def itertools_gaps(estate_doc: Mapping[str, Any]) -> dict[str, Any]:
+    """The gaps block an estate carries: coverage, and coverage per segment."""
+    merged: dict[str, Any] = {}
+    for gap in estate_doc.get("gaps") or []:
+        if isinstance(gap, Mapping):
+            merged.update({key: value for key, value in gap.items()
+                           if key in ("coverage", "segments", "reason")})
+    return merged
 
 
 def twin(bom: Mapping[str, Any]) -> dict[str, Any]:
@@ -1213,6 +1280,461 @@ def from_document(document: Mapping[str, Any] | Any) -> None:
         "UNKNOWN_DOCUMENT",
         f"{schema or 'that document'} is not a canonical estate; NBOM is built from "
         f"{tb.ESTATE_SCHEMA}")
+
+
+
+# --------------------------------------------------------------------------- #
+# The review's ids, and the path it draws
+# --------------------------------------------------------------------------- #
+
+#: the readable prefix the review asks for, per kind. `TECH-EP-001` is the graph's id and
+#: `SERVICE-9281` is the content-addressed one; these are the per-kind numbers a bank's
+#: change record uses, and the three are the same node.
+ID_PREFIX: dict[str, str] = {
+    "NETWORK_ENDPOINT": "NET-ENDPOINT", "SERVICE": "SERVICE",
+    "APPLICATION": "APPLICATION", "BUSINESS_SYSTEM": "SYSTEM",
+    "LOAD_BALANCER": "LOAD-BALANCER", "API_GATEWAY": "API-GATEWAY", "WAF": "WAF",
+    "SERVICE_MESH": "SERVICE-MESH", "DATABASE": "DATABASE",
+    "CIPHER_SUITE": "CIPHER-SUITE", "CERTIFICATE": "CERTIFICATE",
+    "SSH_SERVICE": "SSH-SERVICE", "IPSEC_TUNNEL": "IPSEC-TUNNEL",
+}
+
+
+def nbom_ids(bom: Mapping[str, Any]) -> dict[str, dict[str, str]]:
+    """``NET-ENDPOINT-001``, ``SERVICE-002`` — the review's ids, one per node.
+
+    Numbering is per kind and ordered by key, so it is stable for a stable estate and it
+    never collides across kinds. ``stable_id`` (``SERVICE-9281``) is the one to key on.
+    """
+    counters: dict[str, int] = {}
+    out: dict[str, dict[str, str]] = {}
+    for row in sorted(bom["assets"], key=lambda item: (item["kind"], item["key"])):
+        if row["kind"] not in NBOM_KINDS:
+            continue
+        prefix = ID_PREFIX.get(row["kind"], row["kind"].replace("_", "-"))
+        counters[prefix] = counters.get(prefix, 0) + 1
+        out.setdefault(row["kind"], {})[row["name"]] = f"{prefix}-{counters[prefix]:03d}"
+    return out
+
+
+#: relations a request can travel along. The spine plus the hops a packet actually takes.
+PATH_RELATIONS: frozenset[str] = frozenset({
+    "ROUTES_TO", "FORWARDS_TO", "TERMINATES_TLS", "RE_ENCRYPTS", "PASSTHROUGH",
+    "PROXY_FOR", "LISTENS_ON", "RUNS_APPLICATION", "TUNNELS_TO", "CONNECTS_TO",
+})
+
+#: walked backwards: an application *provides* a service, so a request that reached the
+#: service is served by the application. The edge points the other way on purpose.
+REVERSE_PATH_RELATIONS: frozenset[str] = frozenset({"PROVIDES"})
+
+#: where a path stops: something that terminates a request rather than passing it on
+PATH_ENDS: tuple[str, ...] = ("APPLICATION", "DATABASE", "HSM", "KMS")
+
+
+def paths(bom: Mapping[str, Any], *, source: Any, target: Any = None,
+          max_hops: int = 8, limit: int = 12,
+          include_declared: bool = True) -> dict[str, Any]:
+    """Every evidenced route from one node to an application, with its TLS profile.
+
+    A path is *proven* only when every edge on it is: a route that depends on one
+    ``IMPORTED`` hop is reported as declared, because that is what it is. A tunnel whose
+    recorded status is not ``UP`` carries no traffic and is not a path at all.
+    """
+    start = _resolve_one(bom, source)
+    findings: list[dict[str, Any]] = []
+    walked: list[list[dict[str, Any]]] = []
+
+    def walk(key: str, trail: list[dict[str, Any]], seen: set[str]) -> None:
+        if len(findings) >= limit or len(trail) > max_hops:
+            return
+        row = bom["by_key"][key]
+        if trail and (row["kind"] in PATH_ENDS or
+                      (target is not None and _matches(row, target))):
+            findings.append(list(trail))
+            return
+        for claim in bom["claims"]:
+            if claim["relation"] in REVERSE_PATH_RELATIONS:
+                if claim["to_key"] != key:
+                    continue
+                step = claim["from_key"]
+            elif claim["relation"] in PATH_RELATIONS:
+                if claim["from_key"] != key:
+                    continue
+                step = claim["to_key"]
+            else:
+                continue
+            if step in seen:
+                continue
+            if claim["relation"] == "TUNNELS_TO" and not _tunnel_up(bom["by_key"][claim["from_key"]]):
+                continue
+            if not include_declared and claim["confidence"] not in tb.PROVEN:
+                continue
+            walk(step, [*trail, claim], seen | {step})
+
+    walk(start, [], {start})
+    for trail in findings:
+        walked.append(trail)
+    routes = [_route(bom, trail) for trail in walked]
+    proven = [route for route in routes if route["proven"]]
+    return {
+        "source": _summary(bom["by_key"][start]),
+        "target": str(target) if target is not None else None,
+        "routes": sorted(routes, key=lambda route: route["path"]),
+        "proven": len(proven),
+        "declared": len(routes) - len(proven),
+        "statement": (
+            f"{len(routes)} route(s) from {bom['by_key'][start]['name']}: "
+            f"{len(proven)} proven, {len(routes) - len(proven)} declared"),
+        "not_proven": ["that a request takes this route now: a graph holds every route "
+                       "that was evidenced, and a request takes one of them at a time"],
+    }
+
+
+def _route(bom: Mapping[str, Any], trail: list[Mapping[str, Any]]) -> dict[str, Any]:
+    # a step is named by the node it *arrives* at: the target for a forward relation and
+    # the source for the one that is walked backwards
+    keys = [trail[0]["from_key"]]
+    for claim in trail:
+        keys.append(claim["to_key"] if claim["to_key"] != keys[-1] else claim["from_key"])
+    names = [bom["by_key"][key]["name"] for key in keys]
+    modes = [claim["relation"] for claim in trail
+             if claim["relation"] in ("TERMINATES_TLS", "RE_ENCRYPTS", "PASSTHROUGH")]
+    suites = [_suite_at(bom, claim) for claim in trail
+              if claim["relation"] in ("TERMINATES_TLS", "RE_ENCRYPTS", "PASSTHROUGH")]
+    return {
+        "path": " → ".join(names),
+        "nodes": names,
+        "relationships": [claim["relation"] for claim in trail],
+        "tls_modes": modes,
+        "suites": [suite for suite in suites if suite],
+        "proven": all(claim["confidence"] in tb.PROVEN for claim in trail),
+        "weakest": min((claim["confidence"] for claim in trail),
+                       key=lambda name: tb.CONFIDENCE[name]),
+        "statement": (
+            f"{' → '.join(names)} ({', '.join(modes) or 'no TLS boundary'}"
+            + (f"; {', '.join(filter(None, suites))}" if suites else "") + ")"),
+    }
+
+
+def _suite_at(bom: Mapping[str, Any], claim: Mapping[str, Any]) -> str | None:
+    for other in bom["claims"]:
+        if other["relation"] == "NEGOTIATES" and other["from_key"] == claim["from_key"]:
+            return bom["by_key"][other["to_key"]]["name"]
+    row = bom["by_key"][claim["from_key"]]
+    return (row["attributes"].get("tls") or {}).get("suite")
+
+
+def _tunnel_up(row: Mapping[str, Any]) -> bool:
+    state = str(row["attributes"].get("tunnel_state") or "UP").upper()
+    return state == "UP"
+
+
+# --------------------------------------------------------------------------- #
+# Configured, supported, negotiated — the fourth state the review asks for
+# --------------------------------------------------------------------------- #
+
+def configured(*, endpoint_row: Mapping[str, Any], min_version: Any = None,
+               max_version: Any = None, suites: Iterable[Any] = (),
+               sni_required: Any = None, alpn: Iterable[Any] = (),
+               client_auth: Any = None, evidence_ids: Iterable[Any] | None = None,
+               ) -> dict[str, Any]:
+    """The listener's *policy*: what it will accept, as distinct from what it chose.
+
+    The review asks for ``SUPPORTED``, ``CONFIGURED``, ``NEGOTIATED`` and ``OBSERVED`` to
+    stay apart. A policy is a fact on the listener; the suites it enables are ``SUPPORTS``
+    claims; the one it chose is ``NEGOTIATES``; what a capture saw is the evidence class.
+    """
+    if min_version and max_version and str(min_version) > str(max_version):
+        raise tb.ClaimRefused(
+            "TLS_POLICY_INVERTED",
+            f"min {min_version} is newer than max {max_version}; a policy that accepts "
+            "nothing is a mistake, not a configuration")
+    row = dict(endpoint_row)
+    attributes = dict(row.get("attributes") or {})
+    attributes["tls_policy"] = {
+        "min_version": str(min_version) if min_version else None,
+        "max_version": str(max_version) if max_version else None,
+        "suites": [str(name) for name in suites],
+        "sni_required": sni_required,
+        "alpn": [str(value).upper() for value in alpn],
+        "client_auth": client_auth,
+    }
+    row["attributes"] = attributes
+    row["evidence_ids"] = list(row.get("evidence_ids") or []) + [
+        str(value) for value in (evidence_ids or [])]
+    return row
+
+
+def policy_gap(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]:
+    """Configured policy versus the session that was observed — a downgrade is a finding.
+
+    This is the review's point 6 as a measurement: a listener that may speak TLS 1.3 and
+    negotiated TLS 1.2 is neither an error nor a success, it is a **finding** with two
+    versions in it.
+    """
+    keys = _endpoint_keys(bom, query)
+    findings: list[dict[str, Any]] = []
+    for key in sorted(keys):
+        row = bom["by_key"][key]
+        policy = (row["attributes"].get("tls_policy") or {})
+        negotiated = (row["attributes"].get("tls") or {})
+        chosen_version = str(negotiated.get("version") or "")
+        chosen_suite = str(negotiated.get("suite") or "")
+        if policy:
+            if policy.get("max_version") and chosen_version and                     chosen_version < str(policy["max_version"]):
+                findings.append({"code": "TLS_DOWNGRADED", "endpoint": row["name"],
+                                 "policy": policy["max_version"],
+                                 "negotiated": chosen_version,
+                                 "reason": "the listener could have gone higher"})
+            if policy.get("min_version") and chosen_version and                     chosen_version < str(policy["min_version"]):
+                findings.append({"code": "BELOW_CONFIGURED_FLOOR", "endpoint": row["name"],
+                                 "policy": policy["min_version"],
+                                 "negotiated": chosen_version,
+                                 "reason": "the session is weaker than the policy allows"})
+            allowed = [str(name) for name in policy.get("suites") or []]
+            if allowed and chosen_suite and chosen_suite not in allowed:
+                findings.append({"code": "SUITE_NOT_IN_POLICY", "endpoint": row["name"],
+                                 "negotiated": chosen_suite,
+                                 "policy": allowed,
+                                 "reason": "the suite was not on the list"})
+        if not policy:
+            findings.append({"code": "NO_POLICY_RECORDED", "endpoint": row["name"],
+                             "negotiated": chosen_version or "unknown",
+                             "reason": "no configuration was read for this listener"})
+    return {
+        "query": str(query),
+        "findings": findings,
+        "counts": {code: sum(1 for row in findings if row["code"] == code)
+                   for code in sorted({row["code"] for row in findings})},
+        "statement": (f"{len(findings)} policy finding(s) on {len(keys)} endpoint(s): "
+                      + (", ".join(sorted({row["code"] for row in findings})) or "none")),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Runtime and network, side by side
+# --------------------------------------------------------------------------- #
+
+def runtime_vs_network(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]:
+    """Which algorithms the wire chose, which the process used, and which are both.
+
+    Two observations of two different things. An intersection is evidence that the
+    process that serves the endpoint is the process that links the library; the
+    difference is what a report must not blend.
+    """
+    keys = _endpoint_keys(bom, query)
+    on_the_wire: dict[str, dict[str, Any]] = {}
+    for claim in bom["claims"]:
+        if claim["from_key"] in keys and claim["relation"] == "NEGOTIATES":
+            suite_key = claim["to_key"]
+            on_the_wire[suite_key] = bom["by_key"][suite_key]
+            for inner in bom["claims"]:
+                if inner["from_key"] == suite_key and inner["relation"] == "USES_CRYPTO":
+                    on_the_wire[inner["to_key"]] = bom["by_key"][inner["to_key"]]
+    in_the_process = {claim["to_key"]: bom["by_key"][claim["to_key"]]
+                      for claim in bom["claims"]
+                      if claim["relation"] == "USES_CRYPTO"
+                      and bom["by_key"][claim["from_key"]]["kind"] == "PROCESS"}
+    both = sorted(set(on_the_wire) & set(in_the_process))
+    return {
+        "query": str(query),
+        "network": [_summary(row) for key, row in sorted(on_the_wire.items())],
+        "runtime": [_summary(row) for key, row in sorted(in_the_process.items())],
+        "both": [_summary(bom["by_key"][key]) for key in both],
+        "network_only": [_summary(row) for key, row in sorted(on_the_wire.items())
+                         if key not in in_the_process],
+        "runtime_only": [_summary(row) for key, row in sorted(in_the_process.items())
+                         if key not in on_the_wire],
+        "statement": (f"{len(on_the_wire)} on the wire, {len(in_the_process)} in the "
+                      f"process, {len(both)} in both"),
+        "not_proven": ["that an algorithm in both places is the same dependency: the "
+                       "handshake belongs to the listener and the library to the process"],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Evidence on a network edge
+# --------------------------------------------------------------------------- #
+
+def evidence_record(evidence_id: Any, *, collector: Any, collector_version: Any = None,
+                    target_id: Any = None, observed_at: Any = None, source: Any = None,
+                    evidence_type: Any = "OBSERVED", raw_reference: Any = None,
+                    normalized_fact: Any = None, hash: Any = None,
+                    confidence: Any = "HIGH") -> dict[str, Any]:
+    """One collector read, as a record. No hash, no record: it could not be re-checked."""
+    identifier = str(evidence_id or "").strip()
+    if not identifier:
+        raise tb.ClaimRefused("EVIDENCE_WITHOUT_ID", "an evidence record needs an id")
+    if not str(collector or "").strip():
+        raise tb.ClaimRefused("EVIDENCE_WITHOUT_COLLECTOR",
+                              f"{identifier}: an observation with no collector behind it "
+                              "cannot be argued with")
+    if not str(hash or "").strip():
+        raise tb.ClaimRefused("EVIDENCE_WITHOUT_HASH",
+                              f"{identifier}: a record with no content hash cannot be "
+                              "re-checked, so it is a note rather than evidence")
+    return {
+        "evidence_id": identifier, "collector": str(collector),
+        "collector_version": str(collector_version) if collector_version else None,
+        "target_id": str(target_id) if target_id else None,
+        "observed_at": str(observed_at) if observed_at else None,
+        "source": str(source) if source else None,
+        "evidence_type": str(evidence_type).upper(),
+        "raw_reference": str(raw_reference) if raw_reference else None,
+        "normalized_fact": str(normalized_fact) if normalized_fact else None,
+        "hash": str(hash), "confidence": str(confidence).upper(),
+    }
+
+
+def evidence_node(record: Mapping[str, Any], *, environment: Any = "PRODUCTION"):
+    """An evidence record as a node, so an edge can point at it and a reader can walk it."""
+    return tb.asset("EVIDENCE", record["evidence_id"], environment=environment,
+                    evidence_ids=[record["evidence_id"]],
+                    collector=record.get("collector"),
+                    collector_version=record.get("collector_version"),
+                    observed_at=record.get("observed_at"),
+                    source=record.get("source"),
+                    evidence_type=record.get("evidence_type"),
+                    raw_reference=record.get("raw_reference"),
+                    normalized_fact=record.get("normalized_fact"),
+                    hash=record.get("hash"),
+                    confidence=record.get("confidence"))
+
+
+def attach_evidence(*, row: Mapping[str, Any], record: Mapping[str, Any],
+                    basis: Any = "config-parse") -> dict[str, Any]:
+    """``asset → EVIDENCED_BY → EVIDENCE``: how this node is known at all."""
+    node = evidence_node(record)
+    claim = tb.claim(row["name"], "EVIDENCED_BY", node["name"], basis=basis,
+                     evidence_ids=[record["evidence_id"]])
+    return part(row, node, claims=[claim])
+
+
+def _collector_for(bom: Mapping[str, Any], evidence_id: Any) -> dict[str, Any]:
+    if not evidence_id:
+        return {"collector": None, "evidence_type": None, "observed_at": None}
+    for row in bom["assets"]:
+        if row["kind"] == "EVIDENCE" and row["name"] == str(evidence_id):
+            attributes = row["attributes"]
+            return {"collector": attributes.get("collector"),
+                    "collector_version": attributes.get("collector_version"),
+                    "evidence_type": attributes.get("evidence_type"),
+                    "observed_at": attributes.get("observed_at")}
+    return {"collector": None, "evidence_type": None, "observed_at": None}
+
+
+# --------------------------------------------------------------------------- #
+# What the wire leaves exposed to a quantum computer
+# --------------------------------------------------------------------------- #
+
+def pqc_exposure(bom: Mapping[str, Any], *, query: Any = None) -> dict[str, Any]:
+    """Quantum-sensitive algorithms a session actually negotiated, per endpoint.
+
+    Capability is not exposure: an HSM that *supports* RSA is a migration question, but a
+    session that *negotiated* ECDSA is an exposure, and the two are counted apart.
+    """
+    keys = _endpoint_keys(bom, query) if query is not None else         {row["key"] for row in bom["assets"] if row["kind"] == "NETWORK_ENDPOINT"}
+    findings: list[dict[str, Any]] = []
+    for key in sorted(keys):
+        endpoint = bom["by_key"][key]
+        exposed: list[str] = []
+        for claim in bom["claims"]:
+            if claim["from_key"] != key or claim["relation"] != "NEGOTIATES":
+                continue
+            suite = bom["by_key"][claim["to_key"]]
+            for inner in bom["claims"]:
+                if inner["from_key"] != suite["key"] or inner["relation"] != "USES_CRYPTO":
+                    continue
+                asset = bom["by_key"][inner["to_key"]]
+                name = asset["name"].upper()
+                if any(token in name for token in tb.QUANTUM_SENSITIVE) or \
+                        asset["attributes"].get("quantum_sensitive"):
+                    exposed.append(asset["name"])
+        blockers = sorted({row["name"] for row in bom["assets"]
+                           if row["kind"] in tb.PQC_BLOCKER_KINDS
+                           and row["key"] not in keys})
+        if exposed:
+            findings.append({"endpoint": endpoint["name"], "exposed": sorted(set(exposed)),
+                             "blockers": blockers})
+    return {
+        "endpoints": findings,
+        "statement": (f"{len(findings)} endpoint(s) negotiate quantum-sensitive "
+                      f"cryptography: " + ", ".join(
+                          f"{row['endpoint']} ({', '.join(row['exposed'])})"
+                          for row in findings) if findings else
+                      "no endpoint negotiates a quantum-sensitive algorithm"),
+        "not_proven": ["that a quantum computer is available: this is exposure, and the "
+                       "migration judgement belongs to the PQC engine"],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Vendor capability, and a lifecycle timeline
+# --------------------------------------------------------------------------- #
+
+def product_capability(*, product_row: Mapping[str, Any],
+                       capability_row: Mapping[str, Any], basis: Any = "vendor-datasheet",
+                       evidence_ids: Iterable[Any] | None = None,
+                       **facts: Any) -> dict[str, Any]:
+    """``VENDOR_PRODUCT → SUPPORTS → CRYPTO_CAPABILITY``: VBOM joined to CBOM.
+
+    A datasheet claiming a product speaks TLS 1.3 is exactly the class that claim
+    deserves, and it is a different statement from the product's firmware in the field.
+    """
+    return part(product_row, capability_row,
+                claims=[tb.claim(product_row["name"], "SUPPORTS", capability_row["name"],
+                                 basis=basis, evidence_ids=evidence_ids, **facts)])
+
+
+def timeline(bom: Mapping[str, Any], *, previous: Mapping[str, Any] | None = None,
+             reference: Any = None) -> dict[str, Any]:
+    """Each edge's life: first seen, last seen, and whether it is still active.
+
+    The drift feed says what changed; this says what an edge's history is, which is the
+    question an investigator asks after the change.
+    """
+    states = lifecycle(bom, reference=reference)["states"]
+    rows: list[dict[str, Any]] = []
+    for claim in bom["claims"]:
+        rows.append({
+            "edge": claim["id"], "relationship": claim["relation"],
+            "source": claim["from"], "target": claim["to"],
+            "state": states.get(claim["id"], "UNKNOWN"),
+            "first_seen": claim.get("first_seen"), "last_seen": claim.get("last_seen"),
+            "observed_at": claim.get("observed_at"),
+        })
+    changes = drift(previous, bom, reference=reference) if previous is not None else None
+    return {
+        "edges": sorted(rows, key=lambda row: (row["state"], row["edge"])),
+        "counts": dict(sorted(
+            {state: sum(1 for row in rows if row["state"] == state)
+             for state in {row["state"] for row in rows}}.items())),
+        "drift": changes,
+        "statement": (f"{len(rows)} edge(s) with history; "
+                      f"{'no previous projection was supplied' if previous is None else changes['statement']}"),
+    }
+
+
+def coverage_by_segment(segments: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    """Coverage per network segment, with the worst segment deciding the whole.
+
+    A bank's DMZ at 100% and its cardholder zone at 60% is not a 90% estate.
+    """
+    per_segment: dict[str, dict[str, Any]] = {}
+    for name, counts in sorted(segments.items()):
+        per_segment[name] = coverage(**counts)
+    verdicts = [row["verdict"] for row in per_segment.values()]
+    overall = "COMPLETE" if verdicts and all(v == "COMPLETE" for v in verdicts) else \
+        ("PARTIAL" if per_segment else "UNKNOWN")
+    return {
+        "segments": per_segment,
+        "verdict": overall,
+        "weakest": sorted(per_segment, key=lambda name: per_segment[name]["observed"]
+                          / max(per_segment[name]["expected"], 1))[:1],
+        "statement": (f"{len(per_segment)} segment(s), overall {overall}: " +
+                      ", ".join(f"{name} {row['verdict']}"
+                                for name, row in per_segment.items())),
+    }
 
 
 # --------------------------------------------------------------------------- #

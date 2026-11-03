@@ -506,3 +506,236 @@ def test_the_reviews_whole_vocabulary_exists_in_one_graph():
                   "USES_HSM", "USES_KMS")
     assert all(relation in tb.RELATIONS for relation in vocabulary)
     assert tb.RELATIONS["PROXY_FOR"]["chain"] == "NETWORK"
+
+
+# ---- what the second read of the review added --------------------------------
+
+def _path_estate(n, tb) -> dict:
+    """A WAF that terminates, an LB that re-encrypts, and an application behind them."""
+    application = tb.asset("APPLICATION", "Payments API", evidence_ids=[EVID])
+    waf_front = n.endpoint(host="10.10.0.21", port=443, name="waf-01:443",
+                           tls={"version": "TLS1.3",
+                                "suite": "TLS_AES_256_GCM_SHA384"},
+                           evidence_ids=[EVID])
+    waf_back = n.endpoint(host="10.10.0.21", port=8080, name="waf-01:8080",
+                          transport="PLAIN", evidence_ids=[EVID])
+    lb_front = n.endpoint(host="10.10.0.30", port=443, name="lb-01:443",
+                          tls={"version": "TLS1.2",
+                               "suite": "ECDHE-RSA-AES128-GCM-SHA256"},
+                          evidence_ids=[EVID])
+    app_listener = n.endpoint(host="10.10.1.5", port=8443, name="payments-api:8443",
+                              tls={"version": "TLS1.3",
+                                   "suite": "TLS_AES_256_GCM_SHA384"},
+                              evidence_ids=[EVID])
+    return n.estate(
+        n.tls_hop(frontend=waf_front, backend=waf_back, mode="TERMINATE",
+                  evidence_ids=[EVID], observed_at=NOW),
+        n.part(claims=[tb.claim("waf-01:8080", "FORWARDS_TO", "lb-01:443",
+                                basis="load-balancer-config", evidence_ids=[EVID],
+                                protocol="TCP", port=443)]),
+        n.tls_hop(frontend=lb_front, backend=app_listener, mode="RE_ENCRYPT",
+                  evidence_ids=[EVID]),
+        n.part(claims=[tb.claim("payments-api:8443", "ROUTES_TO", "Payments API",
+                                basis="api-gateway-config", evidence_ids=[EVID],
+                                protocol="TCP", port=8443)]),
+        application, estate_id="path")
+
+
+def test_a_bare_row_is_not_lost_in_the_bundle():
+    row = tb.asset("APPLICATION", "Payments API", evidence_ids=[EVID])
+    bom = n.build(n.estate(row, {"assets": [], "claims": []}, estate_id="bare"))
+    assert [item["name"] for item in bom["assets"]] == ["Payments API"]
+
+
+def test_a_route_carries_every_tls_boundary_on_it():
+    bom = n.build(_path_estate(n, tb))
+    walk = n.paths(bom, source="waf-01:443")
+    route = walk["routes"][0]
+    assert route["nodes"][-1] == "Payments API"
+    assert route["tls_modes"] == ["TERMINATES_TLS", "RE_ENCRYPTS"]
+    assert route["suites"] == ["TLS_AES_256_GCM_SHA384", "ECDHE-RSA-AES128-GCM-SHA256"]
+    assert route["proven"] is True
+
+
+def test_a_route_through_a_declared_hop_is_reported_declared():
+    ticket = tb.asset("EVIDENCE", "TICKET-4411", evidence_ids=["TICKET-4411"],
+                      evidence_type="DOCUMENT")
+    bom = n.build(n.estate(
+        ticket,
+        n.endpoint(host="10.0.0.1", port=443, name="front:443",
+                   tls={"version": "TLS1.2", "suite": "ECDHE-RSA-AES128-GCM-SHA256"},
+                   evidence_ids=[EVID]),
+        tb.asset("APPLICATION", "Payments API", evidence_ids=[EVID]),
+        n.part(claims=[tb.claim("front:443", "ROUTES_TO", "Payments API",
+                                basis="ticket-import", evidence_ids=["TICKET-4411"],
+                                protocol="TCP", port=443)]),
+        estate_id="declared"))
+    route = n.paths(bom, source="front:443")["routes"][0]
+    assert route["proven"] is False
+    assert route["weakest"] == "IMPORTED"
+
+
+def test_a_tunnel_that_is_down_is_not_a_route():
+    gateway = tb.asset("VPN_GATEWAY", "VPN-GW-01", evidence_ids=[EVID])
+    peer = tb.asset("VPN_GATEWAY", "VPN-GW-BRANCH", evidence_ids=[EVID])
+    zone = tb.asset("NETWORK_SEGMENT", "Payment Network", evidence_ids=[EVID])
+    tunnel = n.ipsec_tunnel(name="dr-site", gateway_row=gateway, peer_row=peer,
+                            zone_row=zone, status="DOWN", evidence_ids=[EVID])
+    bom = n.build(n.estate(tunnel, estate_id="down"))
+    row = next(item for item in bom["assets"] if item["kind"] == "IPSEC_TUNNEL")
+    assert row["attributes"]["tunnel_state"] == "DOWN"
+    assert n.paths(bom, source="dr-site")["routes"] == []
+
+
+def test_a_tunnel_state_this_model_does_not_know_is_refused():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.ipsec_tunnel(name="t", gateway_row={"name": "g"}, peer_row={"name": "p"},
+                       status="DEGRADED", evidence_ids=[EVID])
+    assert refused.value.code == "UNKNOWN_TUNNEL_STATUS"
+
+
+def test_a_pre_shared_key_is_refused_like_any_other_material():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.ipsec_tunnel(name="t", gateway_row={"name": "g"}, peer_row={"name": "p"},
+                       psk="s3cr3t", evidence_ids=[EVID])
+    assert refused.value.code == "KEY_MATERIAL_REFUSED"
+
+
+def test_the_ids_the_review_asks_for_exist_beside_the_ones_the_graph_assigns():
+    bom = n.build(routing_estate())
+    ids = bom["ids"]
+    endpoint = bom["endpoints"][0]
+    assert ids["NETWORK_ENDPOINT"][endpoint["name"]] == "NET-ENDPOINT-001"
+    assert ids["SERVICE"]["payments-api"] == "SERVICE-001"
+    assert ids["APPLICATION"]["Payments API"] == "APPLICATION-001"
+    assert ids["BUSINESS_SYSTEM"]["Payments System"] == "SYSTEM-001"
+    assert endpoint["id"].startswith("TECH-EP-")
+    assert n.stable_id({"key": endpoint["key"], "kind": endpoint["kind"]}).startswith(
+        "NETWORK_ENDPOINT-")
+
+
+def test_a_policy_below_the_negotiated_session_is_a_finding():
+    public = n.configured(endpoint_row=endpoint(name="front:443",
+                                                tls={"version": "TLS1.2",
+                                                     "suite": "ECDHE-RSA-AES128-GCM-SHA256"}),
+                          min_version="TLS1.3", max_version="TLS1.3",
+                          suites=["TLS_AES_256_GCM_SHA384"], evidence_ids=[EVID])
+    bom = n.build(n.estate(public, estate_id="policy"))
+    finding = n.policy_gap(bom, query="front:443")
+    assert {row["code"] for row in finding["findings"]} == {
+        "TLS_DOWNGRADED", "BELOW_CONFIGURED_FLOOR", "SUITE_NOT_IN_POLICY"}
+
+
+def test_a_listener_with_no_policy_says_so():
+    bom = n.build(n.estate(endpoint(name="front:443"), estate_id="no-policy"))
+    assert n.policy_gap(bom, query="front:443")["findings"][0]["code"] == \
+        "NO_POLICY_RECORDED"
+
+
+def test_a_policy_that_accepts_nothing_is_refused():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.configured(endpoint_row=endpoint(), min_version="TLS1.3",
+                     max_version="TLS1.2", evidence_ids=[EVID])
+    assert refused.value.code == "TLS_POLICY_INVERTED"
+
+
+def test_runtime_and_network_are_compared_as_two_sets():
+    public = endpoint(name="front:443")
+    suite_row = suite()
+    wire = tb.asset("CRYPTO_ASSET", "AES-256-GCM", evidence_ids=[EVID],
+                    evidence_type="NETWORK_OBSERVED")
+    inside = tb.asset("CRYPTO_ASSET", "AES-128-CBC", evidence_ids=[EVID],
+                      evidence_type="RUNTIME_OBSERVED")
+    process = tb.asset("PROCESS", "payments-api[1821]", evidence_ids=[EVID])
+    part = n.merge(
+        n.negotiated(endpoint_row=public, suite_row=suite_row, evidence_ids=[EVID]),
+        n.suite_parts(suite_row=suite_row, parts={"bulk": wire}, evidence_ids=[EVID]),
+        n.runtime(process_row=process,
+                  application_row=tb.asset("APPLICATION", "Payments API",
+                                           evidence_ids=[EVID]),
+                  crypto_rows=[inside], evidence_ids=[EVID]))
+    view = n.runtime_vs_network(n.build(n.estate(part, estate_id="compare")),
+                                query="front:443")
+    assert [row["name"] for row in view["runtime_only"]] == ["AES-128-CBC"]
+    assert "AES-256-GCM" in {row["name"] for row in view["network_only"]}
+
+
+def test_evidence_is_a_record_a_node_and_an_edge():
+    record = n.evidence_record(EVID, collector="LB-CONFIG-01", observed_at=NOW,
+                               evidence_type="CONFIGURED", hash="sha256:9b2c")
+    bom = n.build(n.estate(n.attach_evidence(row=endpoint(name="lb-01:443"),
+                                             record=record), estate_id="evidence"))
+    edge = next(edge for edge in n.graph(bom)["edges"]
+                if edge["relationship"] == "EVIDENCED_BY")
+    assert edge["collector"] == "LB-CONFIG-01"
+    assert edge["evidence_type"] == "CONFIGURED"
+    assert edge["observed_at"] == NOW
+
+
+def test_a_record_without_a_hash_or_a_collector_is_refused():
+    with pytest.raises(tb.ClaimRefused) as no_hash:
+        n.evidence_record(EVID, collector="LB-CONFIG-01")
+    assert no_hash.value.code == "EVIDENCE_WITHOUT_HASH"
+    with pytest.raises(tb.ClaimRefused) as no_collector:
+        n.evidence_record(EVID, collector="", hash="sha256:aa")
+    assert no_collector.value.code == "EVIDENCE_WITHOUT_COLLECTOR"
+
+
+def test_exposure_counts_what_was_negotiated_and_not_what_is_supported():
+    public = endpoint(name="front:443")
+    chosen, allowed = suite(), suite("TLS_AES_128_GCM_SHA256")
+    weak = tb.asset("CRYPTO_ASSET", "ECDSA-P256", evidence_ids=[EVID],
+                    evidence_type="NETWORK_OBSERVED")
+    never = tb.asset("CRYPTO_ASSET", "AES-128-GCM", evidence_ids=[EVID],
+                     evidence_type="CONFIGURED")
+    part = n.merge(n.negotiated(endpoint_row=public, suite_row=chosen,
+                                evidence_ids=[EVID]),
+                   n.supported(endpoint_row=public, suite_rows=[allowed],
+                               evidence_ids=[EVID]),
+                   n.suite_parts(suite_row=chosen, parts={"auth": weak},
+                                 evidence_ids=[EVID]),
+                   n.suite_parts(suite_row=allowed, parts={"bulk": never},
+                                 basis="config-parse", evidence_ids=[EVID]))
+    bom = n.build(n.estate(part, estate_id="exposure"))
+    # the supported-only asset is in the graph, and it is still not an exposure
+    assert any(row["name"] == "AES-128-GCM" for row in bom["assets"])
+    exposed = {name for row in n.pqc_exposure(bom, query="front:443")["endpoints"]
+               for name in row["exposed"]}
+    assert "ECDSA-P256" in exposed and "AES-128-GCM" not in exposed
+
+
+def test_a_product_declares_a_capability_and_cannot_claim_an_operation():
+    product = tb.asset("VENDOR_PRODUCT", "F5 BIG-IP i5800", evidence_ids=[EVID])
+    capability = tb.asset("CRYPTO_CAPABILITY", "TLS 1.3 termination", evidence_ids=[EVID])
+    part = n.product_capability(product_row=product, capability_row=capability,
+                                evidence_ids=[EVID])
+    bom = n.build(n.estate(part, estate_id="vendor"))
+    assert bom["claims"][0]["confidence"] == "VENDOR_DECLARED"
+    refused = n.build(n.estate({"assets": [product, capability], "claims": [
+        tb.claim(product["name"], "PERFORMS", capability["name"], basis="api-poll",
+                 evidence_ids=[EVID])]}, estate_id="bad"))
+    assert [row["code"] for row in refused["refusals"]] == ["TYPE_MISMATCH"]
+
+
+def test_a_timeline_gives_every_edge_its_state_and_survives_a_drift_join():
+    bom = n.build(routing_estate())
+    history = n.timeline(bom)
+    assert len(history["edges"]) == len(bom["claims"])
+    assert history["drift"] is None
+    assert n.timeline(bom, previous=bom)["drift"]["by_change"] == {}
+
+
+def test_the_weakest_segment_decides_the_whole():
+    block = n.coverage_by_segment({"EDGE": {"expected": 20, "observed": 20},
+                                   "CARDHOLDER": {"expected": 100, "observed": 60,
+                                                  "unavailable": 40}})
+    assert block["verdict"] == "PARTIAL"
+    assert block["segments"]["EDGE"]["verdict"] == "COMPLETE"
+    assert block["weakest"] == ["CARDHOLDER"]
+
+
+def test_a_service_is_served_by_the_application_that_provides_it():
+    bom = n.build(routing_estate())
+    route = n.paths(bom, source="payments.bank.example:443")["routes"][0]
+    assert route["nodes"] == ["payments.bank.example:443", "payments-api", "Payments API"]
+    assert route["proven"] is True

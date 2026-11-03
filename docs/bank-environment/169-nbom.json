@@ -1,13 +1,13 @@
 {
   "schema": "cryptoscan.cbom-nbom-guide/1",
-  "generated_at": "2026-11-03T02:27:55.655948+00:00",
+  "generated_at": "2026-11-03T02:41:09.719908+00:00",
   "counts": {
     "PASS": 18,
     "PARTIAL": 0,
     "FAIL": 0
   },
   "probes": 81,
-  "statement": "10 network endpoint(s), 74 evidenced edge(s), 3 TLS boundary mode(s) in use; 0 claim(s) refused",
+  "statement": "10 network endpoint(s), 74 evidenced edge(s), 3 TLS boundary mode(s) in use, 2 proven route(s); 0 claim(s) refused",
   "counts_by_kind": {
     "ALGORITHM": 2,
     "API_GATEWAY": 1,
@@ -16,7 +16,7 @@
     "CERTIFICATE": 3,
     "CERTIFICATE_AUTHORITY": 2,
     "CIPHER_SUITE": 3,
-    "CRYPTO_ASSET": 12,
+    "CRYPTO_ASSET": 14,
     "CRYPTO_CAPABILITY": 3,
     "CRYPTO_LIBRARY": 1,
     "DATABASE": 1,
@@ -40,7 +40,7 @@
     "WAF": 1
   },
   "graph": {
-    "nodes": 70,
+    "nodes": 72,
     "edges": 74,
     "edges_missing_a_record": []
   },
@@ -106,7 +106,7 @@
     "crypto": [
       {
         "key": "CRYPTO_ASSET:ecdsa-p256:production",
-        "id": "TECH-CRY-006",
+        "id": "TECH-CRY-008",
         "kind": "CRYPTO_ASSET",
         "name": "ECDSA-P256",
         "stable_id": "CRYPTO_ASSET-2460",
@@ -120,7 +120,7 @@
       },
       {
         "key": "CRYPTO_ASSET:x25519:production",
-        "id": "TECH-CRY-012",
+        "id": "TECH-CRY-014",
         "kind": "CRYPTO_ASSET",
         "name": "X25519",
         "stable_id": "CRYPTO_ASSET-1532",
@@ -134,7 +134,7 @@
       },
       {
         "key": "CRYPTO_ASSET:sha-384:production",
-        "id": "TECH-CRY-010",
+        "id": "TECH-CRY-012",
         "kind": "CRYPTO_ASSET",
         "name": "SHA-384",
         "stable_id": "CRYPTO_ASSET-7956",
@@ -148,7 +148,7 @@
       },
       {
         "key": "CRYPTO_ASSET:aes-256-gcm:production",
-        "id": "TECH-CRY-002",
+        "id": "TECH-CRY-003",
         "kind": "CRYPTO_ASSET",
         "name": "AES-256-GCM",
         "stable_id": "CRYPTO_ASSET-1278",
@@ -203,6 +203,33 @@
           }
         }
       ],
+      "process": [
+        {
+          "key": "PROCESS:envoy-sidecar:production",
+          "id": "TECH-PROC-001",
+          "kind": "PROCESS",
+          "name": "envoy-sidecar",
+          "stable_id": "PROCESS-4031",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "trust_domain": "bank.internal",
+            "spiffe_id": "spiffe://bank.internal/ns/payments/sa/payments-api"
+          }
+        },
+        {
+          "key": "PROCESS:payments-api[1821]:production",
+          "id": "TECH-PROC-002",
+          "kind": "PROCESS",
+          "name": "payments-api[1821]",
+          "stable_id": "PROCESS-7273",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "pid": 1821
+          }
+        }
+      ],
       "application": [
         {
           "key": "APPLICATION:payments api:production",
@@ -241,6 +268,22 @@
             "product": "Kong Gateway",
             "model": "3.6",
             "firmware_version": "3.6.1"
+          }
+        },
+        {
+          "key": "LOAD_BALANCER:lb-01:production",
+          "id": "TECH-LB-001",
+          "kind": "LOAD_BALANCER",
+          "name": "LB-01",
+          "stable_id": "LOAD_BALANCER-9387",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "vendor": "F5",
+            "product": "BIG-IP i5800",
+            "model": "i5800",
+            "firmware_version": "17.1.1",
+            "ha_role": "ACTIVE"
           }
         },
         {
@@ -321,8 +364,23 @@
       ],
       "crypto": [
         {
+          "key": "CRYPTO_ASSET:aes-128-cbc:production",
+          "id": "TECH-CRY-001",
+          "kind": "CRYPTO_ASSET",
+          "name": "AES-128-CBC",
+          "stable_id": "CRYPTO_ASSET-2364",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "algorithm": "AES",
+            "key_size": 128,
+            "mode": "CBC",
+            "evidence_type": "RUNTIME_OBSERVED"
+          }
+        },
+        {
           "key": "CRYPTO_ASSET:aes-256-gcm:production",
-          "id": "TECH-CRY-002",
+          "id": "TECH-CRY-003",
           "kind": "CRYPTO_ASSET",
           "name": "AES-256-GCM",
           "stable_id": "CRYPTO_ASSET-1278",
@@ -337,7 +395,7 @@
         },
         {
           "key": "CRYPTO_ASSET:ecdsa-p256:production",
-          "id": "TECH-CRY-006",
+          "id": "TECH-CRY-008",
           "kind": "CRYPTO_ASSET",
           "name": "ECDSA-P256",
           "stable_id": "CRYPTO_ASSET-2460",
@@ -351,7 +409,7 @@
         },
         {
           "key": "CRYPTO_ASSET:sha-384:production",
-          "id": "TECH-CRY-010",
+          "id": "TECH-CRY-012",
           "kind": "CRYPTO_ASSET",
           "name": "SHA-384",
           "stable_id": "CRYPTO_ASSET-7956",
@@ -365,7 +423,7 @@
         },
         {
           "key": "CRYPTO_ASSET:x25519:production",
-          "id": "TECH-CRY-012",
+          "id": "TECH-CRY-014",
           "kind": "CRYPTO_ASSET",
           "name": "X25519",
           "stable_id": "CRYPTO_ASSET-1532",
@@ -428,6 +486,20 @@
       ],
       "vendor": [
         {
+          "key": "VENDOR_PRODUCT:f5 big-ip i5800:production",
+          "id": "TECH-PROD-002",
+          "kind": "VENDOR_PRODUCT",
+          "name": "F5 BIG-IP i5800",
+          "stable_id": "VENDOR_PRODUCT-2321",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "vendor": "F5",
+            "product": "BIG-IP i5800",
+            "model": "i5800"
+          }
+        },
+        {
           "key": "VENDOR_PRODUCT:istio istio:production",
           "id": "TECH-PROD-003",
           "kind": "VENDOR_PRODUCT",
@@ -470,6 +542,16 @@
           }
         },
         {
+          "key": "VENDOR:f5:production",
+          "id": "TECH-VENDOR-002",
+          "kind": "VENDOR",
+          "name": "F5",
+          "stable_id": "VENDOR-9874",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {}
+        },
+        {
           "key": "VENDOR:istio:production",
           "id": "TECH-VENDOR-003",
           "kind": "VENDOR",
@@ -501,7 +583,7 @@
         }
       ]
     },
-    "statement": "1 service \u2192 1 application \u2192 1 system \u2192 3 device \u2192 1 database \u2192 2 keys \u2192 7 crypto \u2192 6 vendor",
+    "statement": "1 service \u2192 2 process \u2192 1 application \u2192 1 system \u2192 4 device \u2192 1 database \u2192 2 keys \u2192 8 crypto \u2192 8 vendor",
     "not_proven": [
       "that an endpoint's backend is the application the name suggests: the edge cites a DNS record, an SNI value, an ingress rule, a gateway route or a runtime observation, and each of those is printed beside it",
       "that a supported algorithm is in use: supported, negotiated and used are three relations with three evidence classes, and only NEGOTIATES and USES_CRYPTO count as what a session or a process did"
@@ -552,9 +634,9 @@
           "observed": "payments.bank.example:443 \u2192 payments-api, auth.bank.example:443 \u2192 auth-api"
         },
         {
-          "probe": "the-chain-reads-endpoint-service-application-system",
+          "probe": "the-chain-reads-endpoint-service-process-application-system",
           "ok": true,
-          "observed": "1 service \u2192 1 application \u2192 1 system \u2192 3 device \u2192 1 database \u2192 2 keys \u2192 7 crypto \u2192 6 vendor"
+          "observed": "1 service \u2192 2 process \u2192 1 application \u2192 1 system \u2192 4 device \u2192 1 database \u2192 2 keys \u2192 8 crypto \u2192 8 vendor"
         },
         {
           "probe": "a-stable-id-survives-renumbering-a-readable-one-does-not",
@@ -912,7 +994,7 @@
         {
           "probe": "the-projection-is-a-graph-not-a-list",
           "ok": true,
-          "observed": "70 node(s), 74 edge(s)"
+          "observed": "72 node(s), 74 edge(s)"
         },
         {
           "probe": "every-network-edge-carries-a-port-and-a-protocol",
@@ -1077,12 +1159,12 @@
         {
           "probe": "the-chain-reaches-the-business-system-the-database-and-the-keys",
           "ok": true,
-          "observed": "1 service \u2192 1 application \u2192 1 system \u2192 3 device \u2192 1 database \u2192 2 keys \u2192 7 crypto \u2192 6 vendor"
+          "observed": "1 service \u2192 2 process \u2192 1 application \u2192 1 system \u2192 4 device \u2192 1 database \u2192 2 keys \u2192 8 crypto \u2192 8 vendor"
         },
         {
           "probe": "the-chain-also-reaches-the-crypto-behind-the-session",
           "ok": true,
-          "observed": "7 crypto node(s) behind the endpoint"
+          "observed": "8 crypto node(s) behind the endpoint"
         },
         {
           "probe": "every-layer-of-the-review-s-stack-is-a-kind-in-one-graph",
