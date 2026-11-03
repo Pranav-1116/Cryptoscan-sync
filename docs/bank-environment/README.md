@@ -703,6 +703,42 @@
 > and the summary counts it, because a refusal that vanishes between the builder and the
 > report is how a graph starts looking complete.
 
+> [Security control integration: the read-only layer over the bank's own controls](181-security-control-integration.md)
+> (**14 pass · 0 partial · 0 fail**, 47 probes) is the layer the previous guides fed but never
+> built. CryptoScan integrates with the bank's existing network and security controls to build
+> an evidence-backed cryptographic and security estate model — and stays a *reader*: the
+> contract in `cbom/security_controls/base.py` has six verbs (`discover_assets`,
+> `collect_configuration`, `collect_crypto_metadata`, `collect_relationships`,
+> `collect_security_events`, `health`) and no seventh that writes. A vendor is a **dialect
+> row**, not an architecture: `31 adapters` over `9 control types` (firewall, IDS, IPS, WAF,
+> load balancer, API gateway, rate limiter, VPN, SIEM), each declaring only operations from a
+> `17-entry` read allow-list, and an adapter that names `POST`, `PUSH_POLICY`, `COMMIT` or a
+> mutating endpoint is refused **at registration**, before anything connects. HSM, KMS, PKI and
+> the passive network path return `CONTROL_DEFERRED` with the existing collector that owns
+> them, because naming coverage beats an empty list. **A prohibited value never survives a
+> cycle**: private keys, key material, passwords, API secrets, session tokens, payloads, HTTP
+> bodies, card data, credentials, cookies and authorization headers are redacted by field name
+> *and* by content shape (PEM, `Authorization:`, bearer, card numbers), the redaction is
+> recorded as evidence with the field and the path and never the value, and `8 sentinels` are
+> planted in the recorded feeds so the guard is exercised rather than assumed. **Three facts
+> stay apart** everywhere: `CONFIGURED` rows, `OBSERVED` events, `RUNTIME_OBSERVED` hops, and a
+> rate-limit breach prints the configured limit beside the observed volume with both evidence
+> ids instead of one verdict. The rate-limit audit separates the three cases a policy inventory
+> hides — `NOT_CONFIGURED` for an API carrying traffic with no policy, `OVER_LIMIT` with
+> `expected` and `observed` side by side, `POLICY_NOT_ATTACHED` for the enabled orphan — and
+> refuses an observation that arrives without an evidence id instead of counting it. Every
+> relationship is typed and evidenced: `FW-EDGE-01 PROTECTS PAYMENTS-SEG` becomes a TechBOM
+> claim with `TECH-FW-001`, `TECH-SEG-001`, `rule_id FW-001` and `port 443`, `FW-EDGE-01
+> ALLOWS PAYMENTS-SEG` is refused as `UNKNOWN_RELATION` (a vendor does not name a relation),
+> `PRESENTS` from a firewall is `NO_LEGAL_RELATION`, and an edge to `SHADOW-SEG` is
+> `UNKNOWN_REF` rather than a node nobody inventoried — `6 refusal(s)` returned as data, 0
+> exceptions. And an alert becomes a crypto question: `10.20.3.4 → APP-PAY-01 →
+> java:payments → PAYMENTS-API → OpenSSL 3.0.13 → HSM-PAY-01 (pin-key-1)`, five named hops
+> with five evidence ids and their fact classes, while an address no inventory declares, two
+> hosts behind one NAT address and a missing runtime observation are reported as
+> `NO_HOST_FOR_ADDRESS`, `AMBIGUOUS` and `NO_LIBRARY_FOR_API` — the path stops where the
+> platform's inventories stop, and says so.
+
 > [The vendor dependency graph over the live estate](180-vbom-estate.md)
 > (**13 pass · 0 partial · 0 fail**, 42 probes) is the step that turns guide 178 from a proof
 > into a product: **stored rows → payload → graph → answers → an API route and a CycloneDX

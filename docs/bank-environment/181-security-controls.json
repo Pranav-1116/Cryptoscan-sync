@@ -1,0 +1,857 @@
+{
+  "schema": "cryptoscan.security-controls-guide/1",
+  "guide": 181,
+  "generated_at": "2026-11-03T11:52:02Z",
+  "as_of": "2026-11-03",
+  "counts": {
+    "PASS": 14,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "points": 14,
+  "probes": 47,
+  "probes_passed": 47,
+  "statement": "14 of 14 points hold across 47 probes: 9 collectors over 9 control types, 31 vendor dialects, 16 assets and 5 evidence-carrying claims, 5 redaction(s), 6 refusal(s)",
+  "contract": {
+    "version": "cryptoscan.security-controls/1",
+    "verbs": [
+      "collect_configuration",
+      "collect_crypto_metadata",
+      "collect_relationships",
+      "collect_security_events",
+      "discover_assets",
+      "health"
+    ],
+    "read_operations": [
+      "API_GET",
+      "CLI_SHOW",
+      "EXPORT_CONFIG",
+      "GET",
+      "KMIP_QUERY",
+      "LIST",
+      "PCAP_READ",
+      "PKCS11_QUERY",
+      "PROBE_TLS",
+      "QUERY",
+      "READ_CONFIG_FILE",
+      "SHOW",
+      "SHOW_RUNNING",
+      "SIEM_QUERY",
+      "SNMP_GET",
+      "SYSLOG_READ",
+      "TAIL_EVENTS"
+    ],
+    "adapters": 31,
+    "controls_implemented": [
+      "API_GATEWAY",
+      "FIREWALL",
+      "IDS",
+      "IPS",
+      "LOAD_BALANCER",
+      "RATE_LIMIT",
+      "SIEM",
+      "VPN",
+      "WAF"
+    ],
+    "controls_deferred": [
+      "HSM",
+      "KMS",
+      "NETWORK",
+      "PKI"
+    ]
+  },
+  "fleet": [
+    {
+      "adapter": "firewall.fortigate",
+      "control": "FIREWALL",
+      "vendor": "Fortinet",
+      "facts": {
+        "CONFIGURED": 8
+      },
+      "refusals": 17,
+      "redactions": 18,
+      "operations": [
+        "API_GET",
+        "CLI_SHOW"
+      ]
+    },
+    {
+      "adapter": "ids.suricata",
+      "control": "IDS",
+      "vendor": "OISF",
+      "facts": {
+        "CONFIGURED": 1,
+        "OBSERVED": 1
+      },
+      "refusals": 8,
+      "redactions": 8,
+      "operations": [
+        "LIST",
+        "PCAP_READ",
+        "READ_CONFIG_FILE",
+        "TAIL_EVENTS"
+      ]
+    },
+    {
+      "adapter": "ips.suricata_inline",
+      "control": "IPS",
+      "vendor": "OISF",
+      "facts": {
+        "CONFIGURED": 1,
+        "OBSERVED": 2
+      },
+      "refusals": 0,
+      "redactions": 0,
+      "operations": [
+        "LIST",
+        "READ_CONFIG_FILE",
+        "TAIL_EVENTS"
+      ]
+    },
+    {
+      "adapter": "waf.modsecurity",
+      "control": "WAF",
+      "vendor": "OWASP",
+      "facts": {
+        "CONFIGURED": 2,
+        "OBSERVED": 1
+      },
+      "refusals": 0,
+      "redactions": 0,
+      "operations": [
+        "READ_CONFIG_FILE",
+        "TAIL_EVENTS"
+      ]
+    },
+    {
+      "adapter": "load_balancer.f5",
+      "control": "LOAD_BALANCER",
+      "vendor": "F5",
+      "facts": {
+        "CONFIGURED": 2
+      },
+      "refusals": 0,
+      "redactions": 0,
+      "operations": [
+        "API_GET"
+      ]
+    },
+    {
+      "adapter": "api_gateway.kong",
+      "control": "API_GATEWAY",
+      "vendor": "Kong",
+      "facts": {
+        "CONFIGURED": 5
+      },
+      "refusals": 0,
+      "redactions": 5,
+      "operations": [
+        "API_GET"
+      ]
+    },
+    {
+      "adapter": "rate_limit.gateway",
+      "control": "RATE_LIMIT",
+      "vendor": "(the API gateway's own limiter)",
+      "facts": {
+        "CONFIGURED": 2
+      },
+      "refusals": 0,
+      "redactions": 0,
+      "operations": [
+        "API_GET"
+      ]
+    },
+    {
+      "adapter": "vpn.strongswan",
+      "control": "VPN",
+      "vendor": "strongX509 / strongSwan",
+      "facts": {
+        "CONFIGURED": 1
+      },
+      "refusals": 0,
+      "redactions": 0,
+      "operations": [
+        "CLI_SHOW",
+        "READ_CONFIG_FILE",
+        "SHOW"
+      ]
+    },
+    {
+      "adapter": "siem.splunk",
+      "control": "SIEM",
+      "vendor": "Splunk",
+      "facts": {
+        "CONFIGURED": 1,
+        "OBSERVED": 1
+      },
+      "refusals": 0,
+      "redactions": 0,
+      "operations": [
+        "API_GET",
+        "QUERY",
+        "SIEM_QUERY"
+      ]
+    }
+  ],
+  "projection": {
+    "collectors": 9,
+    "assets": 16,
+    "claims": 5,
+    "refusals": 6,
+    "redactions": 5,
+    "evidence": 47,
+    "crypto_rows": 2,
+    "events": 5,
+    "asset_kinds": {
+      "API_GATEWAY": 1,
+      "APPLICATION": 2,
+      "CERTIFICATE": 1,
+      "FIREWALL": 1,
+      "IDS": 1,
+      "IPS": 1,
+      "LOAD_BALANCER": 1,
+      "NETWORK_SEGMENT": 3,
+      "RATE_LIMIT": 2,
+      "SECURITY_APPLIANCE": 1,
+      "VPN_GATEWAY": 1,
+      "WAF": 1
+    },
+    "relation_counts": {
+      "INSPECTS": 1,
+      "PROTECTS": 1,
+      "ROUTES_TO": 2,
+      "USES_CERTIFICATE": 1
+    }
+  },
+  "graph": {
+    "assets": 16,
+    "claims": 5,
+    "asset_kinds": {
+      "API_GATEWAY": 1,
+      "APPLICATION": 2,
+      "CERTIFICATE": 1,
+      "FIREWALL": 1,
+      "IDS": 1,
+      "IPS": 1,
+      "LOAD_BALANCER": 1,
+      "NETWORK_SEGMENT": 3,
+      "RATE_LIMIT": 2,
+      "SECURITY_APPLIANCE": 1,
+      "VPN_GATEWAY": 1,
+      "WAF": 1
+    },
+    "relations": {
+      "INSPECTS": 1,
+      "PROTECTS": 1,
+      "ROUTES_TO": 2,
+      "USES_CERTIFICATE": 1
+    },
+    "refusals": 6,
+    "refusal_codes": [
+      "EDGE_TO_UNDECLARED_ASSET",
+      "NO_LEGAL_RELATION",
+      "RELATIONSHIP_WITHOUT_EVIDENCE",
+      "UNDECLARED_EVENT_KIND",
+      "UNKNOWN_REF",
+      "UNKNOWN_RELATION"
+    ]
+  },
+  "rate_limit": {
+    "summary": {
+      "NOT_CONFIGURED": 1,
+      "WITHIN_LIMIT": 0,
+      "OVER_LIMIT": 1,
+      "POLICY_NOT_ATTACHED": 1,
+      "UNKNOWN": 0
+    },
+    "refusals": [
+      {
+        "code": "OBSERVATION_WITHOUT_EVIDENCE",
+        "subject": "LEGACY-API",
+        "reason": "a request volume with no evidence id is a number nobody can point at; it is refused, not counted"
+      }
+    ],
+    "findings": [
+      {
+        "api": "REPORTS-API",
+        "policy": null,
+        "state": "NOT_CONFIGURED",
+        "expected": null,
+        "observed": {
+          "requests": 40,
+          "window_seconds": 60
+        },
+        "facts": [
+          "OBSERVED"
+        ],
+        "evidence_ids": [
+          "OBS-NET-0002"
+        ],
+        "reason": "REPORTS-API carried traffic and no rate-limit policy is attached to it; this is a decision the bank has not made, not a reading we could not take"
+      },
+      {
+        "api": "PAYMENTS-API",
+        "policy": "LIMIT-PAYMENTS",
+        "state": "OVER_LIMIT",
+        "expected": {
+          "requests": 100.0,
+          "limit": 100.0,
+          "window_seconds": 60.0
+        },
+        "observed": {
+          "requests": 900,
+          "window_seconds": 60
+        },
+        "facts": [
+          "CONFIGURED",
+          "OBSERVED"
+        ],
+        "evidence_ids": [
+          "EVID-RATE_LIMIT-f805cf3be83a",
+          "OBS-NET-0001"
+        ],
+        "reason": "PAYMENTS-API observed 900 requests in 60s against a configured 100/60s (100 expected); the two numbers are kept side by side"
+      },
+      {
+        "api": null,
+        "policy": "LIMIT-ORPHAN",
+        "state": "POLICY_NOT_ATTACHED",
+        "expected": {
+          "limit": 50,
+          "window_seconds": 60
+        },
+        "observed": null,
+        "facts": [
+          "CONFIGURED"
+        ],
+        "evidence_ids": [
+          "EVID-RATE_LIMIT-e08a2683c774"
+        ],
+        "reason": "LIMIT-ORPHAN is enabled, configured for 50/60s, and is attached to no API: the policy exists, the coverage does not"
+      }
+    ]
+  },
+  "correlation": {
+    "path": [
+      "host:APP-PAY-01",
+      "process:java:payments",
+      "api:PAYMENTS-API",
+      "library:OpenSSL",
+      "hsm:HSM-PAY-01"
+    ],
+    "steps": [
+      {
+        "hop": "host",
+        "from": "10.20.3.4",
+        "to": "APP-PAY-01",
+        "fact": "CONFIGURED",
+        "evidence_ids": [
+          "EVID-ASSET-0001"
+        ]
+      },
+      {
+        "hop": "process",
+        "from": "APP-PAY-01",
+        "to": "java:payments",
+        "fact": "RUNTIME_OBSERVED",
+        "evidence_ids": [
+          "EVID-RUNTIME-0001"
+        ]
+      },
+      {
+        "hop": "api",
+        "from": "java:payments",
+        "to": "PAYMENTS-API",
+        "fact": "CONFIGURED",
+        "evidence_ids": [
+          "EVID-API-0001"
+        ]
+      },
+      {
+        "hop": "library",
+        "from": "PAYMENTS-API",
+        "to": "OpenSSL",
+        "fact": "RUNTIME_OBSERVED",
+        "evidence_ids": [
+          "EVID-RUNTIME-0002"
+        ]
+      },
+      {
+        "hop": "hsm",
+        "from": "OpenSSL",
+        "to": "HSM-PAY-01",
+        "fact": "CONFIGURED",
+        "evidence_ids": [
+          "EVID-KEY-0001"
+        ]
+      }
+    ],
+    "crypto": [
+      {
+        "kind": "CRYPTO_LIBRARY",
+        "name": "OpenSSL",
+        "version": "3.0.13",
+        "evidence_ids": [
+          "EVID-RUNTIME-0002"
+        ],
+        "fact": "RUNTIME_OBSERVED"
+      },
+      {
+        "kind": "HSM",
+        "name": "HSM-PAY-01",
+        "key_label": "pin-key-1",
+        "evidence_ids": [
+          "EVID-KEY-0001"
+        ],
+        "fact": "CONFIGURED"
+      }
+    ],
+    "systems": [
+      {
+        "kind": "API",
+        "name": "PAYMENTS-API",
+        "evidence_ids": [
+          "EVID-API-0001"
+        ]
+      },
+      {
+        "kind": "HOST",
+        "name": "APP-PAY-01",
+        "evidence_ids": [
+          "EVID-ASSET-0001"
+        ]
+      }
+    ],
+    "question": "What cryptographic assets and critical systems are involved in this network security event?",
+    "unresolved_examples": [
+      {
+        "hop": "host",
+        "code": "NO_HOST_FOR_ADDRESS",
+        "subject": "10.99.99.99",
+        "reason": "10.99.99.99: no inventory declares this address, so the event lands on an unknown host"
+      },
+      {
+        "hop": "library",
+        "code": "NO_LIBRARY_FOR_API",
+        "subject": "PAYMENTS-API",
+        "reason": "PAYMENTS-API: the API is known and no runtime observation records the crypto library it loaded"
+      }
+    ]
+  },
+  "redactions": [
+    {
+      "path": "password",
+      "reason": "PROHIBITED_FIELD",
+      "field": "password",
+      "section": "rules"
+    },
+    {
+      "path": "comment",
+      "reason": "PEM_PRIVATE_KEY",
+      "field": "comment",
+      "section": "rules"
+    },
+    {
+      "path": "psk",
+      "reason": "PROHIBITED_FIELD",
+      "field": "psk",
+      "section": "vpn"
+    },
+    {
+      "path": "authorization",
+      "reason": "PROHIBITED_FIELD",
+      "field": "authorization",
+      "event": "ALERT"
+    },
+    {
+      "path": "api_secret",
+      "reason": "PROHIBITED_FIELD",
+      "field": "api_secret",
+      "section": "routes"
+    }
+  ],
+  "rows": [
+    {
+      "id": "SC-01",
+      "number": 1,
+      "section": "contract",
+      "question": "the collector contract is six verbs and no write",
+      "probes": [
+        {
+          "probe": "the-contract-has-exactly-six-verbs",
+          "ok": true,
+          "observed": "collect_configuration, collect_crypto_metadata, collect_relationships, collect_security_events, discover_assets, health"
+        },
+        {
+          "probe": "no-adapter-declares-a-write",
+          "ok": true,
+          "observed": "31 adapters, 0 write operations"
+        },
+        {
+          "probe": "every-declared-operation-is-on-the-read-allow-list",
+          "ok": true,
+          "observed": "allow-list of 17 read operations: API_GET, CLI_SHOW, EXPORT_CONFIG, GET, KMIP_QUERY, LIST, \u2026"
+        },
+        {
+          "probe": "a-mutating-adapter-is-refused-at-registration",
+          "ok": true,
+          "observed": "PUSH_POLICY \u2192 NOT_READ_ONLY, before anything connects"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "SC-02",
+      "number": 2,
+      "section": "adapters",
+      "question": "a vendor is a dialect row, not a new architecture",
+      "probes": [
+        {
+          "probe": "every-control-type-is-implemented-or-named-as-deferred",
+          "ok": true,
+          "observed": "9 implemented, 4 deferred to an existing collector"
+        },
+        {
+          "probe": "the-implemented-controls-carry-their-collection-table",
+          "ok": true,
+          "observed": "API_GATEWAY, FIREWALL, IDS, IPS, LOAD_BALANCER, RATE_LIMIT, SIEM, VPN, WAF"
+        },
+        {
+          "probe": "every-dialect-declares-a-read-only-capability-surface",
+          "ok": true,
+          "observed": "31 dialects across 9 control types"
+        },
+        {
+          "probe": "an-unknown-vendor-is-refused-with-the-list-of-dialects",
+          "ok": true,
+          "observed": "UNKNOWN_VENDOR: netgear is not a firewall dialect this integration speaks; add a row to vendors.py (checkpoint, fortigate, gen"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "SC-03",
+      "number": 3,
+      "section": "privacy",
+      "question": "no prohibited value survives a collection cycle",
+      "probes": [
+        {
+          "probe": "the-fixtures-actually-plant-secrets",
+          "ok": true,
+          "observed": "6 of 8 sentinels are really in the recorded feeds (a guard that is never exercised proves nothing)"
+        },
+        {
+          "probe": "no-planted-secret-appears-anywhere-in-the-report",
+          "ok": true,
+          "observed": "6 sentinels planted, 0 survived in 53 KiB of report"
+        },
+        {
+          "probe": "the-redactions-are-recorded-by-field-and-path",
+          "ok": true,
+          "observed": "5 redaction record(s): api_secret, authorization, comment, password, psk"
+        },
+        {
+          "probe": "a-private-key-is-caught-by-shape-under-an-innocent-name",
+          "ok": true,
+          "observed": "PEM, card-number and authorization shapes all \u2192 [REDACTED]"
+        },
+        {
+          "probe": "no-http-body-or-payload-reaches-an-event",
+          "ok": true,
+          "observed": "payload/body fields are dropped before normalization"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "SC-04",
+      "number": 4,
+      "section": "facts",
+      "question": "configured, observed and runtime-observed never merge",
+      "probes": [
+        {
+          "probe": "a-config-row-is-configured-only",
+          "ok": true,
+          "observed": "configuration rows: CONFIGURED"
+        },
+        {
+          "probe": "an-event-is-observed-only",
+          "ok": true,
+          "observed": "event rows: OBSERVED"
+        },
+        {
+          "probe": "a-loaded-library-is-runtime-observed-and-a-config-hop-is-not",
+          "ok": true,
+          "observed": "library RUNTIME_OBSERVED, api CONFIGURED"
+        },
+        {
+          "probe": "three-records-stay-three-buckets",
+          "ok": true,
+          "observed": "CONFIGURED 1 \u00b7 OBSERVED 1 \u00b7 RUNTIME_OBSERVED 1"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "SC-05",
+      "number": 5,
+      "section": "evidence",
+      "question": "every relationship carries the evidence that states it",
+      "probes": [
+        {
+          "probe": "every-asset-crypto-row-event-and-claim-has-an-evidence-id",
+          "ok": true,
+          "observed": "47 evidence record(s) retained"
+        },
+        {
+          "probe": "evidence-ids-are-deterministic-across-two-reads",
+          "ok": true,
+          "observed": "5 claims on the second read, 5 on the first"
+        },
+        {
+          "probe": "a-claim-with-no-evidence-is-refused-by-name",
+          "ok": true,
+          "observed": "INSPECTS INTERNET \u2192 RELATIONSHIP_WITHOUT_EVIDENCE"
+        },
+        {
+          "probe": "a-vendor-cannot-name-a-relation-of-its-own",
+          "ok": true,
+          "observed": "FW-EDGE-01 ALLOWS PAYMENTS-SEG \u2192 UNKNOWN_RELATION (the model has no ALLOWS)"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "SC-06",
+      "number": 6,
+      "section": "digital-twin",
+      "question": "the projection lands in the TechBOM, typed",
+      "probes": [
+        {
+          "probe": "the-graph-builds-with-no-refusals-of-its-own",
+          "ok": true,
+          "observed": "16 assets \u00b7 5 claims \u00b7 {'INSPECTS': 1, 'PROTECTS': 1, 'ROUTES_TO': 2, 'USES_CERTIFICATE': 1}"
+        },
+        {
+          "probe": "the-asset-kinds-are-the-models-own",
+          "ok": true,
+          "observed": "API_GATEWAY 1, APPLICATION 2, CERTIFICATE 1, FIREWALL 1, IDS 1, IPS 1, LOAD_BALANCER 1, NETWORK_SEGMENT 3, RATE_LIMIT 2, SECURITY_APPLIANCE 1, VPN_GATEWAY 1, WAF 1"
+        },
+        {
+          "probe": "a-pairing-no-relation-permits-is-refused-by-name",
+          "ok": true,
+          "observed": "FW-EDGE-01 PRESENTS PAYMENTS-SEG: PRESENTS starts at NETWORK_ENDPOINT, LOAD_BALANCER, API_GATEWAY, WAF, SERVICE_MESH, DATABASE, not FI"
+        },
+        {
+          "probe": "an-edge-to-an-undeclared-node-is-refused-not-created",
+          "ok": true,
+          "observed": "SHADOW-SEG \u2192 UNKNOWN_REF; the node is not invented"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "SC-07",
+      "number": 7,
+      "section": "rate-limit",
+      "question": "an API with traffic and no policy is a finding",
+      "probes": [
+        {
+          "probe": "the-not-configured-api-is-named",
+          "ok": true,
+          "observed": "1 NOT_CONFIGURED: REPORTS-API"
+        },
+        {
+          "probe": "it-carries-the-observation-and-no-configuration",
+          "ok": true,
+          "observed": "facts [OBSERVED], policy None"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "SC-08",
+      "number": 8,
+      "section": "rate-limit",
+      "question": "a breach prints the configured limit beside the observed volume",
+      "probes": [
+        {
+          "probe": "the-over-limit-row-keeps-both-numbers",
+          "ok": true,
+          "observed": "PAYMENTS-API: configured 100/60s, observed 900/60s"
+        },
+        {
+          "probe": "it-carries-both-evidence-classes-and-neither-verdict",
+          "ok": true,
+          "observed": "facts [CONFIGURED, OBSERVED] with two evidence ids"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "SC-09",
+      "number": 9,
+      "section": "rate-limit",
+      "question": "a policy attached to nothing is distinguishable from a limit",
+      "probes": [
+        {
+          "probe": "the-orphan-policy-is-named",
+          "ok": true,
+          "observed": "1 POLICY_NOT_ATTACHED: LIMIT-ORPHAN"
+        },
+        {
+          "probe": "an-observation-with-no-evidence-is-refused-not-counted",
+          "ok": true,
+          "observed": "LEGACY-API \u2192 OBSERVATION_WITHOUT_EVIDENCE, excluded from the counts"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "SC-10",
+      "number": 10,
+      "section": "correlation",
+      "question": "an IDS event reaches the crypto it touches",
+      "probes": [
+        {
+          "probe": "the-path-runs-address\u2192host\u2192process\u2192api\u2192library\u2192hsm",
+          "ok": true,
+          "observed": "APP-PAY-01 \u2192 java:payments \u2192 PAYMENTS-API \u2192 OpenSSL \u2192 HSM-PAY-01"
+        },
+        {
+          "probe": "it-names-the-crypto-assets-and-the-critical-systems",
+          "ok": true,
+          "observed": "CRYPTO_LIBRARY=OpenSSL, HSM=HSM-PAY-01, API=PAYMENTS-API, HOST=APP-PAY-01"
+        },
+        {
+          "probe": "the-question-is-the-one-the-specification-asks",
+          "ok": true,
+          "observed": "What cryptographic assets and critical systems are involved in this network security event?"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "SC-11",
+      "number": 11,
+      "section": "correlation",
+      "question": "a hop nobody collected is a named gap",
+      "probes": [
+        {
+          "probe": "an-address-no-inventory-declares-stops-the-path",
+          "ok": true,
+          "observed": "10.99.99.99: no inventory declares this address, so the event lands on an unknown host"
+        },
+        {
+          "probe": "two-hosts-behind-one-address-is-ambiguous-not-first-row",
+          "ok": true,
+          "observed": "10.20.3.4 \u2192 APP-PAY-01, APP-PAY-02; not decided by row order"
+        },
+        {
+          "probe": "the-path-stops-where-the-runtime-inventory-does",
+          "ok": true,
+          "observed": "PAYMENTS-API: the API is known and no runtime observation records the crypto library it lo"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "SC-12",
+      "number": 12,
+      "section": "normalization",
+      "question": "each control type normalizes what its device reports",
+      "probes": [
+        {
+          "probe": "a-fortigate-accept-becomes-an-allow-and-a-deny-stays-a-deny",
+          "ok": true,
+          "observed": "FW-001=ALLOW tcp/HTTPS, FW-002=DENY tcp/SSH, FW-003=ALLOW tcp/HTTPS"
+        },
+        {
+          "probe": "a-vip-flattens-to-its-pool-members-with-both-evidence-ids",
+          "ok": true,
+          "observed": "10.30.2.11:8443, 10.30.2.12:8443"
+        },
+        {
+          "probe": "an-ips-block-is-a-block-and-an-alert-is-not",
+          "ok": true,
+          "observed": "2 events, 1 block(s)"
+        },
+        {
+          "probe": "the-gateway-reports-mtls-and-plaintext-routes-without-a-secret",
+          "ok": true,
+          "observed": "mtls ['payments'], plaintext ['reports'], api secret redacted"
+        },
+        {
+          "probe": "a-tunnel-below-the-crypto-floor-is-reported-not-fixed",
+          "ok": true,
+          "observed": "hq-dr:IKEv1+legacy-algorithm+dh-group-1024+no-pfs"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "SC-13",
+      "number": 13,
+      "section": "siem",
+      "question": "an event keeps the reference that makes it auditable",
+      "probes": [
+        {
+          "probe": "a-notable-carries-its-incident-and-search-ids",
+          "ok": true,
+          "observed": "INC-77 / corr-17 / sid_1"
+        },
+        {
+          "probe": "the-siem-collector-declares-that-it-writes-nothing-back",
+          "ok": true,
+          "observed": "write_to_the_siem, suppress_a_correlation, run_a_response_action, read_raw_log_content"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "SC-14",
+      "number": 14,
+      "section": "fleet",
+      "question": "nine controls, one contract, one report",
+      "probes": [
+        {
+          "probe": "nine-collectors-answer-the-same-six-questions",
+          "ok": true,
+          "observed": "9 collectors \u00b7 API_GATEWAY, FIREWALL, IDS, IPS, LOAD_BALANCER, RATE_LIMIT, SIEM, VPN, WAF"
+        },
+        {
+          "probe": "every-device-answered-and-each-says-what-it-read",
+          "ok": true,
+          "observed": "9 health records, all reachable, all declaring read operations"
+        },
+        {
+          "probe": "the-refusals-are-data-and-the-run-still-succeeds",
+          "ok": true,
+          "observed": "6 refusal(s), 0 exceptions raised"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    }
+  ],
+  "limits": [
+    "the feeds are recorded fixtures, not live devices: the read-only client for each dialect is described in vendors.py and not implemented here",
+    "HSM, KMS, PKI and the passive network path are named as deferred: they already have read-only collectors elsewhere in the platform and this layer correlates them rather than re-collecting them",
+    "correlation resolves only as far as the inventories reach; an unresolved hop is reported, and it stays unresolved until the platform collects that layer",
+    "nothing is persisted: findings and evidence are documents, and a table for them is a separate guide that must not become a second source of truth"
+  ]
+}
