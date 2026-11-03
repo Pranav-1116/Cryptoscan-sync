@@ -792,15 +792,24 @@ def deployment_state(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]:
             states["INSTALLED"] = True
             evidence["INSTALLED"].append(
                 f"{bom['by_key'][claim['from_key']]['name']} ships it")
+        if relation == "INSTALLED_IN" and claim["from_key"] == key:
+            # a component says where it is installed; the edge starts at the package
+            states["INSTALLED"] = True
+            evidence["INSTALLED"].append(
+                f"installed in {bom['by_key'][claim['to_key']]['name']}")
         if relation == "LOADS" and claim["to_key"] == key:
             states["LOADED"] = True
             evidence["LOADED"].append(f"{bom['by_key'][claim['from_key']]['name']} loads it")
     # a deployment is reached by walking up from the component: the image that ships it is
     # what a deployment names, and a component installed nowhere cannot be deployed
     reached = _walk(bom, key, reverse=True)
-    if reached["levels"]["deployment"] and states["INSTALLED"]:
+    outward = _walk(bom, key)
+    if (reached["levels"]["deployment"] or outward["levels"]["deployment"]) \
+            and states["INSTALLED"]:
         states["DEPLOYED"] = True
-        evidence["DEPLOYED"] = [row_["name"] for row_ in reached["levels"]["deployment"]]
+        evidence["DEPLOYED"] = sorted({row_["name"]
+                                       for row_ in [*reached["levels"]["deployment"],
+                                                    *outward["levels"]["deployment"]]})
     if reached["levels"]["process"]:
         states["RUNNING"] = True
         evidence["RUNNING"] = [row_["name"] for row_ in reached["levels"]["process"]]
@@ -859,6 +868,10 @@ def component_states(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]:
             if relation == "LOADS":
                 states["LOADED"] = True
                 evidence["LOADED"].append(source["name"])
+        if claim["from_key"] == key and relation == "INSTALLED_IN":
+            states["INSTALLED"] = True
+            evidence["INSTALLED"].append(
+                f"installed in {bom['by_key'][claim['to_key']]['name']}")
         touches = claim["from_key"] == key or claim["to_key"] == key
         if touches and claim["confidence"] == tb.CONFIGURED and relation != "LISTS":
             states["CONFIGURED"] = True
@@ -1468,4 +1481,396 @@ def sbom_graph(bom: Mapping[str, Any]) -> dict[str, Any]:
                       "one store"),
         "rule": ("the SBOM is a projection of the canonical estate: a second database that "
                  "agrees on the day it is loaded is a second truth waiting to disagree"),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Identity, vendors, blast radius and time — the questions under the chain
+# --------------------------------------------------------------------------- #
+
+#: the canonical-id prefix per asset kind. A canonical id names the *asset*, not the
+#: observation: five records from five systems resolve to one id, or to none at all.
+CANONICAL_PREFIX: dict[str, str] = {
+    "BUSINESS_SYSTEM": "SYS", "APPLICATION": "APP", "SERVICE": "SVC",
+    "PACKAGE": "PKG", "CRYPTO_LIBRARY": "LIB", "ARTIFACT": "ART", "IMAGE": "IMG",
+    "REPOSITORY": "REPO", "RELEASE": "REL", "DEPLOYMENT": "DEP", "PROCESS": "PROC",
+    "HOST": "HOST", "PHYSICAL_SERVER": "SRV", "VENDOR": "VEN",
+    "VENDOR_PRODUCT": "PROD", "CERTIFICATE": "CERT", "CRYPTO_ASSET": "CRY",
+}
+
+#: what an identity may be resolved through, strongest first. A name is not on the list.
+IDENTITY_ANCHORS: tuple[str, ...] = ("digest", "image_digest", "repository", "namespace")
+
+
+def canonical_assets(bom: Mapping[str, Any]) -> dict[str, Any]:
+    """One canonical id per asset, resolved through evidence and never through a name.
+
+    ``payments-api``, ``payments_api``, ``payment-service`` and ``registry/payment-api`` are
+    four strings. Whether they are one asset is a question about the *evidence*: the same
+    artifact digest, the same image digest, the same repository or the same namespace. This
+    unions the records that share an anchor and gives each union one id, so a container
+    record, a runtime record, a Kubernetes record and an SBOM record can be counted once.
+
+    A record with no anchor is not merged with anything — it keeps its own id and is
+    reported as ``by: "name"``, because an asset that only a string identifies is a
+    candidate for review, not an identity.
+    """
+    parent: dict[str, str] = {}
+
+    def find(key: str) -> str:
+        parent.setdefault(key, key)
+        while parent[key] != key:
+            parent[key] = parent[parent[key]]
+            key = parent[key]
+        return key
+
+    def union(left: str, right: str) -> None:
+        left, right = find(left), find(right)
+        if left != right:
+            parent[right] = left
+
+    anchors_by_key: dict[str, list[str]] = {}
+    owner: dict[str, str] = {}
+    for row in bom["assets"]:
+        key = row["key"]
+        find(key)
+        anchors = [f"{kind}:{value}" for kind, value in _anchors(bom, key)]
+        anchors_by_key[key] = sorted(set(anchors))
+        for anchor in anchors_by_key[key]:
+            if anchor in owner:
+                union(owner[anchor], key)
+            else:
+                owner[anchor] = key
+
+    groups: dict[str, dict[str, Any]] = {}
+    for row in bom["assets"]:
+        root = find(row["key"])
+        group = groups.setdefault(root, {"records": [], "anchors": set()})
+        group["records"].append(_brief(row))
+        group["anchors"].update(anchors_by_key[row["key"]])
+
+    rows: list[dict[str, Any]] = []
+    for root, group in groups.items():
+        anchors = sorted(group["anchors"])
+        kinds = [entry["kind"] for entry in group["records"]]
+        prefix = CANONICAL_PREFIX.get(kinds[0], "ASSET")
+        if anchors:
+            stamp = hashlib.sha256("|".join(anchors).encode("utf-8")).hexdigest()[:8]
+            by = "evidence"
+        else:
+            stamp = hashlib.sha256(root.encode("utf-8")).hexdigest()[:8]
+            by = "name"
+        rows.append({
+            "id": f"{prefix}-{stamp}",
+            "by": by,
+            "anchors": anchors,
+            "kinds": sorted(set(kinds)),
+            "records": sorted(group["records"], key=lambda entry: (entry["kind"],
+                                                                   entry["name"])),
+        })
+    rows.sort(key=lambda entry: (entry["by"] != "evidence", entry["id"]))
+    merged = [entry for entry in rows if len(entry["records"]) > 1]
+    weak = [entry for entry in rows if entry["by"] == "name"]
+    return {
+        "canonical": rows,
+        "counts": {"canonical": len(rows), "records": len(bom["assets"]),
+                   "merged": len(merged), "by_evidence": len(rows) - len(weak),
+                   "by_name_only": len(weak)},
+        "statement": (f"{len(bom['assets'])} record(s) resolve to {len(rows)} canonical "
+                      f"asset(s); {len(merged)} carry more than one record; {len(weak)} are "
+                      "identified by a name alone and are not merged with anything"),
+        "rule": (f"identity is one of {', '.join(IDENTITY_ANCHORS)}; a name is a label, and "
+                 "a label merge attributes one team's vulnerability to another"),
+        "not_proven": ["that two records with no shared anchor are different assets: they "
+                       "may be one asset nobody recorded an anchor for, and that is a gap "
+                       "in the collection rather than a fact about the estate"],
+    }
+
+
+def vendor_chain(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]:
+    """``component → product → vendor`` and then back out to where it is deployed (sbom 15).
+
+    The vendor question is not "who sells this". It is *which product, at which version, is
+    inside which of my deployments*, so a vendor advisory can be answered with a list of
+    systems instead of a list of package names.
+    """
+    key = _resolve_one(bom, query)
+    row = bom["by_key"][key]
+    products = [bom["by_key"][claim["to_key"]] for claim in bom["claims"]
+                if claim["relation"] == "PRODUCT_OF" and claim["from_key"] == key]
+    vendor: dict[str, Any] | None = None
+    product_record: dict[str, Any] | None = None
+    if products:
+        product_record = products[0]
+        sellers = [bom["by_key"][claim["to_key"]] for claim in bom["claims"]
+                   if claim["relation"] == "SUPPLIED_BY"
+                   and claim["from_key"] == product_record["key"]]
+        if sellers:
+            vendor = sellers[0]
+    reached = _walk(bom, key, reverse=True, max_depth=12)
+    applications = sorted({entry["name"] for entry in reached["levels"]["application"]})
+    deployments = sorted({entry["name"] for entry in reached["levels"]["deployment"]})
+    systems = sorted({entry["name"] for entry in reached["levels"]["system"]})
+    attributes = (product_record["attributes"] or {}) if product_record else {}
+    return {
+        "query": str(query), "component": row["name"],
+        "product": product_record["name"] if product_record else None,
+        "product_version": attributes.get("version") or (product_record or {}).get("version"),
+        "vendor": vendor["name"] if vendor else None,
+        "vendor_lifecycle": (vendor["attributes"] or {}).get("lifecycle") if vendor else None,
+        "applications": applications, "deployments": deployments, "systems": systems,
+        "statement": (f"{row['name']} → {product_record['name'] if product_record else 'no product record'}"
+                      + (f" → {vendor['name']}" if vendor else
+                         " (no vendor records it)" if product_record else "")
+                      + f"; deployed in {len(deployments)} deployment(s) across "
+                      f"{len(applications)} application(s)"),
+        "rule": ("a vendor is reached through the product that supplied the component, and a "
+                 "product with no vendor is a gap rather than a link to invent"),
+        "not_proven": ["that the vendor's published version is the one installed: the "
+                       "vendor portal states a product version and the SBOM states a "
+                       "package version, and they are two rows"],
+    }
+
+
+def remediation_blast_radius(bom: Mapping[str, Any], *, query: Any,
+                             target_version: Any = None) -> dict[str, Any]:
+    """What upgrading one component actually changes, including the crypto it touches (26).
+
+    An upgrade is not a package operation when the package is a crypto library: the
+    algorithms it implements are behind a key in an HSM, a certificate on a listener and a
+    TLS endpoint somebody negotiated with. This walks from the component to the algorithms
+    it reaches and then out to the hardware, the certificates and the endpoints, because
+    *"upgrade OpenSSL → 7 applications"* is half a change record.
+    """
+    key = _resolve_one(bom, query)
+    row = bom["by_key"][key]
+    plan = remediation_plan(bom, query=query, target_version=target_version)
+    algorithms_keys = _algorithm_neighbourhood(bom, key)
+    algorithms = sorted(bom["by_key"][item]["name"] for item in algorithms_keys)
+    hardware: set[str] = set()
+    certificates: set[str] = set()
+    endpoints: set[str] = set()
+    keys: set[str] = set()
+    # the algorithms are what a crypto upgrade changes, so the reverse walk starts there and
+    # follows every relation, not only the supply ones: a key is held by an HSM, a
+    # certificate is signed with an algorithm, and an endpoint negotiates a suite
+    buckets = {"HSM": hardware, "TPM": hardware, "KMS": hardware, "CPU": hardware,
+               "CERTIFICATE": certificates, "NETWORK_ENDPOINT": endpoints,
+               "SERVICE": endpoints, "KEY": keys}
+    seen: set[str] = set(algorithms_keys) | {key}
+    frontier: list[tuple[str, int]] = [(item, 0) for item in algorithms_keys]
+    while frontier:
+        current, depth = frontier.pop(0)
+        if depth >= 5:
+            continue
+        for claim in bom["claims"]:
+            if claim["to_key"] != current:
+                continue
+            neighbour = claim["from_key"]
+            if neighbour in seen:
+                continue
+            seen.add(neighbour)
+            other = bom["by_key"][neighbour]
+            bucket = buckets.get(other["kind"])
+            if bucket is not None:
+                bucket.add(other["name"])
+            frontier.append((neighbour, depth + 1))
+    regression: list[str] = []
+    if hardware:
+        regression.append("crypto module re-validation on " + ", ".join(sorted(hardware)))
+    if certificates:
+        regression.append("certificate re-issue on " + ", ".join(sorted(certificates)))
+    if endpoints:
+        regression.append("TLS renegotiation against " + ", ".join(sorted(endpoints)))
+    regression.append("payment signature regression")
+    affected = {
+        "applications": len(plan["applications"]), "systems": len(plan["systems"]),
+        "images": len(plan["images"]), "processes": len(plan["processes"]),
+        "algorithms": len(algorithms), "hardware": len(hardware),
+        "certificates": len(certificates), "endpoints": len(endpoints),
+    }
+    return {
+        "query": str(query), "component": row["name"],
+        "from_version": plan["from_version"], "to_version": plan["to_version"],
+        "algorithms": algorithms, "hardware": sorted(hardware),
+        "certificates": sorted(certificates), "endpoints": sorted(endpoints),
+        "keys": sorted(keys), "applications": plan["applications"],
+        "systems": plan["systems"], "images": plan["images"],
+        "processes": plan["processes"], "affected": affected,
+        "regression": regression,
+        "statement": (f"upgrade {row['name']}"
+                      + (f" {plan['from_version']} → {plan['to_version']}"
+                         if plan["to_version"] else "")
+                      + f": {affected['applications']} application(s), "
+                      f"{affected['systems']} business system(s), {affected['images']} "
+                      f"image(s), {affected['processes']} process(es), "
+                      f"{affected['algorithms']} algorithm(s), {affected['hardware']} "
+                      f"hardware, {affected['certificates']} certificate(s), "
+                      f"{affected['endpoints']} endpoint(s)"),
+        "rule": ("a package upgrade of a crypto library is a crypto change: the blast radius "
+                 "is the walk, and the regression list is derived from it rather than typed "
+                 "in by the reviewer"),
+    }
+
+
+SUPPLY_EDGE_FACTS: tuple[str, ...] = ("basis", "confidence", "scope", "dependency_kind")
+
+
+def supply_lifecycle(bom: Mapping[str, Any], previous: Mapping[str, Any] | None = None,
+                     *, detected_at: Any = None) -> dict[str, Any]:
+    """Every supply edge with a life, and every superseded edge kept (sbom 23).
+
+    A dependency that disappears is not a dependency that never existed. This compares two
+    projections edge by edge and returns ``FIRST_SEEN``, ``ACTIVE``, ``CHANGED``,
+    ``SUPERSEDED``, ``REMOVED`` and ``UNKNOWN`` — and a ``SUPERSEDED`` row keeps the row that
+    replaced it, so "OpenSSL 3.0.11" is still in the record after the upgrade.
+    """
+    def edges(document: Mapping[str, Any]) -> dict[tuple[str, str, str], dict[str, Any]]:
+        found: dict[tuple[str, str, str], dict[str, Any]] = {}
+        for claim in document["claims"]:
+            if claim["relation"] not in SUPPLY_RELATIONS:
+                continue
+            facts = (claim.get("facts") or {})
+            signature = tuple(str(facts.get(name) or "") for name in SUPPLY_EDGE_FACTS)
+            found[(claim["from"], claim["relation"], claim["to"])] = {
+                "source": claim["from"], "relation": claim["relation"],
+                "target": claim["to"], "class": claim["confidence"],
+                "basis": claim["basis"],
+                "evidence_id": (claim.get("evidence_ids") or [None])[0],
+                "first_seen": claim.get("first_seen"),
+                "last_seen": claim.get("last_seen"),
+                "signature": signature,
+            }
+        return found
+
+    current = edges(bom)
+    before = edges(previous) if previous is not None else {}
+    rows: list[dict[str, Any]] = []
+    superseded: list[dict[str, Any]] = []
+    replaced: set[tuple[str, str, str]] = set()
+    for key, edge in current.items():
+        row = dict(edge)
+        row["state"] = None
+        if previous is not None and key in before:
+            row["state"] = ("ACTIVE" if before[key]["signature"] == edge["signature"]
+                            else "CHANGED")
+            row["previous_class"] = before[key]["class"]
+        elif previous is not None:
+            predecessors = [past for past_key, past in before.items()
+                            if past_key[0] == key[0] and past_key[1] == key[1]
+                            and past_key[2] != key[2]]
+            row["state"] = "FIRST_SEEN"
+            for past in predecessors:
+                replaced.add((past["source"], past["relation"], past["target"]))
+                superseded.append({**past, "state": "SUPERSEDED",
+                                   "superseded_by": f"{edge['source']} {edge['relation']} "
+                                                    f"{edge['target']}"})
+        else:
+            row["state"] = "ACTIVE"
+        if not row["first_seen"] and not row["last_seen"]:
+            row["state"] = "UNKNOWN" if previous is None else row["state"]
+        rows.append(row)
+    removed: list[dict[str, Any]] = []
+    for key, edge in before.items():
+        if key in current or key in replaced:
+            continue
+        removed.append({**edge, "state": "REMOVED"})
+    rows.extend(superseded)
+    rows.extend(removed)
+    retained = [row for row in rows if row["state"] in ("SUPERSEDED", "REMOVED")]
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row["state"]] = counts.get(row["state"], 0) + 1
+    return {
+        "rows": rows, "retained": retained, "counts": counts,
+        "detected_at": detected_at,
+        "statement": (f"{len(rows)} supply edge(s): "
+                      + ", ".join(f"{state} {counts[state]}" for state in
+                                  ("FIRST_SEEN", "ACTIVE", "CHANGED", "SUPERSEDED",
+                                   "REMOVED", "UNKNOWN") if state in counts)
+                      + (f"; {len(retained)} superseded or removed edge(s) kept" if retained
+                         else "")),
+        "rule": ("a dependency has a life: a superseded edge keeps the row that replaced "
+                 "it, because a deletion here is an erasure of history"),
+    }
+
+
+def evidence_profile(bom: Mapping[str, Any]) -> dict[str, Any]:
+    """Every crypto dependency with its evidence type, counted by type (sbom 8).
+
+    The failure this prevents is a report that says *"AES-256-GCM"* with no way to tell a
+    datasheet from a packet capture. Each row carries one of the eight evidence types and
+    the id behind it, and the counts are printed rather than a single confidence number.
+    """
+    crypto_kinds = ("ALGORITHM", "CRYPTO_ASSET", "CRYPTO_LIBRARY", "CRYPTO_CAPABILITY",
+                    "CRYPTO_OPERATION", "CIPHER_SUITE")
+    rows: list[dict[str, Any]] = []
+    counts: dict[str, int] = {}
+    for claim in bom["claims"]:
+        subject = bom["by_key"][claim["from_key"]]
+        target = bom["by_key"][claim["to_key"]]
+        if subject["kind"] not in crypto_kinds and target["kind"] not in crypto_kinds:
+            continue
+        evidence_type = CLASS_TO_EVIDENCE.get(claim["confidence"], "UNKNOWN")
+        counts[evidence_type] = counts.get(evidence_type, 0) + 1
+        rows.append({
+            "source": subject["name"], "relation": claim["relation"],
+            "target": target["name"], "class": claim["confidence"],
+            "evidence_type": evidence_type,
+            "evidence_id": (claim.get("evidence_ids") or [None])[0],
+            "basis": claim["basis"],
+        })
+    proven = [row for row in rows if row["evidence_type"] in PROVEN_EVIDENCE]
+    unproven = [row for row in rows if row["evidence_type"] not in PROVEN_EVIDENCE]
+    return {
+        "rows": rows, "counts": dict(sorted(counts.items())),
+        "proven": len(proven), "unproven": len(unproven),
+        "statement": (f"{len(rows)} crypto dependency edge(s) across "
+                      f"{len(counts)} evidence type(s); {len(proven)} proven by a runtime or "
+                      f"network observation, {len(unproven)} capability, static, configured "
+                      "or declared"),
+        "rule": ("every crypto dependency carries its evidence type: a capability, a static "
+                 "hit, a configured policy and a wire observation are four different facts "
+                 "and are never summed into one number"),
+    }
+
+
+def twin_projection(bom: Mapping[str, Any], twin: Mapping[str, Any] | None = None
+                    ) -> dict[str, Any]:
+    """The SBOM graph as a projection of the canonical estate and the twin (sbom 19).
+
+    The architecture the review asks for is *evidence → canonical asset identity → digital
+    twin → SBOM projection*. This states the projection and, when a twin is handed over,
+    resolves every SBOM node in it — what the twin does not hold is reported as a gap rather
+    than quietly added to a second store.
+    """
+    twin_nodes = {}
+    if isinstance(twin, Mapping):
+        for node in twin.get("nodes") or []:
+            if isinstance(node, Mapping):
+                twin_nodes[str(node.get("id") or node.get("name"))] = node
+    unmatched: list[str] = []
+    matched = 0
+    if twin_nodes:
+        names = {str(name) for name in twin_nodes}
+        for row in bom["assets"]:
+            if row["key"] in names or row["name"] in names:
+                matched += 1
+            else:
+                unmatched.append(row["name"])
+    return {
+        "projection": "SBOM",
+        "canonical": bom.get("source_of_truth"),
+        "derived_from": bom.get("derived_from"),
+        "second_store": False,
+        "nodes": len(bom["assets"]), "edges": len(bom["claims"]),
+        "twin_nodes": len(twin_nodes), "matched": matched,
+        "unmatched": unmatched[:20], "unmatched_count": len(unmatched),
+        "statement": (f"{len(bom['assets'])} SBOM node(s) projected from "
+                      f"{bom.get('source_of_truth') or 'an unnamed estate'}"
+                      + (f"; {matched} resolve in the twin and {len(unmatched)} do not"
+                         if twin_nodes else "; no twin was supplied to check against")),
+        "rule": ("the SBOM is a projection of the canonical estate and the twin: a second "
+                 "database that agrees on the day it is loaded is a second truth waiting to "
+                 "disagree"),
     }

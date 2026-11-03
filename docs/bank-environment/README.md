@@ -627,6 +627,37 @@
 > 4 carry all twelve, and the shortfall is published as `collector 25/63`, `observed_at
 > 32/63`, `first_seen 18/63`.
 
+> [The SBOM chain, from the store](176-sbom-chain-store.md)
+> (**17 pass · 0 partial · 0 fail**, 46 probes) is the same twelve levels built from the
+> *other* end: a gathered inventory goes into `cbom/sbom_supply.py` and the chain has to
+> come out, because a chain that only exists in a harness is a demonstration. The adapter
+> maps each stored section to the weakest class its provenance supports — a manifest is not
+> a filesystem, a deployment controller's answer is not a syscall — and a row that asks for
+> a probe class without the collector's own evidence reference is refused
+> (`PROBE_BASIS_WITHOUT_EVIDENCE`) rather than promoted. **A row with no identity is
+> skipped, by name**: the fixture's seven skips are one nameless software row, one row
+> asking for `runtime-probe` with nothing behind it, a dependency naming `zlib` that nobody
+> recorded, a tag-only artifact (`ARTIFACT_WITHOUT_DIGEST`), a layer shipping a package the
+> inventory does not hold, an SBOM listing one, and a process loading `libcrypto.so.3` that
+> no row declares. Nothing is joined by name: a system named by two applications is **one**
+> asset, a process is run by a **pod** and not by a container, and a suite uses a
+> `CRYPTO_ASSET` that carries its algorithm. On the projection this produces: provenance
+> `payments-api-4.2.1.jar → repo → a81f92c → BUILD-18291 → SBOM-18291`, ownership
+> `Payments API → release → artifact → SBOM → OpenSSL`, `openssl-dev` installed in
+> `reporting-api:1.0.0` and **deployed nowhere**, 3.0.13 declared against 3.0.11 loaded,
+> `payments-sdk → http-core → openssl` with the path that makes it transitive, and the
+> vendor behind it (`OpenSSL 3.x → OpenSSL Project`). Four questions underneath the chain
+> are answered on the same graph: **canonical ids** (`44 records → 26 canonical assets; 2
+> carry more than one record; 23 are name-only and are never merged`), **blast radius**
+> (`upgrade OpenSSL → 1 application, 1 business system, 2 images, 3 algorithms, 1 HSM, 1
+> certificate, 1 endpoint`, with the regression list derived rather than typed in),
+> **lifecycle** (`FIRST_SEEN 3, ACTIVE 45, SUPERSEDED 1` — the superseded SDK→OpenSSL edge
+> keeps the row that replaced it) and **evidence types** (`19 crypto edges across 4 types,
+> 3 proven by an observation, 16 capability/static/configured`). Two defects fell out of
+> building it: `nbom_graph.part()` flattened a nested part's assets and **dropped its
+> claims**, and `deployment_state` only read `INSTALLED_IN` from the image side, so a
+> package that says where it is installed was reported as installed nowhere.
+
 > [The SBOM dependency chain, twenty-eight points](175-sbom-dependency.md)
 > (**28 pass · 0 partial · 0 fail**, 79 probes) builds the half of the chain that the
 > review draws *before* the software: business system → application → source repository →

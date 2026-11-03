@@ -1,0 +1,2606 @@
+{
+  "schema": "cryptoscan.sbom-supply-guide/1",
+  "generated_at": "2026-11-03T08:19:43Z",
+  "estate": {
+    "id": null,
+    "assets": 44,
+    "claims": 52,
+    "skipped": 7,
+    "refusals": 0
+  },
+  "counts": {
+    "PASS": 17,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 46,
+  "points_present": 17,
+  "statement": "17 of 17 points of the chain are present in a projection built from the store, across 46 probes; 44 assets, 52 claims, 7 row(s) skipped",
+  "levels": {
+    "system": 1,
+    "application": 2,
+    "repository": 1,
+    "commit": 1,
+    "build": 1,
+    "artifact": 4,
+    "image": 3,
+    "deployment": 4,
+    "pod": 2,
+    "process": 1,
+    "component": 8,
+    "capability": 7
+  },
+  "placed": {
+    "applications": 2,
+    "artifacts": 2,
+    "builds": 1,
+    "certificates": 2,
+    "commits": 1,
+    "crypto": 6,
+    "dependencies": 2,
+    "deployments": 2,
+    "endpoints": 2,
+    "hardware": 2,
+    "images": 2,
+    "layers": 1,
+    "processes": 2,
+    "releases": 1,
+    "repositories": 1,
+    "sboms": 1,
+    "software": 8,
+    "vendors": 2
+  },
+  "skipped": [
+    {
+      "kind": "COMPONENT",
+      "subject": "(none)",
+      "code": null,
+      "reason": "a software row with no coordinate or no evidence reference cannot be placed as a component"
+    },
+    {
+      "kind": "software",
+      "subject": "pkg:generic/sneaky@1.0.0",
+      "code": "PROBE_BASIS_WITHOUT_EVIDENCE",
+      "reason": "it asks for 'runtime-probe', which only a probe may claim, and hands over no collector evidence reference: the class would be this adapter's, not the collector's"
+    },
+    {
+      "kind": "DEPENDENCY",
+      "subject": "pkg:generic/openssl \u2192 pkg:generic/zlib@1.3",
+      "code": null,
+      "reason": "one end of the edge is not a component this inventory holds; an edge to an undeclared node is refused rather than invented"
+    },
+    {
+      "kind": "ARTIFACT",
+      "subject": "payments-api:latest",
+      "code": "ARTIFACT_WITHOUT_DIGEST",
+      "reason": "payments-api:latest: an artifact dependency binds to a digest, not a name; (none) is not one"
+    },
+    {
+      "kind": "LAYER",
+      "subject": "layer:ubuntu-22.04-base ships pkg:generic/not-in-inventory",
+      "code": null,
+      "reason": "the layer names a package this inventory does not hold"
+    },
+    {
+      "kind": "SBOM",
+      "subject": "SBOM-18291 lists pkg:generic/never-installed@9.9.9",
+      "code": null,
+      "reason": "the SBOM lists a component this inventory does not hold; the list is not a place to invent a package"
+    },
+    {
+      "kind": "PROCESS",
+      "subject": "payments-api[1821] loads libcrypto.so.3",
+      "code": null,
+      "reason": "the process loads something this inventory does not hold"
+    }
+  ],
+  "rows": [
+    {
+      "id": "STORE-01",
+      "number": 1,
+      "phase": "store",
+      "question": "a gathered inventory becomes the twelve levels, not a list of packages",
+      "probes": [
+        {
+          "probe": "every-level-present",
+          "ok": true,
+          "observed": "system 1, application 2, repository 1, commit 1, build 1, artifact 4, image 3, deployment 4, pod 2, process 1, component 8, capability 7"
+        },
+        {
+          "probe": "the-two-branches-are-both-there",
+          "ok": true,
+          "observed": "31 kind(s) in the projection"
+        },
+        {
+          "probe": "the-store-builds-through-techbom",
+          "ok": true,
+          "observed": "source_of_truth CANONICAL_ESTATE, projection True"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-02",
+      "number": 2,
+      "phase": "store",
+      "question": "a row the store cannot place is reported with a reason, never repaired",
+      "probes": [
+        {
+          "probe": "the-nameless-software-row-is-skipped",
+          "ok": true,
+          "observed": "1 software row(s) skipped"
+        },
+        {
+          "probe": "a-probe-class-needs-the-collectors-evidence",
+          "ok": true,
+          "observed": "['ARTIFACT_WITHOUT_DIGEST', 'PROBE_BASIS_WITHOUT_EVIDENCE']"
+        },
+        {
+          "probe": "nothing-was-invented-to-fill-the-gap",
+          "ok": true,
+          "observed": "7 row(s) skipped, 44 asset(s) placed"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-03",
+      "number": 3,
+      "phase": "store",
+      "question": "an edge that names a node the inventory does not hold is refused",
+      "probes": [
+        {
+          "probe": "the-unknown-dependency-target-is-skipped",
+          "ok": true,
+          "observed": "one end of the edge is not a component this inventory holds; an edge to an undeclared node is refused rather than invented"
+        },
+        {
+          "probe": "the-layer-does-not-invent-its-packages",
+          "ok": true,
+          "observed": "the layer names a package this inventory does not hold"
+        },
+        {
+          "probe": "the-sbom-does-not-invent-its-components",
+          "ok": true,
+          "observed": "the SBOM lists a component this inventory does not hold; the list is not a place to invent a package"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-04",
+      "number": 4,
+      "phase": "provenance",
+      "question": "the chain says which revision built the SBOM, from stored rows",
+      "probes": [
+        {
+          "probe": "repository-commit-build-sbom",
+          "ok": true,
+          "observed": "payments-api-4.2.1.jar: git.bank.internal/payments/payments-api \u2192 a81f92c \u2192 BUILD-18291 \u2192 SBOM-18291"
+        },
+        {
+          "probe": "the-artifact-is-bound-to-a-digest",
+          "ok": true,
+          "observed": "digest sha256:abc123def4567890abc123def4567890"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-05",
+      "number": 5,
+      "phase": "provenance",
+      "question": "a stored artifact with only a tag is refused rather than anchored",
+      "probes": [
+        {
+          "probe": "the-tag-only-artifact-is-refused",
+          "ok": true,
+          "observed": "payments-api:latest: an artifact dependency binds to a digest, not a name; (none) is not one"
+        },
+        {
+          "probe": "the-tag-is-not-in-the-projection",
+          "ok": true,
+          "observed": "payments-api:latest is absent"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-06",
+      "number": 6,
+      "phase": "ownership",
+      "question": "the component names the application that owns it, through a release",
+      "probes": [
+        {
+          "probe": "the-owner-is-payments-api",
+          "ok": true,
+          "observed": "pkg:generic/openssl: owned by Payments API"
+        },
+        {
+          "probe": "the-path-goes-through-a-release",
+          "ok": true,
+          "observed": "Payments API RELEASED_AS payments-api 4.2.1 \u2192 payments-api 4.2.1 BUNDLES payments-api-4.2.1.jar \u2192 payments-api-4.2.1.jar DESCRIBED_BY SBOM-18291 \u2192 SBOM-18291 LISTS pkg:generic/openssl"
+        },
+        {
+          "probe": "a-component-nobody-owns-says-so",
+          "ok": true,
+          "observed": "pkg:generic/legacy-agent@0.4.2: no application owns it in this projection"
+        },
+        {
+          "probe": "a-component-the-sbom-lists-is-owned-through-it",
+          "ok": true,
+          "observed": "pkg:generic/ghost@0.0.9: owned by Payments API"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-07",
+      "number": 7,
+      "phase": "deployment",
+      "question": "the image reaches its deployment, pod, node and host from the store",
+      "probes": [
+        {
+          "probe": "the-kubernetes-walk-has-its-kinds",
+          "ok": true,
+          "observed": "payments-api:4.2.1: cluster prod-cluster \u2192 container payments-api-ctr \u2192 deployment payments-api-deploy \u2192 kubernetes_node node-03 \u2192 namespace payments \u2192 physical_server srv-k8s-03 \u2192 pod payments-api-7d9f4c-x2m8p \u2192 process payments-api[1821] \u2192 replica_set payments-api-7d9f4c"
+        },
+        {
+          "probe": "the-host-walk-reaches-the-physical-server",
+          "ok": true,
+          "observed": "payments-api-7d9f4c-x2m8p: 1 process(es), 6 component(s), 2 host(s), 0 hardware component(s)"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-08",
+      "number": 8,
+      "phase": "runtime",
+      "question": "installed, loaded and used stay three facts after the store mapping",
+      "probes": [
+        {
+          "probe": "the-component-is-listed-installed-and-loaded",
+          "ok": true,
+          "observed": "pkg:generic/openssl: SBOM_PRESENT, INSTALLED, LOADED, CONFIGURED, RUNTIME_USED; not STATIC_REFERENCED"
+        },
+        {
+          "probe": "the-runtime-operation-is-a-use-not-a-capability",
+          "ok": true,
+          "observed": "pkg:generic/openssl: SBOM_PRESENT, INSTALLED, LOADED, CONFIGURED, RUNTIME_USED; not STATIC_REFERENCED"
+        },
+        {
+          "probe": "a-build-only-package-is-installed-and-not-deployed",
+          "ok": true,
+          "observed": "pkg:generic/openssl-dev: EXISTS=no, INSTALLED=yes, DEPLOYED=no, RUNNING=no, LOADED=no"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-09",
+      "number": 9,
+      "phase": "runtime",
+      "question": "two stored sources disagree and both versions survive",
+      "probes": [
+        {
+          "probe": "declared-and-runtime-are-both-kept",
+          "ok": true,
+          "observed": "pkg:generic/openssl: DECLARED_VERSION=3.0.13, IMAGE_VERSION=\u2014, RUNTIME_VERSION=3.0.11, VENDOR_VERSION=\u2014 \u2014 2 versions, preserved"
+        },
+        {
+          "probe": "the-conflict-is-named-not-resolved",
+          "ok": true,
+          "observed": "DEPENDENCY_VERSION_CONFLICT"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-10",
+      "number": 10,
+      "phase": "graph",
+      "question": "directness comes from the manifest and transitivity from the walk",
+      "probes": [
+        {
+          "probe": "the-sdk-is-direct-and-http-core-is-not",
+          "ok": true,
+          "observed": "Payments API: 2 direct, 2 transitive, 2 listed only; pkg:generic/http-core@1.2.0, pkg:generic/openssl reached through another component"
+        },
+        {
+          "probe": "the-transitive-row-carries-its-path",
+          "ok": true,
+          "observed": "['pkg:generic/payments-sdk@2.4.0', 'pkg:generic/http-core@1.2.0', 'pkg:generic/openssl']"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-11",
+      "number": 11,
+      "phase": "identity",
+      "question": "records join through an anchor and get one canonical id each",
+      "probes": [
+        {
+          "probe": "records-with-a-shared-digest-merge",
+          "ok": true,
+          "observed": "44 record(s) resolve to 26 canonical asset(s); 2 carry more than one record; 23 are identified by a name alone and are not merged with anything"
+        },
+        {
+          "probe": "ids-are-issued-per-asset-not-per-record",
+          "ok": true,
+          "observed": "{'canonical': 26, 'records': 44, 'merged': 2, 'by_evidence': 3, 'by_name_only': 23}"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-12",
+      "number": 12,
+      "phase": "vendor",
+      "question": "a component reaches the product and the vendor behind it",
+      "probes": [
+        {
+          "probe": "the-product-is-recorded",
+          "ok": true,
+          "observed": "pkg:generic/openssl \u2192 OpenSSL 3.x \u2192 OpenSSL Project; deployed in 2 deployment(s) across 1 application(s)"
+        },
+        {
+          "probe": "the-deployments-behind-it-are-counted",
+          "ok": true,
+          "observed": "['payments-api-7d9f4c', 'payments-api-deploy'] / ['Payments API']"
+        },
+        {
+          "probe": "a-component-with-no-product-says-so",
+          "ok": true,
+          "observed": "pkg:generic/maven@3.9.6 \u2192 no product record; deployed in 2 deployment(s) across 1 application(s)"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-13",
+      "number": 13,
+      "phase": "remediation",
+      "question": "an upgrade of a crypto library is counted as a crypto change",
+      "probes": [
+        {
+          "probe": "the-application-and-system-are-counted",
+          "ok": true,
+          "observed": "upgrade pkg:generic/openssl 3.0.13 \u2192 3.0.14: 1 application(s), 1 business system(s), 2 image(s), 1 process(es), 3 algorithm(s), 1 hardware, 1 certificate(s), 1 endpoint(s)"
+        },
+        {
+          "probe": "the-algorithms-behind-it-are-named",
+          "ok": true,
+          "observed": "AES-256, ECDSA-256, RSA-2048"
+        },
+        {
+          "probe": "the-hardware-and-the-certificate-are-in-the-blast-radius",
+          "ok": true,
+          "observed": "hardware ['HSM-001'], certificates ['CERT-001']"
+        },
+        {
+          "probe": "the-regression-list-is-derived",
+          "ok": true,
+          "observed": "crypto module re-validation on HSM-001; certificate re-issue on CERT-001; TLS renegotiation against payments.bank.example:443; payment signature regression"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-14",
+      "number": 14,
+      "phase": "history",
+      "question": "a superseded dependency keeps the row that replaced it",
+      "probes": [
+        {
+          "probe": "the-superseded-edge-is-retained",
+          "ok": true,
+          "observed": "49 supply edge(s): FIRST_SEEN 3, ACTIVE 45, SUPERSEDED 1; 1 superseded or removed edge(s) kept"
+        },
+        {
+          "probe": "the-replacement-is-named",
+          "ok": true,
+          "observed": "pkg:generic/payments-sdk@2.4.0 DEPENDS_ON pkg:generic/http-core@1.2.0"
+        },
+        {
+          "probe": "a-first-seen-edge-is-not-an-active-one",
+          "ok": true,
+          "observed": "{'ACTIVE': 45, 'FIRST_SEEN': 3, 'SUPERSEDED': 1}"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-15",
+      "number": 15,
+      "phase": "evidence",
+      "question": "every crypto dependency carries one of the eight evidence types",
+      "probes": [
+        {
+          "probe": "the-rows-carry-a-type-and-an-id",
+          "ok": true,
+          "observed": "19 crypto dependency edge(s) across 4 evidence type(s); 3 proven by a runtime or network observation, 16 capability, static, configured or declared"
+        },
+        {
+          "probe": "capability-and-usage-are-counted-apart",
+          "ok": true,
+          "observed": "proven 3, unproven 16"
+        },
+        {
+          "probe": "no-row-is-promoted-to-a-stronger-type",
+          "ok": true,
+          "observed": "CAPABILITY 6, CONFIGURED 3, IMPORTED 7, RUNTIME_OBSERVED 3"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-16",
+      "number": 16,
+      "phase": "projection",
+      "question": "the graph is a projection, and every node has a canonical id",
+      "probes": [
+        {
+          "probe": "every-record-resolves-to-a-canonical-asset",
+          "ok": true,
+          "observed": "44 record(s) resolve to 26 canonical asset(s); 2 carry more than one record; 23 are identified by a name alone and are not merged with anything"
+        },
+        {
+          "probe": "there-is-one-store",
+          "ok": true,
+          "observed": "second_store False, canonical CANONICAL_ESTATE, derived from sbom-supply:production"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "STORE-17",
+      "number": 17,
+      "phase": "handoff",
+      "question": "the store's crypto rows hand capability to the CBOM and decide nothing",
+      "probes": [
+        {
+          "probe": "the-capabilities-arrive",
+          "ok": true,
+          "observed": "pkg:generic/openssl: 3 capability(ies) handed to the CBOM; 1 corroborated by runtime or network evidence"
+        },
+        {
+          "probe": "only-a-caller-corroborates",
+          "ok": true,
+          "observed": "corroborated ['pkg:generic/openssl:RSA-2048']"
+        },
+        {
+          "probe": "pqc-keeps-the-two-lists-apart",
+          "ok": true,
+          "observed": "pkg:generic/openssl: 2 quantum-sensitive capability(ies) and 1 observed use(s); the SBOM answers the first and the CBOM answers the second"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    }
+  ],
+  "provenance": {
+    "artifact": "payments-api-4.2.1.jar",
+    "steps": {
+      "repository": "git.bank.internal/payments/payments-api",
+      "commit": "a81f92c",
+      "build": "BUILD-18291",
+      "pipeline": "jenkins-payments-ci",
+      "artifact": "payments-api-4.2.1.jar",
+      "digest": "sha256:abc123def4567890abc123def4567890",
+      "sbom": "SBOM-18291"
+    },
+    "missing": [],
+    "complete": true,
+    "statement": "payments-api-4.2.1.jar: git.bank.internal/payments/payments-api \u2192 a81f92c \u2192 BUILD-18291 \u2192 SBOM-18291",
+    "rule": "a provenance chain is printed with its gaps: an SBOM whose commit nobody recorded cannot be re-built, and saying so is the finding"
+  },
+  "owners": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "kind": "CRYPTO_LIBRARY",
+    "owners": [
+      {
+        "application": "Payments API",
+        "kind": "APPLICATION",
+        "path": [
+          "Payments API RELEASED_AS payments-api 4.2.1",
+          "payments-api 4.2.1 BUNDLES payments-api-4.2.1.jar",
+          "payments-api-4.2.1.jar DESCRIBED_BY SBOM-18291",
+          "SBOM-18291 LISTS pkg:generic/openssl"
+        ],
+        "class": "CONFIGURED"
+      }
+    ],
+    "applications": [
+      "Payments API"
+    ],
+    "statement": "pkg:generic/openssl: owned by Payments API",
+    "rule": "ownership is an evidenced path from an application to the component; a component nobody reaches is a component nobody has deployed",
+    "not_proven": [
+      "that the repository which produced the artifact is the one that holds the component's own source: the SBOM joins them as data, not as provenance"
+    ]
+  },
+  "states": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "states": {
+      "SBOM_PRESENT": true,
+      "INSTALLED": true,
+      "LOADED": true,
+      "CONFIGURED": true,
+      "STATIC_REFERENCED": false,
+      "RUNTIME_USED": true
+    },
+    "evidence": {
+      "SBOM_PRESENT": [
+        "SBOM-18291"
+      ],
+      "INSTALLED": [
+        "layer:ubuntu-22.04-base",
+        "installed in payments-api:4.2.1"
+      ],
+      "LOADED": [
+        "payments-api[1821]"
+      ],
+      "CONFIGURED": [
+        "suite:TLS_AES_256_GCM_SHA384 USES_ALGORITHM"
+      ],
+      "STATIC_REFERENCED": [],
+      "RUNTIME_USED": [
+        "SIGN-payments-api[1821]"
+      ]
+    },
+    "present": [
+      "SBOM_PRESENT",
+      "INSTALLED",
+      "LOADED",
+      "CONFIGURED",
+      "RUNTIME_USED"
+    ],
+    "absent": [
+      "STATIC_REFERENCED"
+    ],
+    "statement": "pkg:generic/openssl: SBOM_PRESENT, INSTALLED, LOADED, CONFIGURED, RUNTIME_USED; not STATIC_REFERENCED",
+    "rule": "installed, loaded and used are three different facts; a model that promotes one into the next has replaced a measurement with an assumption"
+  },
+  "versions": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "layers": {
+      "DECLARED_VERSION": "3.0.13",
+      "IMAGE_VERSION": null,
+      "RUNTIME_VERSION": "3.0.11",
+      "VENDOR_VERSION": null
+    },
+    "sources": {
+      "DECLARED_VERSION": [
+        {
+          "source": "row",
+          "value": "3.0.13",
+          "class": "IMPORTED"
+        },
+        {
+          "source": "sbom",
+          "value": "3.0.13",
+          "class": "IMPORTED",
+          "evidence_id": "EVID-97003"
+        }
+      ],
+      "IMAGE_VERSION": [],
+      "RUNTIME_VERSION": [
+        {
+          "source": "process-map",
+          "value": "3.0.11",
+          "class": "RUNTIME_OBSERVED",
+          "evidence_id": "EVID-97006"
+        }
+      ],
+      "VENDOR_VERSION": []
+    },
+    "distinct": [
+      "3.0.11",
+      "3.0.13"
+    ],
+    "conflict": true,
+    "code": "DEPENDENCY_VERSION_CONFLICT",
+    "statement": "pkg:generic/openssl: DECLARED_VERSION=3.0.13, IMAGE_VERSION=\u2014, RUNTIME_VERSION=3.0.11, VENDOR_VERSION=\u2014 \u2014 2 versions, preserved",
+    "rule": "a declared version, an image version and a runtime version are three observations; the conflict is published, not resolved"
+  },
+  "tree": {
+    "query": "Payments API",
+    "node": {
+      "name": "Payments API",
+      "kind": "APPLICATION",
+      "id": "TECH-APP-001",
+      "key": "APPLICATION:payments api:production",
+      "version": null
+    },
+    "direct": [
+      {
+        "component": "pkg:generic/maven@3.9.6",
+        "version": "3.9.6",
+        "dependency_kind": "DIRECT",
+        "path": [
+          "pkg:generic/maven@3.9.6"
+        ],
+        "scope": "BUILD",
+        "evidence_id": "EVID-97003",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      },
+      {
+        "component": "pkg:generic/payments-sdk@2.4.0",
+        "version": "2.4.0",
+        "dependency_kind": "DIRECT",
+        "path": [
+          "pkg:generic/payments-sdk@2.4.0"
+        ],
+        "scope": "RUNTIME",
+        "evidence_id": "EVID-97003",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      }
+    ],
+    "transitive": [
+      {
+        "component": "pkg:generic/http-core@1.2.0",
+        "version": "1.2.0",
+        "dependency_kind": "TRANSITIVE",
+        "path": [
+          "pkg:generic/payments-sdk@2.4.0",
+          "pkg:generic/http-core@1.2.0"
+        ],
+        "scope": "RUNTIME",
+        "evidence_id": "EVID-97003",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      },
+      {
+        "component": "pkg:generic/openssl",
+        "version": "3.0.13",
+        "dependency_kind": "TRANSITIVE",
+        "path": [
+          "pkg:generic/payments-sdk@2.4.0",
+          "pkg:generic/http-core@1.2.0",
+          "pkg:generic/openssl"
+        ],
+        "scope": "RUNTIME",
+        "evidence_id": "EVID-97003",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      }
+    ],
+    "listed_only": [
+      {
+        "component": "pkg:generic/ghost@0.0.9",
+        "version": "0.0.9",
+        "dependency_kind": "LISTED_ONLY",
+        "path": [
+          "pkg:generic/ghost@0.0.9"
+        ],
+        "scope": "RUNTIME",
+        "evidence_id": "EVID-97003",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      },
+      {
+        "component": "pkg:generic/mockito@5.4.0",
+        "version": "5.4.0",
+        "dependency_kind": "LISTED_ONLY",
+        "path": [
+          "pkg:generic/mockito@5.4.0"
+        ],
+        "scope": "TEST",
+        "evidence_id": "EVID-97003",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      }
+    ],
+    "statement": "Payments API: 2 direct, 2 transitive, 2 listed only; pkg:generic/http-core@1.2.0, pkg:generic/openssl reached through another component",
+    "rule": "a transitive dependency is reported with its path: the direct parent is what a remediation upgrades, and the transitive child is what it fixes"
+  },
+  "canonical": {
+    "canonical": [
+      {
+        "id": "APP-d34c3c3b",
+        "by": "evidence",
+        "anchors": [
+          "digest:sha256:8af92c1d4e5f60718293a4b5c6d7e8f9",
+          "digest:sha256:abc123def4567890abc123def4567890",
+          "namespace:payments",
+          "repository:git.bank.internal/payments/payments-api"
+        ],
+        "kinds": [
+          "APPLICATION",
+          "ARTIFACT",
+          "BUILD",
+          "BUSINESS_SYSTEM",
+          "CONTAINER",
+          "CRYPTO_LIBRARY",
+          "DEPLOYMENT",
+          "IMAGE",
+          "IMAGE_LAYER",
+          "NAMESPACE",
+          "PACKAGE",
+          "POD",
+          "PROCESS",
+          "RELEASE",
+          "REPLICA_SET",
+          "REPOSITORY",
+          "SBOM"
+        ],
+        "records": [
+          {
+            "name": "Payments API",
+            "kind": "APPLICATION",
+            "id": "TECH-APP-001",
+            "key": "APPLICATION:payments api:production",
+            "version": null
+          },
+          {
+            "name": "payments-api-4.2.1.jar",
+            "kind": "ARTIFACT",
+            "id": "TECH-ART-002",
+            "key": "ARTIFACT:payments-api-4.2.1.jar:production",
+            "version": null
+          },
+          {
+            "name": "BUILD-18291",
+            "kind": "BUILD",
+            "id": "TECH-BUILD-001",
+            "key": "BUILD:build-18291:production",
+            "version": null
+          },
+          {
+            "name": "Payments System",
+            "kind": "BUSINESS_SYSTEM",
+            "id": "TECH-SYS-001",
+            "key": "BUSINESS_SYSTEM:payments system:production",
+            "version": null
+          },
+          {
+            "name": "payments-api-ctr",
+            "kind": "CONTAINER",
+            "id": "TECH-CTR-001",
+            "key": "CONTAINER:payments-api-ctr:production",
+            "version": null
+          },
+          {
+            "name": "pkg:generic/openssl",
+            "kind": "CRYPTO_LIBRARY",
+            "id": "TECH-LIB-001",
+            "key": "CRYPTO_LIBRARY:pkg:generic/openssl:production",
+            "version": "3.0.13"
+          },
+          {
+            "name": "payments-api-deploy",
+            "kind": "DEPLOYMENT",
+            "id": "TECH-DEP-001",
+            "key": "DEPLOYMENT:payments-api-deploy:production",
+            "version": null
+          },
+          {
+            "name": "payments-api:4.2.1",
+            "kind": "IMAGE",
+            "id": "TECH-IMG-001",
+            "key": "IMAGE:payments-api:4.2.1:production",
+            "version": null
+          },
+          {
+            "name": "layer:ubuntu-22.04-base",
+            "kind": "IMAGE_LAYER",
+            "id": "TECH-LAYER-001",
+            "key": "IMAGE_LAYER:layer:ubuntu-22.04-base:production",
+            "version": null
+          },
+          {
+            "name": "payments",
+            "kind": "NAMESPACE",
+            "id": "TECH-NS-001",
+            "key": "NAMESPACE:payments:production",
+            "version": null
+          },
+          {
+            "name": "pkg:generic/http-core@1.2.0",
+            "kind": "PACKAGE",
+            "id": "TECH-PKG-002",
+            "key": "PACKAGE:pkg:generic/http-core@1.2.0:production",
+            "version": "1.2.0"
+          },
+          {
+            "name": "pkg:generic/payments-sdk@2.4.0",
+            "kind": "PACKAGE",
+            "id": "TECH-PKG-007",
+            "key": "PACKAGE:pkg:generic/payments-sdk@2.4.0:production",
+            "version": "2.4.0"
+          },
+          {
+            "name": "payments-api-7d9f4c-x2m8p",
+            "kind": "POD",
+            "id": "TECH-POD-001",
+            "key": "POD:payments-api-7d9f4c-x2m8p:production",
+            "version": null
+          },
+          {
+            "name": "payments-api[1821]",
+            "kind": "PROCESS",
+            "id": "TECH-PROC-001",
+            "key": "PROCESS:payments-api[1821]:production",
+            "version": null
+          },
+          {
+            "name": "payments-api 4.2.1",
+            "kind": "RELEASE",
+            "id": "TECH-REL-001",
+            "key": "RELEASE:payments-api 4.2.1:production",
+            "version": "4.2.1"
+          },
+          {
+            "name": "payments-api-7d9f4c",
+            "kind": "REPLICA_SET",
+            "id": "TECH-RS-001",
+            "key": "REPLICA_SET:payments-api-7d9f4c:production",
+            "version": null
+          },
+          {
+            "name": "git.bank.internal/payments/payments-api",
+            "kind": "REPOSITORY",
+            "id": "TECH-REPO-001",
+            "key": "REPOSITORY:git.bank.internal/payments/payments-api:production",
+            "version": null
+          },
+          {
+            "name": "SBOM-18291",
+            "kind": "SBOM",
+            "id": "TECH-SBOM-001",
+            "key": "SBOM:sbom-18291:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ART-597f2745",
+        "by": "evidence",
+        "anchors": [
+          "digest:sha256:00112233445566778899aabbccddeeff"
+        ],
+        "kinds": [
+          "ARTIFACT"
+        ],
+        "records": [
+          {
+            "name": "payments-api-3.9.0.jar",
+            "kind": "ARTIFACT",
+            "id": "TECH-ART-001",
+            "key": "ARTIFACT:payments-api-3.9.0.jar:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "IMG-79f2cdf6",
+        "by": "evidence",
+        "anchors": [
+          "digest:sha256:1122aabbccdd3344eeff5566"
+        ],
+        "kinds": [
+          "IMAGE",
+          "PACKAGE"
+        ],
+        "records": [
+          {
+            "name": "reporting-api:1.0.0",
+            "kind": "IMAGE",
+            "id": "TECH-IMG-002",
+            "key": "IMAGE:reporting-api:1.0.0:production",
+            "version": null
+          },
+          {
+            "name": "pkg:generic/openssl-dev",
+            "kind": "PACKAGE",
+            "id": "TECH-PKG-006",
+            "key": "PACKAGE:pkg:generic/openssl-dev:production",
+            "version": "3.0.13"
+          }
+        ]
+      },
+      {
+        "id": "APP-3313b929",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "APPLICATION"
+        ],
+        "records": [
+          {
+            "name": "Reporting API",
+            "kind": "APPLICATION",
+            "id": "TECH-APP-002",
+            "key": "APPLICATION:reporting api:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ASSET-028262c3",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "ALGORITHM"
+        ],
+        "records": [
+          {
+            "name": "ECDSA-256",
+            "kind": "ALGORITHM",
+            "id": "TECH-ALG-002",
+            "key": "ALGORITHM:ecdsa-256:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ASSET-12aa35e4",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "CRYPTO_OPERATION"
+        ],
+        "records": [
+          {
+            "name": "SIGN-payments-api[1821]",
+            "kind": "CRYPTO_OPERATION",
+            "id": "TECH-OP-001",
+            "key": "CRYPTO_OPERATION:sign-payments-api[1821]:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ASSET-1553543d",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "CIPHER_SUITE"
+        ],
+        "records": [
+          {
+            "name": "TLS_AES_256_GCM_SHA384",
+            "kind": "CIPHER_SUITE",
+            "id": "TECH-SUITE-001",
+            "key": "CIPHER_SUITE:tls_aes_256_gcm_sha384:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ASSET-176d93ae",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "CRYPTO_CAPABILITY"
+        ],
+        "records": [
+          {
+            "name": "pkg:generic/openssl:AES-256",
+            "kind": "CRYPTO_CAPABILITY",
+            "id": "TECH-CAP-001",
+            "key": "CRYPTO_CAPABILITY:pkg:generic/openssl:aes-256:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ASSET-2a0800a8",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "CLUSTER"
+        ],
+        "records": [
+          {
+            "name": "prod-cluster",
+            "kind": "CLUSTER",
+            "id": "TECH-K8S-001",
+            "key": "CLUSTER:prod-cluster:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ASSET-3fcaf57b",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "COMMIT"
+        ],
+        "records": [
+          {
+            "name": "a81f92c",
+            "kind": "COMMIT",
+            "id": "TECH-SHA-001",
+            "key": "COMMIT:a81f92c:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ASSET-4ba95152",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "CRYPTO_CAPABILITY"
+        ],
+        "records": [
+          {
+            "name": "pkg:generic/openssl:RSA-2048",
+            "kind": "CRYPTO_CAPABILITY",
+            "id": "TECH-CAP-003",
+            "key": "CRYPTO_CAPABILITY:pkg:generic/openssl:rsa-2048:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ASSET-4d16256a",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "ALGORITHM"
+        ],
+        "records": [
+          {
+            "name": "RSA-2048",
+            "kind": "ALGORITHM",
+            "id": "TECH-ALG-003",
+            "key": "ALGORITHM:rsa-2048:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ASSET-4decd03d",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "NETWORK_ENDPOINT"
+        ],
+        "records": [
+          {
+            "name": "payments.bank.example:443",
+            "kind": "NETWORK_ENDPOINT",
+            "id": "TECH-EP-001",
+            "key": "NETWORK_ENDPOINT:payments.bank.example:443:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ASSET-95883f03",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "ALGORITHM"
+        ],
+        "records": [
+          {
+            "name": "AES-256",
+            "kind": "ALGORITHM",
+            "id": "TECH-ALG-001",
+            "key": "ALGORITHM:aes-256:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ASSET-b024e767",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "HSM"
+        ],
+        "records": [
+          {
+            "name": "HSM-001",
+            "kind": "HSM",
+            "id": "TECH-HSM-001",
+            "key": "HSM:hsm-001:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ASSET-db3ecdec",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "KUBERNETES_NODE"
+        ],
+        "records": [
+          {
+            "name": "node-03",
+            "kind": "KUBERNETES_NODE",
+            "id": "TECH-NODE-001",
+            "key": "KUBERNETES_NODE:node-03:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "ASSET-deea80df",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "CRYPTO_CAPABILITY"
+        ],
+        "records": [
+          {
+            "name": "pkg:generic/openssl:ECDSA-256",
+            "kind": "CRYPTO_CAPABILITY",
+            "id": "TECH-CAP-002",
+            "key": "CRYPTO_CAPABILITY:pkg:generic/openssl:ecdsa-256:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "CERT-44a20751",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "CERTIFICATE"
+        ],
+        "records": [
+          {
+            "name": "CERT-001",
+            "kind": "CERTIFICATE",
+            "id": "TECH-CERT-001",
+            "key": "CERTIFICATE:cert-001:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "CRY-5d87cdf8",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "CRYPTO_ASSET"
+        ],
+        "records": [
+          {
+            "name": "suite:TLS_AES_256_GCM_SHA384",
+            "kind": "CRYPTO_ASSET",
+            "id": "TECH-CRY-001",
+            "key": "CRYPTO_ASSET:suite:tls_aes_256_gcm_sha384:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "PKG-0bc33577",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "PACKAGE"
+        ],
+        "records": [
+          {
+            "name": "pkg:generic/ghost@0.0.9",
+            "kind": "PACKAGE",
+            "id": "TECH-PKG-001",
+            "key": "PACKAGE:pkg:generic/ghost@0.0.9:production",
+            "version": "0.0.9"
+          }
+        ]
+      },
+      {
+        "id": "PKG-376510d5",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "PACKAGE"
+        ],
+        "records": [
+          {
+            "name": "pkg:generic/legacy-agent@0.4.2",
+            "kind": "PACKAGE",
+            "id": "TECH-PKG-003",
+            "key": "PACKAGE:pkg:generic/legacy-agent@0.4.2:production",
+            "version": "0.4.2"
+          }
+        ]
+      },
+      {
+        "id": "PKG-4fbdc68b",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "PACKAGE"
+        ],
+        "records": [
+          {
+            "name": "pkg:generic/mockito@5.4.0",
+            "kind": "PACKAGE",
+            "id": "TECH-PKG-005",
+            "key": "PACKAGE:pkg:generic/mockito@5.4.0:production",
+            "version": "5.4.0"
+          }
+        ]
+      },
+      {
+        "id": "PKG-67c765d0",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "PACKAGE"
+        ],
+        "records": [
+          {
+            "name": "pkg:generic/maven@3.9.6",
+            "kind": "PACKAGE",
+            "id": "TECH-PKG-004",
+            "key": "PACKAGE:pkg:generic/maven@3.9.6:production",
+            "version": "3.9.6"
+          }
+        ]
+      },
+      {
+        "id": "PROD-2899b12e",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "VENDOR_PRODUCT"
+        ],
+        "records": [
+          {
+            "name": "OpenSSL 3.x",
+            "kind": "VENDOR_PRODUCT",
+            "id": "TECH-PROD-001",
+            "key": "VENDOR_PRODUCT:openssl 3.x:production",
+            "version": "3.0.13"
+          }
+        ]
+      },
+      {
+        "id": "SRV-aed52493",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "PHYSICAL_SERVER"
+        ],
+        "records": [
+          {
+            "name": "srv-k8s-03",
+            "kind": "PHYSICAL_SERVER",
+            "id": "TECH-SRV-001",
+            "key": "PHYSICAL_SERVER:srv-k8s-03:production",
+            "version": null
+          }
+        ]
+      },
+      {
+        "id": "VEN-1b060b95",
+        "by": "name",
+        "anchors": [],
+        "kinds": [
+          "VENDOR"
+        ],
+        "records": [
+          {
+            "name": "OpenSSL Project",
+            "kind": "VENDOR",
+            "id": "TECH-VENDOR-001",
+            "key": "VENDOR:openssl project:production",
+            "version": null
+          }
+        ]
+      }
+    ],
+    "counts": {
+      "canonical": 26,
+      "records": 44,
+      "merged": 2,
+      "by_evidence": 3,
+      "by_name_only": 23
+    },
+    "statement": "44 record(s) resolve to 26 canonical asset(s); 2 carry more than one record; 23 are identified by a name alone and are not merged with anything",
+    "rule": "identity is one of digest, image_digest, repository, namespace; a name is a label, and a label merge attributes one team's vulnerability to another",
+    "not_proven": [
+      "that two records with no shared anchor are different assets: they may be one asset nobody recorded an anchor for, and that is a gap in the collection rather than a fact about the estate"
+    ]
+  },
+  "vendor": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "product": "OpenSSL 3.x",
+    "product_version": "3.0.13",
+    "vendor": "OpenSSL Project",
+    "vendor_lifecycle": "ACTIVE",
+    "applications": [
+      "Payments API"
+    ],
+    "deployments": [
+      "payments-api-7d9f4c",
+      "payments-api-deploy"
+    ],
+    "systems": [
+      "Payments System"
+    ],
+    "statement": "pkg:generic/openssl \u2192 OpenSSL 3.x \u2192 OpenSSL Project; deployed in 2 deployment(s) across 1 application(s)",
+    "rule": "a vendor is reached through the product that supplied the component, and a product with no vendor is a gap rather than a link to invent",
+    "not_proven": [
+      "that the vendor's published version is the one installed: the vendor portal states a product version and the SBOM states a package version, and they are two rows"
+    ]
+  },
+  "radius": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "from_version": "3.0.13",
+    "to_version": "3.0.14",
+    "algorithms": [
+      "AES-256",
+      "ECDSA-256",
+      "RSA-2048"
+    ],
+    "hardware": [
+      "HSM-001"
+    ],
+    "certificates": [
+      "CERT-001"
+    ],
+    "endpoints": [
+      "payments.bank.example:443"
+    ],
+    "keys": [],
+    "applications": [
+      "Payments API"
+    ],
+    "systems": [
+      "Payments System"
+    ],
+    "images": [
+      "layer:ubuntu-22.04-base",
+      "payments-api:4.2.1"
+    ],
+    "processes": [
+      "payments-api[1821]"
+    ],
+    "affected": {
+      "applications": 1,
+      "systems": 1,
+      "images": 2,
+      "processes": 1,
+      "algorithms": 3,
+      "hardware": 1,
+      "certificates": 1,
+      "endpoints": 1
+    },
+    "regression": [
+      "crypto module re-validation on HSM-001",
+      "certificate re-issue on CERT-001",
+      "TLS renegotiation against payments.bank.example:443",
+      "payment signature regression"
+    ],
+    "statement": "upgrade pkg:generic/openssl 3.0.13 \u2192 3.0.14: 1 application(s), 1 business system(s), 2 image(s), 1 process(es), 3 algorithm(s), 1 hardware, 1 certificate(s), 1 endpoint(s)",
+    "rule": "a package upgrade of a crypto library is a crypto change: the blast radius is the walk, and the regression list is derived from it rather than typed in by the reviewer"
+  },
+  "lifecycle": {
+    "rows": [
+      {
+        "source": "pkg:generic/openssl:ECDSA-256",
+        "relation": "IMPLEMENTS",
+        "target": "ECDSA-256",
+        "class": "CAPABILITY",
+        "basis": "capability-list",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CAPABILITY"
+      },
+      {
+        "source": "payments-api-7d9f4c-x2m8p",
+        "relation": "SCHEDULED_ON",
+        "target": "node-03",
+        "class": "CONFIGURED",
+        "basis": "deployment-metadata",
+        "evidence_id": "EVID-97005",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "Payments API",
+        "relation": "TRACKED_IN",
+        "target": "git.bank.internal/payments/payments-api",
+        "class": "CONFIGURED",
+        "basis": "api-poll",
+        "evidence_id": "EVID-97001",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "layer:ubuntu-22.04-base",
+        "relation": "SHIPS",
+        "target": "pkg:generic/http-core@1.2.0",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97004",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "BUILD-18291",
+        "relation": "TRACKED_IN",
+        "target": "git.bank.internal/payments/payments-api",
+        "class": "CONFIGURED",
+        "basis": "api-poll",
+        "evidence_id": "EVID-97002",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "BUILD-18291",
+        "relation": "PRODUCES",
+        "target": "payments-api-4.2.1.jar",
+        "class": "CONFIGURED",
+        "basis": "agent-inventory",
+        "evidence_id": "EVID-97002",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "pkg:generic/http-core@1.2.0",
+        "relation": "DEPENDS_ON",
+        "target": "pkg:generic/openssl",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "RUNTIME",
+          "TRANSITIVE"
+        ],
+        "state": "FIRST_SEEN"
+      },
+      {
+        "source": "payments-api-deploy",
+        "relation": "MANAGES",
+        "target": "payments-api-7d9f4c",
+        "class": "CONFIGURED",
+        "basis": "deployment-metadata",
+        "evidence_id": "EVID-97005",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "git.bank.internal/payments/payments-api",
+        "relation": "AT_COMMIT",
+        "target": "a81f92c",
+        "class": "CONFIGURED",
+        "basis": "api-poll",
+        "evidence_id": "EVID-97001",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "payments-api-7d9f4c-x2m8p",
+        "relation": "RUNS_PROCESS",
+        "target": "payments-api[1821]",
+        "class": "OBSERVED",
+        "basis": "process-trace",
+        "evidence_id": "EVID-97006",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "OBSERVED"
+      },
+      {
+        "source": "SIGN-payments-api[1821]",
+        "relation": "USES_ALGORITHM",
+        "target": "RSA-2048",
+        "class": "OBSERVED",
+        "basis": "process-trace",
+        "evidence_id": "EVID-97006",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "OBSERVED"
+      },
+      {
+        "source": "BUILD-18291",
+        "relation": "BUILT_FROM",
+        "target": "a81f92c",
+        "class": "CONFIGURED",
+        "basis": "api-poll",
+        "evidence_id": "EVID-97002",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "SBOM-18291",
+        "relation": "LISTS",
+        "target": "pkg:generic/mockito@5.4.0",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "SBOM-18291",
+        "relation": "LISTS",
+        "target": "pkg:generic/maven@3.9.6",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "payments-api:4.2.1",
+        "relation": "DEPLOYED_AS",
+        "target": "payments-api-deploy",
+        "class": "CONFIGURED",
+        "basis": "deployment-metadata",
+        "evidence_id": "EVID-97005",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "payments-api[1821]",
+        "relation": "RUNS_APPLICATION",
+        "target": "Payments API",
+        "class": "OBSERVED",
+        "basis": "process-trace",
+        "evidence_id": "EVID-97006",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "OBSERVED"
+      },
+      {
+        "source": "pkg:generic/openssl",
+        "relation": "SUPPORTS",
+        "target": "pkg:generic/openssl:ECDSA-256",
+        "class": "CAPABILITY",
+        "basis": "capability-list",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CAPABILITY"
+      },
+      {
+        "source": "Payments System",
+        "relation": "CONTAINS",
+        "target": "Payments API",
+        "class": "IMPORTED",
+        "basis": "cmdb-import",
+        "evidence_id": "EVID-97001",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "payments-api-7d9f4c-x2m8p",
+        "relation": "RUNS_CONTAINER",
+        "target": "payments-api-ctr",
+        "class": "CONFIGURED",
+        "basis": "deployment-metadata",
+        "evidence_id": "EVID-97005",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "payments-api-ctr",
+        "relation": "FROM_IMAGE",
+        "target": "payments-api:4.2.1",
+        "class": "CONFIGURED",
+        "basis": "deployment-metadata",
+        "evidence_id": "EVID-97005",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "node-03",
+        "relation": "RUNS_ON",
+        "target": "srv-k8s-03",
+        "class": "CONFIGURED",
+        "basis": "deployment-metadata",
+        "evidence_id": "EVID-97005",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "layer:ubuntu-22.04-base",
+        "relation": "SHIPS",
+        "target": "pkg:generic/openssl",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97004",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "payments-api[1821]",
+        "relation": "INVOKES",
+        "target": "SIGN-payments-api[1821]",
+        "class": "OBSERVED",
+        "basis": "process-trace",
+        "evidence_id": "EVID-97006",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "OBSERVED"
+      },
+      {
+        "source": "payments-api:4.2.1",
+        "relation": "HAS_LAYER",
+        "target": "layer:ubuntu-22.04-base",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97004",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "payments-api 4.2.1",
+        "relation": "BUNDLES",
+        "target": "payments-api-4.2.1.jar",
+        "class": "CONFIGURED",
+        "basis": "api-poll",
+        "evidence_id": "EVID-97002",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "SBOM-18291",
+        "relation": "LISTS",
+        "target": "pkg:generic/ghost@0.0.9",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "Payments API",
+        "relation": "RELEASED_AS",
+        "target": "payments-api 4.2.1",
+        "class": "CONFIGURED",
+        "basis": "api-poll",
+        "evidence_id": "EVID-97002",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "Payments System",
+        "relation": "CONTAINS",
+        "target": "Reporting API",
+        "class": "IMPORTED",
+        "basis": "cmdb-import",
+        "evidence_id": "EVID-97004",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "SBOM-18291",
+        "relation": "LISTS",
+        "target": "pkg:generic/openssl",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "OpenSSL 3.x",
+        "relation": "SUPPLIED_BY",
+        "target": "OpenSSL Project",
+        "class": "VENDOR_DECLARED",
+        "basis": "vendor-datasheet",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "VENDOR_DECLARED"
+      },
+      {
+        "source": "suite:TLS_AES_256_GCM_SHA384",
+        "relation": "USES_ALGORITHM",
+        "target": "AES-256",
+        "class": "CONFIGURED",
+        "basis": "config-parse",
+        "evidence_id": "EVID-97008",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "SBOM-18291",
+        "relation": "LISTS",
+        "target": "pkg:generic/http-core@1.2.0",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "pkg:generic/openssl:RSA-2048",
+        "relation": "IMPLEMENTS",
+        "target": "RSA-2048",
+        "class": "CAPABILITY",
+        "basis": "capability-list",
+        "evidence_id": "EVID-97006",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CAPABILITY"
+      },
+      {
+        "source": "payments-api-4.2.1.jar",
+        "relation": "DESCRIBED_BY",
+        "target": "SBOM-18291",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "pkg:generic/openssl",
+        "relation": "SUPPORTS",
+        "target": "pkg:generic/openssl:AES-256",
+        "class": "CAPABILITY",
+        "basis": "capability-list",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CAPABILITY"
+      },
+      {
+        "source": "payments-api-4.2.1.jar",
+        "relation": "PACKAGED_AS",
+        "target": "payments-api:4.2.1",
+        "class": "CONFIGURED",
+        "basis": "agent-inventory",
+        "evidence_id": "EVID-97004",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "pkg:generic/openssl:AES-256",
+        "relation": "IMPLEMENTS",
+        "target": "AES-256",
+        "class": "CAPABILITY",
+        "basis": "capability-list",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CAPABILITY"
+      },
+      {
+        "source": "SBOM-18291",
+        "relation": "LISTS",
+        "target": "pkg:generic/payments-sdk@2.4.0",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "HSM-001",
+        "relation": "SUPPORTS",
+        "target": "RSA-2048",
+        "class": "IMPORTED",
+        "basis": "cmdb-import",
+        "evidence_id": "EVID-97007",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "pkg:generic/openssl",
+        "relation": "PRODUCT_OF",
+        "target": "OpenSSL 3.x",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "pkg:generic/openssl",
+        "relation": "SUPPORTS",
+        "target": "pkg:generic/openssl:RSA-2048",
+        "class": "CAPABILITY",
+        "basis": "capability-list",
+        "evidence_id": "EVID-97006",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CAPABILITY"
+      },
+      {
+        "source": "pkg:generic/openssl",
+        "relation": "INSTALLED_IN",
+        "target": "payments-api:4.2.1",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97004",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "IMPORTED"
+      },
+      {
+        "source": "payments",
+        "relation": "MEMBER_OF_CLUSTER",
+        "target": "prod-cluster",
+        "class": "CONFIGURED",
+        "basis": "deployment-metadata",
+        "evidence_id": "EVID-97005",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "pkg:generic/payments-sdk@2.4.0",
+        "relation": "DEPENDS_ON",
+        "target": "pkg:generic/http-core@1.2.0",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "RUNTIME",
+          "TRANSITIVE"
+        ],
+        "state": "FIRST_SEEN"
+      },
+      {
+        "source": "payments-api-deploy",
+        "relation": "RUNS_IN",
+        "target": "payments",
+        "class": "CONFIGURED",
+        "basis": "deployment-metadata",
+        "evidence_id": "EVID-97005",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "pkg:generic/openssl-dev",
+        "relation": "INSTALLED_IN",
+        "target": "reporting-api:1.0.0",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97004",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "FIRST_SEEN"
+      },
+      {
+        "source": "payments-api-7d9f4c",
+        "relation": "SCHEDULES",
+        "target": "payments-api-7d9f4c-x2m8p",
+        "class": "CONFIGURED",
+        "basis": "deployment-metadata",
+        "evidence_id": "EVID-97005",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "CONFIGURED"
+      },
+      {
+        "source": "payments-api[1821]",
+        "relation": "LOADS",
+        "target": "pkg:generic/openssl",
+        "class": "OBSERVED",
+        "basis": "process-trace",
+        "evidence_id": "EVID-97006",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "",
+          ""
+        ],
+        "state": "ACTIVE",
+        "previous_class": "OBSERVED"
+      },
+      {
+        "source": "pkg:generic/payments-sdk@2.4.0",
+        "relation": "DEPENDS_ON",
+        "target": "pkg:generic/openssl",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "RUNTIME",
+          "TRANSITIVE"
+        ],
+        "state": "SUPERSEDED",
+        "superseded_by": "pkg:generic/payments-sdk@2.4.0 DEPENDS_ON pkg:generic/http-core@1.2.0"
+      }
+    ],
+    "retained": [
+      {
+        "source": "pkg:generic/payments-sdk@2.4.0",
+        "relation": "DEPENDS_ON",
+        "target": "pkg:generic/openssl",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-97003",
+        "first_seen": null,
+        "last_seen": null,
+        "signature": [
+          "",
+          "",
+          "RUNTIME",
+          "TRANSITIVE"
+        ],
+        "state": "SUPERSEDED",
+        "superseded_by": "pkg:generic/payments-sdk@2.4.0 DEPENDS_ON pkg:generic/http-core@1.2.0"
+      }
+    ],
+    "counts": {
+      "ACTIVE": 45,
+      "FIRST_SEEN": 3,
+      "SUPERSEDED": 1
+    },
+    "detected_at": "2026-11-03T08:30:00Z",
+    "statement": "49 supply edge(s): FIRST_SEEN 3, ACTIVE 45, SUPERSEDED 1; 1 superseded or removed edge(s) kept",
+    "rule": "a dependency has a life: a superseded edge keeps the row that replaced it, because a deletion here is an erasure of history"
+  },
+  "profile": {
+    "rows": [
+      {
+        "source": "pkg:generic/openssl:ECDSA-256",
+        "relation": "IMPLEMENTS",
+        "target": "ECDSA-256",
+        "class": "CAPABILITY",
+        "evidence_type": "CAPABILITY",
+        "evidence_id": "EVID-97003",
+        "basis": "capability-list"
+      },
+      {
+        "source": "pkg:generic/http-core@1.2.0",
+        "relation": "DEPENDS_ON",
+        "target": "pkg:generic/openssl",
+        "class": "IMPORTED",
+        "evidence_type": "IMPORTED",
+        "evidence_id": "EVID-97003",
+        "basis": "sbom-import"
+      },
+      {
+        "source": "SIGN-payments-api[1821]",
+        "relation": "USES_ALGORITHM",
+        "target": "RSA-2048",
+        "class": "OBSERVED",
+        "evidence_type": "RUNTIME_OBSERVED",
+        "evidence_id": "EVID-97006",
+        "basis": "process-trace"
+      },
+      {
+        "source": "payments.bank.example:443",
+        "relation": "NEGOTIATES",
+        "target": "TLS_AES_256_GCM_SHA384",
+        "class": "CONFIGURED",
+        "evidence_type": "CONFIGURED",
+        "evidence_id": "EVID-97008",
+        "basis": "config-parse"
+      },
+      {
+        "source": "CERT-001",
+        "relation": "SIGNED_WITH",
+        "target": "ECDSA-256",
+        "class": "IMPORTED",
+        "evidence_type": "IMPORTED",
+        "evidence_id": "EVID-97008",
+        "basis": "cmdb-import"
+      },
+      {
+        "source": "pkg:generic/openssl",
+        "relation": "SUPPORTS",
+        "target": "pkg:generic/openssl:ECDSA-256",
+        "class": "CAPABILITY",
+        "evidence_type": "CAPABILITY",
+        "evidence_id": "EVID-97003",
+        "basis": "capability-list"
+      },
+      {
+        "source": "TLS_AES_256_GCM_SHA384",
+        "relation": "USES_CRYPTO",
+        "target": "suite:TLS_AES_256_GCM_SHA384",
+        "class": "CONFIGURED",
+        "evidence_type": "CONFIGURED",
+        "evidence_id": "EVID-97008",
+        "basis": "config-parse"
+      },
+      {
+        "source": "layer:ubuntu-22.04-base",
+        "relation": "SHIPS",
+        "target": "pkg:generic/openssl",
+        "class": "IMPORTED",
+        "evidence_type": "IMPORTED",
+        "evidence_id": "EVID-97004",
+        "basis": "sbom-import"
+      },
+      {
+        "source": "payments-api[1821]",
+        "relation": "INVOKES",
+        "target": "SIGN-payments-api[1821]",
+        "class": "OBSERVED",
+        "evidence_type": "RUNTIME_OBSERVED",
+        "evidence_id": "EVID-97006",
+        "basis": "process-trace"
+      },
+      {
+        "source": "SBOM-18291",
+        "relation": "LISTS",
+        "target": "pkg:generic/openssl",
+        "class": "IMPORTED",
+        "evidence_type": "IMPORTED",
+        "evidence_id": "EVID-97003",
+        "basis": "sbom-import"
+      },
+      {
+        "source": "suite:TLS_AES_256_GCM_SHA384",
+        "relation": "USES_ALGORITHM",
+        "target": "AES-256",
+        "class": "CONFIGURED",
+        "evidence_type": "CONFIGURED",
+        "evidence_id": "EVID-97008",
+        "basis": "config-parse"
+      },
+      {
+        "source": "pkg:generic/openssl:RSA-2048",
+        "relation": "IMPLEMENTS",
+        "target": "RSA-2048",
+        "class": "CAPABILITY",
+        "evidence_type": "CAPABILITY",
+        "evidence_id": "EVID-97006",
+        "basis": "capability-list"
+      },
+      {
+        "source": "pkg:generic/openssl",
+        "relation": "SUPPORTS",
+        "target": "pkg:generic/openssl:AES-256",
+        "class": "CAPABILITY",
+        "evidence_type": "CAPABILITY",
+        "evidence_id": "EVID-97003",
+        "basis": "capability-list"
+      },
+      {
+        "source": "pkg:generic/openssl:AES-256",
+        "relation": "IMPLEMENTS",
+        "target": "AES-256",
+        "class": "CAPABILITY",
+        "evidence_type": "CAPABILITY",
+        "evidence_id": "EVID-97003",
+        "basis": "capability-list"
+      },
+      {
+        "source": "HSM-001",
+        "relation": "SUPPORTS",
+        "target": "RSA-2048",
+        "class": "IMPORTED",
+        "evidence_type": "IMPORTED",
+        "evidence_id": "EVID-97007",
+        "basis": "cmdb-import"
+      },
+      {
+        "source": "pkg:generic/openssl",
+        "relation": "PRODUCT_OF",
+        "target": "OpenSSL 3.x",
+        "class": "IMPORTED",
+        "evidence_type": "IMPORTED",
+        "evidence_id": "EVID-97003",
+        "basis": "sbom-import"
+      },
+      {
+        "source": "pkg:generic/openssl",
+        "relation": "SUPPORTS",
+        "target": "pkg:generic/openssl:RSA-2048",
+        "class": "CAPABILITY",
+        "evidence_type": "CAPABILITY",
+        "evidence_id": "EVID-97006",
+        "basis": "capability-list"
+      },
+      {
+        "source": "pkg:generic/openssl",
+        "relation": "INSTALLED_IN",
+        "target": "payments-api:4.2.1",
+        "class": "IMPORTED",
+        "evidence_type": "IMPORTED",
+        "evidence_id": "EVID-97004",
+        "basis": "sbom-import"
+      },
+      {
+        "source": "payments-api[1821]",
+        "relation": "LOADS",
+        "target": "pkg:generic/openssl",
+        "class": "OBSERVED",
+        "evidence_type": "RUNTIME_OBSERVED",
+        "evidence_id": "EVID-97006",
+        "basis": "process-trace"
+      }
+    ],
+    "counts": {
+      "CAPABILITY": 6,
+      "CONFIGURED": 3,
+      "IMPORTED": 7,
+      "RUNTIME_OBSERVED": 3
+    },
+    "proven": 3,
+    "unproven": 16,
+    "statement": "19 crypto dependency edge(s) across 4 evidence type(s); 3 proven by a runtime or network observation, 16 capability, static, configured or declared",
+    "rule": "every crypto dependency carries its evidence type: a capability, a static hit, a configured policy and a wire observation are four different facts and are never summed into one number"
+  },
+  "twin": {
+    "projection": "SBOM",
+    "canonical": "CANONICAL_ESTATE",
+    "derived_from": "sbom-supply:production",
+    "second_store": false,
+    "nodes": 44,
+    "edges": 52,
+    "twin_nodes": 0,
+    "matched": 0,
+    "unmatched": [],
+    "unmatched_count": 0,
+    "statement": "44 SBOM node(s) projected from CANONICAL_ESTATE; no twin was supplied to check against",
+    "rule": "the SBOM is a projection of the canonical estate and the twin: a second database that agrees on the day it is loaded is a second truth waiting to disagree"
+  },
+  "handoff": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "rows": [
+      {
+        "capability": "pkg:generic/openssl:ECDSA-256",
+        "algorithms": [
+          "ECDSA-256"
+        ],
+        "evidence_types": [
+          "CAPABILITY",
+          "IMPORTED"
+        ],
+        "evidence_ids": [],
+        "verdict": "CAPABILITY_ONLY"
+      },
+      {
+        "capability": "pkg:generic/openssl:AES-256",
+        "algorithms": [
+          "AES-256"
+        ],
+        "evidence_types": [
+          "CAPABILITY",
+          "IMPORTED"
+        ],
+        "evidence_ids": [],
+        "verdict": "CAPABILITY_ONLY"
+      },
+      {
+        "capability": "pkg:generic/openssl:RSA-2048",
+        "algorithms": [
+          "RSA-2048"
+        ],
+        "evidence_types": [
+          "CAPABILITY",
+          "RUNTIME_OBSERVED",
+          "IMPORTED"
+        ],
+        "evidence_ids": [
+          "EVID-97006",
+          "crypto:CR-1"
+        ],
+        "verdict": "CORROBORATED"
+      }
+    ],
+    "count": 3,
+    "evidence_counts": {
+      "CAPABILITY": 3,
+      "IMPORTED": 3,
+      "RUNTIME_OBSERVED": 1
+    },
+    "corroborated": [
+      "pkg:generic/openssl:RSA-2048"
+    ],
+    "statement": "pkg:generic/openssl: 3 capability(ies) handed to the CBOM; 1 corroborated by runtime or network evidence",
+    "rule": "the SBOM contributes capability and provenance; only a collector contributes usage, and the type travels with the row"
+  },
+  "pqc": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "capabilities": [
+      "ECDSA-256",
+      "RSA-2048"
+    ],
+    "observed_usage": [
+      "RSA-2048"
+    ],
+    "statement": "pkg:generic/openssl: 2 quantum-sensitive capability(ies) and 1 observed use(s); the SBOM answers the first and the CBOM answers the second",
+    "rule": "the SBOM hands capability to the CBOM and never decides readiness: a listed RSA is a question a migration asks, an observed RSA-2048 is the candidate",
+    "not_proven": [
+      "that a capability is reachable: the component lists it, and no collector has shown a caller using it"
+    ]
+  },
+  "limits": [
+    "the inventory is a fixture: its shapes are the store's, its rows are not",
+    "a stored row records what a collector saw when it ran; nothing here re-runs a collector, so a stale row stays a stale row and the class says so",
+    "the chain is only as complete as the columns: a row that names no commit stops the provenance there, and the gap is printed rather than filled",
+    "the twin is a CBOM projection with its own input shape, so this guide proves the SBOM nodes carry the canonical ids a twin is keyed by, not that a twin was rebuilt from them"
+  ]
+}

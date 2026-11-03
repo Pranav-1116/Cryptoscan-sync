@@ -122,16 +122,22 @@ NOT_PROVEN = [
 # --------------------------------------------------------------------------- #
 
 def part(*assets: Any, claims: Iterable[Mapping[str, Any]] = ()) -> dict[str, Any]:
-    """A bundle of assets and claims, ready to be handed to :func:`estate`."""
+    """A bundle of assets and claims, ready to be handed to :func:`estate`.
+
+    A nested part is flattened *with its claims*: an asset that arrives with the edge that
+    put it there and loses the edge has been counted and not recorded.
+    """
     flat: list[dict[str, Any]] = []
+    flat_claims: list[dict[str, Any]] = [dict(row) for row in claims]
     for item in assets:
         if item is None:
             continue
         if isinstance(item, Mapping) and "assets" in item:
             flat.extend(item["assets"])
+            flat_claims.extend(dict(row) for row in item.get("claims") or [])
             continue
         flat.append(dict(item))  # type: ignore[arg-type]
-    return {"assets": flat, "claims": [dict(row) for row in claims]}
+    return {"assets": flat, "claims": flat_claims}
 
 
 def merge(*parts: Any) -> dict[str, Any]:
