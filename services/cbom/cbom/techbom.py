@@ -108,8 +108,8 @@ ASSET_TYPES: tuple[str, ...] = (
     "BUSINESS_SYSTEM", "APPLICATION", "SERVICE", "CONTAINER", "IMAGE", "PACKAGE",
     "CRYPTO_LIBRARY", "CRYPTO_ASSET",
     # network
-    "NETWORK_ENDPOINT", "LOAD_BALANCER", "API_GATEWAY", "CERTIFICATE",
-    "CERTIFICATE_AUTHORITY", "PUBLIC_KEY", "ALGORITHM",
+    "NETWORK_ENDPOINT", "WAF", "LOAD_BALANCER", "API_GATEWAY", "SERVICE_MESH",
+    "CERTIFICATE", "CERTIFICATE_AUTHORITY", "PUBLIC_KEY", "ALGORITHM",
     # keys and hardware
     "HSM", "KMS", "KEY_REFERENCE", "FIRMWARE", "CRYPTO_CAPABILITY",
     "HOST", "VM", "PHYSICAL_SERVER", "TPM",
@@ -125,7 +125,8 @@ PREFIX: dict[str, str] = {
     "BUSINESS_SYSTEM": "SYS", "APPLICATION": "APP", "SERVICE": "SVC",
     "CONTAINER": "CTR", "IMAGE": "IMG", "PACKAGE": "PKG",
     "CRYPTO_LIBRARY": "LIB", "CRYPTO_ASSET": "CRY", "NETWORK_ENDPOINT": "EP",
-    "LOAD_BALANCER": "LB", "API_GATEWAY": "GW", "CERTIFICATE": "CERT",
+    "LOAD_BALANCER": "LB", "API_GATEWAY": "GW", "SERVICE_MESH": "MESH",
+    "WAF": "WAF", "CERTIFICATE": "CERT",
     "CERTIFICATE_AUTHORITY": "CA", "PUBLIC_KEY": "KEY", "ALGORITHM": "ALG",
     "HSM": "HSM", "KMS": "KMS", "KEY_REFERENCE": "KREF", "FIRMWARE": "FW",
     "CRYPTO_CAPABILITY": "CAP", "HOST": "HOST", "VM": "VM",
@@ -153,11 +154,14 @@ RELATIONS: dict[str, dict[str, Any]] = {
     # network path
     "EXPOSES": {"from": ("APPLICATION", "API_GATEWAY"), "to": ("NETWORK_ENDPOINT",),
                 "chain": "NETWORK"},
+    "PROTECTED_BY": {"from": ("NETWORK_ENDPOINT",), "to": ("WAF",), "chain": "NETWORK"},
     "FRONTED_BY": {"from": ("NETWORK_ENDPOINT",), "to": ("LOAD_BALANCER",),
                    "chain": "NETWORK"},
-    "FORWARDS_TO": {"from": ("LOAD_BALANCER",), "to": ("API_GATEWAY",),
+    "FORWARDS_TO": {"from": ("WAF", "LOAD_BALANCER", "API_GATEWAY"),
+                    "to": ("LOAD_BALANCER", "API_GATEWAY", "SERVICE_MESH"),
                     "chain": "NETWORK"},
-    "ROUTES_TO": {"from": ("API_GATEWAY",), "to": ("APPLICATION",), "chain": "NETWORK"},
+    "ROUTES_TO": {"from": ("API_GATEWAY", "SERVICE_MESH"), "to": ("APPLICATION",),
+                  "chain": "NETWORK"},
     "PRESENTS": {"from": ("NETWORK_ENDPOINT", "LOAD_BALANCER", "API_GATEWAY"),
                  "to": ("CERTIFICATE",), "chain": "NETWORK"},
     # certificate → key → algorithm → issuer
@@ -172,6 +176,7 @@ RELATIONS: dict[str, dict[str, Any]] = {
                     "chain": "CERTIFICATE"},
     # keys and hardware
     "USES_HSM": {"from": ("APPLICATION",), "to": ("HSM",), "chain": "KEYS"},
+    "HAS_MODEL": {"from": ("HSM",), "to": ("VENDOR_PRODUCT",), "chain": "VENDOR"},
     "HOLDS_KEY": {"from": ("HSM", "KMS"), "to": ("KEY_REFERENCE",), "chain": "KEYS"},
     "RUNS_FIRMWARE": {"from": ("HSM", "PHYSICAL_SERVER", "TPM"), "to": ("FIRMWARE",),
                       "chain": "HARDWARE"},

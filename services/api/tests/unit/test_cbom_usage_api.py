@@ -1114,3 +1114,99 @@ def test_techbom_refuses_a_projection_as_its_own_source(client):
         "estate": {"schema": "cryptoscan.techbom/1", "assets": [], "claims": []}})
     assert response.status_code == 422
     assert "techbom-estate" in response.json()["detail"]
+
+
+_TECH_ESTATE = {
+    "schema": "cryptoscan.techbom-estate/1",
+    "assets": [
+        {"kind": "BUSINESS_SYSTEM", "name": "Payments", "criticality": "CRITICAL",
+         "evidence_ids": ["EVD-1"]},
+        {"kind": "APPLICATION", "name": "Payments API", "version": "2026.11.02",
+         "evidence_ids": ["EVD-2"]},
+        {"kind": "CRYPTO_ASSET", "name": "AES-256-GCM", "evidence_type": "RUNTIME_OBSERVED",
+         "evidence_ids": ["EVD-3"]},
+        {"kind": "NETWORK_ENDPOINT", "name": "payments.bank.example:443",
+         "tls_version": "TLSv1.3", "evidence_ids": ["EVD-4"]},
+        {"kind": "HSM", "name": "HSM-01", "evidence_ids": ["EVD-5"]},
+        {"kind": "FIRMWARE", "name": "HSM fw 8.4", "version": "8.4",
+         "supports": ["RSA-2048"], "evidence_ids": ["EVD-5"]},
+    ],
+    "claims": [
+        {"from": "Payments", "relation": "CONTAINS", "to": "Payments API",
+         "basis": "agent-inventory", "evidence_ids": ["EVD-6"]},
+        {"from": "Payments API", "relation": "USES_CRYPTO", "to": "AES-256-GCM",
+         "basis": "runtime-probe", "evidence_ids": ["EVD-3"]},
+        {"from": "Payments API", "relation": "EXPOSES",
+         "to": "payments.bank.example:443", "basis": "config-parse",
+         "evidence_ids": ["EVD-4"]},
+        {"from": "Payments API", "relation": "USES_HSM", "to": "HSM-01",
+         "basis": "config-parse", "evidence_ids": ["EVD-5"]},
+        {"from": "HSM-01", "relation": "RUNS_FIRMWARE", "to": "HSM fw 8.4",
+         "basis": "api-poll", "evidence_ids": ["EVD-5"]},
+    ],
+}
+
+
+def test_techbom_answers_roll_up_a_system_and_measure_impact(client):
+    body = _post(client, "/techbom/answers", {
+        "estate": _TECH_ESTATE, "system": "Payments", "query": "AES-256-GCM",
+        "required_algorithms": ["ML-KEM-768"]}).json()
+    assert body["rollup"]["systems"][0]["criticality"] == "CRITICAL"
+    assert body["rollup"]["systems"][0]["counts"]["APPLICATION"] == 1
+    assert body["impact"]["primary_system"] == "TECH-SYS-001"
+    assert body["impact"]["blocker_counts"]["HSM_PQC_CAPABILITY_UNKNOWN"] == 1
+    assert "business system" in body["statement"]
+
+
+def test_techbom_answers_trace_a_request_path_with_its_crypto(client):
+    body = _post(client, "/techbom/answers", {
+        "estate": _TECH_ESTATE, "path_from": "Payments API"}).json()
+    route = body["path"]["paths"][0]
+    endpoint = next(hop for hop in route["hops"]
+                    if hop["name"] == "payments.bank.example:443")
+    assert endpoint["crypto"]["tls_version"] == "TLSv1.3"
+    assert route["crypto_recorded"].endswith("/2")
+    assert route["statement"].startswith("Payments API → ")
+
+
+def test_techbom_answers_refuse_an_unknown_system(client):
+    response = _post(client, "/techbom/answers",
+                     {"estate": _TECH_ESTATE, "system": "Not A System"})
+    assert response.status_code == 422
+    assert "not a business system" in response.json()["detail"]
+
+
+def test_techbom_timeline_needs_two_snapshots(client):
+    body = _post(client, "/techbom/timeline", {"estates": [_TECH_ESTATE]}).json()
+    assert body["measurable"] is False
+    assert "state, not a series" in body["statement"]
+
+
+def test_techbom_timeline_names_a_version_change(client):
+    newer = {**_TECH_ESTATE, "assets": [
+        {**row, "version": "8.5"} if row["name"] == "HSM fw 8.4" else row
+        for row in _TECH_ESTATE["assets"]]}
+    body = _post(client, "/techbom/timeline",
+                 {"estates": [_TECH_ESTATE, newer]}).json()
+    assert body["measurable"] is True
+    assert body["by_change"]["TECHNOLOGY_VERSION_CHANGED"] == 1
+
+
+def test_techbom_context_places_an_event_in_its_estate(client):
+    body = _post(client, "/techbom/context", {
+        "estate": _TECH_ESTATE,
+        "event": {"kind": "TLS_DOWNGRADE", "asset": "payments.bank.example:443",
+                  "before": "TLSv1.3", "after": "TLSv1.2",
+                  "evidence_ids": ["EV-1"]}}).json()
+    assert body["pattern"] == "CORRELATED_PATTERN"
+    assert body["systems"][0]["name"] == "Payments"
+    assert body["change"]["from"] == "TLSv1.3"
+
+
+def test_techbom_context_refuses_an_asset_it_does_not_hold(client):
+    response = _post(client, "/techbom/context", {
+        "estate": _TECH_ESTATE,
+        "event": {"kind": "TLS_DOWNGRADE", "asset": "external-lb-99",
+                  "evidence_ids": ["EV-1"]}})
+    assert response.status_code == 422
+    assert "not in this TechBOM" in response.json()["detail"]

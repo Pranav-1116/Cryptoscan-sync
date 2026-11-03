@@ -337,6 +337,70 @@ class CbomTlsStateResponse(BaseModel):
     statement: str
 
 
+class CbomTechAnswersRequest(BaseModel):
+    estate: dict = Field(default_factory=dict, description=(
+        "A cryptoscan.techbom-estate/1 document, the same input as /cbom/techbom"))
+    system: str | None = Field(default=None, description=(
+        "Business system to roll up by name or id; omit for the whole portfolio"))
+    query: str | None = Field(default=None, description=(
+        "Technology to measure impact for: an asset name, an id, or an algorithm"))
+    path_from: str | None = Field(default=None, description="Request-path source asset")
+    path_to: str | None = Field(default=None, description="Request-path target asset")
+    required_algorithms: list[str] = Field(default_factory=list, description=(
+        "Algorithms a migration requires; an HSM or firmware that does not list them "
+        "becomes a typed blocker"))
+    deadline: str | None = Field(default=None, description=(
+        "Migration deadline; a quantum-sensitive certificate valid beyond it is a "
+        "lifecycle blocker"))
+
+
+class CbomTechAnswersResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    statement: str
+    rollup: dict | None = None
+    path: dict | None = None
+    impact: dict | None = None
+    not_proven: list[str]
+
+
+class CbomTechTimelineRequest(BaseModel):
+    estates: list[dict] = Field(default_factory=list, description=(
+        "Two or more techbom-estate/1 documents, oldest first"))
+
+
+class CbomTechTimelineResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    snapshots: int
+    measurable: bool
+    statement: str
+    changes: list[dict]
+    steps: list[dict]
+    by_category: dict
+    by_change: dict
+    series: list[dict]
+    not_proven: list[str]
+
+
+class CbomTechContextRequest(BaseModel):
+    estate: dict = Field(default_factory=dict)
+    event: dict = Field(default_factory=dict, description=(
+        "kind (TLS_DOWNGRADE | CERTIFICATE_CHANGE | CRYPTO_REGRESSION | NEW_EXPOSURE), "
+        "asset, before, after, evidence_ids, observed_at"))
+
+
+class CbomTechContextResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    pattern: str
+    event: dict
+    systems: list[dict]
+    technology: list[dict]
+    related: list[dict]
+    change: dict | None
+    declared_only: list[str]
+    statement: str
+    not_proven: list[str]
+
+
 class CbomTechbomRequest(BaseModel):
     estate: dict = Field(default_factory=dict, description=(
         "A cryptoscan.techbom-estate/1 document: `assets`, `claims`, `expected` "
@@ -759,6 +823,80 @@ def cbom_tls_state(body: CbomTlsStateRequest,
             checks["disabled"] = ts.disabled(result, endpoint=body.endpoint,
                                              version=body.version)
     return {**result, "checks": checks, "summary": ts.summary(result)}
+
+
+@router.post("/techbom/answers", response_model=CbomTechAnswersResponse)
+def cbom_techbom_answers(body: CbomTechAnswersRequest,
+                         user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """The questions a TechBOM has to answer: roll-up, request path, impact.
+
+    All three read the same graph and inherit its rules. A roll-up counts **proven**
+    descendants and reports the declared remainder separately, so "the CMDB says this
+    belongs to Payments" never becomes "Payments holds it". A request path carries the
+    crypto each hop negotiates and marks a hop with none as `NOT_RECORDED` rather than
+    drawing it clean. An impact answer counts in the vocabulary an owner asks for —
+    applications, systems, certificates, HSMs, network paths — and names the **migration
+    blockers with who has to act**: an HSM with no capability evidence, firmware that does
+    not list a required algorithm, a certificate whose lifetime outlives the deadline, an
+    application whose cryptography nobody has recorded.
+    """
+    from cbom import techbom as tb
+    from cbom import techbom_queries as tq
+
+    try:
+        bom = tb.build(body.estate)
+        rollup = tq.rollup(bom, system=body.system) if body.system else tq.rollup(bom)
+        path_body = (tq.path(bom, source=body.path_from, target=body.path_to)
+                     if body.path_from else None)
+        impact = (tq.impact(bom, query=body.query,
+                            required_algorithms=body.required_algorithms,
+                            deadline=body.deadline) if body.query else None)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    parts = [row for row in (rollup, path_body, impact) if row]
+    return {
+        "schema": tb.SCHEMA,
+        "statement": " · ".join(row["statement"] for row in parts),
+        "rollup": rollup,
+        "path": path_body,
+        "impact": impact,
+        "not_proven": [limit for row in parts for limit in row.get("not_proven", [])],
+    }
+
+
+@router.post("/techbom/timeline", response_model=CbomTechTimelineResponse)
+def cbom_techbom_timeline(body: CbomTechTimelineRequest,
+                          user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Snapshots → typed change series. One snapshot is a state, not a timeline."""
+    from cbom import techbom as tb
+    from cbom import techbom_queries as tq
+
+    try:
+        snapshots = [tb.build(estate) for estate in body.estates]
+        return tq.timeline(snapshots)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/techbom/context", response_model=CbomTechContextResponse)
+def cbom_techbom_context(body: CbomTechContextRequest,
+                         user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """A live event → `CORRELATED_PATTERN` with the estate behind it, or a refusal.
+
+    The event is placed in the graph rather than embellished: the business system comes
+    from a **proven** containment, the technology is the nearest application, and the
+    related assets are the edges the graph holds. An event naming an asset the TechBOM
+    does not carry is refused with 422 — inventing context for an unknown asset is worse
+    than having none. A downgrade is reported as the observation it is, and the response
+    says plainly that a client negotiating lower is the usual cause.
+    """
+    from cbom import techbom as tb
+    from cbom import techbom_queries as tq
+
+    try:
+        return tq.threat_context(tb.build(body.estate), body.event)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/techbom", response_model=CbomTechbomResponse)

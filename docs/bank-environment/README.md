@@ -555,6 +555,29 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [The questions a TechBOM has to answer](165-techbom-answers.md)
+> (**7 pass · 0 partial · 0 fail**, 35 probes) turns the guide-164 graph into the answers
+> an estate actually asks for, and holds each answer to the graph's rules. **Roll-up**: a
+> business system's technology counted by kind, with criticality — `Payments (CRITICAL): 1
+> application, 1 container, 1 certificate, 1 HSM … across 25 kinds` — where a **declared
+> hop taints everything above it**, so an application that arrived by CMDB import is
+> counted separately rather than folded into the proven total. **Request path**: the hops
+> a request travels (`endpoint → WAF → LB → gateway → service mesh → application →
+> database`) with the crypto each hop negotiates — TLS 1.3 at the edge, TLS 1.2 at the
+> balancer, mTLS in the mesh — and a hop with none marked `NOT_RECORDED` instead of drawn
+> clean. **Impact**: the counts an owner asks for, the ones that decide urgency
+> (critical, legacy), and **typed blockers with who acts** — an HSM with no capability
+> evidence, firmware that does not list a required algorithm, a certificate whose lifetime
+> outlives the deadline, an application whose cryptography nobody recorded. Migration sites
+> are found through the application that *uses* the HSM, because "who breaks" and "who has
+> to change" are different walks. **Timeline**: snapshots → typed changes, and one snapshot
+> is a **state, not a series**. **Context**: a live event becomes a `CORRELATED_PATTERN`
+> with the business system, nearest application and related edges behind it, or a 422 when
+> the asset is not in the estate — fabricated context is worse than none. **Promotion**:
+> `IMPORTED → OBSERVED` only on evidence the claim did not already cite, with the previous
+> class kept in the claim's history. `POST /cbom/techbom/answers`, `/techbom/timeline` and
+> `/techbom/context` expose them, typed.
+
 > [TechBOM is a projection of evidenced relationships](164-techbom.md)
 > (**7 pass · 0 partial · 0 fail**, 35 probes) takes the TechBOM review
 > (`techbom-review-2026-11-03.md`) and builds the one thing five concatenated BOMs cannot
