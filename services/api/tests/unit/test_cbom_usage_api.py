@@ -843,3 +843,55 @@ def test_cipher_suite_decomposition_refuses_a_handshake_with_no_suite(client):
     assert response.status_code == 200
     assert response.json()["refused"][0]["reason"] == (
         "a decomposition needs a cipher suite")
+
+
+def test_certificate_chain_assembles_a_path_and_never_calls_it_trusted(client):
+    leaf = {"certificate_ref": "CERT-9281", "subject": "CN=payments.bank.example",
+            "issuer": "CN=BANK-ICA-01", "not_after": "2027-01-01T00:00:00Z",
+            "public_key_algorithm": "ECDSA", "key_size": 256,
+            "signature_algorithm": "ECDSA-SHA256", "authority_key_id": "ski-ica",
+            "san": ["payments.bank.example"], "endpoint": "payments.bank.example:443",
+            "evidence_id": "CERT-E1", "source": "network-probe",
+            "observed_at": "2026-11-01T00:00:00Z"}
+    intermediate = {"certificate_ref": "CERT-ICA1", "subject": "CN=BANK-ICA-01",
+                    "issuer": "CN=BANK-ROOT-01", "is_ca": True,
+                    "not_after": "2030-01-01T00:00:00Z", "public_key_algorithm": "RSA",
+                    "key_size": 4096, "signature_algorithm": "SHA256-RSA",
+                    "subject_key_id": "ski-ica", "evidence_id": "CERT-E2",
+                    "source": "pki-export"}
+    root = {"certificate_ref": "CERT-ROOT", "subject": "CN=BANK-ROOT-01",
+            "issuer": "CN=BANK-ROOT-01", "is_ca": True,
+            "not_after": "2035-01-01T00:00:00Z", "public_key_algorithm": "RSA",
+            "key_size": 4096, "signature_algorithm": "SHA256-RSA",
+            "evidence_id": "CERT-E3", "source": "pki-export"}
+    body = _post(client, "/certificate-chain", {
+        "certificates": [leaf, intermediate, root],
+        "anchors": ["CERT-ROOT"]}).json()
+    path = next(row for row in body["paths"] if row["certificate_ref"] == "CERT-9281")
+    assert path["resolution"] == "ANCHORED" and path["depth"] == 3
+    assert path["matched_by"][0] == "AUTHORITY_KEY_ID"
+    assert "TRUSTED" not in str(body)
+    assert body["anchors_unconfirmed"] == []
+    assert body["edges"]["counts"]["SIGNED_BY"] == 2
+    assert body["summary"]["quantum_vulnerable"] == ["CERT-9281", "CERT-ICA1",
+                                                     "CERT-ROOT"]
+
+
+def test_certificate_chain_reports_a_missing_issuer_as_incomplete(client):
+    leaf = {"certificate_ref": "CERT-ORPHAN", "subject": "CN=partner.bank.example",
+            "issuer": "CN=PARTNER-CA-01", "not_after": "2027-01-01T00:00:00Z",
+            "public_key_algorithm": "RSA", "key_size": 2048,
+            "signature_algorithm": "SHA256-RSA", "evidence_id": "CERT-E4",
+            "source": "network-probe", "observed_at": "2026-11-01T00:00:00Z"}
+    body = _post(client, "/certificate-chain", {"certificates": [leaf]}).json()
+    path = body["paths"][0]
+    assert path["resolution"] == "INCOMPLETE"
+    assert path["missing_issuer"] == "CN=PARTNER-CA-01"
+    assert body["summary"]["incomplete"] == ["CERT-ORPHAN"]
+
+
+def test_certificate_chain_refuses_a_certificate_it_cannot_name(client):
+    body = _post(client, "/certificate-chain", {
+        "certificates": [{"subject": "CN=x", "evidence_id": "E-1"}]}).json()
+    assert body["certificates"] == {}
+    assert "needs a reference" in body["refused"][0]["reason"]

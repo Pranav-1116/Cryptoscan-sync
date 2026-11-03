@@ -337,6 +337,34 @@ class CbomTlsStateResponse(BaseModel):
     statement: str
 
 
+class CbomCertificateChainRequest(BaseModel):
+    certificates: list[dict] = Field(default_factory=list, description=(
+        "certificate records: certificate_ref (or serial + fingerprint), subject, "
+        "issuer, authority/subject key id, public key algorithm and size, signature "
+        "algorithm, validity, SAN, endpoint, evidence_id, source, observed_at"))
+    anchors: list[str] = Field(default_factory=list, description=(
+        "certificate refs the caller treats as trust anchors; a self-signed root that "
+        "is not declared is reported as an unconfirmed anchor"))
+    declared: dict[str, str] | None = Field(None, description=(
+        "certificate_ref -> issuer certificate_ref, for paths only a PKI export knows"))
+
+
+class CbomCertificateChainResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    certificates: dict
+    refused: list[dict]
+    paths: list[dict]
+    resolutions: dict
+    anchors_declared: list[str]
+    anchors_unconfirmed: list[str]
+    shared_public_keys: dict
+    states: dict
+    statement: str
+    not_proven: list[str]
+    edges: dict
+    summary: dict
+
+
 class CbomCipherSuiteRequest(BaseModel):
     handshakes: list[dict] = Field(default_factory=list, description=(
         "completed handshakes: endpoint, cipher_suite, tls_version, group, "
@@ -609,6 +637,26 @@ def cbom_tls_state(body: CbomTlsStateRequest,
             checks["disabled"] = ts.disabled(result, endpoint=body.endpoint,
                                              version=body.version)
     return {**result, "checks": checks, "summary": ts.summary(result)}
+
+
+@router.post("/certificate-chain", response_model=CbomCertificateChainResponse)
+def cbom_certificate_chain(body: CbomCertificateChainRequest,
+                           user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Endpoint → certificate → key → signature → issuer → trust chain.
+
+    Review item 9. The path is assembled from subject/issuer names and key identifiers
+    and **no signature is verified**, so ``ANCHORED`` is a shape and never a trust
+    decision; an issuer missing from the inventory stops the path as ``INCOMPLETE`` with
+    the missing subject named, because a chain that ends where the collection ended is a
+    gap and not a root. Validity is a state with a day count, revocation is ``UNKNOWN``
+    on every row, and only evidence-timed presentations become topology edges.
+    """
+    from cbom import certificate_chain as cc
+
+    body_chain = cc.chain(body.certificates, anchors=body.anchors,
+                          declared=body.declared)
+    return {**body_chain, "edges": cc.edges(body_chain),
+            "summary": cc.summary(body_chain)}
 
 
 @router.post("/cipher-suite", response_model=CbomCipherSuiteResponse)

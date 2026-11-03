@@ -555,6 +555,26 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [Endpoint → certificate → key → signature → issuer → trust chain](159-certificate-trust-chain.md)
+> (**5 pass · 0 partial · 0 fail**, 29 probes) closes NBOM review item 9. The certificate
+> was already a record; the missing piece was the **chain**. `cbom.certificate_chain`
+> normalises a certificate into the hop the review describes — key algorithm, size and
+> curve, signature algorithm, issuer, validity, SAN, the endpoint it was observed on —
+> and then assembles paths from subject/issuer names and key identifiers, preferring
+> `AUTHORITY_KEY_ID` and settling on `ISSUER_NAME` only when one certificate carries it.
+> Two lines keep it honest: **no signature is verified**, so `ANCHORED` is a shape and
+> never a trust decision (and a self-signed root nobody declared comes back as an
+> *unconfirmed* anchor), and an **issuer missing from the inventory is a hole**, reported
+> as `INCOMPLETE` with the missing subject named rather than treated as a root. Validity
+> is a state with a day count (`VALID`/`EXPIRING`/`EXPIRED`/`NOT_YET_VALID`/`UNKNOWN`,
+> where `UNKNOWN` is a collection gap and not a pass), weak keys and SHA-1 signatures are
+> per-certificate problems, quantum exposure is marked without a migration verdict,
+> revocation is `UNKNOWN` on every row, shared public keys across certificates are
+> reported, and `edges()` turns the chain into `USES_CERTIFICATE`/`SIGNED_BY` topology
+> where every edge carries evidence id, source, confidence and — when it claims to be
+> observed — the moment it was observed. `POST /cbom/certificate-chain` exposes it,
+> typed, behind the reader roles.
+
 > [A cipher suite is four decisions, and TLS 1.3 names only two](158-cipher-suite-decomposition.md)
 > (**5 pass · 0 partial · 0 fail**, 24 probes) closes NBOM review item 8. Flattening a
 > suite into a list of algorithm names loses exactly what a migration question needs, so

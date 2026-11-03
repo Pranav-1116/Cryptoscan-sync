@@ -186,7 +186,7 @@ is a `CRYPTOGRAPHIC_REGRESSION` — a strong signal, not a conclusion.
 | 6 TLS negotiation evidence | implemented | `network_scanner`, `cbom.usage_collectors` |
 | 7 supported/configured/negotiated | **done in this round** | guide 154 (`cbom.tls_state`) |
 | 8 suite decomposition | **done in this round** | guide 158 (`cbom.cipher_suite`); parsing stays in `usage_collectors` |
-| 9 certificate correlation | partial | `usage_evidence.certificate_evidence`, `nbom` certificate component |
+| 9 certificate correlation | **done in this round** | guide 159 (`cbom.certificate_chain`) |
 | 10, 11 fronting hops and termination | implemented | guides 148, 149 (`network_assets`, `termination_paths`) |
 | 12 topology with evidence | implemented | `usage_graph` relationship kinds |
 | 13 SSH depth | not implemented | open |

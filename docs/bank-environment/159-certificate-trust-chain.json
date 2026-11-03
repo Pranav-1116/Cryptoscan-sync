@@ -1,0 +1,838 @@
+{
+  "schema": "cryptoscan.certificate-chain-guide/1",
+  "generated_at": "2026-11-03T01:04:03.157983+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 29,
+  "positions": [
+    "LEAF",
+    "INTERMEDIATE",
+    "ROOT"
+  ],
+  "states": [
+    "VALID",
+    "EXPIRING",
+    "EXPIRED",
+    "NOT_YET_VALID",
+    "UNKNOWN"
+  ],
+  "resolutions": [
+    "ANCHORED",
+    "INCOMPLETE",
+    "LOOP",
+    "UNRESOLVED"
+  ],
+  "matches": [
+    "AUTHORITY_KEY_ID",
+    "ISSUER_NAME",
+    "DECLARED"
+  ],
+  "estate": {
+    "schema": "cryptoscan.certificate-chain/1",
+    "certificates": {
+      "CERT-9281": {
+        "certificate_ref": "CERT-9281",
+        "subject": "CN=payments.bank.example",
+        "issuer": "CN=BANK-ICA-01",
+        "subject_normalised": "cn=payments.bank.example",
+        "issuer_normalised": "cn=bank-ica-01",
+        "serial": "0A1B2C",
+        "fingerprint_sha256": "aa11bb22cc33dd44",
+        "san": [
+          "payments.bank.example"
+        ],
+        "not_before": "2026-01-01T00:00:00Z",
+        "not_after": "2027-01-01T00:00:00Z",
+        "state": "VALID",
+        "state_note": "valid for 59 more day(s)",
+        "days_to_expiry": 59,
+        "public_key": {
+          "algorithm": "ECDSA",
+          "key_size": 256,
+          "curve": "P-256",
+          "quantum_vulnerable": true
+        },
+        "signature_algorithm": "ECDSA-SHA256",
+        "self_signed": false,
+        "is_ca": false,
+        "authority_key_id": "ski-ica",
+        "subject_key_id": null,
+        "key_usage": [],
+        "endpoints": [
+          "payments.bank.example:443"
+        ],
+        "source": "network-probe",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "evidence_ids": [
+          "CERT-E1"
+        ],
+        "problems": [
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "ECDSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          }
+        ],
+        "revocation": "UNKNOWN",
+        "private_material": "NOT_STORED"
+      },
+      "CERT-ICA1": {
+        "certificate_ref": "CERT-ICA1",
+        "subject": "CN=BANK-ICA-01",
+        "issuer": "CN=BANK-ROOT-01",
+        "subject_normalised": "cn=bank-ica-01",
+        "issuer_normalised": "cn=bank-root-01",
+        "serial": null,
+        "fingerprint_sha256": null,
+        "san": [],
+        "not_before": "2020-01-01T00:00:00Z",
+        "not_after": "2030-01-01T00:00:00Z",
+        "state": "VALID",
+        "state_note": "valid for 1155 more day(s)",
+        "days_to_expiry": 1155,
+        "public_key": {
+          "algorithm": "RSA",
+          "key_size": 4096,
+          "curve": null,
+          "quantum_vulnerable": true
+        },
+        "signature_algorithm": "SHA256-RSA",
+        "self_signed": false,
+        "is_ca": true,
+        "authority_key_id": null,
+        "subject_key_id": "ski-ica",
+        "key_usage": [],
+        "endpoints": [],
+        "source": "pki-export",
+        "observed_at": null,
+        "evidence_ids": [
+          "CERT-E2"
+        ],
+        "problems": [
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "RSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          }
+        ],
+        "revocation": "UNKNOWN",
+        "private_material": "NOT_STORED"
+      },
+      "CERT-ROOT": {
+        "certificate_ref": "CERT-ROOT",
+        "subject": "CN=BANK-ROOT-01",
+        "issuer": "CN=BANK-ROOT-01",
+        "subject_normalised": "cn=bank-root-01",
+        "issuer_normalised": "cn=bank-root-01",
+        "serial": null,
+        "fingerprint_sha256": null,
+        "san": [],
+        "not_before": null,
+        "not_after": "2035-01-01T00:00:00Z",
+        "state": "VALID",
+        "state_note": "valid for 2981 more day(s)",
+        "days_to_expiry": 2981,
+        "public_key": {
+          "algorithm": "RSA",
+          "key_size": 4096,
+          "curve": null,
+          "quantum_vulnerable": true
+        },
+        "signature_algorithm": "SHA256-RSA",
+        "self_signed": true,
+        "is_ca": true,
+        "authority_key_id": null,
+        "subject_key_id": null,
+        "key_usage": [],
+        "endpoints": [],
+        "source": "pki-export",
+        "observed_at": null,
+        "evidence_ids": [
+          "CERT-E3"
+        ],
+        "problems": [
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "RSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          }
+        ],
+        "revocation": "UNKNOWN",
+        "private_material": "NOT_STORED"
+      },
+      "CERT-ORPHAN": {
+        "certificate_ref": "CERT-ORPHAN",
+        "subject": "CN=partner.bank.example",
+        "issuer": "CN=PARTNER-CA-01",
+        "subject_normalised": "cn=partner.bank.example",
+        "issuer_normalised": "cn=partner-ca-01",
+        "serial": null,
+        "fingerprint_sha256": null,
+        "san": [],
+        "not_before": null,
+        "not_after": "2027-06-01T00:00:00Z",
+        "state": "VALID",
+        "state_note": "valid for 210 more day(s)",
+        "days_to_expiry": 210,
+        "public_key": {
+          "algorithm": "RSA",
+          "key_size": 2048,
+          "curve": null,
+          "quantum_vulnerable": true
+        },
+        "signature_algorithm": "SHA256-RSA",
+        "self_signed": false,
+        "is_ca": false,
+        "authority_key_id": null,
+        "subject_key_id": null,
+        "key_usage": [],
+        "endpoints": [
+          "partner.bank.example:443"
+        ],
+        "source": "network-probe",
+        "observed_at": null,
+        "evidence_ids": [
+          "CERT-E4"
+        ],
+        "problems": [
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "RSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          }
+        ],
+        "revocation": "UNKNOWN",
+        "private_material": "NOT_STORED"
+      },
+      "CERT-SOON": {
+        "certificate_ref": "CERT-SOON",
+        "subject": "CN=legacy.bank.example",
+        "issuer": "CN=BANK-ICA-01",
+        "subject_normalised": "cn=legacy.bank.example",
+        "issuer_normalised": "cn=bank-ica-01",
+        "serial": null,
+        "fingerprint_sha256": null,
+        "san": [],
+        "not_before": "2025-11-20T00:00:00Z",
+        "not_after": "2026-11-20T00:00:00Z",
+        "state": "EXPIRING",
+        "state_note": "expires in 17 day(s)",
+        "days_to_expiry": 17,
+        "public_key": {
+          "algorithm": "RSA",
+          "key_size": 1024,
+          "curve": null,
+          "quantum_vulnerable": true
+        },
+        "signature_algorithm": "SHA1-RSA",
+        "self_signed": false,
+        "is_ca": false,
+        "authority_key_id": "ski-ica",
+        "subject_key_id": null,
+        "key_usage": [],
+        "endpoints": [
+          "legacy.bank.example:443"
+        ],
+        "source": "network-probe",
+        "observed_at": null,
+        "evidence_ids": [
+          "CERT-E5"
+        ],
+        "problems": [
+          {
+            "kind": "WEAK_KEY",
+            "detail": "RSA-1024 is below the 2048-bit floor this model uses"
+          },
+          {
+            "kind": "WEAK_SIGNATURE",
+            "detail": "SHA1-RSA uses a hash that collision attacks have reached"
+          },
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "RSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          }
+        ],
+        "revocation": "UNKNOWN",
+        "private_material": "NOT_STORED"
+      }
+    },
+    "refused": [],
+    "paths": [
+      {
+        "certificate_ref": "CERT-9281",
+        "position": "LEAF",
+        "resolution": "ANCHORED",
+        "depth": 3,
+        "path": [
+          {
+            "certificate_ref": "CERT-9281",
+            "subject": "CN=payments.bank.example",
+            "state": "VALID",
+            "public_key": "ECDSA",
+            "key_size": 256
+          },
+          {
+            "certificate_ref": "CERT-ICA1",
+            "subject": "CN=BANK-ICA-01",
+            "state": "VALID",
+            "public_key": "RSA",
+            "key_size": 4096
+          },
+          {
+            "certificate_ref": "CERT-ROOT",
+            "subject": "CN=BANK-ROOT-01",
+            "state": "VALID",
+            "public_key": "RSA",
+            "key_size": 4096
+          }
+        ],
+        "matched_by": [
+          "AUTHORITY_KEY_ID",
+          "ISSUER_NAME"
+        ],
+        "anchor": "CERT-ROOT",
+        "missing_issuer": null,
+        "evidence_ids": [
+          "CERT-E1",
+          "CERT-E2",
+          "CERT-E3"
+        ],
+        "problems": [
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "ECDSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          },
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "RSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          },
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "RSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          }
+        ],
+        "statement": "CERT-9281 (leaf) \u2192 CERT-ICA1 \u2192 CERT-ROOT: anchored, matched by AUTHORITY_KEY_ID, ISSUER_NAME"
+      },
+      {
+        "certificate_ref": "CERT-ICA1",
+        "position": "INTERMEDIATE",
+        "resolution": "ANCHORED",
+        "depth": 2,
+        "path": [
+          {
+            "certificate_ref": "CERT-ICA1",
+            "subject": "CN=BANK-ICA-01",
+            "state": "VALID",
+            "public_key": "RSA",
+            "key_size": 4096
+          },
+          {
+            "certificate_ref": "CERT-ROOT",
+            "subject": "CN=BANK-ROOT-01",
+            "state": "VALID",
+            "public_key": "RSA",
+            "key_size": 4096
+          }
+        ],
+        "matched_by": [
+          "ISSUER_NAME"
+        ],
+        "anchor": "CERT-ROOT",
+        "missing_issuer": null,
+        "evidence_ids": [
+          "CERT-E2",
+          "CERT-E3"
+        ],
+        "problems": [
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "RSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          },
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "RSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          }
+        ],
+        "statement": "CERT-ICA1 (intermediate) \u2192 CERT-ROOT: anchored, matched by ISSUER_NAME"
+      },
+      {
+        "certificate_ref": "CERT-ORPHAN",
+        "position": "LEAF",
+        "resolution": "INCOMPLETE",
+        "depth": 1,
+        "path": [
+          {
+            "certificate_ref": "CERT-ORPHAN",
+            "subject": "CN=partner.bank.example",
+            "state": "VALID",
+            "public_key": "RSA",
+            "key_size": 2048
+          }
+        ],
+        "matched_by": [],
+        "anchor": null,
+        "missing_issuer": "CN=PARTNER-CA-01",
+        "evidence_ids": [
+          "CERT-E4"
+        ],
+        "problems": [
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "RSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          }
+        ],
+        "statement": "CERT-ORPHAN (leaf) stands alone: incomplete; issuer CN=PARTNER-CA-01 is not in the inventory"
+      },
+      {
+        "certificate_ref": "CERT-ROOT",
+        "position": "ROOT",
+        "resolution": "ANCHORED",
+        "depth": 1,
+        "path": [
+          {
+            "certificate_ref": "CERT-ROOT",
+            "subject": "CN=BANK-ROOT-01",
+            "state": "VALID",
+            "public_key": "RSA",
+            "key_size": 4096
+          }
+        ],
+        "matched_by": [],
+        "anchor": "CERT-ROOT",
+        "missing_issuer": null,
+        "evidence_ids": [
+          "CERT-E3"
+        ],
+        "problems": [
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "RSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          }
+        ],
+        "statement": "CERT-ROOT (root) stands alone: anchored"
+      },
+      {
+        "certificate_ref": "CERT-SOON",
+        "position": "LEAF",
+        "resolution": "ANCHORED",
+        "depth": 3,
+        "path": [
+          {
+            "certificate_ref": "CERT-SOON",
+            "subject": "CN=legacy.bank.example",
+            "state": "EXPIRING",
+            "public_key": "RSA",
+            "key_size": 1024
+          },
+          {
+            "certificate_ref": "CERT-ICA1",
+            "subject": "CN=BANK-ICA-01",
+            "state": "VALID",
+            "public_key": "RSA",
+            "key_size": 4096
+          },
+          {
+            "certificate_ref": "CERT-ROOT",
+            "subject": "CN=BANK-ROOT-01",
+            "state": "VALID",
+            "public_key": "RSA",
+            "key_size": 4096
+          }
+        ],
+        "matched_by": [
+          "AUTHORITY_KEY_ID",
+          "ISSUER_NAME"
+        ],
+        "anchor": "CERT-ROOT",
+        "missing_issuer": null,
+        "evidence_ids": [
+          "CERT-E2",
+          "CERT-E3",
+          "CERT-E5"
+        ],
+        "problems": [
+          {
+            "kind": "WEAK_KEY",
+            "detail": "RSA-1024 is below the 2048-bit floor this model uses"
+          },
+          {
+            "kind": "WEAK_SIGNATURE",
+            "detail": "SHA1-RSA uses a hash that collision attacks have reached"
+          },
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "RSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          },
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "RSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          },
+          {
+            "kind": "QUANTUM_VULNERABLE",
+            "detail": "RSA is broken by Shor's algorithm; a migration replaces the key and its signature"
+          }
+        ],
+        "statement": "CERT-SOON (leaf) \u2192 CERT-ICA1 \u2192 CERT-ROOT: anchored, matched by AUTHORITY_KEY_ID, ISSUER_NAME"
+      }
+    ],
+    "resolutions": {
+      "ANCHORED": 4,
+      "INCOMPLETE": 1
+    },
+    "anchors_declared": [
+      "CERT-ROOT"
+    ],
+    "anchors_unconfirmed": [],
+    "shared_public_keys": {},
+    "states": {
+      "VALID": 4,
+      "EXPIRING": 1
+    },
+    "statement": "5 certificate(s) assembled into 5 path(s): 4 anchored, 1 incomplete. The paths are assembled from names and key identifiers; no signature was verified",
+    "not_proven": [
+      "that the chain is valid: this module assembles a path from names and key identifiers and verifies no signature, so a chain that reaches an anchor is a shape and not a trust decision",
+      "that a certificate is trusted by any client: trust is a property of the relying party's store, which this inventory does not read",
+      "that a certificate is revoked: no OCSP response and no CRL is consulted here, so revocation is unknown for every row",
+      "that the key belongs to the subject it names: identity proofing happens at issuance, and a name is a claim the issuer made"
+    ]
+  },
+  "edges": {
+    "schema": "cryptoscan.certificate-chain/1",
+    "edges": [
+      {
+        "from": "payments.bank.example:443",
+        "to": "CERT-9281",
+        "kind": "USES_CERTIFICATE",
+        "evidence_id": "CERT-E1",
+        "evidence_ids": [
+          "CERT-E1"
+        ],
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "confidence": "OBSERVED",
+        "detail": "payments.bank.example:443 presented CERT-9281 (VALID)"
+      },
+      {
+        "from": "CERT-9281",
+        "to": "CERT-ICA1",
+        "kind": "SIGNED_BY",
+        "evidence_id": "CERT-E2",
+        "evidence_ids": [
+          "CERT-E2"
+        ],
+        "observed_at": null,
+        "source": "pki-export",
+        "confidence": "ASSEMBLED",
+        "detail": "CERT-9281 names CN=BANK-ICA-01 as its issuer; the signature itself was not verified"
+      },
+      {
+        "from": "CERT-ICA1",
+        "to": "CERT-ROOT",
+        "kind": "SIGNED_BY",
+        "evidence_id": "CERT-E3",
+        "evidence_ids": [
+          "CERT-E3"
+        ],
+        "observed_at": null,
+        "source": "pki-export",
+        "confidence": "ASSEMBLED",
+        "detail": "CERT-ICA1 names CN=BANK-ROOT-01 as its issuer; the signature itself was not verified"
+      },
+      {
+        "from": "CERT-SOON",
+        "to": "CERT-ICA1",
+        "kind": "SIGNED_BY",
+        "evidence_id": "CERT-E2",
+        "evidence_ids": [
+          "CERT-E2"
+        ],
+        "observed_at": null,
+        "source": "pki-export",
+        "confidence": "ASSEMBLED",
+        "detail": "CERT-SOON names CN=BANK-ICA-01 as its issuer; the signature itself was not verified"
+      }
+    ],
+    "refused": [
+      {
+        "from": "partner.bank.example:443",
+        "to": "CERT-ORPHAN",
+        "kind": "USES_CERTIFICATE",
+        "evidence_id": "CERT-E4",
+        "evidence_ids": [
+          "CERT-E4"
+        ],
+        "observed_at": null,
+        "source": "network-probe",
+        "confidence": "UNTIMED",
+        "detail": "partner.bank.example:443 presented CERT-ORPHAN (VALID), but no observation time was recorded, so the edge is not written"
+      },
+      {
+        "from": "legacy.bank.example:443",
+        "to": "CERT-SOON",
+        "kind": "USES_CERTIFICATE",
+        "evidence_id": "CERT-E5",
+        "evidence_ids": [
+          "CERT-E5"
+        ],
+        "observed_at": null,
+        "source": "network-probe",
+        "confidence": "UNTIMED",
+        "detail": "legacy.bank.example:443 presented CERT-SOON (EXPIRING), but no observation time was recorded, so the edge is not written"
+      },
+      {
+        "from": "CERT-ORPHAN",
+        "to": "CN=PARTNER-CA-01",
+        "kind": "SIGNED_BY",
+        "evidence_id": null,
+        "evidence_ids": [],
+        "observed_at": null,
+        "source": null,
+        "confidence": "ABSENT",
+        "detail": "the issuer named in this certificate is not in the inventory, so the edge is a hole and is not written"
+      }
+    ],
+    "counts": {
+      "USES_CERTIFICATE": 1,
+      "SIGNED_BY": 3
+    },
+    "statement": "4 evidence-backed relationship(s) from the chain; 1 missing issuer(s) are reported as holes rather than drawn as edges; 2 presentation(s) had no observation time and were not written"
+  },
+  "summary": {
+    "schema": "cryptoscan.certificate-chain/1",
+    "certificates": 5,
+    "paths": 5,
+    "resolutions": {
+      "ANCHORED": 4,
+      "INCOMPLETE": 1
+    },
+    "anchored": [
+      "CERT-9281",
+      "CERT-ICA1",
+      "CERT-ROOT",
+      "CERT-SOON"
+    ],
+    "incomplete": [
+      "CERT-ORPHAN"
+    ],
+    "expiring": [
+      "CERT-SOON"
+    ],
+    "weak": [
+      "CERT-SOON"
+    ],
+    "quantum_vulnerable": [
+      "CERT-9281",
+      "CERT-ICA1",
+      "CERT-ORPHAN",
+      "CERT-ROOT",
+      "CERT-SOON"
+    ],
+    "shared_public_keys": 0,
+    "statement": "5 certificate(s) assembled into 5 path(s): 4 anchored, 1 incomplete. The paths are assembled from names and key identifiers; no signature was verified",
+    "not_proven": [
+      "that the chain is valid: this module assembles a path from names and key identifiers and verifies no signature, so a chain that reaches an anchor is a shape and not a trust decision",
+      "that a certificate is trusted by any client: trust is a property of the relying party's store, which this inventory does not read",
+      "that a certificate is revoked: no OCSP response and no CRL is consulted here, so revocation is unknown for every row",
+      "that the key belongs to the subject it names: identity proofing happens at issuance, and a name is a claim the issuer made"
+    ]
+  },
+  "rows": [
+    {
+      "id": "the_hop",
+      "question": "does one certificate answer the review's whole chain question?",
+      "phase": "review 9",
+      "probes": [
+        {
+          "probe": "one-certificate-carries-every-field-the-review-names",
+          "ok": true,
+          "observed": "CERT-9281 \u00b7 ECDSA P-256 \u00b7 ECDSA-SHA256 \u00b7 CN=BANK-ICA-01 \u00b7 VALID"
+        },
+        {
+          "probe": "the-endpoint-it-was-observed-on-travels-with-it",
+          "ok": true,
+          "observed": "an endpoint, a source and a time on every hop"
+        },
+        {
+          "probe": "validity-is-a-state-with-a-number-not-a-boolean",
+          "ok": true,
+          "observed": "valid for 59 more day(s)"
+        },
+        {
+          "probe": "revocation-is-unknown-and-says-so",
+          "ok": true,
+          "observed": "no OCSP and no CRL is consulted here"
+        },
+        {
+          "probe": "the-certificate-key-never-becomes-the-application-s-algorithm",
+          "ok": true,
+          "observed": "ECDSA / ECDSA-SHA256 describes the certificate on payments.bank.example:443. A certificate's pub\u2026"
+        },
+        {
+          "probe": "no-private-material-is-stored",
+          "ok": true,
+          "observed": "NOT_STORED"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_chain",
+      "question": "is a path a path, or a claim that the path is trusted?",
+      "phase": "review 9",
+      "probes": [
+        {
+          "probe": "the-leaf-resolves-to-a-root-through-its-intermediate",
+          "ok": true,
+          "observed": "CERT-9281 (leaf) \u2192 CERT-ICA1 \u2192 CERT-ROOT: anchored, matched by AUTHORITY_KEY_ID, ISSUER_NAME"
+        },
+        {
+          "probe": "the-issuer-is-matched-by-key-id-first-and-name-second",
+          "ok": true,
+          "observed": "AUTHORITY_KEY_ID, ISSUER_NAME"
+        },
+        {
+          "probe": "an-anchored-path-is-called-anchored-and-never-trusted",
+          "ok": true,
+          "observed": "a shape, not a trust decision"
+        },
+        {
+          "probe": "a-certificate-whose-issuer-is-absent-is-a-hole",
+          "ok": true,
+          "observed": "CN=PARTNER-CA-01"
+        },
+        {
+          "probe": "an-unconfirmed-root-is-listed-as-an-unconfirmed-anchor",
+          "ok": true,
+          "observed": "declaring CERT-ROOT removes it from the unconfirmed list"
+        },
+        {
+          "probe": "the-chain-states-that-no-signature-was-verified",
+          "ok": true,
+          "observed": " The paths are assembled from names and key identifiers; no signature was verified"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "what_the_chain_finds",
+      "question": "does the chain turn into PKI findings a team can act on?",
+      "phase": "review 9",
+      "probes": [
+        {
+          "probe": "an-expiring-certificate-is-a-state-with-a-date",
+          "ok": true,
+          "observed": "expires in 17 day(s)"
+        },
+        {
+          "probe": "a-1024-bit-key-and-a-sha1-signature-are-both-reported",
+          "ok": true,
+          "observed": "WEAK_KEY, WEAK_SIGNATURE, QUANTUM_VULNERABLE"
+        },
+        {
+          "probe": "quantum-exposure-is-marked-per-certificate-without-a-verdict",
+          "ok": true,
+          "observed": "5 certificate(s) depend on a broken-by-Shor assumption"
+        },
+        {
+          "probe": "the-summary-names-what-is-expiring-and-what-is-incomplete",
+          "ok": true,
+          "observed": "expiring ['CERT-SOON'] \u00b7 incomplete ['CERT-ORPHAN']"
+        },
+        {
+          "probe": "a-missing-expiry-is-a-collection-gap-not-a-pass",
+          "ok": true,
+          "observed": "an absent notAfter is unknown"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_edges",
+      "question": "does the chain become topology without inventing an edge?",
+      "phase": "review 9 / 12 boundary",
+      "probes": [
+        {
+          "probe": "every-edge-carries-evidence-source-and-confidence",
+          "ok": true,
+          "observed": "4 edge(s); an OBSERVED edge also carries its time"
+        },
+        {
+          "probe": "a-certificate-presented-by-an-endpoint-is-an-observed-edge",
+          "ok": true,
+          "observed": "payments.bank.example:443"
+        },
+        {
+          "probe": "a-signature-edge-is-assembled-and-says-it-was-not-verified",
+          "ok": true,
+          "observed": "3 assembled edge(s)"
+        },
+        {
+          "probe": "a-missing-issuer-is-a-hole-rather-than-a-drawn-edge",
+          "ok": true,
+          "observed": "4 evidence-backed relationship(s) from the chain; 1 missing issuer(s) are reported as holes rather than drawn as edges; 2 presentation(s) had no observation time and were not written"
+        },
+        {
+          "probe": "a-presentation-with-no-observation-time-is-not-written",
+          "ok": true,
+          "observed": "an OBSERVED edge without a moment is a claim, not evidence"
+        },
+        {
+          "probe": "an-edge-is-not-duplicated-once-per-descendant",
+          "ok": true,
+          "observed": "4 unique edge(s)"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "shape",
+      "question": "do the refusals say what the chain will not do?",
+      "phase": "review 9",
+      "probes": [
+        {
+          "probe": "a-certificate-with-no-reference-is-refused",
+          "ok": true,
+          "observed": "a chain cannot cite a certificate it cannot name"
+        },
+        {
+          "probe": "a-certificate-with-no-evidence-is-refused",
+          "ok": true,
+          "observed": "an uncited hop is not evidence"
+        },
+        {
+          "probe": "a-non-certificate-is-refused-rather-than-coerced",
+          "ok": true,
+          "observed": "1 certificate(s) assembled into 1 path(s): 1 incomplete. The paths are assembled from names and key identifiers; no signature was verified"
+        },
+        {
+          "probe": "the-chain-refuses-a-document-that-is-not-a-chain",
+          "ok": true,
+          "observed": "a foreign document is rejected, not drawn"
+        },
+        {
+          "probe": "two-certificates-sharing-a-public-key-are-reported",
+          "ok": true,
+          "observed": "one key, two certificates"
+        },
+        {
+          "probe": "every-claim-the-chain-cannot-make-is-stated",
+          "ok": true,
+          "observed": "4 stated limit(s)"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the chain is assembled from subject/issuer names and key identifiers. No signature is verified, no path-length constraint is enforced and no policy is consulted, so `ANCHORED` describes a shape and never a trust decision",
+    "trust is a property of the relying party's store, which this inventory does not read. A certificate that chains to the bank's root may still be rejected by a client that does not carry that root",
+    "revocation is unknown on every row: no OCSP response and no CRL is consulted, and a missing answer is not a good answer",
+    "a certificate whose issuer is absent from the inventory stops the path. That is a collection gap \u2014 usually a missing intermediate \u2014 and the guide reports the missing subject rather than treating the last hop as a root",
+    "the key-size and signature floors are the model's own, chosen to be explainable rather than to match any particular regulator's table",
+    "two certificates sharing a public key are reported, not explained: key reuse can be a deliberate staging certificate or a mistake, and telling them apart needs the PKI's own records"
+  ]
+}
