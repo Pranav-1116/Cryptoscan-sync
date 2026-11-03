@@ -314,11 +314,29 @@ def from_inventory(inventory: Mapping[str, Any] | None, *, environment: Any = No
                          crypto_capability=row.get("crypto_capability"))
         product = _norm(row.get("product")) or _norm(row.get("model"))
         if product:
+            version = _norm(row.get("version"))
             product_key = add("VENDOR_PRODUCT", f"{name} {product}", evidence_ids=evidence,
-                              version=row.get("version") or None,
-                              lifecycle=row.get("lifecycle"))
+                              version=None if version else (row.get("version") or None),
+                              lifecycle=row.get("lifecycle"),
+                              eol_date=row.get("eol_date"), eos_date=row.get("eos_date"),
+                              support_status=row.get("support_status"))
             chain(product_key, "SUPPLIED_BY", vendor_key, basis="vendor-datasheet",
                   evidence_ids=evidence)
+            # A versioned vendor row is two facts, not one: the product the vendor sells and
+            # the release the claim is about. Recording the version on the product alone
+            # loses the level the applicability question is asked at, so the release is a
+            # node of its own and the product *releases* it.
+            if product_key and version:
+                release_key = add("PRODUCT_VERSION", f"{product}@{version}",
+                                  evidence_ids=evidence, version=version,
+                                  lifecycle=row.get("lifecycle"),
+                                  eol_date=row.get("eol_date"),
+                                  eos_date=row.get("eos_date"),
+                                  support_status=row.get("support_status"),
+                                  release_date=row.get("release_date"))
+                chain(product_key, "RELEASES", release_key, basis="vendor-datasheet",
+                      evidence_ids=evidence,
+                      note="the vendor row carries the version, so it names a release")
 
     # ---- certificates ----------------------------------------------------- #
     for row in inv.get("certificates") or []:

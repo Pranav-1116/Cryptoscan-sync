@@ -1,0 +1,427 @@
+{
+  "schema": "cryptoscan.vbom-surface-guide/1",
+  "guide": 179,
+  "generated_at": "2026-11-03T11:07:37Z",
+  "as_of": "2026-11-03",
+  "counts": {
+    "PASS": 13,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "points": 13,
+  "probes": 45,
+  "probes_passed": 45,
+  "statement": "13 of 13 points of surface behaviour hold, across 45 probes; 29 question(s) over 28 section(s), 21 exported component(s) in a document the official schema accepts",
+  "questions": 29,
+  "sections": 28,
+  "surface_codes": [
+    "MISSING_PARAMETER",
+    "UNKNOWN_PARAMETER",
+    "UNKNOWN_QUESTION"
+  ],
+  "levels": {
+    "vendor": 3,
+    "product": 3,
+    "release": 4,
+    "firmware": 4,
+    "package": 2,
+    "asset": 4,
+    "application": 2,
+    "crypto": 7,
+    "runtime": 2,
+    "system": 2
+  },
+  "applicability": {
+    "MATCHED": 4,
+    "VERSION_MISMATCH": 2,
+    "DEPLOYMENT_UNVERIFIED": 6
+  },
+  "export": {
+    "components": 21,
+    "top_level": 11,
+    "nested": 10,
+    "dependencies": 6,
+    "relation_properties": 21,
+    "vendors": 3,
+    "schema_valid": true
+  },
+  "live": {
+    "transports": [
+      "registry",
+      "scan"
+    ],
+    "rows": 5
+  },
+  "refusals": [
+    {
+      "code": "ASSET_WITHOUT_PRODUCT",
+      "subject": "UNMAPPED-HSM",
+      "reason": "an asset that names no product cannot be attributed to a vendor, and an unattributed asset is a vendor dependency nobody owns"
+    }
+  ],
+  "estate_refusals": [],
+  "rows": [
+    {
+      "id": "VBS-01",
+      "number": 1,
+      "section": "catalogue",
+      "question": "every answer the module has is a question the surface can be asked",
+      "probes": [
+        {
+          "probe": "the-catalogue-covers-every-public-reader",
+          "ok": true,
+          "observed": "36 public function(s), 29 question(s), 7 documented as not questions"
+        },
+        {
+          "probe": "no-question-is-listed-twice",
+          "ok": true,
+          "observed": "29 row(s)"
+        },
+        {
+          "probe": "every-question-cites-a-section-and-a-sentence",
+          "ok": true,
+          "observed": "28 distinct section(s)"
+        },
+        {
+          "probe": "each-question-says-where-its-answer-comes-from",
+          "ok": true,
+          "observed": "argument, payload, projection"
+        },
+        {
+          "probe": "the-required-parameters-come-from-the-signatures",
+          "ok": true,
+          "observed": "vendor_products needs a vendor; twin needs nothing"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBS-02",
+      "number": 2,
+      "section": "envelope",
+      "question": "a question, a refusal and a mistake are three different answers",
+      "probes": [
+        {
+          "probe": "an-answered-question-carries-the-readers-own-statement",
+          "ok": true,
+          "observed": "the envelope repeats the reader's sentence rather than inventing one"
+        },
+        {
+          "probe": "an-unknown-question-is-refused-with-a-code",
+          "ok": true,
+          "observed": "UNKNOWN_QUESTION: which_vendor_is_worst is not a question this surface answers; see the "
+        },
+        {
+          "probe": "an-unlisted-parameter-is-refused-not-dropped",
+          "ok": true,
+          "observed": "UNKNOWN_PARAMETER: vendor is not a parameter of twin; it takes none"
+        },
+        {
+          "probe": "a-missing-required-parameter-is-refused-before-the-reader-runs",
+          "ok": true,
+          "observed": "MISSING_PARAMETER: product_releases needs product; product was not given"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBS-03",
+      "number": 3,
+      "section": "refusals",
+      "question": "the graph saying no is an answer the API returns as 200",
+      "probes": [
+        {
+          "probe": "an-unknown-vendor-is-the-modules-code-not-the-surfaces",
+          "ok": true,
+          "observed": "UNKNOWN_NODE: Nobody is not a node in this projection"
+        },
+        {
+          "probe": "a-question-with-no-subject-keeps-the-readers-own-code",
+          "ok": true,
+          "observed": "NO_QUERY: a software chain starts at a vendor or a product"
+        },
+        {
+          "probe": "the-surface-own-vocabulary-is-three-codes",
+          "ok": true,
+          "observed": "MISSING_PARAMETER, UNKNOWN_PARAMETER, UNKNOWN_QUESTION"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBS-04",
+      "number": 4,
+      "section": "assessment",
+      "question": "one payload in, one estate and a set of answers out",
+      "probes": [
+        {
+          "probe": "the-estate-is-assembled-once-and-shared",
+          "ok": true,
+          "observed": "42 asset(s), 55 claim(s), identical across two assessments"
+        },
+        {
+          "probe": "the-default-question-set-is-what-a-graph-can-answer",
+          "ok": true,
+          "observed": "7 of 29 answered without a subject; 8 need one"
+        },
+        {
+          "probe": "an-empty-question-list-answers-nothing",
+          "ok": true,
+          "observed": "0 answers, so a caller that wants only the graph pays for only the graph"
+        },
+        {
+          "probe": "a-called-out-question-is-named-when-it-refuses",
+          "ok": true,
+          "observed": "the statement names what was refused, not only what succeeded"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBS-05",
+      "number": 5,
+      "section": "export",
+      "question": "the vendor graph leaves as CycloneDX 1.6 or it does not leave",
+      "probes": [
+        {
+          "probe": "the-official-schema-accepts-the-document",
+          "ok": true,
+          "observed": "21 component(s) (11 top-level, 10 nested), 6 dependency entr(ies), 21 relation propert(ies), 3 supplier(s); schema valid"
+        },
+        {
+          "probe": "every-component-type-is-in-the-formats-vocabulary",
+          "ok": true,
+          "observed": "application, device"
+        },
+        {
+          "probe": "the-timestamp-is-the-documents-and-not-the-clock",
+          "ok": true,
+          "observed": "2026-11-03T00:00:00Z"
+        },
+        {
+          "probe": "the-export-is-deterministic",
+          "ok": true,
+          "observed": "two calls with the same claims, one document"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBS-06",
+      "number": 6,
+      "section": "vendor-is-a-supplier",
+      "question": "CycloneDX has no vendor type and this does not invent one",
+      "probes": [
+        {
+          "probe": "no-component-is-a-vendor",
+          "ok": true,
+          "observed": "11 top-level component(s), none of them a vendor"
+        },
+        {
+          "probe": "each-product-names-its-supplier",
+          "ok": true,
+          "observed": "F5, OpenSSL Project, Thales"
+        },
+        {
+          "probe": "the-vendors-are-listed-in-the-documents-own-metadata",
+          "ok": true,
+          "observed": "Thales and 2 more"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBS-07",
+      "number": 7,
+      "section": "composition",
+      "question": "a release belongs to a product, so it is nested in it",
+      "probes": [
+        {
+          "probe": "a-release-is-nested-in-its-product",
+          "ok": true,
+          "observed": "payShield 9000 \u2192 payShield 9000@9.2"
+        },
+        {
+          "probe": "a-package-is-nested-in-its-release",
+          "ok": true,
+          "observed": "OpenSSL@3.0.13 \u2192 OpenSSL firmware 3.0.13, pkg:generic/openssl"
+        },
+        {
+          "probe": "a-release-is-not-a-dependency-of-its-product",
+          "ok": true,
+          "observed": "6 dependency entr(ies), none of them a containment"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBS-08",
+      "number": 8,
+      "section": "dependencies",
+      "question": "dependsOn is an installation contract, not an evidence list",
+      "probes": [
+        {
+          "probe": "every-dependency-reference-resolves",
+          "ok": true,
+          "observed": "6 entr(ies), 0 dangling"
+        },
+        {
+          "probe": "a-device-depends-on-its-model-and-its-firmware",
+          "ok": true,
+          "observed": "6 entr(ies) start at a device or an application"
+        },
+        {
+          "probe": "the-relations-that-are-not-needs-travel-as-properties",
+          "ok": true,
+          "observed": "21 relation propert(ies) carry documented-by, declares and supplies"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBS-09",
+      "number": 9,
+      "section": "confidence",
+      "question": "the document says how strongly each row is believed",
+      "probes": [
+        {
+          "probe": "every-applicability-state-is-one-the-module-defines",
+          "ok": true,
+          "observed": "DEPLOYMENT_UNVERIFIED, MATCHED, VERSION_MISMATCH"
+        },
+        {
+          "probe": "the-estates-states-are-published-in-metadata",
+          "ok": true,
+          "observed": "DEPLOYMENT_UNVERIFIED:6, MATCHED:4, VERSION_MISMATCH:2"
+        },
+        {
+          "probe": "the-supplier-basis-is-on-the-component-it-justifies",
+          "ok": true,
+          "observed": "vendor-datasheet, carried next to the supplier it justifies"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBS-10",
+      "number": 10,
+      "section": "live",
+      "question": "a collector and a vendor payload describe the same estate",
+      "probes": [
+        {
+          "probe": "both-transports-are-reported",
+          "ok": true,
+          "observed": "registry, scan; 5 row(s)"
+        },
+        {
+          "probe": "a-scanned-package-joins-the-vendor-estate",
+          "ok": true,
+          "observed": "3 package node(s) after the merge"
+        },
+        {
+          "probe": "a-package-the-payload-already-names-is-not-duplicated",
+          "ok": true,
+          "observed": "openssl appears once: the release names it and the scan agrees"
+        },
+        {
+          "probe": "a-live-read-never-replaces-a-vendor-declaration",
+          "ok": true,
+          "observed": "3 vendor(s), unchanged by the scan"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBS-11",
+      "number": 11,
+      "section": "summary",
+      "question": "the first three numbers, refusals included",
+      "probes": [
+        {
+          "probe": "the-levels-are-the-graphs-own-counts",
+          "ok": true,
+          "observed": "vendor 3, product 3, release 4, firmware 4, package 2, asset 4, application 2, crypto 7, runtime 2, system 2"
+        },
+        {
+          "probe": "the-applicability-states-are-carried-through",
+          "ok": true,
+          "observed": "DEPLOYMENT_UNVERIFIED 6, MATCHED 4, VERSION_MISMATCH 2"
+        },
+        {
+          "probe": "the-refusals-are-counted-and-named",
+          "ok": true,
+          "observed": "1 refusal(s) (ASSET_WITHOUT_PRODUCT): UNMAPPED-HSM"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBS-12",
+      "number": 12,
+      "section": "purity",
+      "question": "the surface answers about what it was given and reads nothing else",
+      "probes": [
+        {
+          "probe": "no-database-and-no-session-import",
+          "ok": true,
+          "observed": "no engine, no session, no tenant filter"
+        },
+        {
+          "probe": "no-writes-and-no-caches",
+          "ok": true,
+          "observed": "nothing is stored between two calls"
+        },
+        {
+          "probe": "the-same-payload-twice-is-the-same-answer",
+          "ok": true,
+          "observed": "two assessments, one answer"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBS-13",
+      "number": 13,
+      "section": "http",
+      "question": "the surface is reachable, or it is a library nobody calls",
+      "probes": [
+        {
+          "probe": "the-catalogue-is-a-route",
+          "ok": true,
+          "observed": "/cbom/vbom/questions"
+        },
+        {
+          "probe": "every-question-shares-one-answer-route",
+          "ok": true,
+          "observed": "one route parametrised by the catalogue, not 29 hand-written handlers"
+        },
+        {
+          "probe": "the-export-and-the-assessment-are-routes",
+          "ok": true,
+          "observed": "/answer/{question}, /assess, /export/cyclonedx, /questions, /summary"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    }
+  ],
+  "limits": [
+    "the payload is a recorded vendor estate: the surface is proven against the shapes a bank files, not against a running procurement system",
+    "the live merge joins a registry and an image scan to the vendor payload; it does not read the API database, which is the cross-links route's job",
+    "a MATCHED applicability state says the vendor's claim lines up with the deployment; it does not say anything exercised the capability",
+    "CycloneDX carries no field for class, basis or applicability, so those travel as cryptoscan: properties that a consumer may ignore",
+    "the API is exercised for routing and for one assessment; full endpoint behaviour is covered by the unit tests, not by this harness"
+  ]
+}

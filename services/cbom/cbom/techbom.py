@@ -306,7 +306,11 @@ RELATIONS: dict[str, dict[str, Any]] = {
                                "DATABASE", "SERVICE_MESH", "PHYSICAL_SERVER", "TPM", "NIC",
                                "STORAGE",
                                "RAID_CONTROLLER", "GPU", "CRYPTO_ACCELERATOR",
-                               "SECURITY_APPLIANCE", "SMART_CARD"),
+                               "SECURITY_APPLIANCE", "SMART_CARD",
+                               # a host, a VM and a cluster node run firmware too: the
+                               # mainframe and the hypervisor are the obvious cases, and the
+                               # KBOM records node images the same way.
+                               "HOST", "VM", "KUBERNETES_NODE", "CLOUD_INSTANCE"),
                       "to": ("FIRMWARE",), "chain": "HARDWARE"},
     "RUNS_BIOS": {"from": ("PHYSICAL_SERVER", "HOST"), "to": ("BIOS",),
                   "chain": "HARDWARE"},
@@ -340,8 +344,11 @@ RELATIONS: dict[str, dict[str, Any]] = {
     "MEMBER_OF": {"from": ("HSM", "HSM_PARTITION"), "to": ("HSM_CLUSTER",),
                   "chain": "HARDWARE"},
     "PEERS_WITH": {"from": ("HSM",), "to": ("HSM",), "chain": "HARDWARE"},
-    "SERVES": {"from": ("HSM", "HSM_PARTITION", "KMS"), "to": ("APPLICATION",),
-               "chain": "KEYS"},
+    "SERVES": {"from": ("HSM", "HSM_PARTITION", "KMS", "LOAD_BALANCER", "WAF",
+                        "API_GATEWAY", "SERVICE_MESH", "VPN_GATEWAY", "FIREWALL",
+                        "HOST", "VM", "KUBERNETES_NODE", "CLOUD_INSTANCE", "DATABASE",
+                        "CERTIFICATE_AUTHORITY"),
+               "to": ("APPLICATION",), "chain": "KEYS"},
     # hardware lifecycle and evidence (review hbom 8, 13)
     "HAS_VULNERABILITY": {"from": ("FIRMWARE", "BIOS", "OS", "PACKAGE", "CRYPTO_LIBRARY",
                                    "IMAGE", "APPLICATION"),

@@ -666,6 +666,43 @@
 > too: it is not a dependency field) — and the twin closes with **10/10 levels populated and
 > 0 gaps**.
 
+> [The VBOM surface: catalogue, envelope, export and live merge](179-vbom-surface.md)
+> (**13 pass · 0 partial · 0 fail**, 45 probes) is where those answers leave the building.
+> Guide 178 proved the graph; this guide proves the three ways it is reachable and refuses to
+> let any of them invent a fourth. The **catalogue** is the contract: `29 question(s)` over
+> `28 section(s)`, each naming the parameters its reader actually takes — and the probe that
+> matters compares the module's *public functions* against the catalogue instead of trusting
+> a list, so a reader added tomorrow and left unreachable fails the build. Seven functions
+> are documented as deliberately not questions (`build`, `from_documents`, `levels`,
+> `compare_versions`, `lifecycle_of`, `evidence_freshness`, `deploy_is_read`). Every answer
+> is an **envelope**: `ok`, the reader's own statement, and a code — and the four ways to go
+> wrong stay four different answers (`UNKNOWN_QUESTION`, `UNKNOWN_PARAMETER`,
+> `MISSING_PARAMETER` from the surface, `UNKNOWN_NODE`/`NO_QUERY` passed through from the
+> reader as a 200, because the graph answering "no" is not a server error). Parameters are
+> read from `inspect.signature`, not maintained by hand, and a question that needs a subject
+> is *not asked* by a default assessment rather than defaulted to "no". The **export** is
+> CycloneDX 1.6 validated against the schema this repository already vendors, and it makes
+> three modelling decisions out loud: a vendor is a `supplier` and **not** a component
+> (CycloneDX has no vendor type and this does not invent one), a release is **nested** in its
+> product and a package in its release because `dependsOn` is an installation contract rather
+> than a containment claim, and only a real need (`HAS_MODEL`, `RUNS_FIRMWARE`,
+> `SUPPLIED_BY`, `SERVES`, `RUNS_APPLICATION`, `LOADS`) becomes a dependency — the other
+> `21 relation propert(ies)` (`documented-by`, `declares`, `supplies`, and their basis) travel
+> as `cryptoscan:` properties a consumer may ignore. `21 exported component(s)` (11 top-level,
+> 10 nested) over `6 dependency entr(ies)` reproduce the guide-178 estate, with
+> `MATCHED 11, VERSION_MISMATCH 8, EXPIRED 2, DEPLOYMENT_UNVERIFIED 4` carried onto the
+> components they belong to. The **live merge** closes the loop with guide 177: an OCI registry and an image
+> scan are folded into the vendor payload's own sections (`registry`, `scan`, 5 rows), a
+> scanned package joins the estate, `pkg:generic/openssl` is **not** added twice because the
+> release already names it, and no collector row ever replaces a vendor declaration —
+> procurement wins on *who supplies*, the scan wins on *what is running*, and the two stay in
+> different fields. The surface is a pure function: no engine, no session, no tenant filter,
+> no cache, the same payload twice is the same answer — and `POST /cbom/vbom/answer/{question}`
+> is one route parametrised by the catalogue rather than twenty-nine hand-written handlers.
+> One row is refused while the estate is assembled (`ASSET_WITHOUT_PRODUCT` — `UNMAPPED-HSM`)
+> and the summary counts it, because a refusal that vanishes between the builder and the
+> report is how a graph starts looking complete.
+
 > [Live collection: payloads, transports and the chain they build](177-sbom-live-collection.md)
 > (**16 pass · 0 partial · 0 fail**, 48 probes) closes the other end of 176. That guide began
 > with a store somebody had already filled; this one begins with the answer each bank system
