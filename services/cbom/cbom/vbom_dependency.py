@@ -593,6 +593,15 @@ class _Builder:
             return None
         return _key("PRODUCT_VERSION", _version_label(product, version), self.environment)
 
+    def exists(self, key: str | None) -> bool:
+        """Whether a node was actually added — a key is a name, not a node.
+
+        Without this the firmware section linked ``FIRMWARE_OF`` to a release it had only
+        *computed the key of*, and the projection refused the dangling edge. A firmware with
+        no release in the estate now simply has no ``FIRMWARE_OF`` edge.
+        """
+        return bool(key) and key in self.seen
+
     def firmware_key(self, product: Any, version: Any) -> str | None:
         if not _norm(product) or not _norm(version):
             return None
@@ -790,7 +799,7 @@ def from_documents(payload: Mapping[str, Any], *, environment: str = "PRODUCTION
                              pqc_capability=row.get("pqc_capability"),
                              signed=row.get("signed"))
         release = _version_label(product_name, release_version)
-        if build.release_key(product_name, release_version):
+        if build.exists(build.release_key(product_name, release_version)):
             build.link(firmware, "FIRMWARE_OF", release, basis="vendor-datasheet",
                        evidence=evidence, release=release_version)
         for document in evidence:

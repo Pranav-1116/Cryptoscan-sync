@@ -703,6 +703,36 @@
 > and the summary counts it, because a refusal that vanishes between the builder and the
 > report is how a graph starts looking complete.
 
+> [The vendor dependency graph over the live estate](180-vbom-estate.md)
+> (**13 pass · 0 partial · 0 fail**, 42 probes) is the step that turns guide 178 from a proof
+> into a product: **stored rows → payload → graph → answers → an API route and a CycloneDX
+> document**. `cbom/vbom_estate.py` maps the inventory the API already assembles — vendors,
+> vendor crypto declarations, devices, packages, business systems and the scanned target —
+> and `34 row(s)` land over `10 section(s)` producing `32 node(s)`: `vendor 5, product 5,
+> release 4, firmware 5, package 3, asset 5, application 1, crypto 2, runtime 0, system 2`.
+> Four rules are probed rather than described. **A mapper invents nothing**: three rows are
+> refused by name — `MYSTERY-01` (a device with no model, so no product and no vendor), the
+> `Acme Datacrypt@4.2` capability that cites **no document** (`VENDOR_CLAIM_WITHOUT_DOCUMENT`
+> is the graph's own rule, applied before the builder runs) and a package with no coordinate —
+> and the graph then refuses nothing at all, because the mapper's rules fired first. **A static
+> finding is not an observation**: the stored `CryptoAsset` rows are analysis of files, so the
+> runtime section is empty, `declared_vs_observed` reports `2 declared, 0 observed`, and the
+> reason is published in `not_mapped` instead of a runtime claim being inherited from a file
+> path. **A device that reports a firmware is the firmware row**: the firmware becomes a node
+> of its own, which is what makes `RUNS_FIRMWARE` land somewhere and what this guide found
+> broken — guide 178 checked that it had *computed a key* rather than that the release existed,
+> so a firmware with no release produced a dangling `FIRMWARE_OF`; `_Builder.exists()` fixes it
+> and a device whose firmware has no release now simply has no `FIRMWARE_OF`. **Applicability
+> is only as good as the fields the estate keeps**: the inventory knows a device's firmware and
+> not its product release, so the answers come back `UNKNOWN 4, DEPLOYMENT_UNVERIFIED 2` with
+> `version: NOT_COMPARABLE` printed, and no pair claims `MATCHED` on a comparison nobody made —
+> a finding about the estate rather than a silent pass. Coverage keeps its three answers apart
+> (`1 identified, 1 unknown, 1 internal` → 33.3% identified, 66.7% accounted for), the export
+> is `31 component(s)` over `12 dependency entr(ies)` with only the vendor side in it, and the
+> graph is reachable as `GET /vbom/dependency`, `/questions`, `/vendors/{vendor}`,
+> `/assets/{asset}` and `/export`, with an unknown vendor a 404 that lists the vendors the
+> estate does have.
+
 > [Live collection: payloads, transports and the chain they build](177-sbom-live-collection.md)
 > (**16 pass · 0 partial · 0 fail**, 48 probes) closes the other end of 176. That guide began
 > with a store somebody had already filled; this one begins with the answer each bank system

@@ -44,6 +44,7 @@ from db.models import (
     TechnologyBomExportSchedule,
     TechnologyBomSnapshot,
     Vendor,
+    VendorCryptoInventory,
     Vulnerability,
 )
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -110,9 +111,15 @@ def _gather_inventory(db: Session, *, limit: int = 2000) -> dict[str, Any]:
     deps.extend(observed_edges)
     hardware = [*hardware, *observed_hardware]
     vendors = [*vendors, *observed_vendors]
+    # Vendor crypto declarations: an algorithm a vendor states, with the document that
+    # states it. Carried as their own section because a declaration is not an asset —
+    # and because the vendor dependency graph can only cite a capability that has a page
+    # behind it, so dropping the source document here would silently drop the claim.
+    vendor_crypto = _vendor_crypto_rows(db, limit=limit)
     return {
         "applications": apps, "crypto": crypto, "hardware": hardware,
         "vendors": vendors, "certificates": certs, "dependencies": deps,
+        "vendor_crypto": vendor_crypto,
         "software": software_rows,
         "scan": {
             "collected_at": datetime.now(timezone.utc).isoformat(),
@@ -160,6 +167,52 @@ def _software_inventory(db: Session, *, limit: int = 2000) -> tuple[list[dict[st
     inventory = software_inventory.latest_scan_software(db)
     rows = list(inventory.get("components") or [])[:limit]
     return rows, inventory
+
+
+def _vendor_crypto_rows(db: Session, *, limit: int = 2000) -> list[dict[str, Any]]:
+    """Vendor-declared crypto, joined to the vendor name and its product/version.
+
+    The product and version are read from the vendor's profile extras when present:
+    a capability that names no product cannot be applied to a release, and this row keeps
+    the source document so the graph can cite it.
+    """
+    rows: list[dict[str, Any]] = []
+    try:
+        statement = (
+            select(VendorCryptoInventory, Vendor)
+            .join(Vendor, Vendor.id == VendorCryptoInventory.vendor_id)
+            .limit(limit)
+        )
+        pairs = db.execute(statement).all()
+    except Exception:  # noqa: BLE001 — a missing table is an empty section, not a 500
+        logger.debug("vendor_crypto_lookup_failed", exc_info=True)
+        return rows
+    for inventory_row, vendor in pairs:
+        extra = getattr(vendor, "extra_json", None) or {}
+        if not isinstance(extra, dict):
+            extra = {}
+        rows.append({
+            "id": inventory_row.id,
+            "vendor": vendor.name,
+            "product": extra.get("product") or extra.get("vendor_product") or "",
+            "version": extra.get("version") or extra.get("product_version") or "",
+            "product_type": extra.get("product_type") or "",
+            "algorithm": inventory_row.algorithm,
+            "key_size": inventory_row.key_size,
+            "mode": inventory_row.mode,
+            "crypto_use_case": inventory_row.crypto_use_case,
+            "pqc_ready": bool(inventory_row.pqc_ready),
+            "discovery_method": inventory_row.discovery_method,
+            "confidence": inventory_row.confidence,
+            "source_document": inventory_row.source_document,
+            "discovered_at": (inventory_row.discovered_at.isoformat()
+                              if hasattr(inventory_row.discovered_at, "isoformat")
+                              else inventory_row.discovered_at),
+            "verified_at": (inventory_row.verified_at.isoformat()
+                            if hasattr(inventory_row.verified_at, "isoformat")
+                            else inventory_row.verified_at),
+        })
+    return rows
 
 
 def _libraries(c: CryptoAsset) -> str:

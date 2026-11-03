@@ -310,7 +310,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
                                # a host, a VM and a cluster node run firmware too: the
                                # mainframe and the hypervisor are the obvious cases, and the
                                # KBOM records node images the same way.
-                               "HOST", "VM", "KUBERNETES_NODE", "CLOUD_INSTANCE"),
+                               "HOST", "VM", "KUBERNETES_NODE", "CLOUD_INSTANCE",
+                               "CERTIFICATE_AUTHORITY"),
                       "to": ("FIRMWARE",), "chain": "HARDWARE"},
     "RUNS_BIOS": {"from": ("PHYSICAL_SERVER", "HOST"), "to": ("BIOS",),
                   "chain": "HARDWARE"},

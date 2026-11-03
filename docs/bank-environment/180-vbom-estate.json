@@ -1,0 +1,433 @@
+{
+  "schema": "cryptoscan.vbom-estate-guide/1",
+  "guide": 180,
+  "generated_at": "2026-11-03T11:39:40Z",
+  "as_of": "2026-11-03",
+  "counts": {
+    "PASS": 13,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "points": 13,
+  "probes": 42,
+  "probes_passed": 42,
+  "statement": "13 of 13 points of estate mapping hold, across 42 probes; 34 row(s) mapped over 10 section(s), 3 unmapped by name, 32 node(s) in the graph",
+  "mapped": {
+    "documents": 1,
+    "vendors": 5,
+    "products": 5,
+    "releases": 4,
+    "firmware": 5,
+    "assets": 5,
+    "packages": 3,
+    "components": 3,
+    "applications": 1,
+    "systems": 2,
+    "usage": 0,
+    "network": 0,
+    "pki": 0
+  },
+  "unmapped": [
+    {
+      "section": "assets",
+      "subject": "MYSTERY-01",
+      "reason": "the row names no model, so the device cannot be attributed to a product and an unattributed device is a vendor dependency nobody owns"
+    },
+    {
+      "section": "releases",
+      "subject": "Acme Datacrypt@4.2",
+      "reason": "the capability cites no document, and a capability with no page behind it is a rumour the graph refuses (VENDOR_CLAIM_WITHOUT_DOCUMENT)"
+    },
+    {
+      "section": "packages",
+      "subject": "no-coordinate",
+      "reason": "a software row with no coordinate cannot be joined to an SBOM or a runtime trace, which both name components by coordinate"
+    }
+  ],
+  "not_mapped": {
+    "usage": "runtime usage needs a process trace or a live probe; the stored crypto findings are static analysis and are not mapped here, so `declared_vs_observed` reports every declared capability as declared and never observed rather than inheriting a runtime claim from a file path",
+    "network": "an endpoint's load balancer, TLS mode and certificate chain come from the network scan projection and the NBOM, not from this mapper",
+    "pki": "certificate authority, certificate and endpoint rows come from the PKI projection; a fingerprint without its chain is not a dependency edge",
+    "firmware": "no firmware rows are mapped: a device's firmware becomes a node from the device's own row, and a vendor firmware document would add the support dates and the security status that row does not carry",
+    "applications": "the API's `applications` rows are business systems (the System model); the only application node this mapper can justify is the scanned target, and it carries the packages the scan reported"
+  },
+  "levels": {
+    "vendor": 5,
+    "product": 5,
+    "release": 4,
+    "firmware": 5,
+    "package": 3,
+    "asset": 5,
+    "application": 1,
+    "crypto": 2,
+    "runtime": 0,
+    "system": 2
+  },
+  "applicability": {
+    "UNKNOWN": 4,
+    "DEPLOYMENT_UNVERIFIED": 2
+  },
+  "coverage": {
+    "total": 3,
+    "identified": 1,
+    "unknown": 1,
+    "internal": 1,
+    "coverage_percent": 33.3,
+    "accounted_percent": 66.7
+  },
+  "export": {
+    "components": 31,
+    "dependencies": 12
+  },
+  "questions": 25,
+  "refusals": [],
+  "rows": [
+    {
+      "id": "VBE-01",
+      "number": 1,
+      "section": "mapping",
+      "question": "stored rows become one payload, and the count says which",
+      "probes": [
+        {
+          "probe": "the-payload-declares-the-graphs-input-schema",
+          "ok": true,
+          "observed": "cryptoscan.vbom-input/1"
+        },
+        {
+          "probe": "every-section-has-a-count-including-the-empty-ones",
+          "ok": true,
+          "observed": "documents 1, vendors 5, products 5, releases 4, firmware 5, assets 5, packages 3, components 3, applications 1, systems 2"
+        },
+        {
+          "probe": "the-environment-is-stated-not-assumed",
+          "ok": true,
+          "observed": "PRODUCTION (the default when no row says otherwise)"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBE-02",
+      "number": 2,
+      "section": "vendor\u2192product\u2192version",
+      "question": "a versioned vendor row names a release",
+      "probes": [
+        {
+          "probe": "every-versioned-vendor-row-lands-on-a-release",
+          "ok": true,
+          "observed": "4 release(s): Acme Datacrypt@4.2, BIG-IP 9000@17.1, PKI Platform@5.0, payShield 9000@9.2"
+        },
+        {
+          "probe": "the-lifecycle-and-pqc-field-travel-with-it",
+          "ok": true,
+          "observed": "SUPPORTED / PQC_READY"
+        },
+        {
+          "probe": "a-vendor-with-no-product-still-becomes-a-vendor",
+          "ok": true,
+          "observed": "Dell is a vendor from a device row; no product row was invented for it"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBE-03",
+      "number": 3,
+      "section": "vendor\u2192asset",
+      "question": "a device keeps the identity, the firmware and the place it is",
+      "probes": [
+        {
+          "probe": "the-flags-and-type-choose-the-kind",
+          "ok": true,
+          "observed": "CA-01=CERTIFICATE_AUTHORITY, HSM-001=HSM, HSM-002=HSM, LB-001=LOAD_BALANCER, SRV-01=PHYSICAL_SERVER"
+        },
+        {
+          "probe": "firmware-serial-and-location-survive-the-mapping",
+          "ok": true,
+          "observed": "9.2.1, SN-001, dc-1"
+        },
+        {
+          "probe": "a-device-with-no-model-is-unmapped-by-name",
+          "ok": true,
+          "observed": "the row names no model, so the device cannot be attributed to a product and an u"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBE-04",
+      "number": 4,
+      "section": "declared-capability",
+      "question": "a capability is imported with the page that states it",
+      "probes": [
+        {
+          "probe": "a-declaration-becomes-a-release-capability",
+          "ok": true,
+          "observed": "AES, ML-KEM"
+        },
+        {
+          "probe": "the-document-is-created-once-and-cited-by-id",
+          "ok": true,
+          "observed": "VCI-D133296595 \u2190 payShield 9.2 policy"
+        },
+        {
+          "probe": "a-capability-with-no-document-is-unmapped-not-imported",
+          "ok": true,
+          "observed": "Acme Datacrypt RSA-2048 refused: the row cites no document"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBE-05",
+      "number": 5,
+      "section": "declared\u2260observed",
+      "question": "a static finding is not an observation",
+      "probes": [
+        {
+          "probe": "the-stored-crypto-findings-do-not-become-runtime-usage",
+          "ok": true,
+          "observed": "1 stored finding(s), 0 usage row(s)"
+        },
+        {
+          "probe": "the-reason-is-in-the-response",
+          "ok": true,
+          "observed": "runtime usage needs a process trace or a live probe; the stored crypto findings are static"
+        },
+        {
+          "probe": "declared-vs-observed-keeps-the-two-apart",
+          "ok": true,
+          "observed": "2 capabilities declared, 0 observed: the vendor's page is not a runtime observation"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBE-06",
+      "number": 6,
+      "section": "vendor\u2192system",
+      "question": "the rows say what the bank runs and what it would lose",
+      "probes": [
+        {
+          "probe": "a-system-row-becomes-a-business-system",
+          "ok": true,
+          "observed": "Payments System, Reporting System"
+        },
+        {
+          "probe": "the-scanned-target-is-the-only-application-claimed",
+          "ok": true,
+          "observed": "payments-api carries the three packages the scan reported"
+        },
+        {
+          "probe": "a-package-with-no-coordinate-is-unmapped",
+          "ok": true,
+          "observed": "no-coordinate: a row that cannot be joined to an SBOM or a trace"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBE-07",
+      "number": 7,
+      "section": "the-graph",
+      "question": "the levels the estate supports, and nothing above them",
+      "probes": [
+        {
+          "probe": "the-levels-are-populated-up-to-what-the-rows-support",
+          "ok": true,
+          "observed": "vendor 5, product 5, release 4, firmware 5, package 3, asset 5, application 1, crypto 2, system 2"
+        },
+        {
+          "probe": "the-runtime-level-stays-empty-because-nothing-was-observed",
+          "ok": true,
+          "observed": "0 runtime node(s): a static finding is not a process"
+        },
+        {
+          "probe": "the-graph-refuses-nothing-the-mapper-had-already-rejected",
+          "ok": true,
+          "observed": "0 graph refusal(s), none of them a row the mapper had already reported"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBE-08",
+      "number": 8,
+      "section": "answers",
+      "question": "every question has one shape, refusals included",
+      "probes": [
+        {
+          "probe": "the-catalogue-and-the-module-agree",
+          "ok": true,
+          "observed": "25 question(s), 21 of which need a subject"
+        },
+        {
+          "probe": "the-default-assessment-answers-without-a-subject",
+          "ok": true,
+          "observed": "vendor_history, evidence_report, statement_applicability, version_conflicts, twin, coverage"
+        },
+        {
+          "probe": "an-unknown-question-is-refused-with-a-code",
+          "ok": true,
+          "observed": "UNKNOWN_QUESTION"
+        },
+        {
+          "probe": "a-missing-subject-is-refused-before-the-reader-runs",
+          "ok": true,
+          "observed": "MISSING_PARAMETER"
+        },
+        {
+          "probe": "a-readers-refusal-keeps-the-readers-code",
+          "ok": true,
+          "observed": "UNKNOWN_NODE, passed through rather than renamed"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBE-09",
+      "number": 9,
+      "section": "coverage",
+      "question": "how much of the software estate has a vendor",
+      "probes": [
+        {
+          "probe": "three-answers-not-one",
+          "ok": true,
+          "observed": "1 identified, 1 unknown, 1 internal of 3"
+        },
+        {
+          "probe": "an-unknown-vendor-is-a-mapping-gap-and-an-internal-one-is-not",
+          "ok": true,
+          "observed": "33.3% identified, 66.7% accounted for"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBE-10",
+      "number": 10,
+      "section": "applicability",
+      "question": "the answer names the field the estate does not keep",
+      "probes": [
+        {
+          "probe": "a-declaration-reaches-a-deployment",
+          "ok": true,
+          "observed": "6 declaration/deployment pair(s): DEPLOYMENT_UNVERIFIED 2, UNKNOWN 4"
+        },
+        {
+          "probe": "the-missing-field-is-named-not-assumed",
+          "ok": true,
+          "observed": "version: NOT_COMPARABLE \u2014 the inventory knows a device's firmware, not its product release"
+        },
+        {
+          "probe": "no-pair-claims-MATCHED-on-a-field-nobody-kept",
+          "ok": true,
+          "observed": "MATCHED requires a version comparison that passed"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBE-11",
+      "number": 11,
+      "section": "summary",
+      "question": "the first three numbers a reviewer wants",
+      "probes": [
+        {
+          "probe": "the-levels-are-the-graphs-own",
+          "ok": true,
+          "observed": "32 node(s) over 9 level(s)"
+        },
+        {
+          "probe": "the-applicability-states-are-carried-through",
+          "ok": true,
+          "observed": "DEPLOYMENT_UNVERIFIED 2, UNKNOWN 4"
+        },
+        {
+          "probe": "the-refusals-are-counted-even-when-there-are-none",
+          "ok": true,
+          "observed": "32 node(s) over 9 level(s); 0 refusal(s); DEPLOYMENT_UNVERIFIED 2, UNKNOWN 4"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBE-12",
+      "number": 12,
+      "section": "export",
+      "question": "the graph leaves as a CycloneDX document",
+      "probes": [
+        {
+          "probe": "only-the-vendor-side-is-exported",
+          "ok": true,
+          "observed": "31 component(s), kinds within the export list"
+        },
+        {
+          "probe": "every-dependency-reference-resolves",
+          "ok": true,
+          "observed": "12 dependency entr(ies), 0 dangling"
+        },
+        {
+          "probe": "the-timestamp-is-the-documents-not-the-clock",
+          "ok": true,
+          "observed": "2026-11-03T00:00:00Z"
+        },
+        {
+          "probe": "the-export-is-deterministic",
+          "ok": true,
+          "observed": "two calls, one document"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBE-13",
+      "number": 13,
+      "section": "http",
+      "question": "the graph is reachable, or it is a library nobody calls",
+      "probes": [
+        {
+          "probe": "the-graph-is-a-route",
+          "ok": true,
+          "observed": "GET /vbom/dependency"
+        },
+        {
+          "probe": "the-catalogue-is-a-route",
+          "ok": true,
+          "observed": "GET /vbom/dependency/questions"
+        },
+        {
+          "probe": "a-vendor-and-an-asset-are-addressable",
+          "ok": true,
+          "observed": "/dependency, /dependency/assets/{asset}, /dependency/export, /dependency/questions, /dependency/vendors/{vendor}"
+        },
+        {
+          "probe": "the-export-is-a-route",
+          "ok": true,
+          "observed": "GET /vbom/dependency/export"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    }
+  ],
+  "limits": [
+    "the inventory is a fixture in this shape, not a live database: the mapper's contract is the dict the API assembles, and the API tests exercise it against SQLite",
+    "runtime usage is not mapped: a static finding is not an observation, so the runtime level is empty on a purely stored estate",
+    "applicability stops at UNKNOWN where the estate keeps firmware but not the product release \u2014 that is a finding about the estate, not about the graph",
+    "the network and PKI projections are not read by this mapper; their sections are named in not_mapped rather than left empty",
+    "the CycloneDX export is shape-correct but not schema-validated here: the CBOM exporter owns validation"
+  ]
+}

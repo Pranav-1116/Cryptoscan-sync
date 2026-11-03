@@ -163,6 +163,26 @@ def bom(built):
 # --------------------------------------------------------------------------- #
 # 1. The levels, and what a level means
 # --------------------------------------------------------------------------- #
+
+def test_a_firmware_with_no_release_gets_no_dangling_edge():
+    """A key is a name, not a node: an edge to a release the estate never declared is refused.
+
+    The device's own row is where the firmware came from, so the firmware exists and
+    ``RUNS_FIRMWARE`` lands on it — it simply has no ``FIRMWARE_OF`` until a release arrives.
+    """
+    payload = {
+        "as_of": AS_OF,
+        "vendors": [{"name": "Thales"}],
+        "products": [{"name": "payShield 9000", "vendor": "Thales"}],
+        "firmware": [{"product": "payShield 9000", "version": "9.2.1"}],
+        "assets": [{"name": "HSM-001", "type": "HSM", "product": "payShield 9000",
+                    "firmware": "9.2.1", "serial": "SN-1"}],
+    }
+    built = v.build(payload, as_of=AS_OF)
+    assert [row for row in built["bom"]["refusals"] if row["code"] == "UNKNOWN_REF"] == []
+    assert not any(claim["relation"] == "FIRMWARE_OF" for claim in built["bom"]["claims"])
+    assert any(claim["relation"] == "RUNS_FIRMWARE" for claim in built["bom"]["claims"])
+
 def test_the_ten_levels_are_ordered_low_to_high():
     assert [name for name, _, _ in v.LEVELS] == [
         "vendor", "product", "release", "firmware", "package", "asset", "application",
