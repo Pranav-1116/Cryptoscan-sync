@@ -1,0 +1,2315 @@
+{
+  "schema": "cryptoscan.cbom-dependency-guide/1",
+  "generated_at": "2026-11-03T06:26:36Z",
+  "estate": "bank-dependency",
+  "counts": {
+    "PASS": 26,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 77,
+  "points_present": "26/26",
+  "statement": "26 of 26 points of the dependency chain are present in the built projection, across 77 probes; 47 assets and 65 evidenced edges",
+  "levels": {
+    "system": 1,
+    "application": 1,
+    "release": 3,
+    "process": 7,
+    "provider": 2,
+    "operation": 3,
+    "algorithm": 10,
+    "key": 2,
+    "key_provider": 3,
+    "certificate": 1,
+    "endpoint": 3,
+    "vendor": 2,
+    "hardware": 5
+  },
+  "chain": {
+    "query": "Payments API",
+    "node": {
+      "key": "APPLICATION:payments api:production",
+      "id": "TECH-APP-001",
+      "kind": "APPLICATION",
+      "name": "Payments API",
+      "attributes": {}
+    },
+    "down": {
+      "release": [
+        {
+          "key": "ARTIFACT:payments-api-4.2.0.jar:production",
+          "id": "TECH-ART-001",
+          "kind": "ARTIFACT",
+          "name": "payments-api-4.2.0.jar",
+          "attributes": {},
+          "class": "CONFIGURED",
+          "relation": "BUNDLES",
+          "evidence_id": "EVID-95002"
+        },
+        {
+          "key": "IMAGE:payments-api:4.2.0:production",
+          "id": "TECH-IMG-001",
+          "kind": "IMAGE",
+          "name": "payments-api:4.2.0",
+          "attributes": {
+            "registry": "registry.bank.internal"
+          },
+          "class": "CONFIGURED",
+          "relation": "PACKAGED_AS",
+          "evidence_id": "EVID-95002"
+        },
+        {
+          "key": "RELEASE:payments-api 4.2.0:production",
+          "id": "TECH-REL-001",
+          "kind": "RELEASE",
+          "name": "payments-api 4.2.0",
+          "attributes": {
+            "channel": "PRODUCTION"
+          },
+          "class": "CONFIGURED",
+          "relation": "RELEASED_AS",
+          "evidence_id": "EVID-95002"
+        }
+      ],
+      "process": [
+        {
+          "key": "DEPLOYMENT:payments-api-deploy:production",
+          "id": "TECH-DEP-001",
+          "kind": "DEPLOYMENT",
+          "name": "payments-api-deploy",
+          "attributes": {},
+          "class": "CONFIGURED",
+          "relation": "DEPLOYED_AS",
+          "evidence_id": "EVID-95003"
+        },
+        {
+          "key": "CLUSTER:prod-cluster:production",
+          "id": "TECH-K8S-001",
+          "kind": "CLUSTER",
+          "name": "prod-cluster",
+          "attributes": {},
+          "class": "CONFIGURED",
+          "relation": "MEMBER_OF_CLUSTER",
+          "evidence_id": "EVID-95003"
+        },
+        {
+          "key": "NAMESPACE:payments:production",
+          "id": "TECH-NS-001",
+          "kind": "NAMESPACE",
+          "name": "payments",
+          "attributes": {},
+          "class": "CONFIGURED",
+          "relation": "RUNS_IN",
+          "evidence_id": "EVID-95003"
+        },
+        {
+          "key": "POD:payments-api-7d9f4c-x2m8p:production",
+          "id": "TECH-POD-001",
+          "kind": "POD",
+          "name": "payments-api-7d9f4c-x2m8p",
+          "attributes": {},
+          "class": "OBSERVED",
+          "relation": "RUNS_PROCESS",
+          "evidence_id": "EVID-95004"
+        },
+        {
+          "key": "PROCESS:payments-api[1821]:production",
+          "id": "TECH-PROC-001",
+          "kind": "PROCESS",
+          "name": "payments-api[1821]",
+          "attributes": {
+            "pid": 1821
+          },
+          "class": "RUNTIME_OBSERVED",
+          "relation": "RUNS_APPLICATION",
+          "evidence_id": "EVID-95004"
+        },
+        {
+          "key": "SERVICE:payments-api:production",
+          "id": "TECH-SVC-001",
+          "kind": "SERVICE",
+          "name": "payments-api",
+          "attributes": {
+            "port": 8080,
+            "protocol": "TCP"
+          },
+          "class": "CONFIGURED",
+          "relation": "PROVIDES",
+          "evidence_id": "EVID-95001"
+        }
+      ],
+      "provider": [
+        {
+          "key": "CRYPTO_LIBRARY:libcrypto.so.3:production",
+          "id": "TECH-LIB-001",
+          "kind": "CRYPTO_LIBRARY",
+          "name": "libcrypto.so.3",
+          "attributes": {},
+          "class": "IMPORTED",
+          "relation": "LINKS",
+          "evidence_id": "EVID-95002"
+        },
+        {
+          "key": "CRYPTO_PROVIDER:openssl 3.0.11:production",
+          "id": "TECH-PROVIDER-001",
+          "kind": "CRYPTO_PROVIDER",
+          "name": "OpenSSL 3.0.11",
+          "attributes": {
+            "family": "OPENSSL",
+            "provider_file": "/usr/lib64/libcrypto.so.3",
+            "library": "libcrypto.so.3",
+            "version_claims": [
+              {
+                "source": "sbom",
+                "value": "3.0.11",
+                "class": "STATIC_OBSERVED",
+                "evidence_id": "EVID-95002"
+              },
+              {
+                "source": "process-map",
+                "value": "3.0.13",
+                "class": "RUNTIME_OBSERVED",
+                "evidence_id": "EVID-95004"
+              },
+              {
+                "source": "agent-inventory",
+                "value": "3.0.11",
+                "class": "CONFIGURED",
+                "evidence_id": "EVID-95001"
+              }
+            ]
+          },
+          "class": "OBSERVED",
+          "relation": "LOADS",
+          "evidence_id": "EVID-95004"
+        }
+      ],
+      "operation": [
+        {
+          "key": "CRYPTO_OPERATION:op-encrypt-002:production",
+          "id": "TECH-OP-001",
+          "kind": "CRYPTO_OPERATION",
+          "name": "OP-ENCRYPT-002",
+          "attributes": {
+            "algorithm": "AES-256",
+            "algorithm_family": "AES",
+            "key_size": 256,
+            "mode": "GCM",
+            "purpose": "card data at rest",
+            "provider": "OpenSSL 3.0.11",
+            "operation": "ENCRYPT"
+          },
+          "class": "RUNTIME_OBSERVED",
+          "relation": "INVOKES",
+          "evidence_id": "EVID-95004"
+        },
+        {
+          "key": "CRYPTO_OPERATION:op-sign-001:production",
+          "id": "TECH-OP-002",
+          "kind": "CRYPTO_OPERATION",
+          "name": "OP-SIGN-001",
+          "attributes": {
+            "algorithm": "RSA-2048",
+            "algorithm_family": "RSA",
+            "key_size": 2048,
+            "padding": "PSS",
+            "hash": "SHA-256",
+            "purpose": "payment instruction signature",
+            "provider": "OpenSSL 3.0.11",
+            "operation": "SIGN"
+          },
+          "class": "RUNTIME_OBSERVED",
+          "relation": "INVOKES",
+          "evidence_id": "EVID-95004"
+        },
+        {
+          "key": "CRYPTO_OPERATION:op-static-003:production",
+          "id": "TECH-OP-003",
+          "kind": "CRYPTO_OPERATION",
+          "name": "OP-STATIC-003",
+          "attributes": {
+            "algorithm": "DES-ECB",
+            "algorithm_family": "DES",
+            "key_size": 56,
+            "mode": "ECB",
+            "purpose": "legacy settlement file",
+            "provider": "OpenSSL 3.0.11",
+            "operation": "ENCRYPT"
+          },
+          "class": "STATIC_OBSERVED",
+          "relation": "INVOKES",
+          "evidence_id": "EVID-95005"
+        }
+      ],
+      "algorithm": [
+        {
+          "key": "ALGORITHM:aes-256:production",
+          "id": "TECH-ALG-001",
+          "kind": "ALGORITHM",
+          "name": "AES-256",
+          "attributes": {
+            "family": "AES",
+            "key_size": 256,
+            "mode": "GCM",
+            "quantum_sensitive": false
+          },
+          "class": "OBSERVED",
+          "relation": "IMPLEMENTS",
+          "evidence_id": "EVID-95004"
+        },
+        {
+          "key": "ALGORITHM:des-ecb:production",
+          "id": "TECH-ALG-002",
+          "kind": "ALGORITHM",
+          "name": "DES-ECB",
+          "attributes": {
+            "family": "DES",
+            "key_size": 56,
+            "mode": "ECB",
+            "quantum_sensitive": false
+          },
+          "class": "STATIC_OBSERVED",
+          "relation": "USES_ALGORITHM",
+          "evidence_id": "EVID-95005"
+        },
+        {
+          "key": "ALGORITHM:rsa-2048:production",
+          "id": "TECH-ALG-003",
+          "kind": "ALGORITHM",
+          "name": "RSA-2048",
+          "attributes": {
+            "family": "RSA",
+            "key_size": 2048,
+            "quantum_sensitive": true
+          },
+          "class": "OBSERVED",
+          "relation": "IMPLEMENTS",
+          "evidence_id": "EVID-95004"
+        },
+        {
+          "key": "ALGORITHM:sha-256:production",
+          "id": "TECH-ALG-004",
+          "kind": "ALGORITHM",
+          "name": "SHA-256",
+          "attributes": {
+            "family": "SHA",
+            "key_size": 256,
+            "quantum_sensitive": false
+          },
+          "class": "OBSERVED",
+          "relation": "IMPLEMENTS",
+          "evidence_id": "EVID-95004"
+        },
+        {
+          "key": "CRYPTO_ASSET:aes-256-gcm:production",
+          "id": "TECH-CRY-001",
+          "kind": "CRYPTO_ASSET",
+          "name": "AES-256-GCM",
+          "attributes": {
+            "algorithm": "AES",
+            "key_size": 256,
+            "evidence_type": "NETWORK_OBSERVED"
+          },
+          "class": "NETWORK_OBSERVED",
+          "relation": "USES_CRYPTO",
+          "evidence_id": "EVID-95007"
+        },
+        {
+          "key": "CRYPTO_ASSET:sha-384:production",
+          "id": "TECH-CRY-002",
+          "kind": "CRYPTO_ASSET",
+          "name": "SHA-384",
+          "attributes": {
+            "algorithm": "SHA",
+            "evidence_type": "NETWORK_OBSERVED"
+          },
+          "class": "NETWORK_OBSERVED",
+          "relation": "USES_CRYPTO",
+          "evidence_id": "EVID-95007"
+        },
+        {
+          "key": "CRYPTO_ASSET:src/main/java/bank/legacysettlement.java:cipher.getinstance:production",
+          "id": "TECH-CRY-003",
+          "kind": "CRYPTO_ASSET",
+          "name": "src/main/java/bank/LegacySettlement.java:Cipher.getInstance",
+          "attributes": {
+            "api": "Cipher.getInstance",
+            "file": "src/main/java/bank/LegacySettlement.java",
+            "line": 214,
+            "evidence_type": "STATIC_OBSERVED"
+          },
+          "class": "STATIC_OBSERVED",
+          "relation": "USES_CRYPTO",
+          "evidence_id": "EVID-95005"
+        },
+        {
+          "key": "CRYPTO_ASSET:x25519:production",
+          "id": "TECH-CRY-004",
+          "kind": "CRYPTO_ASSET",
+          "name": "X25519",
+          "attributes": {
+            "algorithm": "ECDH",
+            "evidence_type": "NETWORK_OBSERVED"
+          },
+          "class": "NETWORK_OBSERVED",
+          "relation": "USES_CRYPTO",
+          "evidence_id": "EVID-95007"
+        },
+        {
+          "key": "CIPHER_SUITE:ecdhe-rsa-aes128-gcm-sha256:production",
+          "id": "TECH-SUITE-001",
+          "kind": "CIPHER_SUITE",
+          "name": "ECDHE-RSA-AES128-GCM-SHA256",
+          "attributes": {
+            "tls_version": "TLS1.2",
+            "kex": "ECDHE",
+            "auth": "RSA",
+            "bulk": "AES-128-GCM",
+            "mac": "SHA-256"
+          },
+          "class": "NETWORK_OBSERVED",
+          "relation": "NEGOTIATES",
+          "evidence_id": "EVID-95007"
+        },
+        {
+          "key": "CIPHER_SUITE:tls_aes_256_gcm_sha384:production",
+          "id": "TECH-SUITE-002",
+          "kind": "CIPHER_SUITE",
+          "name": "TLS_AES_256_GCM_SHA384",
+          "attributes": {
+            "tls_version": "TLS1.3",
+            "kex": "X25519",
+            "auth": "ECDSA-P256",
+            "bulk": "AES-256-GCM",
+            "mac": "SHA-384"
+          },
+          "class": "NETWORK_OBSERVED",
+          "relation": "NEGOTIATES",
+          "evidence_id": "EVID-95007"
+        }
+      ],
+      "key": [
+        {
+          "key": "KEY_REFERENCE:key-ref-4401:production",
+          "id": "TECH-KREF-001",
+          "kind": "KEY_REFERENCE",
+          "name": "KEY-REF-4401",
+          "attributes": {
+            "key_ref": "pkcs11:token=bank;id=4401",
+            "purpose": "SIGNING",
+            "algorithm": "RSA",
+            "key_size": 2048,
+            "holder": "HSM-001"
+          },
+          "class": "RUNTIME_OBSERVED",
+          "relation": "HOLDS_KEY",
+          "evidence_id": "EVID-95006"
+        },
+        {
+          "key": "KEY_REFERENCE:key-ref-4402:production",
+          "id": "TECH-KREF-002",
+          "kind": "KEY_REFERENCE",
+          "name": "KEY-REF-4402",
+          "attributes": {
+            "key_ref": "arn:aws:kms:ap-south-1:key/4402",
+            "purpose": "ENCRYPTION",
+            "algorithm": "AES",
+            "key_size": 256,
+            "holder": "KMS-01"
+          },
+          "class": "CONFIGURED",
+          "relation": "HOLDS_KEY",
+          "evidence_id": "EVID-95006"
+        }
+      ],
+      "key_provider": [
+        {
+          "key": "HSM:hsm-001:production",
+          "id": "TECH-HSM-001",
+          "kind": "HSM",
+          "name": "HSM-001",
+          "attributes": {
+            "model": "nShield",
+            "firmware_version": "12.72.0"
+          },
+          "class": "CONFIGURED",
+          "relation": "PROTECTED_BY",
+          "evidence_id": "EVID-95006"
+        },
+        {
+          "key": "KMS:kms-01:production",
+          "id": "TECH-KMS-001",
+          "kind": "KMS",
+          "name": "KMS-01",
+          "attributes": {
+            "region": "ap-south-1"
+          },
+          "class": "CONFIGURED",
+          "relation": "USES_KMS",
+          "evidence_id": "EVID-95006"
+        },
+        {
+          "key": "TPM:tpm-01:production",
+          "id": "TECH-TPM-001",
+          "kind": "TPM",
+          "name": "TPM-01",
+          "attributes": {},
+          "class": "RUNTIME_OBSERVED",
+          "relation": "USES_TPM",
+          "evidence_id": "EVID-95003"
+        }
+      ],
+      "certificate": [
+        {
+          "key": "CERTIFICATE:cert-001:production",
+          "id": "TECH-CERT-001",
+          "kind": "CERTIFICATE",
+          "name": "CERT-001",
+          "attributes": {
+            "subject": "CN=payments.bank.example",
+            "issuer": "Bank Issuing CA",
+            "serial": "4f:9a:21",
+            "not_after": "2027-04-01T00:00:00Z",
+            "signature_algorithm": "ECDSA-SHA256"
+          },
+          "class": "NETWORK_OBSERVED",
+          "relation": "PRESENTS",
+          "evidence_id": "EVID-95007"
+        }
+      ],
+      "endpoint": [
+        {
+          "key": "NETWORK_ENDPOINT:lb-01:443:production",
+          "id": "TECH-EP-001",
+          "kind": "NETWORK_ENDPOINT",
+          "name": "lb-01:443",
+          "attributes": {
+            "host": "10.10.0.30",
+            "port": 443,
+            "protocol": "TCP",
+            "transport": "TLS",
+            "sni": [],
+            "alpn": [],
+            "tls": {
+              "version": "TLS1.2",
+              "suite": "ECDHE-RSA-AES128-GCM-SHA256"
+            }
+          },
+          "class": "CONFIGURED",
+          "relation": "FORWARDS_TO",
+          "evidence_id": "EVID-95007"
+        },
+        {
+          "key": "NETWORK_ENDPOINT:payments.bank.example:443:production",
+          "id": "TECH-EP-002",
+          "kind": "NETWORK_ENDPOINT",
+          "name": "payments.bank.example:443",
+          "attributes": {
+            "host": "203.0.113.10",
+            "port": 443,
+            "protocol": "TCP",
+            "transport": "TLS",
+            "sni": [
+              "payments.bank.example"
+            ],
+            "alpn": [],
+            "tls": {
+              "version": "TLS1.3",
+              "suite": "TLS_AES_256_GCM_SHA384"
+            }
+          },
+          "class": "CONFIGURED",
+          "relation": "EXPOSES",
+          "evidence_id": "EVID-95007"
+        }
+      ]
+    },
+    "up": {
+      "system": [
+        {
+          "key": "BUSINESS_SYSTEM:payments system:production",
+          "id": "TECH-SYS-001",
+          "kind": "BUSINESS_SYSTEM",
+          "name": "Payments System",
+          "attributes": {},
+          "class": "IMPORTED",
+          "relation": "CONTAINS",
+          "evidence_id": "EVID-95001"
+        }
+      ]
+    },
+    "edges": [
+      {
+        "source": "payments-api 4.2.0",
+        "relationship": "BUNDLES",
+        "target": "payments-api-4.2.0.jar",
+        "class": "CONFIGURED",
+        "basis": "agent-inventory",
+        "evidence_id": "EVID-95002"
+      },
+      {
+        "source": "payments-api:4.2.0",
+        "relationship": "DEPLOYED_AS",
+        "target": "payments-api-deploy",
+        "class": "CONFIGURED",
+        "basis": "deployment-metadata",
+        "evidence_id": "EVID-95003"
+      },
+      {
+        "source": "Payments API",
+        "relationship": "EXPOSES",
+        "target": "payments.bank.example:443",
+        "class": "CONFIGURED",
+        "basis": "deployment-metadata",
+        "evidence_id": "EVID-95007"
+      },
+      {
+        "source": "payments.bank.example:443",
+        "relationship": "FORWARDS_TO",
+        "target": "lb-01:443",
+        "class": "CONFIGURED",
+        "basis": "dns-resolution",
+        "evidence_id": "EVID-95007"
+      },
+      {
+        "source": "HSM-001",
+        "relationship": "HOLDS_KEY",
+        "target": "KEY-REF-4401",
+        "class": "RUNTIME_OBSERVED",
+        "basis": "runtime-observation",
+        "evidence_id": "EVID-95006"
+      },
+      {
+        "source": "KMS-01",
+        "relationship": "HOLDS_KEY",
+        "target": "KEY-REF-4402",
+        "class": "CONFIGURED",
+        "basis": "api-poll",
+        "evidence_id": "EVID-95006"
+      },
+      {
+        "source": "OpenSSL 3.0.11",
+        "relationship": "IMPLEMENTS",
+        "target": "AES-256",
+        "class": "OBSERVED",
+        "basis": "runtime-probe",
+        "evidence_id": "EVID-95004"
+      },
+      {
+        "source": "OpenSSL 3.0.11",
+        "relationship": "IMPLEMENTS",
+        "target": "RSA-2048",
+        "class": "OBSERVED",
+        "basis": "runtime-probe",
+        "evidence_id": "EVID-95004"
+      },
+      {
+        "source": "OpenSSL 3.0.11",
+        "relationship": "IMPLEMENTS",
+        "target": "SHA-256",
+        "class": "OBSERVED",
+        "basis": "runtime-probe",
+        "evidence_id": "EVID-95004"
+      },
+      {
+        "source": "payments-api[1821]",
+        "relationship": "INVOKES",
+        "target": "OP-ENCRYPT-002",
+        "class": "RUNTIME_OBSERVED",
+        "basis": "runtime-observation",
+        "evidence_id": "EVID-95004"
+      },
+      {
+        "source": "payments-api[1821]",
+        "relationship": "INVOKES",
+        "target": "OP-SIGN-001",
+        "class": "RUNTIME_OBSERVED",
+        "basis": "runtime-observation",
+        "evidence_id": "EVID-95004"
+      },
+      {
+        "source": "payments-api[1821]",
+        "relationship": "INVOKES",
+        "target": "OP-STATIC-003",
+        "class": "STATIC_OBSERVED",
+        "basis": "source-analysis",
+        "evidence_id": "EVID-95005"
+      },
+      {
+        "source": "openssl-libs 3.0.11",
+        "relationship": "LINKS",
+        "target": "libcrypto.so.3",
+        "class": "IMPORTED",
+        "basis": "sbom-import",
+        "evidence_id": "EVID-95002"
+      },
+      {
+        "source": "payments-api[1821]",
+        "relationship": "LOADS",
+        "target": "OpenSSL 3.0.11",
+        "class": "OBSERVED",
+        "basis": "runtime-probe",
+        "evidence_id": "EVID-95004"
+      },
+      {
+        "source": "node-07",
+        "relationship": "MEMBER_OF_CLUSTER",
+        "target": "prod-cluster",
+        "class": "CONFIGURED",
+        "basis": "agent-inventory",
+        "evidence_id": "EVID-95003"
+      },
+      {
+        "source": "lb-01:443",
+        "relationship": "NEGOTIATES",
+        "target": "ECDHE-RSA-AES128-GCM-SHA256",
+        "class": "NETWORK_OBSERVED",
+        "basis": "tls-handshake",
+        "evidence_id": "EVID-95007"
+      },
+      {
+        "source": "payments.bank.example:443",
+        "relationship": "NEGOTIATES",
+        "target": "TLS_AES_256_GCM_SHA384",
+        "class": "NETWORK_OBSERVED",
+        "basis": "tls-handshake",
+        "evidence_id": "EVID-95007"
+      },
+      {
+        "source": "payments-api-4.2.0.jar",
+        "relationship": "PACKAGED_AS",
+        "target": "payments-api:4.2.0",
+        "class": "CONFIGURED",
+        "basis": "agent-inventory",
+        "evidence_id": "EVID-95002"
+      },
+      {
+        "source": "payments.bank.example:443",
+        "relationship": "PRESENTS",
+        "target": "CERT-001",
+        "class": "NETWORK_OBSERVED",
+        "basis": "tls-handshake",
+        "evidence_id": "EVID-95007"
+      },
+      {
+        "source": "Payments API",
+        "relationship": "PROTECTED_BY",
+        "target": "HSM-001",
+        "class": "CONFIGURED",
+        "basis": "config-parse",
+        "evidence_id": "EVID-95006"
+      },
+      {
+        "source": "Payments API",
+        "relationship": "PROVIDES",
+        "target": "payments-api",
+        "class": "CONFIGURED",
+        "basis": "service-registry",
+        "evidence_id": "EVID-95001"
+      },
+      {
+        "source": "Payments API",
+        "relationship": "RELEASED_AS",
+        "target": "payments-api 4.2.0",
+        "class": "CONFIGURED",
+        "basis": "agent-inventory",
+        "evidence_id": "EVID-95002"
+      },
+      {
+        "source": "payments-api[1821]",
+        "relationship": "RUNS_APPLICATION",
+        "target": "Payments API",
+        "class": "RUNTIME_OBSERVED",
+        "basis": "runtime-observation",
+        "evidence_id": "EVID-95004"
+      },
+      {
+        "source": "payments-api-deploy",
+        "relationship": "RUNS_IN",
+        "target": "payments",
+        "class": "CONFIGURED",
+        "basis": "deployment-metadata",
+        "evidence_id": "EVID-95003"
+      },
+      {
+        "source": "node-07",
+        "relationship": "RUNS_ON",
+        "target": "srv-k8s-07",
+        "class": "CONFIGURED",
+        "basis": "agent-inventory",
+        "evidence_id": "EVID-95003"
+      },
+      {
+        "source": "payments-api-7d9f4c-x2m8p",
+        "relationship": "RUNS_PROCESS",
+        "target": "payments-api[1821]",
+        "class": "OBSERVED",
+        "basis": "runtime-probe",
+        "evidence_id": "EVID-95004"
+      },
+      {
+        "source": "payments-api-7d9f4c-x2m8p",
+        "relationship": "SCHEDULED_ON",
+        "target": "node-07",
+        "class": "CONFIGURED",
+        "basis": "deployment-metadata",
+        "evidence_id": "EVID-95003"
+      },
+      {
+        "source": "src/main/java/bank/LegacySettlement.java:Cipher.getInstance",
+        "relationship": "USES_ALGORITHM",
+        "target": "DES-ECB",
+        "class": "STATIC_OBSERVED",
+        "basis": "source-analysis",
+        "evidence_id": "EVID-95005"
+      },
+      {
+        "source": "Payments API",
+        "relationship": "USES_CRYPTO",
+        "target": "src/main/java/bank/LegacySettlement.java:Cipher.getInstance",
+        "class": "STATIC_OBSERVED",
+        "basis": "source-analysis",
+        "evidence_id": "EVID-95005"
+      },
+      {
+        "source": "TLS_AES_256_GCM_SHA384",
+        "relationship": "USES_CRYPTO",
+        "target": "AES-256-GCM",
+        "class": "NETWORK_OBSERVED",
+        "basis": "tls-handshake",
+        "evidence_id": "EVID-95007"
+      },
+      {
+        "source": "TLS_AES_256_GCM_SHA384",
+        "relationship": "USES_CRYPTO",
+        "target": "SHA-384",
+        "class": "NETWORK_OBSERVED",
+        "basis": "tls-handshake",
+        "evidence_id": "EVID-95007"
+      },
+      {
+        "source": "TLS_AES_256_GCM_SHA384",
+        "relationship": "USES_CRYPTO",
+        "target": "X25519",
+        "class": "NETWORK_OBSERVED",
+        "basis": "tls-handshake",
+        "evidence_id": "EVID-95007"
+      },
+      {
+        "source": "Payments API",
+        "relationship": "USES_KMS",
+        "target": "KMS-01",
+        "class": "CONFIGURED",
+        "basis": "api-poll",
+        "evidence_id": "EVID-95006"
+      },
+      {
+        "source": "Payments API",
+        "relationship": "USES_TPM",
+        "target": "TPM-01",
+        "class": "RUNTIME_OBSERVED",
+        "basis": "runtime-observation",
+        "evidence_id": "EVID-95003"
+      }
+    ],
+    "statement": "Payments API: down 3 release \u2192 6 process \u2192 2 provider \u2192 3 operation \u2192 10 algorithm \u2192 2 key \u2192 3 key_provider \u2192 1 certificate \u2192 2 endpoint; up 1 system",
+    "not_proven": [
+      "that every level exists: a chain stops where the estate stops, and an empty level is reported as a gap rather than filled with a guess"
+    ]
+  },
+  "capability": {
+    "provider": "OpenSSL 3.0.11",
+    "capability": [
+      "AES-256",
+      "RSA-2048",
+      "SHA-256"
+    ],
+    "usage": {
+      "AES-256": [
+        "RUNTIME_OBSERVED"
+      ],
+      "DES-ECB": [
+        "STATIC_OBSERVED"
+      ],
+      "RSA-2048": [
+        "RUNTIME_OBSERVED"
+      ]
+    },
+    "capability_not_used": [
+      "SHA-256"
+    ],
+    "used_not_capable": [
+      "DES-ECB"
+    ],
+    "layers": [
+      "runtime",
+      "static"
+    ],
+    "statement": "OpenSSL 3.0.11: 3 capability(ies), 3 observed use(s) from 2 layer(s), 1 listed and never used, 1 used without being listed",
+    "rule": "a capability is what the provider says it can do; usage is an operation with an evidence class, and one never becomes the other"
+  },
+  "conflicts": {
+    "findings": [
+      {
+        "code": "CRYPTO_DEPENDENCY_CONFLICT",
+        "kind": "VERSION",
+        "asset": "OpenSSL 3.0.11",
+        "asset_id": "TECH-PROVIDER-001",
+        "field": "version",
+        "values": [
+          "3.0.11",
+          "3.0.13"
+        ],
+        "sources": [
+          {
+            "source": "sbom",
+            "value": "3.0.11",
+            "class": "STATIC_OBSERVED",
+            "evidence_id": "EVID-95002"
+          },
+          {
+            "source": "process-map",
+            "value": "3.0.13",
+            "class": "RUNTIME_OBSERVED",
+            "evidence_id": "EVID-95004"
+          },
+          {
+            "source": "agent-inventory",
+            "value": "3.0.11",
+            "class": "CONFIGURED",
+            "evidence_id": "EVID-95001"
+          }
+        ],
+        "reason": "the sources disagree about which version is deployed; the disagreement is the finding, not the newest value"
+      },
+      {
+        "code": "CRYPTO_DEPENDENCY_CONFLICT",
+        "kind": "LAYER",
+        "process": "payments-api[1821]",
+        "layers": {
+          "STATIC_OBSERVED": [
+            "DES-ECB"
+          ],
+          "RUNTIME_OBSERVED": [
+            "AES-256",
+            "RSA-2048"
+          ]
+        },
+        "reason": "two layers saw two different algorithms; collapsing them would report one dependency where the estate has two"
+      }
+    ],
+    "counts": {
+      "LAYER": 1,
+      "VERSION": 1
+    },
+    "statement": "2 dependency conflict(s): 1 LAYER, 1 VERSION",
+    "rule": "a conflict keeps every source; a CBOM that resolves it by precedence has thrown away the one fact worth reporting"
+  },
+  "change": {
+    "changes": [
+      {
+        "code": "CRYPTO_DEPENDENCY_CHANGED",
+        "dependency": "OP-SIGN-001 USES_ALGORITHM",
+        "previous": "RSA-2048",
+        "current": "RSA-3072",
+        "evidence_before": "EVID-95004",
+        "evidence_after": "EVID-95004",
+        "class_before": "RUNTIME_OBSERVED",
+        "class_after": "RUNTIME_OBSERVED",
+        "detected_at": "2026-11-03T08:30:00Z"
+      }
+    ],
+    "added": [],
+    "removed": [],
+    "counts": {
+      "CHANGED": 1,
+      "ADDED": 0,
+      "REMOVED": 0
+    },
+    "statement": "1 changed, 0 added, 0 removed",
+    "rule": "a dependency that stops being observed is superseded, not deleted: what the estate used to depend on is part of the answer"
+  },
+  "blockers": {
+    "query": "RSA-2048",
+    "algorithm": "RSA-2048",
+    "sensitive": true,
+    "blockers": [
+      {
+        "kind": "ALGORITHM",
+        "name": "RSA-2048",
+        "class": "CONFIGURED",
+        "relation": null,
+        "reached_by": "self",
+        "reason": "the algorithm itself is quantum-sensitive"
+      },
+      {
+        "kind": "HSM",
+        "name": "HSM-001",
+        "class": "RUNTIME_OBSERVED",
+        "relation": "BACKED_BY",
+        "reached_by": "uses",
+        "reason": "a migration that moves this algorithm has to change this device, its firmware or its key store"
+      },
+      {
+        "kind": "KEY_REFERENCE",
+        "name": "KEY-REF-4401",
+        "class": "RUNTIME_OBSERVED",
+        "relation": "USES_KEY",
+        "reached_by": "uses",
+        "reason": "the key has to be re-issued and every consumer of the reference re-pointed"
+      },
+      {
+        "kind": "TPM",
+        "name": "TPM-01",
+        "class": "RUNTIME_OBSERVED",
+        "relation": "USES_TPM",
+        "reached_by": "uses",
+        "reason": "a migration that moves this algorithm has to change this device, its firmware or its key store"
+      },
+      {
+        "kind": "NETWORK_ENDPOINT",
+        "name": "payments.bank.example:443",
+        "class": "CONFIGURED",
+        "relation": "EXPOSES",
+        "reached_by": "uses",
+        "reason": "this listener negotiates the suite, and a listener is the hop a client actually meets",
+        "suites": [
+          "TLS_AES_256_GCM_SHA384"
+        ]
+      },
+      {
+        "kind": "CERTIFICATE",
+        "name": "CERT-001",
+        "class": "NETWORK_OBSERVED",
+        "relation": "PRESENTS",
+        "reached_by": "uses",
+        "reason": "the certificate carries the key exchange and the signature that a migration has to replace"
+      },
+      {
+        "kind": "NETWORK_ENDPOINT",
+        "name": "lb-01:443",
+        "class": "CONFIGURED",
+        "relation": "FORWARDS_TO",
+        "reached_by": "hop",
+        "reason": "this listener negotiates the suite, and a listener is the hop a client actually meets",
+        "suites": [
+          "ECDHE-RSA-AES128-GCM-SHA256"
+        ]
+      },
+      {
+        "kind": "LOAD_BALANCER",
+        "name": "LB-01",
+        "class": "CONFIGURED",
+        "relation": "LISTENS_ON",
+        "reached_by": "depends",
+        "reason": "a migration that moves this algorithm has to change this device, its firmware or its key store"
+      },
+      {
+        "kind": "FIRMWARE",
+        "name": "BIG-IP 17.1.1",
+        "class": "CONFIGURED",
+        "relation": "RUNS_FIRMWARE",
+        "reached_by": "uses",
+        "reason": "the firmware has to support ML-KEM before the device can negotiate it"
+      },
+      {
+        "kind": "VENDOR_PRODUCT",
+        "name": "BIG-IP i5800",
+        "class": "VENDOR_DECLARED",
+        "relation": "HAS_MODEL",
+        "reached_by": "uses",
+        "reason": "the product's crypto is the vendor's to change, not the bank's"
+      }
+    ],
+    "kinds": [
+      "ALGORITHM",
+      "CERTIFICATE",
+      "FIRMWARE",
+      "HSM",
+      "KEY_REFERENCE",
+      "LOAD_BALANCER",
+      "NETWORK_ENDPOINT",
+      "TPM",
+      "VENDOR_PRODUCT"
+    ],
+    "count": 10,
+    "statement": "RSA-2048: 10 blocker(s) on the chain \u2014 ALGORITHM, CERTIFICATE, FIRMWARE, HSM, KEY_REFERENCE, LOAD_BALANCER, NETWORK_ENDPOINT, TPM, VENDOR_PRODUCT",
+    "rule": "a PQC blocker is a property of the path, not of the algorithm: the algorithm is the thing being migrated, and the path is why it is hard",
+    "not_proven": [
+      "that the device cannot be upgraded: the blocker is a fact about the device, and the upgrade path is a vendor question"
+    ]
+  },
+  "hops": {
+    "endpoint": "payments.bank.example:443",
+    "hops": [
+      {
+        "hop": 1,
+        "source": "payments.bank.example:443",
+        "target": "lb-01:443",
+        "mode": "FORWARDS_TO",
+        "tls_version": "TLS1.3",
+        "suite": "TLS_AES_256_GCM_SHA384",
+        "crypto": [
+          "TLS_AES_256_GCM_SHA384"
+        ],
+        "evidence_id": "EVID-95007",
+        "class": "CONFIGURED"
+      },
+      {
+        "hop": 2,
+        "source": "lb-01:443",
+        "target": "payments-api",
+        "mode": "ROUTES_TO",
+        "tls_version": "TLS1.2",
+        "suite": "ECDHE-RSA-AES128-GCM-SHA256",
+        "crypto": [
+          "ECDHE-RSA-AES128-GCM-SHA256"
+        ],
+        "evidence_id": "EVID-95007",
+        "class": "CONFIGURED"
+      }
+    ],
+    "count": 2,
+    "weakest": "CONFIGURED",
+    "proven": true,
+    "statement": "2 hop(s): payments.bank.example:443 \u2192 lb-01:443 (TLS1.3/TLS_AES_256_GCM_SHA384) \u2192 lb-01:443 \u2192 payments-api (TLS1.2/ECDHE-RSA-AES128-GCM-SHA256)",
+    "not_proven": [
+      "that a request takes every hop at once: the graph holds the hops that were evidenced, and a request takes one path"
+    ]
+  },
+  "coverage": {
+    "schema": "cryptoscan.cbom-usage-evidence/1",
+    "assets_discovered": 12,
+    "systems_total": 70,
+    "systems_inspected": 12,
+    "coverage_pct": 17.1,
+    "completeness": "PARTIAL",
+    "quotable_as_total": false,
+    "statement": "12 crypto asset(s) discovered; 12/70 application(s) inspected (17.1%); the count is what was discovered, not what exists"
+  },
+  "points": [
+    {
+      "point": 1,
+      "question": "an application reaches its crypto by use, not by containment",
+      "probes": [
+        {
+          "probe": "application-to-provider-is-evidenced",
+          "ok": true,
+          "observed": "Payments API \u2192 provider: ['libcrypto.so.3', 'OpenSSL 3.0.11']"
+        },
+        {
+          "probe": "the-use-is-an-operation-not-an-edge-to-a-cipher",
+          "ok": true,
+          "observed": "operations ['OP-ENCRYPT-002', 'OP-SIGN-001', 'OP-STATIC-003']; no application USES_CRYPTO RSA-2048 edge"
+        },
+        {
+          "probe": "the-chain-starts-at-the-business-system",
+          "ok": true,
+          "observed": "Payments System: down 1 application \u2192 3 release \u2192 6 process \u2192 2 provider \u2192 3 operation \u2192 10 algorithm \u2192 2 key \u2192 3 key_provider \u2192 1 certificate \u2192 2 endpoint; up nothing"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 2,
+      "question": "an SBOM becomes a CBOM through capability and evidence, never a preset edge",
+      "probes": [
+        {
+          "probe": "provider-lists-its-capabilities-at-CAPABILITY",
+          "ok": true,
+          "observed": "3 SUPPORTS edge(s) at ['CAPABILITY']"
+        },
+        {
+          "probe": "provider-implements-algorithms-at-an-evidenced-class",
+          "ok": true,
+          "observed": "classes ['OBSERVED']"
+        },
+        {
+          "probe": "no-provider-USES-AES-edge-exists",
+          "ok": true,
+          "observed": "no provider USES_* edge; a provider implements, it does not use"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 3,
+      "question": "a source hit is a dependency at STATIC_OBSERVED and never a runtime use",
+      "probes": [
+        {
+          "probe": "three-static-edges-file-then-call-then-algorithm",
+          "ok": true,
+          "observed": "source-analysis edges: DECLARES, INVOKES, LOADS, RUNS_APPLICATION, USES_ALGORITHM, USES_ALGORITHM, USES_CRYPTO"
+        },
+        {
+          "probe": "every-static-edge-is-STATIC_OBSERVED",
+          "ok": true,
+          "observed": "classes ['STATIC_OBSERVED']"
+        },
+        {
+          "probe": "STATIC_OBSERVED-is-not-PROVEN",
+          "ok": true,
+          "observed": "PROVEN = ['CONFIGURED', 'NETWORK_OBSERVED', 'OBSERVED', 'RUNTIME_OBSERVED']; STATIC_OBSERVED excluded"
+        },
+        {
+          "probe": "the-file-carries-api-and-line",
+          "ok": true,
+          "observed": "SOURCE file node beside the crypto call, with api and line 214"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 4,
+      "question": "a runtime observation names the process, the provider and the parameters",
+      "probes": [
+        {
+          "probe": "the-operation-hangs-off-the-process",
+          "ok": true,
+          "observed": "2 RUNTIME_OBSERVED INVOKES edge(s)"
+        },
+        {
+          "probe": "the-process-loads-the-provider",
+          "ok": true,
+          "observed": "payments-api[1821] LOADS OpenSSL at RUNTIME_OBSERVED"
+        },
+        {
+          "probe": "the-operation-names-its-parameters",
+          "ok": true,
+          "observed": "SIGN / RSA-2048 / 2048 / PSS / SHA-256"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 5,
+      "question": "the provider is a node, so a library advisory maps to assets",
+      "probes": [
+        {
+          "probe": "provider-and-algorithm-are-different-kinds",
+          "ok": true,
+          "observed": "CRYPTO_PROVIDER vs ALGORITHM"
+        },
+        {
+          "probe": "the-provider-carries-a-family-and-a-version",
+          "ok": true,
+          "observed": "family OPENSSL, version 3.0.11"
+        },
+        {
+          "probe": "the-provider-is-reachable-from-the-application",
+          "ok": true,
+          "observed": "up from the provider: ['system', 'application', 'process']"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 6,
+      "question": "the operation is a node with its parameters, not a cipher name",
+      "probes": [
+        {
+          "probe": "signature-names-seven-of-nine-fields",
+          "ok": true,
+          "observed": "present ['operation', 'algorithm', 'key_size', 'padding', 'hash', 'purpose', 'provider']; mode and curve do not apply to RSA signing"
+        },
+        {
+          "probe": "a-block-cipher-without-a-mode-is-refused",
+          "ok": true,
+          "observed": "AES with no mode \u2192 BLOCK_CIPHER_WITHOUT_MODE"
+        },
+        {
+          "probe": "an-unknown-verb-is-refused",
+          "ok": true,
+          "observed": "'USES_CRYPTO' is not an operation \u2192 UNKNOWN_OPERATION"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 7,
+      "question": "a key reaches the graph as metadata and never as material",
+      "probes": [
+        {
+          "probe": "the-key-carries-reference-size-purpose-and-holder",
+          "ok": true,
+          "observed": "pkcs11:token=bank;id=4401 / RSA-2048 / SIGNING / HSM-001"
+        },
+        {
+          "probe": "key-material-is-refused",
+          "ok": true,
+          "observed": "private_key field \u2192 KEY_MATERIAL_REFUSED"
+        },
+        {
+          "probe": "no-asset-holds-a-private-key",
+          "ok": true,
+          "observed": "no attribute anywhere contains a private-key marker"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 8,
+      "question": "an HSM that supports RSA is not an application that uses the HSM",
+      "probes": [
+        {
+          "probe": "the-capability-is-VENDOR_DECLARED",
+          "ok": true,
+          "observed": "HSM-001 SUPPORTS ['RSA-2048'] at VENDOR_DECLARED"
+        },
+        {
+          "probe": "the-use-is-an-operation-BACKED_BY-the-HSM",
+          "ok": true,
+          "observed": "1 BACKED_BY edge(s) at RUNTIME_OBSERVED"
+        },
+        {
+          "probe": "the-two-claims-are-separate-edges",
+          "ok": true,
+          "observed": "SUPPORTS on the HSM, BACKED_BY on the operation"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 9,
+      "question": "a KMS answer is one of four states and the strongest one is named",
+      "probes": [
+        {
+          "probe": "the-four-states-are-distinct",
+          "ok": true,
+          "observed": "SUPPORTED / CONFIGURED / REFERENCED / ACTUALLY_USED"
+        },
+        {
+          "probe": "the-kms-in-this-estate-is-configured-not-used",
+          "ok": true,
+          "observed": "KMS-01: 2 answer(s), strongest CONFIGURED \u2014 CONFIGURED"
+        },
+        {
+          "probe": "an-HSM-backed-operation-is-the-only-ACTUALLY_USED-answer",
+          "ok": true,
+          "observed": "HSM-001: 3 answer(s), strongest ACTUALLY_USED \u2014 SUPPORTED, ACTUALLY_USED"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 10,
+      "question": "the certificate chain is a listener dependency, not the application's crypto",
+      "probes": [
+        {
+          "probe": "only-a-listener-presents-the-certificate",
+          "ok": true,
+          "observed": "PRESENTS from ['payments.bank.example:443']"
+        },
+        {
+          "probe": "the-application-holds-no-certificate-edge",
+          "ok": true,
+          "observed": "no PRESENTS or USES_CERTIFICATE from Payments API"
+        },
+        {
+          "probe": "the-application-usage-set-excludes-the-certificate-algorithm",
+          "ok": true,
+          "observed": "ECDSA belongs to CERT-001's key, not to the provider's observed uses"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 11,
+      "question": "the negotiated crypto is NETWORK_OBSERVED at the listener",
+      "probes": [
+        {
+          "probe": "the-handshake-is-the-only-source",
+          "ok": true,
+          "observed": "2 NEGOTIATES edge(s), basis ['tls-handshake']"
+        },
+        {
+          "probe": "the-suite-is-decomposed-into-three-assets",
+          "ok": true,
+          "observed": "bulk, mac and kex as three crypto assets"
+        },
+        {
+          "probe": "the-endpoint-reaches-the-application",
+          "ok": true,
+          "observed": "1 suite(s) negotiated, 0 supported but never negotiated, 3 crypto asset(s) behind the session, 1 used inside a process"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 12,
+      "question": "a multi-hop path is HOP 1..N, never one collapsed dependency",
+      "probes": [
+        {
+          "probe": "the-hops-are-numbered-in-order",
+          "ok": true,
+          "observed": "2 hop(s): HOP 1 payments.bank.example:443 \u2192 lb-01:443 (FORWARDS_TO), HOP 2 lb-01:443 \u2192 payments-api (ROUTES_TO)"
+        },
+        {
+          "probe": "each-hop-carries-its-own-class",
+          "ok": true,
+          "observed": "classes ['CONFIGURED', 'CONFIGURED']"
+        },
+        {
+          "probe": "a-hop-with-no-facts-is-refused",
+          "ok": true,
+          "observed": "a hop with no target \u2192 HOP_WITHOUT_FACTS"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 13,
+      "question": "USES_HSM, USES_TPM, BACKED_BY, PROTECTED_BY and RUNS_ON carry evidence",
+      "probes": [
+        {
+          "probe": "every-hardware-relation-in-the-spec-is-present",
+          "ok": true,
+          "observed": "present ['BACKED_BY', 'PROTECTED_BY', 'RUNS_ON', 'USES_KMS', 'USES_TPM']"
+        },
+        {
+          "probe": "each-carries-an-evidence-id",
+          "ok": true,
+          "observed": "every one of them has an evidence id"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 14,
+      "question": "a vendor firmware advisory maps back to the assets that depend on it",
+      "probes": [
+        {
+          "probe": "the-device-is-supplied-by-the-vendor",
+          "ok": true,
+          "observed": "LB-01 SUPPLIED_BY F5"
+        },
+        {
+          "probe": "the-device-names-its-firmware-version",
+          "ok": true,
+          "observed": "BIG-IP 17.1.1 as a node with a version"
+        },
+        {
+          "probe": "the-vulnerability-reaches-a-listener-and-an-application",
+          "ok": true,
+          "observed": "up from the firmware: ['endpoint']"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 15,
+      "question": "an algorithm reaches an image through the library it lives in",
+      "probes": [
+        {
+          "probe": "the-library-implements-the-algorithm",
+          "ok": true,
+          "observed": "libcrypto.so.3 IMPLEMENTS the algorithms, and the package LINKS the library"
+        },
+        {
+          "probe": "the-package-reaches-the-image-and-the-image-the-application",
+          "ok": true,
+          "observed": "image SHIPS package; artifact PACKAGED_AS image; application RELEASED_AS release"
+        },
+        {
+          "probe": "the-library-is-a-node-not-an-attribute",
+          "ok": true,
+          "observed": "libcrypto.so.3 is a CRYPTO_LIBRARY"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 16,
+      "question": "existence in an image is not a load, and the Kubernetes path is walkable",
+      "probes": [
+        {
+          "probe": "the-kubernetes-path-has-six-relations",
+          "ok": true,
+          "observed": "image \u2192 container \u2192 pod \u2192 process \u2192 application"
+        },
+        {
+          "probe": "the-image-edge-is-imported-and-the-load-is-runtime",
+          "ok": true,
+          "observed": "'exists in the image' at IMPORTED, 'loaded' at RUNTIME_OBSERVED"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 17,
+      "question": "the deployment topology joins the hardware estate",
+      "probes": [
+        {
+          "probe": "every-topology-relation-is-present",
+          "ok": true,
+          "observed": "present ['MEMBER_OF_CLUSTER', 'RUNS_IN', 'RUNS_ON', 'SCHEDULED_ON', 'SCHEDULES']"
+        },
+        {
+          "probe": "the-cluster-and-node-are-nodes",
+          "ok": true,
+          "observed": "CLUSTER prod-cluster and KUBERNETES_NODE node-07"
+        },
+        {
+          "probe": "the-node-sits-on-a-physical-host",
+          "ok": true,
+          "observed": "node-07 RUNS_ON srv-k8s-07"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 18,
+      "question": "which business systems depend on RSA-2048 is a query, not a spreadsheet",
+      "probes": [
+        {
+          "probe": "the-system-is-named-through-an-evidenced-path",
+          "ok": true,
+          "observed": "1 business system(s) depend on RSA-2048 through 1 application(s)"
+        },
+        {
+          "probe": "the-path-is-printed-with-its-classes",
+          "ok": true,
+          "observed": "Payments API \u2192 payments-api[1821] \u2192 OpenSSL 3.0.11 \u2192 RSA-2048"
+        },
+        {
+          "probe": "the-strict-answer-excludes-static-only-paths",
+          "ok": true,
+          "observed": "strict answer: no application reaches RSA-2048"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 19,
+      "question": "every dependency edge carries its record, and a collector where one exists",
+      "probes": [
+        {
+          "probe": "no-dependency-edge-is-missing-a-required-field",
+          "ok": true,
+          "observed": "58 of 58 complete"
+        },
+        {
+          "probe": "a-collector-is-named-where-a-record-exists",
+          "ok": true,
+          "observed": "22 edge(s) name a collector: ['PROC-PROBE-01', 'TLS-SENSOR-04']"
+        },
+        {
+          "probe": "the-nine-fields-are-declared",
+          "ok": true,
+          "observed": "EDGE_FIELDS = ['source', 'target', 'relationship', 'basis', 'confidence', 'evidence_id', 'evidence_type', 'observed_at', 'first_seen', 'last_seen']"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 20,
+      "question": "capability and usage are two sets and never one",
+      "probes": [
+        {
+          "probe": "capability-is-what-the-provider-lists",
+          "ok": true,
+          "observed": "capability ['AES-256', 'RSA-2048', 'SHA-256']"
+        },
+        {
+          "probe": "usage-is-what-was-observed",
+          "ok": true,
+          "observed": "usage ['AES-256', 'DES-ECB', 'RSA-2048']"
+        },
+        {
+          "probe": "the-difference-is-reported-not-resolved",
+          "ok": true,
+          "observed": "listed and never used: ['SHA-256']"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 21,
+      "question": "a disagreement about a dependency is the finding, with every source kept",
+      "probes": [
+        {
+          "probe": "the-version-disagreement-is-found",
+          "ok": true,
+          "observed": "2 dependency conflict(s): 1 LAYER, 1 VERSION"
+        },
+        {
+          "probe": "every-source-is-preserved",
+          "ok": true,
+          "observed": "values ['3.0.11', '3.0.13'] from ['sbom', 'process-map', 'agent-inventory']"
+        },
+        {
+          "probe": "the-static-and-runtime-layers-also-disagree",
+          "ok": true,
+          "observed": "the process invoked AES-256-GCM at runtime and DES-ECB statically"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 22,
+      "question": "a dependency that moved is a change with evidence on both sides",
+      "probes": [
+        {
+          "probe": "the-signature-move-is-detected",
+          "ok": true,
+          "observed": "RSA-2048 \u2192 RSA-3072"
+        },
+        {
+          "probe": "both-evidence-ids-are-kept",
+          "ok": true,
+          "observed": "before EVID-95004, after EVID-95004, at 2026-11-03T08:30:00Z"
+        },
+        {
+          "probe": "the-same-estate-compared-with-itself-shows-nothing",
+          "ok": true,
+          "observed": "no change when nothing moved"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 23,
+      "question": "a dependency that stops being observed is superseded, not deleted",
+      "probes": [
+        {
+          "probe": "the-lifecycle-states-are-derived-per-edge",
+          "ok": true,
+          "observed": "counts {'ACTIVE': 14, 'CHANGED': 3, 'FIRST_SEEN': 1, 'UNKNOWN': 47}"
+        },
+        {
+          "probe": "the-old-edge-is-reported-not-silently-dropped",
+          "ok": true,
+          "observed": "4 network change(s): 4 EDGE_SUPERSEDED"
+        },
+        {
+          "probe": "the-six-word-vocabulary-is-reachable",
+          "ok": true,
+          "observed": "vocabulary seen: ['ACTIVE', 'CHANGED', 'FIRST_SEEN', 'SUPERSEDED', 'UNKNOWN']"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 24,
+      "question": "a count is reported against what was inspected, never against the bank",
+      "probes": [
+        {
+          "probe": "twelve-of-seventy-is-partial-and-not-quotable",
+          "ok": true,
+          "observed": "12 crypto asset(s) discovered; 12/70 application(s) inspected (17.1%); the count is what was discovered, not what exists"
+        },
+        {
+          "probe": "the-network-denominator-reconciles",
+          "ok": true,
+          "observed": "expected 70 endpoint(s): observed 12, unavailable 40, unknown 18, permission denied 0 \u2014 coverage PARTIAL"
+        },
+        {
+          "probe": "a-consumer-that-claims-more-is-refused",
+          "ok": true,
+          "observed": "network coverage PARTIAL propagates to cbom PARTIAL, twin PARTIAL; 1 laundered"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 25,
+      "question": "the PQC blocker is a path through the graph, not a property of the algorithm",
+      "probes": [
+        {
+          "probe": "the-blockers-are-named-per-hop",
+          "ok": true,
+          "observed": "RSA-2048: 10 blocker(s) on the chain \u2014 ALGORITHM, CERTIFICATE, FIRMWARE, HSM, KEY_REFERENCE, LOAD_BALANCER, NETWORK_ENDPOINT, TPM, VENDOR_PRODUCT"
+        },
+        {
+          "probe": "the-algorithm-itself-is-labelled-separately",
+          "ok": true,
+          "observed": "RSA-2048 is quantum-sensitive, and that is one blocker of several"
+        },
+        {
+          "probe": "a-listener-blocker-names-the-suite-it-negotiates",
+          "ok": true,
+          "observed": "the listener blocker carries the suites it negotiates"
+        }
+      ],
+      "ok": true
+    },
+    {
+      "point": 26,
+      "question": "the whole chain joins the Digital Twin's canonical estate graph",
+      "probes": [
+        {
+          "probe": "the-twin-reads-every-edge-of-this-projection",
+          "ok": true,
+          "observed": "65 edge(s) into the twin, 65 in the BOM"
+        },
+        {
+          "probe": "the-twin-names-the-system-and-the-application",
+          "ok": true,
+          "observed": "systems ['Payments System'], one of 1 applications"
+        },
+        {
+          "probe": "the-twin-carries-the-keys-and-the-tls",
+          "ok": true,
+          "observed": "keys ['HSM-001', 'KEY-REF-4401', 'KEY-REF-4402', 'KMS-01'], 2 TLS edge(s)"
+        }
+      ],
+      "ok": true
+    }
+  ],
+  "rows": [
+    {
+      "id": "CBOM-01",
+      "point": 1,
+      "question": "an application reaches its crypto by use, not by containment",
+      "phase": "the chain",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "application-to-provider-is-evidenced",
+          "ok": true,
+          "observed": "Payments API \u2192 provider: ['libcrypto.so.3', 'OpenSSL 3.0.11']"
+        },
+        {
+          "probe": "the-use-is-an-operation-not-an-edge-to-a-cipher",
+          "ok": true,
+          "observed": "operations ['OP-ENCRYPT-002', 'OP-SIGN-001', 'OP-STATIC-003']; no application USES_CRYPTO RSA-2048 edge"
+        },
+        {
+          "probe": "the-chain-starts-at-the-business-system",
+          "ok": true,
+          "observed": "Payments System: down 1 application \u2192 3 release \u2192 6 process \u2192 2 provider \u2192 3 operation \u2192 10 algorithm \u2192 2 key \u2192 3 key_provider \u2192 1 certificate \u2192 2 endpoint; up nothing"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-02",
+      "point": 2,
+      "question": "an SBOM becomes a CBOM through capability and evidence, never a preset edge",
+      "phase": "the chain",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "provider-lists-its-capabilities-at-CAPABILITY",
+          "ok": true,
+          "observed": "3 SUPPORTS edge(s) at ['CAPABILITY']"
+        },
+        {
+          "probe": "provider-implements-algorithms-at-an-evidenced-class",
+          "ok": true,
+          "observed": "classes ['OBSERVED']"
+        },
+        {
+          "probe": "no-provider-USES-AES-edge-exists",
+          "ok": true,
+          "observed": "no provider USES_* edge; a provider implements, it does not use"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-03",
+      "point": 3,
+      "question": "a source hit is a dependency at STATIC_OBSERVED and never a runtime use",
+      "phase": "the chain",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "three-static-edges-file-then-call-then-algorithm",
+          "ok": true,
+          "observed": "source-analysis edges: DECLARES, INVOKES, LOADS, RUNS_APPLICATION, USES_ALGORITHM, USES_ALGORITHM, USES_CRYPTO"
+        },
+        {
+          "probe": "every-static-edge-is-STATIC_OBSERVED",
+          "ok": true,
+          "observed": "classes ['STATIC_OBSERVED']"
+        },
+        {
+          "probe": "STATIC_OBSERVED-is-not-PROVEN",
+          "ok": true,
+          "observed": "PROVEN = ['CONFIGURED', 'NETWORK_OBSERVED', 'OBSERVED', 'RUNTIME_OBSERVED']; STATIC_OBSERVED excluded"
+        },
+        {
+          "probe": "the-file-carries-api-and-line",
+          "ok": true,
+          "observed": "SOURCE file node beside the crypto call, with api and line 214"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-04",
+      "point": 4,
+      "question": "a runtime observation names the process, the provider and the parameters",
+      "phase": "the chain",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-operation-hangs-off-the-process",
+          "ok": true,
+          "observed": "2 RUNTIME_OBSERVED INVOKES edge(s)"
+        },
+        {
+          "probe": "the-process-loads-the-provider",
+          "ok": true,
+          "observed": "payments-api[1821] LOADS OpenSSL at RUNTIME_OBSERVED"
+        },
+        {
+          "probe": "the-operation-names-its-parameters",
+          "ok": true,
+          "observed": "SIGN / RSA-2048 / 2048 / PSS / SHA-256"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-05",
+      "point": 5,
+      "question": "the provider is a node, so a library advisory maps to assets",
+      "phase": "the chain",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "provider-and-algorithm-are-different-kinds",
+          "ok": true,
+          "observed": "CRYPTO_PROVIDER vs ALGORITHM"
+        },
+        {
+          "probe": "the-provider-carries-a-family-and-a-version",
+          "ok": true,
+          "observed": "family OPENSSL, version 3.0.11"
+        },
+        {
+          "probe": "the-provider-is-reachable-from-the-application",
+          "ok": true,
+          "observed": "up from the provider: ['system', 'application', 'process']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-06",
+      "point": 6,
+      "question": "the operation is a node with its parameters, not a cipher name",
+      "phase": "the chain",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "signature-names-seven-of-nine-fields",
+          "ok": true,
+          "observed": "present ['operation', 'algorithm', 'key_size', 'padding', 'hash', 'purpose', 'provider']; mode and curve do not apply to RSA signing"
+        },
+        {
+          "probe": "a-block-cipher-without-a-mode-is-refused",
+          "ok": true,
+          "observed": "AES with no mode \u2192 BLOCK_CIPHER_WITHOUT_MODE"
+        },
+        {
+          "probe": "an-unknown-verb-is-refused",
+          "ok": true,
+          "observed": "'USES_CRYPTO' is not an operation \u2192 UNKNOWN_OPERATION"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-07",
+      "point": 7,
+      "question": "a key reaches the graph as metadata and never as material",
+      "phase": "keys",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-key-carries-reference-size-purpose-and-holder",
+          "ok": true,
+          "observed": "pkcs11:token=bank;id=4401 / RSA-2048 / SIGNING / HSM-001"
+        },
+        {
+          "probe": "key-material-is-refused",
+          "ok": true,
+          "observed": "private_key field \u2192 KEY_MATERIAL_REFUSED"
+        },
+        {
+          "probe": "no-asset-holds-a-private-key",
+          "ok": true,
+          "observed": "no attribute anywhere contains a private-key marker"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-08",
+      "point": 8,
+      "question": "an HSM that supports RSA is not an application that uses the HSM",
+      "phase": "keys",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-capability-is-VENDOR_DECLARED",
+          "ok": true,
+          "observed": "HSM-001 SUPPORTS ['RSA-2048'] at VENDOR_DECLARED"
+        },
+        {
+          "probe": "the-use-is-an-operation-BACKED_BY-the-HSM",
+          "ok": true,
+          "observed": "1 BACKED_BY edge(s) at RUNTIME_OBSERVED"
+        },
+        {
+          "probe": "the-two-claims-are-separate-edges",
+          "ok": true,
+          "observed": "SUPPORTS on the HSM, BACKED_BY on the operation"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-09",
+      "point": 9,
+      "question": "a KMS answer is one of four states and the strongest one is named",
+      "phase": "keys",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-four-states-are-distinct",
+          "ok": true,
+          "observed": "SUPPORTED / CONFIGURED / REFERENCED / ACTUALLY_USED"
+        },
+        {
+          "probe": "the-kms-in-this-estate-is-configured-not-used",
+          "ok": true,
+          "observed": "KMS-01: 2 answer(s), strongest CONFIGURED \u2014 CONFIGURED"
+        },
+        {
+          "probe": "an-HSM-backed-operation-is-the-only-ACTUALLY_USED-answer",
+          "ok": true,
+          "observed": "HSM-001: 3 answer(s), strongest ACTUALLY_USED \u2014 SUPPORTED, ACTUALLY_USED"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-10",
+      "point": 10,
+      "question": "the certificate chain is a listener dependency, not the application's crypto",
+      "phase": "network",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "only-a-listener-presents-the-certificate",
+          "ok": true,
+          "observed": "PRESENTS from ['payments.bank.example:443']"
+        },
+        {
+          "probe": "the-application-holds-no-certificate-edge",
+          "ok": true,
+          "observed": "no PRESENTS or USES_CERTIFICATE from Payments API"
+        },
+        {
+          "probe": "the-application-usage-set-excludes-the-certificate-algorithm",
+          "ok": true,
+          "observed": "ECDSA belongs to CERT-001's key, not to the provider's observed uses"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-11",
+      "point": 11,
+      "question": "the negotiated crypto is NETWORK_OBSERVED at the listener",
+      "phase": "network",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-handshake-is-the-only-source",
+          "ok": true,
+          "observed": "2 NEGOTIATES edge(s), basis ['tls-handshake']"
+        },
+        {
+          "probe": "the-suite-is-decomposed-into-three-assets",
+          "ok": true,
+          "observed": "bulk, mac and kex as three crypto assets"
+        },
+        {
+          "probe": "the-endpoint-reaches-the-application",
+          "ok": true,
+          "observed": "1 suite(s) negotiated, 0 supported but never negotiated, 3 crypto asset(s) behind the session, 1 used inside a process"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-12",
+      "point": 12,
+      "question": "a multi-hop path is HOP 1..N, never one collapsed dependency",
+      "phase": "network",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-hops-are-numbered-in-order",
+          "ok": true,
+          "observed": "2 hop(s): HOP 1 payments.bank.example:443 \u2192 lb-01:443 (FORWARDS_TO), HOP 2 lb-01:443 \u2192 payments-api (ROUTES_TO)"
+        },
+        {
+          "probe": "each-hop-carries-its-own-class",
+          "ok": true,
+          "observed": "classes ['CONFIGURED', 'CONFIGURED']"
+        },
+        {
+          "probe": "a-hop-with-no-facts-is-refused",
+          "ok": true,
+          "observed": "a hop with no target \u2192 HOP_WITHOUT_FACTS"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-13",
+      "point": 13,
+      "question": "USES_HSM, USES_TPM, BACKED_BY, PROTECTED_BY and RUNS_ON carry evidence",
+      "phase": "hardware",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "every-hardware-relation-in-the-spec-is-present",
+          "ok": true,
+          "observed": "present ['BACKED_BY', 'PROTECTED_BY', 'RUNS_ON', 'USES_KMS', 'USES_TPM']"
+        },
+        {
+          "probe": "each-carries-an-evidence-id",
+          "ok": true,
+          "observed": "every one of them has an evidence id"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-14",
+      "point": 14,
+      "question": "a vendor firmware advisory maps back to the assets that depend on it",
+      "phase": "hardware",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-device-is-supplied-by-the-vendor",
+          "ok": true,
+          "observed": "LB-01 SUPPLIED_BY F5"
+        },
+        {
+          "probe": "the-device-names-its-firmware-version",
+          "ok": true,
+          "observed": "BIG-IP 17.1.1 as a node with a version"
+        },
+        {
+          "probe": "the-vulnerability-reaches-a-listener-and-an-application",
+          "ok": true,
+          "observed": "up from the firmware: ['endpoint']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-15",
+      "point": 15,
+      "question": "an algorithm reaches an image through the library it lives in",
+      "phase": "build",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-library-implements-the-algorithm",
+          "ok": true,
+          "observed": "libcrypto.so.3 IMPLEMENTS the algorithms, and the package LINKS the library"
+        },
+        {
+          "probe": "the-package-reaches-the-image-and-the-image-the-application",
+          "ok": true,
+          "observed": "image SHIPS package; artifact PACKAGED_AS image; application RELEASED_AS release"
+        },
+        {
+          "probe": "the-library-is-a-node-not-an-attribute",
+          "ok": true,
+          "observed": "libcrypto.so.3 is a CRYPTO_LIBRARY"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-16",
+      "point": 16,
+      "question": "existence in an image is not a load, and the Kubernetes path is walkable",
+      "phase": "build",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-kubernetes-path-has-six-relations",
+          "ok": true,
+          "observed": "image \u2192 container \u2192 pod \u2192 process \u2192 application"
+        },
+        {
+          "probe": "the-image-edge-is-imported-and-the-load-is-runtime",
+          "ok": true,
+          "observed": "'exists in the image' at IMPORTED, 'loaded' at RUNTIME_OBSERVED"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-17",
+      "point": 17,
+      "question": "the deployment topology joins the hardware estate",
+      "phase": "build",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "every-topology-relation-is-present",
+          "ok": true,
+          "observed": "present ['MEMBER_OF_CLUSTER', 'RUNS_IN', 'RUNS_ON', 'SCHEDULED_ON', 'SCHEDULES']"
+        },
+        {
+          "probe": "the-cluster-and-node-are-nodes",
+          "ok": true,
+          "observed": "CLUSTER prod-cluster and KUBERNETES_NODE node-07"
+        },
+        {
+          "probe": "the-node-sits-on-a-physical-host",
+          "ok": true,
+          "observed": "node-07 RUNS_ON srv-k8s-07"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-18",
+      "point": 18,
+      "question": "which business systems depend on RSA-2048 is a query, not a spreadsheet",
+      "phase": "queries",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-system-is-named-through-an-evidenced-path",
+          "ok": true,
+          "observed": "1 business system(s) depend on RSA-2048 through 1 application(s)"
+        },
+        {
+          "probe": "the-path-is-printed-with-its-classes",
+          "ok": true,
+          "observed": "Payments API \u2192 payments-api[1821] \u2192 OpenSSL 3.0.11 \u2192 RSA-2048"
+        },
+        {
+          "probe": "the-strict-answer-excludes-static-only-paths",
+          "ok": true,
+          "observed": "strict answer: no application reaches RSA-2048"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-19",
+      "point": 19,
+      "question": "every dependency edge carries its record, and a collector where one exists",
+      "phase": "evidence",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "no-dependency-edge-is-missing-a-required-field",
+          "ok": true,
+          "observed": "58 of 58 complete"
+        },
+        {
+          "probe": "a-collector-is-named-where-a-record-exists",
+          "ok": true,
+          "observed": "22 edge(s) name a collector: ['PROC-PROBE-01', 'TLS-SENSOR-04']"
+        },
+        {
+          "probe": "the-nine-fields-are-declared",
+          "ok": true,
+          "observed": "EDGE_FIELDS = ['source', 'target', 'relationship', 'basis', 'confidence', 'evidence_id', 'evidence_type', 'observed_at', 'first_seen', 'last_seen']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-20",
+      "point": 20,
+      "question": "capability and usage are two sets and never one",
+      "phase": "evidence",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "capability-is-what-the-provider-lists",
+          "ok": true,
+          "observed": "capability ['AES-256', 'RSA-2048', 'SHA-256']"
+        },
+        {
+          "probe": "usage-is-what-was-observed",
+          "ok": true,
+          "observed": "usage ['AES-256', 'DES-ECB', 'RSA-2048']"
+        },
+        {
+          "probe": "the-difference-is-reported-not-resolved",
+          "ok": true,
+          "observed": "listed and never used: ['SHA-256']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-21",
+      "point": 21,
+      "question": "a disagreement about a dependency is the finding, with every source kept",
+      "phase": "conflict",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-version-disagreement-is-found",
+          "ok": true,
+          "observed": "2 dependency conflict(s): 1 LAYER, 1 VERSION"
+        },
+        {
+          "probe": "every-source-is-preserved",
+          "ok": true,
+          "observed": "values ['3.0.11', '3.0.13'] from ['sbom', 'process-map', 'agent-inventory']"
+        },
+        {
+          "probe": "the-static-and-runtime-layers-also-disagree",
+          "ok": true,
+          "observed": "the process invoked AES-256-GCM at runtime and DES-ECB statically"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-22",
+      "point": 22,
+      "question": "a dependency that moved is a change with evidence on both sides",
+      "phase": "temporal",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-signature-move-is-detected",
+          "ok": true,
+          "observed": "RSA-2048 \u2192 RSA-3072"
+        },
+        {
+          "probe": "both-evidence-ids-are-kept",
+          "ok": true,
+          "observed": "before EVID-95004, after EVID-95004, at 2026-11-03T08:30:00Z"
+        },
+        {
+          "probe": "the-same-estate-compared-with-itself-shows-nothing",
+          "ok": true,
+          "observed": "no change when nothing moved"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-23",
+      "point": 23,
+      "question": "a dependency that stops being observed is superseded, not deleted",
+      "phase": "temporal",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-lifecycle-states-are-derived-per-edge",
+          "ok": true,
+          "observed": "counts {'ACTIVE': 14, 'CHANGED': 3, 'FIRST_SEEN': 1, 'UNKNOWN': 47}"
+        },
+        {
+          "probe": "the-old-edge-is-reported-not-silently-dropped",
+          "ok": true,
+          "observed": "4 network change(s): 4 EDGE_SUPERSEDED"
+        },
+        {
+          "probe": "the-six-word-vocabulary-is-reachable",
+          "ok": true,
+          "observed": "vocabulary seen: ['ACTIVE', 'CHANGED', 'FIRST_SEEN', 'SUPERSEDED', 'UNKNOWN']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-24",
+      "point": 24,
+      "question": "a count is reported against what was inspected, never against the bank",
+      "phase": "honesty",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "twelve-of-seventy-is-partial-and-not-quotable",
+          "ok": true,
+          "observed": "12 crypto asset(s) discovered; 12/70 application(s) inspected (17.1%); the count is what was discovered, not what exists"
+        },
+        {
+          "probe": "the-network-denominator-reconciles",
+          "ok": true,
+          "observed": "expected 70 endpoint(s): observed 12, unavailable 40, unknown 18, permission denied 0 \u2014 coverage PARTIAL"
+        },
+        {
+          "probe": "a-consumer-that-claims-more-is-refused",
+          "ok": true,
+          "observed": "network coverage PARTIAL propagates to cbom PARTIAL, twin PARTIAL; 1 laundered"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-25",
+      "point": 25,
+      "question": "the PQC blocker is a path through the graph, not a property of the algorithm",
+      "phase": "pqc",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-blockers-are-named-per-hop",
+          "ok": true,
+          "observed": "RSA-2048: 10 blocker(s) on the chain \u2014 ALGORITHM, CERTIFICATE, FIRMWARE, HSM, KEY_REFERENCE, LOAD_BALANCER, NETWORK_ENDPOINT, TPM, VENDOR_PRODUCT"
+        },
+        {
+          "probe": "the-algorithm-itself-is-labelled-separately",
+          "ok": true,
+          "observed": "RSA-2048 is quantum-sensitive, and that is one blocker of several"
+        },
+        {
+          "probe": "a-listener-blocker-names-the-suite-it-negotiates",
+          "ok": true,
+          "observed": "the listener blocker carries the suites it negotiates"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CBOM-26",
+      "point": 26,
+      "question": "the whole chain joins the Digital Twin's canonical estate graph",
+      "phase": "twin",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-twin-reads-every-edge-of-this-projection",
+          "ok": true,
+          "observed": "65 edge(s) into the twin, 65 in the BOM"
+        },
+        {
+          "probe": "the-twin-names-the-system-and-the-application",
+          "ok": true,
+          "observed": "systems ['Payments System'], one of 1 applications"
+        },
+        {
+          "probe": "the-twin-carries-the-keys-and-the-tls",
+          "ok": true,
+          "observed": "keys ['HSM-001', 'KEY-REF-4401', 'KEY-REF-4402', 'KMS-01'], 2 TLS edge(s)"
+        }
+      ],
+      "failed": []
+    }
+  ],
+  "refusals": [],
+  "limits": [
+    "the fixture is the bank's own path: every shape is real, the rows are not",
+    "the provider's operation list is what a runtime probe saw once; a second sample could add an operation and no sample can remove one",
+    "a static hit names a file, an API and a line; it never proves the branch ran",
+    "the key record is a reference and its metadata: nothing here proves which key produced a signature, and nothing here would hold the key if it could",
+    "the KMS answer is the strongest single answer in the estate, not the strongest answer per application",
+    "coverage is arithmetic on what the collectors reported; it cannot see an application that was never scanned"
+  ]
+}

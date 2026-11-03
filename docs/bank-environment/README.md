@@ -584,6 +584,36 @@
 > certificates** are nodes too (`HOLDS_CERTIFICATE`), bounded so a key reference cannot be
 > passed off as one.
 
+> [The dependency chain, all twenty-six points](173-dependency-chain.md)
+> (**26 pass · 0 partial · 0 fail**, 77 probes) builds the *software* half of the chain the
+> review draws — business system → application → release → process → crypto provider →
+> operation → algorithm → key metadata → HSM/KMS → certificate/network → hardware → vendor
+> — and walks the whole thing, because **a CBOM that says "AES-256, confidence HIGH" has
+> collapsed eight claims into one line**. `cbom/cbom_dependency.py` adds the levels the
+> network projection never had: a **release** is the node a change record names, a
+> **`CRYPTO_PROVIDER`** is the node a vulnerability feed names (`OPENSSL`, `BORINGSSL`,
+> `JCE`, `CNG`, `PKCS11`, `GO`, `RUSTCRYPTO`, a vendor SDK — a closed list, so the join
+> cannot silently fail), and a **`CRYPTO_OPERATION`** is the only node that can say what was
+> actually done: `SIGN / RSA / 2048 / PSS / SHA-256`. **An operation is refused without its
+> parameters** — `BLOCK_CIPHER_WITHOUT_MODE`, `SIGNATURE_WITHOUT_SIZE` — because AES without
+> a mode and RSA without a size are names, not migrations. **Capability and usage are
+> returned as two sets and never merged** (`capability_vs_usage`: three capabilities, three
+> observed uses, one listed and never used); **a static hit is `STATIC_OBSERVED`** — a file,
+> an API and a line 214, deliberately absent from `PROVEN`, so a code hit is never blast
+> radius; **a key is a reference**, and `private_key` is refused by name. **`HSM SUPPORTS
+> RSA` and `APPLICATION USES HSM FOR RSA` are two edges at two classes**, and a KMS answer
+> is one of four states (`SUPPORTED`/`CONFIGURED`/`REFERENCED`/`ACTUALLY_USED`) with the
+> strongest one named. The multi-hop path is **HOP 1..N** with a class per hop — client →
+> LB → application, three facts, never one "AES-256". Two disagreements are kept, not
+> resolved: **`CRYPTO_DEPENDENCY_CONFLICT`** for a version (SBOM 3.0.11, process map 3.0.13)
+> and for a layer (static `DES-ECB`, runtime `AES-256`), and **`CRYPTO_DEPENDENCY_CHANGED`**
+> with `evidence_before`/`evidence_after` when RSA-2048 moved to RSA-3072. **A PQC blocker
+> is the path**: `RSA-2048` yields ten blockers — the certificate, two listeners, the load
+> balancer, its firmware, its product, the HSM and the key — because the algorithm is the
+> thing being migrated and the path is why it is hard. Coverage is a denominator
+> (`12 of 70`), the twin reads the same graph (68 edges, no second store), and two relations
+> were added to keep the walk typed: `SOURCE DECLARES CRYPTO_ASSET` and `POD RUNS_CONTAINER`.
+
 > [The review, point by point](172-nbom-depth.md)
 > (**6 pass · 0 partial · 0 fail**, 51 probes) reads the twenty-two points off the *built*
 > projection rather than the source — **22 of 22 present** — and builds the five

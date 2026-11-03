@@ -58,6 +58,11 @@ NETWORK_OBSERVED = "NETWORK_OBSERVED"
 #: says nothing about the cipher the application used inside its own process, so the two
 #: observations are separate classes (review nbom 7).
 RUNTIME_OBSERVED = "RUNTIME_OBSERVED"
+#: somebody read the code and found the call. ``EVP_aes_256_gcm()`` in a source file is a
+#: dependency and it is *not* an execution: the branch may never run, the file may never
+#: ship, and the call may be dead. It sits beside ``CONFIGURED`` and below the three
+#: observation classes, and it is never promoted to usage (review cbom 3).
+STATIC_OBSERVED = "STATIC_OBSERVED"
 CONFIGURED = "CONFIGURED"
 IMPORTED = "IMPORTED"
 VENDOR_DECLARED = "VENDOR_DECLARED"
@@ -71,6 +76,7 @@ CONFIDENCE: dict[str, int] = {
     OBSERVED: 5,
     NETWORK_OBSERVED: 5,
     RUNTIME_OBSERVED: 5,
+    STATIC_OBSERVED: 4,
     CONFIGURED: 4,
     CAPABILITY: 3,
     IMPORTED: 3,
@@ -82,6 +88,8 @@ CONFIDENCE: dict[str, int] = {
 #: a dependency path is *proven* only when something saw or read the device itself.
 #: IMPORTED, VENDOR_DECLARED and INFERRED are claims about a claim: they are walked, and
 #: they are reported as possibilities rather than as blast radius.
+#: ``STATIC_OBSERVED`` is deliberately absent: a call in a file is a dependency a reader
+#: can point at, and it is not something that ran, so it does not enter a blast radius.
 PROVEN: frozenset[str] = frozenset({OBSERVED, NETWORK_OBSERVED, RUNTIME_OBSERVED,
                                    CONFIGURED})
 
@@ -122,6 +130,11 @@ BASES: dict[str, str] = {
     "tls-handshake": NETWORK_OBSERVED,
     "ssh-banner": NETWORK_OBSERVED,
     "runtime-observation": RUNTIME_OBSERVED,
+    # how a call in a file is known (review cbom 3)
+    "source-analysis": STATIC_OBSERVED,
+    "symbol-scan": STATIC_OBSERVED,
+    "ast-parse": STATIC_OBSERVED,
+    "binary-scan": STATIC_OBSERVED,
 }
 
 #: bases that look like evidence and are not. Named so the refusal can quote the reason.
@@ -164,6 +177,9 @@ ASSET_TYPES: tuple[str, ...] = (
     "VENDOR", "VENDOR_PRODUCT",
     # runtime deployment identity
     "SOURCE", "BUILD", "ARTIFACT", "SBOM", "DEPLOYMENT", "POD", "PROCESS",
+    "RELEASE", "NAMESPACE", "CLUSTER",
+    # the provider is not the algorithm: OpenSSL, BoringSSL, JCE, CNG, PKCS#11 (cbom 5)
+    "CRYPTO_PROVIDER",
     "DATABASE",
 )
 
@@ -180,6 +196,8 @@ PREFIX: dict[str, str] = {
     "PHYSICAL_SERVER": "SRV", "TPM": "TPM", "VENDOR": "VENDOR",
     "VENDOR_PRODUCT": "PROD", "SOURCE": "SRC", "BUILD": "BUILD", "ARTIFACT": "ART",
     "SBOM": "SBOM", "DEPLOYMENT": "DEP", "POD": "POD", "PROCESS": "PROC",
+    "RELEASE": "REL", "NAMESPACE": "NS", "CLUSTER": "K8S",
+    "CRYPTO_PROVIDER": "PROVIDER",
     "DATABASE": "DB",
     "CIPHER_SUITE": "SUITE", "SSH_SERVICE": "SSH", "VPN_GATEWAY": "VPN",
     "IPSEC_TUNNEL": "TUN",
@@ -290,7 +308,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
     "SUPPORTS": {"from": ("FIRMWARE", "HSM", "TPM", "CRYPTO_ACCELERATOR", "SMART_CARD",
                           "BIOS", "NETWORK_ENDPOINT", "LOAD_BALANCER", "API_GATEWAY", "WAF",
                           "SERVICE_MESH", "DATABASE", "SSH_SERVICE", "VPN_GATEWAY",
-                          "IPSEC_TUNNEL", "OS", "VENDOR_PRODUCT", "IDS", "IPS"),
+                          "IPSEC_TUNNEL", "OS", "VENDOR_PRODUCT", "IDS", "IPS",
+                          "CRYPTO_PROVIDER", "CRYPTO_LIBRARY"),
                  "to": ("CRYPTO_CAPABILITY", "CIPHER_SUITE", "ALGORITHM"),
                  "chain": "NETWORK"},
     #: an application does not "use crypto"; it asks for an operation, and the operation
@@ -299,7 +318,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
                 "to": ("CRYPTO_OPERATION",), "chain": "KEYS"},
     "PERFORMS": {"from": ("HSM", "CRYPTO_ACCELERATOR", "TPM"),
                  "to": ("CRYPTO_CAPABILITY",), "chain": "HARDWARE"},
-    "IMPLEMENTS": {"from": ("CRYPTO_CAPABILITY",), "to": ("ALGORITHM",),
+    "IMPLEMENTS": {"from": ("CRYPTO_CAPABILITY", "CRYPTO_PROVIDER", "CRYPTO_LIBRARY"),
+                   "to": ("ALGORITHM", "CRYPTO_CAPABILITY",),
                    "chain": "CERTIFICATE"},
     # the device is a tree, not a row (review hbom 1, 2)
     "HAS_COMPONENT": {"from": ("PHYSICAL_SERVER", "HOST", "VM", "HYPERVISOR",
@@ -330,6 +350,17 @@ RELATIONS: dict[str, dict[str, Any]] = {
                               "CLOUD_INSTANCE"),
                      "to": ("EVIDENCE",), "chain": "HARDWARE"},
     # infrastructure
+    #: where a workload runs, and how it is grouped (cbom 17)
+    "RUNS_IN": {"from": ("POD", "CONTAINER", "DEPLOYMENT"), "to": ("NAMESPACE",),
+                "chain": "SOFTWARE"},
+    "MEMBER_OF_CLUSTER": {"from": ("NAMESPACE", "KUBERNETES_NODE"), "to": ("CLUSTER",),
+                          "chain": "SOFTWARE"},
+    #: crypto that depends on a piece of hardware, and application crypto on a TPM (cbom 13)
+    "USES_TPM": {"from": ("APPLICATION", "SERVICE", "PROCESS", "CRYPTO_OPERATION"),
+                 "to": ("TPM",), "chain": "HARDWARE"},
+    "BACKED_BY": {"from": ("CRYPTO_OPERATION", "CRYPTO_ASSET", "CRYPTO_LIBRARY", "HSM",
+                           "KMS", "CERTIFICATE"),
+                  "to": ("HSM", "KMS", "TPM", "CRYPTO_ACCELERATOR"), "chain": "HARDWARE"},
     "SCHEDULED_ON": {"from": ("CONTAINER", "POD"),
                      "to": ("HOST", "KUBERNETES_NODE", "VM", "CLOUD_INSTANCE"),
                      "chain": "HARDWARE"},
@@ -363,10 +394,21 @@ RELATIONS: dict[str, dict[str, Any]] = {
                              "CRYPTO_ACCELERATOR", "SMART_CARD", "SECURITY_APPLIANCE",
                              "FIREWALL"),
                     "to": ("VENDOR",), "chain": "VENDOR"},
+    #: a source file declares a crypto call. The file is a node because the review asks
+    #: for app → source file → crypto API → algorithm, and an evidence id alone cannot
+    #: name which file a hit came from (guide 173, point 3).
+    "DECLARES": {"from": ("SOURCE",), "to": ("CRYPTO_ASSET",), "chain": "SOFTWARE"},
+    #: a pod runs containers. Without it the Kubernetes walk from an image to an
+    #: application skips a level, and "exists in the image" reads like "loaded" (cbom 16).
+    "RUNS_CONTAINER": {"from": ("POD",), "to": ("CONTAINER",), "chain": "RUNTIME"},
     # runtime deployment identity
     "BUILT_INTO": {"from": ("SOURCE",), "to": ("BUILD",), "chain": "RUNTIME"},
     "PRODUCES": {"from": ("BUILD",), "to": ("ARTIFACT",), "chain": "RUNTIME"},
     "DESCRIBED_BY": {"from": ("ARTIFACT",), "to": ("SBOM",), "chain": "RUNTIME"},
+    #: a release is what an application ships, and it is the level a change record names
+    "RELEASED_AS": {"from": ("APPLICATION",), "to": ("RELEASE",), "chain": "SOFTWARE"},
+    "BUNDLES": {"from": ("RELEASE",), "to": ("ARTIFACT", "IMAGE"), "chain": "SOFTWARE"},
+    #: a provider implements algorithms; a provider that is only declared is capability
     "PACKAGED_AS": {"from": ("ARTIFACT",), "to": ("IMAGE",), "chain": "RUNTIME"},
     "DEPLOYED_AS": {"from": ("IMAGE",), "to": ("DEPLOYMENT",), "chain": "RUNTIME"},
     "SCHEDULES": {"from": ("DEPLOYMENT",), "to": ("POD",), "chain": "RUNTIME"},
@@ -432,7 +474,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
     "TUNNELS_TO": {"from": ("IPSEC_TUNNEL", "VPN_GATEWAY"),
                    "to": ("NETWORK_SEGMENT", "NETWORK_ENDPOINT", "VPN_GATEWAY"),
                    "chain": "NETWORK"},
-    "LOADS": {"from": ("PROCESS",), "to": ("CRYPTO_LIBRARY",), "chain": "RUNTIME"},
+    "LOADS": {"from": ("PROCESS", "CONTAINER", "POD"),
+              "to": ("CRYPTO_LIBRARY", "CRYPTO_PROVIDER"), "chain": "RUNTIME"},
 }
 
 #: relations that need a class *at least* this strong. A datasheet may say an HSM
@@ -465,7 +508,11 @@ CRYPTO_EVIDENCE_BASIS: dict[str, set[str]] = {
                          "runtime-observation"},
     #: a cipher suite read off a handshake is a network observation of that suite's parts
     "NETWORK_OBSERVED": {"tls-handshake", "packet-capture", "passive-capture", "ssh-banner"},
-    "STATIC_OBSERVED": {"sbom-import", "config-parse", "cmdb-import"},
+    #: a call found in a source file is evidence of a static dependency, and a manifest
+    #: row is evidence of a shipped one: both are STATIC_OBSERVED and both stay out of
+    #: PROVEN (guide 173, point 3)
+    "STATIC_OBSERVED": {"sbom-import", "config-parse", "cmdb-import", "source-analysis",
+                        "symbol-scan", "ast-parse", "binary-scan"},
     "CERTIFICATE_OBSERVED": {"packet-capture", "api-poll", "config-parse"},
     "CONFIGURED": {"config-parse", "agent-inventory", "api-poll"},
 }
