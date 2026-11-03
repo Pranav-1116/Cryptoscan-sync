@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.cbom-nbom-guide/1",
-  "generated_at": "2026-11-03T02:41:09.719908+00:00",
+  "generated_at": "2026-11-03T06:04:34.983782+00:00",
   "counts": {
     "PASS": 18,
     "PARTIAL": 0,
@@ -317,6 +317,7 @@
           }
         }
       ],
+      "control": [],
       "database": [
         {
           "key": "DATABASE:db-01:production",

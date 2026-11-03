@@ -36,6 +36,8 @@ source of the next one.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
+import json
 from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
@@ -49,7 +51,7 @@ SCHEMA = "cryptoscan.nbom/1"
 NBOM_KINDS: tuple[str, ...] = (
     "NETWORK_ENDPOINT", "WAF", "LOAD_BALANCER", "API_GATEWAY", "SERVICE_MESH",
     "CIPHER_SUITE", "SSH_SERVICE", "VPN_GATEWAY", "IPSEC_TUNNEL", "DATABASE",
-    "NETWORK_SEGMENT", "FIREWALL", "SECURITY_APPLIANCE",
+    "NETWORK_SEGMENT", "FIREWALL", "SECURITY_APPLIANCE", "IDS", "IPS", "RATE_LIMIT",
     "CERTIFICATE", "CERTIFICATE_AUTHORITY", "PUBLIC_KEY", "ALGORITHM",
     "SERVICE", "APPLICATION", "BUSINESS_SYSTEM", "PROCESS", "CONTAINER", "POD",
     "HOST", "VM", "PHYSICAL_SERVER", "CLOUD_INSTANCE", "KUBERNETES_NODE", "OS",
@@ -956,7 +958,7 @@ def dependency_chain(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]:
     keys = _endpoint_keys(bom, query)
     levels: dict[str, list[dict[str, Any]]] = {
         "endpoint": [], "service": [], "process": [], "application": [], "system": [],
-        "device": [], "database": [], "keys": [], "crypto": [], "vendor": [],
+        "device": [], "control": [], "database": [], "keys": [], "crypto": [], "vendor": [],
     }
     seen: set[str] = set(keys)
     queue: deque[str] = deque(sorted(keys))
@@ -1002,7 +1004,8 @@ def _bucket(kind: str) -> str | None:
         "API_GATEWAY": "device", "SERVICE_MESH": "device", "DATABASE": "database",
         "HSM": "keys", "KMS": "keys", "KEY_REFERENCE": "keys",
         "CRYPTO_ASSET": "crypto", "CIPHER_SUITE": "crypto", "VENDOR": "vendor",
-        "VENDOR_PRODUCT": "vendor",
+        "VENDOR_PRODUCT": "vendor", "IDS": "control", "IPS": "control",
+        "RATE_LIMIT": "control", "FIREWALL": "control",
     }.get(kind)
 
 
@@ -1203,6 +1206,14 @@ def build(estate_doc: Mapping[str, Any]) -> dict[str, Any]:
             continue
         if finding["findings"]:
             policy[row["name"]] = finding
+    inspection: dict[str, Any] = {}
+    for row in endpoints.values():
+        try:
+            found = inspection_gap(bom, source=row["key"])
+        except tb.ClaimRefused:  # pragma: no cover - an endpoint is its own source
+            continue
+        if found["routes"]:
+            inspection[row["name"]] = found
     return {
         "schema": SCHEMA,
         "projection": True,
@@ -1219,6 +1230,10 @@ def build(estate_doc: Mapping[str, Any]) -> dict[str, Any]:
         "chains": chains,
         "routes": routes,
         "policy_findings": policy,
+        "sensors": [_sensor_row(row) for row in bom["assets"]
+                    if row["kind"] in SENSOR_KINDS],
+        "inspection": inspection,
+        "rate_limits": rate_limit_gap(bom),
         "exposure": pqc_exposure(bom),
         "graph": networks,
         "tls_modes": dict(sorted(modes.items())),
@@ -1297,6 +1312,7 @@ ID_PREFIX: dict[str, str] = {
     "SERVICE_MESH": "SERVICE-MESH", "DATABASE": "DATABASE",
     "CIPHER_SUITE": "CIPHER-SUITE", "CERTIFICATE": "CERTIFICATE",
     "SSH_SERVICE": "SSH-SERVICE", "IPSEC_TUNNEL": "IPSEC-TUNNEL",
+    "IDS": "IDS", "IPS": "IPS", "RATE_LIMIT": "RATE-LIMIT", "FIREWALL": "FIREWALL",
 }
 
 
@@ -1734,6 +1750,607 @@ def coverage_by_segment(segments: Mapping[str, Mapping[str, Any]]) -> dict[str, 
         "statement": (f"{len(per_segment)} segment(s), overall {overall}: " +
                       ", ".join(f"{name} {row['verdict']}"
                                 for name, row in per_segment.items())),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Controls: what sees the traffic, what limits it, and what we may send
+# --------------------------------------------------------------------------- #
+
+#: the two intrusion controls, kept apart because they do different jobs. An IPS is in the
+#: path and can drop a packet; an IDS sees a copy and can only say what it saw.
+SENSOR_KINDS: tuple[str, ...] = ("IDS", "IPS")
+
+#: how a sensor is deployed. Only INLINE puts it on the route; the rest see a copy.
+SENSOR_MODES: dict[str, str] = {"INLINE": "INLINE", "TAP": "TAP", "SPAN": "SPAN",
+                                "MIRROR": "SPAN", "OUT_OF_PATH": "TAP"}
+
+#: the modes a route can pass *through*. A tap is not one of them, and that is the point.
+IN_PATH_MODES: frozenset[str] = frozenset({"INLINE"})
+
+#: what a control can be. A route crosses one of these or it does not.
+CONTROL_KINDS: tuple[str, ...] = ("IDS", "IPS", "FIREWALL", "WAF", "SECURITY_APPLIANCE",
+                                 "SERVICE_MESH")
+
+FILTER_ACTIONS: dict[str, str] = {"ALLOW": "ALLOW", "PERMIT": "ALLOW", "ACCEPT": "ALLOW",
+                                  "DENY": "DENY", "DROP": "DENY", "REJECT": "DENY",
+                                  "BLOCK": "DENY"}
+
+RATE_SCOPES: tuple[str, ...] = ("CLIENT", "IP", "KEY", "TENANT", "GLOBAL")
+
+RATE_ACTIONS: dict[str, str] = {"REJECT": "REJECT", "429": "REJECT", "SEND_429": "REJECT",
+                                "DROP": "DROP", "SHAPE": "SHAPE", "LOG_ONLY": "LOG_ONLY"}
+
+#: methods a scanner may send without being told twice. Everything else can change state,
+#: and a bank's gateway is not a test bed.
+SAFE_METHODS: frozenset[str] = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def _sensor_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    attributes = row.get("attributes") or {}
+    return {"name": row["name"], "kind": row["kind"],
+            "mode": attributes.get("mode"), "blocking": bool(attributes.get("blocking")),
+            "fail_open": bool(attributes.get("fail_open")),
+            "inspects": list(attributes.get("inspects") or [])}
+
+
+def intrusion_sensor(*, name: Any, kind: Any = "IDS", mode: Any = "INLINE",
+                     segments: Iterable[Any] = (), endpoints: Iterable[Any] = (),
+                     forwards_to: Any = None, fail_open: Any = False, blocks: Any = None,
+                     engine: Any = None, inspection: Iterable[Any] = ("HEADERS", "PAYLOAD"),
+                     environment: Any = "PRODUCTION", evidence_ids: Iterable[Any] | None = None,
+                     basis: Any = "config-parse", **attributes: Any) -> dict[str, Any]:
+    """An IDS or an IPS, with the deployment that decides whether it can stop anything.
+
+    The single most expensive mistake in this area is a diagram that puts an IDS on the
+    path. The model refuses it three ways: an off-path sensor may not be ``blocking``
+    (``SENSOR_CANNOT_BLOCK_OFF_PATH``), an IDS may never block (``IDS_CANNOT_BLOCK``), and
+    an inline sensor with nothing behind it is an outage, not a control
+    (``INLINE_WITHOUT_DOWNSTREAM``). An IPS deployed as a tap is *allowed* — it is a real
+    and common misconfiguration — and reported by :func:`inspection_gap` as
+    ``IPS_NOT_INLINE`` instead of being quietly drawn as protection.
+    """
+    kind_text = str(kind or "").strip().upper()
+    if kind_text not in SENSOR_KINDS:
+        raise tb.ClaimRefused(
+            "NOT_A_SENSOR",
+            f"{kind_text or '(none)'} is not an intrusion sensor; a firewall filters, a WAF "
+            "terminates, and only an IDS or an IPS inspect for intrusions")
+    mode_text = SENSOR_MODES.get(str(mode or "").strip().upper())
+    if not mode_text:
+        raise tb.ClaimRefused(
+            "UNKNOWN_SENSOR_MODE",
+            f"{mode or '(none)'} is not a deployment mode; a sensor is either in the path "
+            "or it sees a copy of it")
+    blocking = (kind_text == "IPS" and mode_text in IN_PATH_MODES) if blocks is None \
+        else bool(blocks)
+    if blocking and mode_text not in IN_PATH_MODES:
+        raise tb.ClaimRefused(
+            "SENSOR_CANNOT_BLOCK_OFF_PATH",
+            f"{name} is deployed {mode_text}: it inspects a copy of the traffic and cannot "
+            "drop a packet it never carried")
+    if kind_text == "IDS" and blocking:
+        raise tb.ClaimRefused(
+            "IDS_CANNOT_BLOCK",
+            f"{name} is an IDS: it alerts, and dropping a packet is an IPS or a firewall's "
+            "job — an IDS that claims to block is a false sense of control")
+    if mode_text in IN_PATH_MODES and not forwards_to:
+        raise tb.ClaimRefused(
+            "INLINE_WITHOUT_DOWNSTREAM",
+            f"{name} is inline with nothing behind it; a control in the path that forwards "
+            "nowhere is an outage")
+    watch = [str(value) for value in [*(segments or ()), *(endpoints or ())]]
+    sensor = tb.asset(kind_text, name, environment=environment, evidence_ids=evidence_ids,
+                      mode=mode_text, blocking=blocking, fail_open=bool(fail_open),
+                      engine=engine, inspects=watch,
+                      inspection=[str(value).upper() for value in inspection], **attributes)
+    claims: list[dict[str, Any]] = [
+        tb.claim(name, "INSPECTS", target, basis=basis, evidence_ids=evidence_ids)
+        for target in watch]
+    if forwards_to:
+        claims.append(tb.claim(name, "FORWARDS_TO", str(forwards_to), basis=basis,
+                               evidence_ids=evidence_ids, protocol="TCP"))
+    if blocking:
+        claims.extend(tb.claim(name, "PROTECTS", target, basis=basis,
+                               evidence_ids=evidence_ids)
+                      for target in watch)
+    return part(sensor, claims=claims)
+
+
+def filters(*, firewall_row: Mapping[str, Any], default_action: Any = "DENY",
+            rules: Iterable[Mapping[str, Any]] = (), logged: Any = True,
+            evidence_ids: Iterable[Any] | None = None, **attributes: Any) -> dict[str, Any]:
+    """A firewall's rule set, as configuration — evaluated in order, first match wins.
+
+    A rule that names no port is refused (``RULE_WITHOUT_SERVICE``): "allow the payments
+    subnet" is a sentence, and a rule that does not say which service is not one.
+    """
+    action = FILTER_ACTIONS.get(str(default_action or "").strip().upper())
+    if not action:
+        raise tb.ClaimRefused(
+            "UNKNOWN_FILTER_ACTION",
+            f"{default_action or '(none)'} is not a filter action; a policy either allows "
+            "or denies by default")
+    normalised: list[dict[str, Any]] = []
+    for index, rule in enumerate(rules, start=1):
+        if not isinstance(rule, Mapping):
+            raise tb.ClaimRefused("MALFORMED_RULE", f"rule {index} is not a mapping")
+        rule_action = FILTER_ACTIONS.get(str(rule.get("action") or "").strip().upper())
+        if not rule_action:
+            raise tb.ClaimRefused(
+                "UNKNOWN_FILTER_ACTION",
+                f"rule {index}: {rule.get('action') or '(none)'} is not a filter action")
+        port = rule.get("port") if rule.get("port") is not None else rule.get("service")
+        if port is None:
+            raise tb.ClaimRefused(
+                "RULE_WITHOUT_SERVICE",
+                f"rule {index} names no port; a rule about nothing matches everything")
+        normalised.append({
+            "order": index, "action": rule_action,
+            "direction": str(rule.get("direction") or "INBOUND").upper(),
+            "source": str(rule.get("source") or "ANY"),
+            "destination": str(rule.get("destination") or "ANY"),
+            "port": port, "protocol": str(rule.get("protocol") or "TCP").upper(),
+            "logged": bool(rule.get("logged", logged)),
+        })
+    row = dict(firewall_row)
+    body = dict(row.get("attributes") or {})
+    body["filter_policy"] = {"default_action": action, "rules": normalised,
+                             "logged": bool(logged)}
+    row["attributes"] = body
+    row["evidence_ids"] = list(row.get("evidence_ids") or []) + [
+        str(value) for value in (evidence_ids or [])]
+    return row
+
+
+def filter_verdict(bom: Mapping[str, Any], *, source: Any, target: Any, port: Any = None,
+                   protocol: Any = "TCP") -> dict[str, Any]:
+    """Would the configured policy let this flow through? Configuration, never a packet.
+
+    The answer is deliberately one class below an observation: a rule that matches is
+    ``CONFIGURED``, and a packet that was refused is ``NETWORK_OBSERVED``. Claiming the
+    second from the first is how a firewall review ends up meaningless.
+    """
+    host = str(target)
+    wanted = None if port is None else str(port)
+    for row in bom.get("assets") or []:
+        if row["kind"] not in ("FIREWALL", "SECURITY_APPLIANCE", "WAF", "IPS"):
+            continue
+        policy = (row["attributes"] or {}).get("filter_policy") or {}
+        if not policy:
+            continue
+        for rule in policy.get("rules") or []:
+            if not _destination_matches(str(rule.get("destination") or "ANY"), host):
+                continue
+            if wanted is not None and str(rule.get("port")) not in ("ANY", wanted):
+                continue
+            if rule.get("direction") not in (None, "INBOUND", "BOTH"):
+                continue
+            return {
+                "decision": rule["action"], "firewall": row["name"],
+                "matched_rule": rule.get("order"), "rule": rule,
+                "source": str(source), "target": host, "port": _port_value(wanted),
+                "confidence": "CONFIGURED",
+                "statement": (f"{row['name']} rule {rule.get('order')} "
+                              f"{'allows' if rule['action'] == 'ALLOW' else 'denies'} "
+                              f"{str(protocol).upper()}:{wanted or 'any'} to {host} — a "
+                              "matching rule, not an observed packet"),
+                "not_proven": ["that the packet was refused: a rule that matches is a "
+                               "policy, and only a capture or a probe says what happened"],
+            }
+        return {
+            "decision": policy.get("default_action") or "DENY", "firewall": row["name"],
+            "matched_rule": None, "source": str(source), "target": host,
+            "port": _port_value(wanted), "confidence": "CONFIGURED",
+            "statement": (f"no rule matched; {row['name']} falls to its default "
+                          f"{str(policy.get('default_action')).lower()}"),
+            "not_proven": ["that the default was exercised: an unmatched flow is a "
+                           "configuration path, not a measurement"],
+        }
+    raise tb.ClaimRefused(
+        "NO_FILTER_POLICY",
+        f"no firewall policy was read for {host}; an unread rule set is not an open one, "
+        "and it is not a closed one either")
+
+
+def _destination_matches(destination: str, host: str) -> bool:
+    """``10.0.2.5`` matches ``app:8443`` when that is the address the name resolves to."""
+    if destination in ("ANY", "*"):
+        return True
+    if destination.startswith("*."):
+        return host.lower().endswith(destination[1:].lower())
+    address = host.split(":")[0].lower()
+    return destination.lower() in (host.lower(), address)
+
+
+def _port_value(value: Any) -> Any:
+    """``'443'`` and ``443`` are the same port; keeping them apart invents findings."""
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return value
+
+
+def rate_limit(*, name: Any, enforcer_row: Mapping[str, Any], limit: Any,
+               window_seconds: Any = 1, scope: Any = "CLIENT", burst: Any = None,
+               on_exceed: Any = "REJECT", fail_open: Any = False,
+               observed: Mapping[str, Any] | None = None, targets: Iterable[Any] = (),
+               evidence_ids: Iterable[Any] | None = None, basis: Any = "config-parse",
+               **attributes: Any) -> dict[str, Any]:
+    """A rate limit as a policy node: what is limited, how, and what happens at the edge.
+
+    A limit is a *number and a behaviour*, and the behaviour is where they fail: a policy
+    that is configured to reject but deployed ``fail_open``, or set to ``LOG_ONLY``, is a
+    limit on paper. Both are findings in :func:`rate_limit_gap`, not refusals here — the
+    configuration is legal and wrong, which is exactly what a review is for.
+    """
+    try:
+        limit_value = int(limit)
+        window_value = int(window_seconds)
+    except (TypeError, ValueError) as exc:
+        raise tb.ClaimRefused(
+            "INVALID_RATE_LIMIT",
+            f"{limit!r}/{window_seconds!r} is not a rate; a limit is a count over a window"
+        ) from exc
+    if limit_value <= 0 or window_value <= 0:
+        raise tb.ClaimRefused(
+            "INVALID_RATE_LIMIT",
+            f"{limit_value} request(s) per {window_value}s cannot be enforced; a limit of "
+            "zero is an outage and a window of zero is a division")
+    scope_text = str(scope or "").strip().upper()
+    if scope_text not in RATE_SCOPES:
+        raise tb.ClaimRefused(
+            "UNKNOWN_RATE_SCOPE",
+            f"{scope or '(none)'} is not a scope; a limit applies to a client, an address, "
+            "a key, a tenant, or everyone")
+    action_text = RATE_ACTIONS.get(str(on_exceed or "").strip().upper())
+    if not action_text:
+        raise tb.ClaimRefused(
+            "UNKNOWN_RATE_ACTION",
+            f"{on_exceed or '(none)'} is not something a limiter can do at the edge")
+    policy = tb.asset("RATE_LIMIT", name, evidence_ids=evidence_ids,
+                      limit=limit_value, window_seconds=window_value, scope=scope_text,
+                      burst=burst, on_exceed=action_text, fail_open=bool(fail_open),
+                      applies_to=[str(value) for value in targets],
+                      observed=dict(observed or {}), **attributes)
+    claims = [tb.claim(enforcer_row["name"], "ENFORCES", name, basis=basis,
+                       evidence_ids=evidence_ids)]
+    claims.extend(tb.claim(name, "LIMITS", str(target), basis=basis,
+                           evidence_ids=evidence_ids) for target in targets)
+    return part(enforcer_row, policy, claims=claims)
+
+
+def rate_limit_gap(bom: Mapping[str, Any]) -> dict[str, Any]:
+    """Every way a configured limit fails to be a limit, measured rather than asserted."""
+    findings: list[dict[str, Any]] = []
+    policies = {row["name"]: row for row in bom.get("assets") or []
+                if row["kind"] == "RATE_LIMIT"}
+    enforced_by: dict[str, list[str]] = {}
+    limited: dict[str, list[str]] = {}
+    for claim in bom.get("claims") or []:
+        if claim["relation"] == "ENFORCES":
+            enforced_by.setdefault(claim["to"], []).append(claim["from"])
+        elif claim["relation"] == "LIMITS":
+            limited.setdefault(claim["to"], []).append(claim["from"])
+    for name, row in sorted(policies.items()):
+        attributes = row["attributes"] or {}
+        limit = _port_value(attributes.get("limit"))
+        observed = attributes.get("observed") or {}
+        if attributes.get("fail_open"):
+            findings.append({"code": "LIMIT_FAIL_OPEN", "policy": name,
+                             "reason": "when the limiter cannot decide, traffic passes"})
+        if str(attributes.get("on_exceed")) == "LOG_ONLY":
+            findings.append({"code": "LIMIT_LOG_ONLY", "policy": name,
+                             "reason": "the count is recorded and nothing is refused"})
+        if not enforced_by.get(name):
+            findings.append({"code": "LIMIT_ENFORCER_MISSING", "policy": name,
+                             "reason": "a policy nobody enforces is a document"})
+        rate = observed.get("rate")
+        rejected = observed.get("rejected")
+        if rate is not None and rejected is not None and limit is not None:
+            if float(rate) > float(limit) and int(rejected) == 0:
+                findings.append({"code": "LIMIT_NOT_ENFORCED", "policy": name,
+                                 "observed_rate": rate, "limit": limit,
+                                 "reason": "traffic above the limit was never refused"})
+    for endpoint in [row for row in bom.get("assets") or []
+                     if row["kind"] == "NETWORK_ENDPOINT"]:
+        covered = limited.get(endpoint["name"]) or [
+            name for name, targets in limited.items() if endpoint["name"] in targets]
+        if covered:
+            continue
+        enforcers = [claim["from"] for claim in bom.get("claims") or []
+                     if claim["relation"] in ("FORWARDS_TO", "ROUTES_TO", "FRONTED_BY")
+                     and claim["to"] == endpoint["name"]]
+        if enforcers:
+            findings.append({"code": "NO_LIMIT_RECORDED", "endpoint": endpoint["name"],
+                             "enforcer": sorted(set(enforcers)),
+                             "reason": "the endpoint is reachable through a device and no "
+                                       "limit was read for it"})
+    return {
+        "findings": findings,
+        "counts": {code: sum(1 for row in findings if row["code"] == code)
+                   for code in sorted({row["code"] for row in findings})},
+        "statement": (f"{len(findings)} rate-limit finding(s) on {len(policies)} policy "
+                      "row(s): "
+                      + (", ".join(sorted({row["code"] for row in findings})) or "none")),
+        "not_proven": ["that a limit protected anything: a configured limit is "
+                       "CONFIGURED, and only a rejected request is NETWORK_OBSERVED"],
+    }
+
+
+def inspection_gap(bom: Mapping[str, Any], *, source: Any, target: Any = None,
+                   max_hops: int = 8) -> dict[str, Any]:
+    """Which routes actually cross a control that can stop something.
+
+    For every evidenced route out of ``source`` the answer is one of three, and they are
+    not interchangeable: ``INSPECTED_INLINE`` (a blocking control is on the route),
+    ``TAP_ONLY`` (a sensor watches a node on it, from off the path), or ``NOT_INSPECTED``
+    (nothing evidenced sees it at all). An inline control deployed ``fail_open`` is
+    ``FAIL_OPEN_INLINE``: present, and passing traffic when it fails.
+    """
+    walk = paths(bom, source=source, target=target, max_hops=max_hops)
+    controls = {row["name"]: row for row in bom.get("assets") or []
+                if row["kind"] in CONTROL_KINDS}
+    taps: dict[str, list[str]] = {}
+    for claim in bom.get("claims") or []:
+        if claim["relation"] != "INSPECTS":
+            continue
+        sensor = controls.get(claim["from"])
+        if sensor and str((sensor["attributes"] or {}).get("mode")) in ("TAP", "SPAN"):
+            taps.setdefault(claim["to"], []).append(claim["from"])
+    rows: list[dict[str, Any]] = []
+    for route in walk["routes"]:
+        on_path = [name for name in route["nodes"]
+                   if name in controls and (controls[name]["attributes"] or {}).get("mode")
+                   in IN_PATH_MODES]
+        blocking = [name for name in on_path
+                    if (controls[name]["attributes"] or {}).get("blocking")]
+        fail_open = [name for name in on_path
+                     if (controls[name]["attributes"] or {}).get("fail_open")]
+        off_path = sorted({sensor for name in route["nodes"]
+                           for sensor in taps.get(name, [])})
+        codes: list[str] = []
+        if blocking and fail_open:
+            codes.append("FAIL_OPEN_INLINE")
+        elif blocking:
+            codes.append("INSPECTED_INLINE")
+        elif off_path:
+            codes.append("TAP_ONLY")
+        else:
+            codes.append("NOT_INSPECTED")
+        rows.append({**route, "inline": on_path, "blocking": blocking,
+                     "fail_open": fail_open, "tap_only": off_path,
+                     "codes": codes,
+                     "inspected": bool(blocking) and not fail_open})
+    bypass = [row for row in rows if not row["inspected"]]
+    sensor_findings: list[dict[str, Any]] = []
+    for name, row in sorted(controls.items()):
+        attributes = row["attributes"] or {}
+        mode = str(attributes.get("mode") or "")
+        if row["kind"] == "IPS" and mode not in IN_PATH_MODES:
+            sensor_findings.append({
+                "code": "IPS_NOT_INLINE", "sensor": name, "mode": mode,
+                "reason": "an IPS deployed off the path detects and never blocks; the "
+                          "prevention it was bought for is not deployed"})
+        if attributes.get("blocking") and attributes.get("fail_open"):
+            sensor_findings.append({
+                "code": "FAIL_OPEN_SENSOR", "sensor": name,
+                "reason": "when the sensor fails, the traffic it was stopping passes"})
+    return {
+        "source": walk["source"], "target": str(target) if target is not None else None,
+        "routes": rows,
+        "inspected": sum(1 for row in rows if row["inspected"]),
+        "bypass": [row["path"] for row in bypass],
+        "sensor_findings": sensor_findings,
+        "codes": {code: sum(1 for row in rows if code in row["codes"])
+                  for code in sorted({code for row in rows for code in row["codes"]})},
+        "statement": (f"{len(rows)} route(s) from {walk['source']['name']}: "
+                      f"{sum(1 for row in rows if row['inspected'])} cross a control that "
+                      f"can block, {len(bypass)} do not"),
+        "not_proven": ["that the control would have matched: an inline sensor on the path "
+                       "is where the traffic goes, not a rule that fires",
+                       "that a tap sees this route's traffic: a tap is evidenced against a "
+                       "node, and what it captured is the capture's claim, not this one"],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Request sending: a budget, an allowlist, and a record of every request not sent
+# --------------------------------------------------------------------------- #
+
+def _allowlist_entry(entry: Any) -> dict[str, Any]:
+    text = str(entry or "").strip()
+    if not text:
+        raise tb.ClaimRefused("ALLOWLIST_INVALID", "an empty allowlist entry allows nothing")
+    if "/" in text:
+        try:
+            network = ipaddress.ip_network(text, strict=False)
+        except ValueError as exc:
+            raise tb.ClaimRefused(
+                "ALLOWLIST_INVALID",
+                f"{text} looks like a CIDR range and is not one; an allowlist that does not "
+                "parse is a scan of the internet") from exc
+        return {"kind": "CIDR", "value": text, "network": network}
+    if text.startswith("*."):
+        if len(text) <= 2:
+            raise tb.ClaimRefused("ALLOWLIST_INVALID",
+                                  f"{text} is a wildcard with no domain under it")
+        return {"kind": "SUFFIX", "value": text, "suffix": text[1:].lower()}
+    host, _, port_text = text.partition(":")
+    if port_text and not port_text.isdigit():
+        raise tb.ClaimRefused("ALLOWLIST_INVALID", f"{text}: {port_text} is not a port")
+    return {"kind": "HOST", "value": text, "host": host.lower(),
+            "port": int(port_text) if port_text else None}
+
+
+def _parse_target(target: Any) -> dict[str, Any]:
+    if isinstance(target, Mapping):
+        host = str(target.get("host") or "").strip()
+        port = target.get("port")
+    else:
+        text = str(target or "").strip()
+        host, _, port_text = text.partition(":")
+        port = int(port_text) if port_text.isdigit() else None
+    if not host:
+        raise tb.ClaimRefused("TARGET_WITHOUT_HOST", "a request needs a host")
+    address = None
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    return {"host": host.lower(), "port": port, "address": address,
+            "name": f"{host}:{port}" if port else host}
+
+
+def _allowlisted(entry: Mapping[str, Any], target: Mapping[str, Any]) -> bool:
+    if entry["kind"] == "CIDR":
+        return target["address"] is not None and target["address"] in entry["network"]
+    if entry["kind"] == "SUFFIX":
+        if target["address"] is not None:
+            return False
+        host = f".{target['host']}"
+        return host.endswith(entry["suffix"])
+    if entry["host"] != target["host"]:
+        if not (target["address"] is not None and entry["host"] == str(target["address"])):
+            return False
+    return entry["port"] in (None, target["port"])
+
+
+def probe_policy(*, allowlist: Iterable[Any] = (), max_requests_per_target: Any = 50,
+                 max_concurrency: Any = 4, min_interval_ms: Any = 200,
+                 stop_after_errors: Any = 3, allow_unsafe_methods: Any = False,
+                 dry_run: Any = False, collector: Any = "probe-gate",
+                 collector_version: Any = "1.0.0") -> dict[str, Any]:
+    """What a scanner is allowed to send, before it sends anything.
+
+    An empty allowlist is refused (``EMPTY_ALLOWLIST``): "scan whatever resolves" is not a
+    policy, it is an incident. The budget, the concurrency and the backoff are part of the
+    same object because a limit that can be raised by the caller is a suggestion.
+    """
+    entries = [_allowlist_entry(entry) for entry in (allowlist or ())]
+    if not entries:
+        raise tb.ClaimRefused(
+            "EMPTY_ALLOWLIST",
+            "a probe with no allowlist is a scan of the internet; the targets are named "
+            "before the first packet")
+    numbers: dict[str, int] = {}
+    for field, value in (("max_requests_per_target", max_requests_per_target),
+                         ("max_concurrency", max_concurrency),
+                         ("min_interval_ms", min_interval_ms),
+                         ("stop_after_errors", stop_after_errors)):
+        try:
+            numbers[field] = int(value)
+        except (TypeError, ValueError) as exc:
+            raise tb.ClaimRefused("INVALID_PROBE_BUDGET",
+                                  f"{field}={value!r} is not a number") from exc
+        if numbers[field] < 0:
+            raise tb.ClaimRefused("INVALID_PROBE_BUDGET",
+                                  f"{field} cannot be negative")
+    if numbers["max_requests_per_target"] == 0 or numbers["max_concurrency"] == 0:
+        raise tb.ClaimRefused(
+            "INVALID_PROBE_BUDGET",
+            "a budget of zero and a concurrency of zero cannot send the one request a "
+            "probe is for")
+    return {
+        "allowlist": [{"kind": entry["kind"], "value": entry["value"],
+                       "port": entry.get("port")} for entry in entries],
+        "_entries": entries,
+        "max_requests_per_target": numbers["max_requests_per_target"],
+        "max_concurrency": numbers["max_concurrency"],
+        "min_interval_ms": numbers["min_interval_ms"],
+        "stop_after_errors": numbers["stop_after_errors"],
+        "allow_unsafe_methods": bool(allow_unsafe_methods),
+        "dry_run": bool(dry_run),
+        "collector": str(collector), "collector_version": str(collector_version),
+    }
+
+
+def probe_gate(policy: Mapping[str, Any], *, target: Any, method: Any = "GET",
+               sent: Any = 0, in_flight: Any = 0, recent_errors: Any = 0,
+               last_sent_at: Any = None, now: Any = None) -> dict[str, Any]:
+    """One decision per request: send it, or refuse it and say why.
+
+    The order is deliberate — *may we touch this target at all* comes before *do we have
+    budget*, because a budget is not permission. The refusal codes are the product: a
+    scanner that silently declines to probe a segment is indistinguishable from one that
+    found nothing there.
+    """
+    target_row = _parse_target(target)
+    entries = policy.get("_entries") or [_allowlist_entry(row["value"])
+                                         for row in policy.get("allowlist") or []]
+
+    def decision(code: str, reason: str, **extra: Any) -> dict[str, Any]:
+        return {"decision": "SEND" if code == "SEND" else "REFUSE", "code": code,
+                "target": target_row["name"], "method": str(method).upper(),
+                "reason": reason, **extra}
+
+    if str(method).upper() not in SAFE_METHODS and not policy.get("allow_unsafe_methods"):
+        return decision("METHOD_NOT_SAFE",
+                        f"{str(method).upper()} can change state; a probe is not a "
+                        "transaction")
+    if not any(_allowlisted(entry, target_row) for entry in entries):
+        return decision("TARGET_NOT_ALLOWED",
+                        f"{target_row['name']} is not in the allowlist; nothing is probed "
+                        "off-list, however interesting it looks")
+    if int(sent) >= int(policy.get("max_requests_per_target") or 0):
+        return decision("BUDGET_EXHAUSTED",
+                        f"{int(sent)} request(s) already sent to {target_row['name']}; the "
+                        "budget is a stop, not a target")
+    if int(in_flight) >= int(policy.get("max_concurrency") or 0):
+        return decision("CONCURRENCY_EXHAUSTED",
+                        f"{int(in_flight)} request(s) in flight; a scanner that opens "
+                        "everything at once is a load test")
+    if int(recent_errors) >= int(policy.get("stop_after_errors") or 0):
+        return decision("BACKOFF_REQUIRED",
+                        f"{int(recent_errors)} consecutive error(s); the target is having a "
+                        "worse day than the scan")
+    if last_sent_at is not None and now is not None:
+        elapsed_ms = (float(now) - float(last_sent_at)) * 1000
+        if elapsed_ms < float(policy.get("min_interval_ms") or 0):
+            return decision("INTERVAL_NOT_ELAPSED",
+                            f"{elapsed_ms:.0f}ms since the last request; the floor is "
+                            f"{policy.get('min_interval_ms')}ms")
+    if policy.get("dry_run"):
+        return decision("DRY_RUN", "the policy is in dry-run: the decision is recorded and "
+                                   "nothing is sent")
+    return decision("SEND", f"{target_row['name']} is allowlisted and within budget")
+
+
+def probe_ledger(decisions: Iterable[Mapping[str, Any]], *,
+                 collector: Any = "probe-gate", collector_version: Any = "1.0.0",
+                 evidence_prefix: Any = "EVID-PROBE",
+                 observed_at: Any = None) -> dict[str, Any]:
+    """Every decision as an evidence record — including, and especially, the refusals.
+
+    A sent request is ``NETWORK_OBSERVED``; a refused one is ``CONFIGURED``, because a
+    decision is not an observation. Both get a collector and a hash, so "we did not probe
+    that segment" is a checkable fact rather than an omission.
+    """
+    records: list[dict[str, Any]] = []
+    by_code: dict[str, int] = {}
+    for index, decision in enumerate(decisions, start=1):
+        code = str(decision.get("code") or "UNKNOWN")
+        by_code[code] = by_code.get(code, 0) + 1
+        digest = hashlib.sha256(
+            json.dumps(decision, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+        records.append(evidence_record(
+            f"{evidence_prefix}-{index:03d}", collector=collector,
+            collector_version=collector_version, target_id=decision.get("target"),
+            observed_at=observed_at,
+            evidence_type="NETWORK_OBSERVED" if code == "SEND" else "CONFIGURED",
+            source=str(decision.get("decision") or "REFUSE"),
+            normalized_fact=f"{code} {decision.get('method')} {decision.get('target')}",
+            raw_reference=str(decision.get("reason")), hash=f"sha256:{digest[:16]}"))
+    sent = by_code.get("SEND", 0)
+    refused = len(records) - sent
+    reasons = ", ".join(f"{code} {count}" for code, count in sorted(by_code.items())
+                        if code != "SEND")
+    return {
+        "records": records,
+        "sent": sent, "refused": refused, "by_code": dict(sorted(by_code.items())),
+        "statement": (f"{len(records)} decision(s): {sent} sent, {refused} refused"
+                      + (f" ({reasons})" if reasons else "")),
+        "not_proven": ["that a sent request reached the service: the record says it was "
+                       "allowed, and the response is a separate observation"],
     }
 
 

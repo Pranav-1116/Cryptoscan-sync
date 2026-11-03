@@ -1,6 +1,6 @@
 # The network is a graph
 
-`cryptoscan.cbom-nbom-guide/1` · generated 2026-11-03T02:41:09.719908+00:00 · **18 pass · 0 partial · 0 fail** · 81 probes
+`cryptoscan.cbom-nbom-guide/1` · generated 2026-11-03T06:04:34.983782+00:00 · **18 pass · 0 partial · 0 fail** · 81 probes
 
 The NBOM review's twenty-two points, answered by putting the network into the
 graph the rest of the estate lives in. An address is a location, the backend is a

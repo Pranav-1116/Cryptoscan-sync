@@ -1,6 +1,6 @@
 # The rest of the NBOM review
 
-`cryptoscan.cbom-nbom-gaps-guide/1` · generated 2026-11-03T02:41:09.986779+00:00 · **11 pass · 0 partial · 0 fail** · 45 probes
+`cryptoscan.cbom-nbom-gaps-guide/1` · generated 2026-11-03T06:04:35.189319+00:00 · **11 pass · 0 partial · 0 fail** · 45 probes
 
 Guide 169 answered the twenty-two points at the level of relations. Read back,
 nine things were still thin — ids, routes, the fourth state of a listener, the

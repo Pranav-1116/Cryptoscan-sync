@@ -1,0 +1,515 @@
+{
+  "schema": "cryptoscan.cbom-controls-guide/1",
+  "generated_at": "2026-11-03T06:06:06.987729+00:00",
+  "counts": {
+    "PASS": 9,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 53,
+  "statement": "4 network endpoint(s), 18 evidenced edge(s), 0 TLS boundary mode(s) in use, 4 proven route(s); 0 claim(s) refused",
+  "sensors": [
+    {
+      "name": "ids-01",
+      "kind": "IDS",
+      "mode": "TAP",
+      "blocking": false,
+      "fail_open": false,
+      "inspects": [
+        "CARDHOLDER",
+        "auth-api:9443"
+      ]
+    },
+    {
+      "name": "ips-01",
+      "kind": "IPS",
+      "mode": "INLINE",
+      "blocking": true,
+      "fail_open": false,
+      "inspects": [
+        "CARDHOLDER",
+        "payments-api:8443"
+      ]
+    },
+    {
+      "name": "ips-dr-01",
+      "kind": "IPS",
+      "mode": "TAP",
+      "blocking": false,
+      "fail_open": false,
+      "inspects": [
+        "CARDHOLDER",
+        "payments-api:8443"
+      ]
+    }
+  ],
+  "inspection": {
+    "statement": "1 route(s) from waf-01:443: 1 cross a control that can block, 0 do not",
+    "codes": {
+      "INSPECTED_INLINE": 1
+    },
+    "routes": [
+      {
+        "path": "waf-01:443 \u2192 ips-01 \u2192 api-gw-01:8443 \u2192 payments-api:8443 \u2192 Payments API",
+        "codes": [
+          "INSPECTED_INLINE"
+        ],
+        "blocking": [
+          "ips-01"
+        ],
+        "tap_only": [
+          "ips-dr-01"
+        ]
+      }
+    ],
+    "sensor_findings": [
+      {
+        "code": "IPS_NOT_INLINE",
+        "sensor": "ips-dr-01",
+        "mode": "TAP",
+        "reason": "an IPS deployed off the path detects and never blocks; the prevention it was bought for is not deployed"
+      }
+    ]
+  },
+  "firewall": {
+    "allowed": {
+      "decision": "ALLOW",
+      "firewall": "fw-01",
+      "matched_rule": 1,
+      "rule": {
+        "order": 1,
+        "action": "ALLOW",
+        "direction": "INBOUND",
+        "source": "10.10.0.0/16",
+        "destination": "10.10.1.5",
+        "port": 8443,
+        "protocol": "TCP",
+        "logged": true
+      },
+      "source": "10.10.0.9",
+      "target": "10.10.1.5",
+      "port": 8443,
+      "confidence": "CONFIGURED",
+      "statement": "fw-01 rule 1 allows TCP:8443 to 10.10.1.5 \u2014 a matching rule, not an observed packet",
+      "not_proven": [
+        "that the packet was refused: a rule that matches is a policy, and only a capture or a probe says what happened"
+      ]
+    },
+    "default": {
+      "decision": "DENY",
+      "firewall": "fw-01",
+      "matched_rule": null,
+      "source": "10.10.0.9",
+      "target": "10.10.1.5",
+      "port": 8080,
+      "confidence": "CONFIGURED",
+      "statement": "no rule matched; fw-01 falls to its default deny",
+      "not_proven": [
+        "that the default was exercised: an unmatched flow is a configuration path, not a measurement"
+      ]
+    }
+  },
+  "rate_limits": {
+    "findings": [
+      {
+        "code": "LIMIT_FAIL_OPEN",
+        "policy": "rl-payments-edge",
+        "reason": "when the limiter cannot decide, traffic passes"
+      },
+      {
+        "code": "LIMIT_NOT_ENFORCED",
+        "policy": "rl-payments-edge",
+        "observed_rate": 250,
+        "limit": 100,
+        "reason": "traffic above the limit was never refused"
+      },
+      {
+        "code": "NO_LIMIT_RECORDED",
+        "endpoint": "api-gw-01:8443",
+        "enforcer": [
+          "ips-01"
+        ],
+        "reason": "the endpoint is reachable through a device and no limit was read for it"
+      },
+      {
+        "code": "NO_LIMIT_RECORDED",
+        "endpoint": "payments-api:8443",
+        "enforcer": [
+          "api-gw-01:8443"
+        ],
+        "reason": "the endpoint is reachable through a device and no limit was read for it"
+      }
+    ],
+    "counts": {
+      "LIMIT_FAIL_OPEN": 1,
+      "LIMIT_NOT_ENFORCED": 1,
+      "NO_LIMIT_RECORDED": 2
+    },
+    "statement": "4 rate-limit finding(s) on 1 policy row(s): LIMIT_FAIL_OPEN, LIMIT_NOT_ENFORCED, NO_LIMIT_RECORDED",
+    "not_proven": [
+      "that a limit protected anything: a configured limit is CONFIGURED, and only a rejected request is NETWORK_OBSERVED"
+    ]
+  },
+  "by_code": {
+    "LIMIT_FAIL_OPEN": 1,
+    "LIMIT_NOT_ENFORCED": 1,
+    "NO_LIMIT_RECORDED": 2
+  },
+  "refusals": [],
+  "rows": [
+    {
+      "id": "sensors",
+      "question": "is an IDS a firewall with a different sticker",
+      "phase": "ids, ips",
+      "probes": [
+        {
+          "probe": "an-ids-and-an-ips-are-two-kinds-not-one-appliance",
+          "ok": true,
+          "observed": "IDS and IPS are asset kinds beside SECURITY_APPLIANCE"
+        },
+        {
+          "probe": "a-sensor-is-in-the-path-or-it-sees-a-copy",
+          "ok": true,
+          "observed": "ips-01 INLINE, ids-01 TAP, ips-dr-01 TAP"
+        },
+        {
+          "probe": "only-a-sensor-that-is-both-an-ips-and-inline-is-blocking",
+          "ok": true,
+          "observed": "ips-01 blocks; ids-01 and the DR IPS \u2014 deployed as a tap \u2014 observe"
+        },
+        {
+          "probe": "the-sensors-have-their-own-ids-per-kind",
+          "ok": true,
+          "observed": "TECH-IDS-001, TECH-IPS-001 (inline), TECH-IPS-002 (the tap)"
+        },
+        {
+          "probe": "an-ids-that-claims-to-block-is-refused",
+          "ok": true,
+          "observed": "IDS with blocks=True \u2192 IDS_CANNOT_BLOCK"
+        },
+        {
+          "probe": "a-tap-cannot-drop-a-packet-it-never-carried",
+          "ok": true,
+          "observed": "IPS in TAP mode with blocks=True \u2192 SENSOR_CANNOT_BLOCK_OFF_PATH"
+        },
+        {
+          "probe": "an-inline-sensor-with-nothing-behind-it-is-an-outage",
+          "ok": true,
+          "observed": "inline IPS with no downstream \u2192 INLINE_WITHOUT_DOWNSTREAM"
+        },
+        {
+          "probe": "only-an-ips-may-protect-in-the-type-table",
+          "ok": true,
+          "observed": "PROTECTS starts at IPS, WAF, FIREWALL, SERVICE_MESH \u2014 never at IDS"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "in-path",
+      "question": "does traffic actually pass through the control",
+      "phase": "ips",
+      "probes": [
+        {
+          "probe": "an-inline-ips-is-a-hop-on-the-route",
+          "ok": true,
+          "observed": "waf-01:443 \u2192 ips-01 \u2192 api-gw-01:8443 \u2192 payments-api:8443 \u2192 Payments API"
+        },
+        {
+          "probe": "a-tap-is-not-a-hop-on-any-route",
+          "ok": true,
+          "observed": "ids-01 appears in no path: a tap receives a copy"
+        },
+        {
+          "probe": "inspecting-a-node-is-not-forwarding-to-it",
+          "ok": true,
+          "observed": "INSPECTS exists as a relation and is deliberately absent from PATH_RELATIONS"
+        },
+        {
+          "probe": "an-ips-deployed-as-a-tap-is-reported-rather-than-drawn",
+          "ok": true,
+          "observed": "IPS in TAP mode \u2192 IPS_NOT_INLINE"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "inspection",
+      "question": "is inspection a property of the estate or of a route",
+      "phase": "ips, ids",
+      "probes": [
+        {
+          "probe": "a-route-that-crosses-a-blocking-control-is-inspected-inline",
+          "ok": true,
+          "observed": "1 route(s) from waf-01:443: 1 cross a control that can block, 0 do not"
+        },
+        {
+          "probe": "a-route-watched-only-from-a-tap-is-tap-only",
+          "ok": true,
+          "observed": "auth-api:9443 \u2192 Auth API \u2192 TAP_ONLY via ids-01"
+        },
+        {
+          "probe": "a-route-nothing-sees-says-not-inspected",
+          "ok": true,
+          "observed": "1 route(s) cross no blocking control"
+        },
+        {
+          "probe": "a-blocking-control-is-named-on-the-route-it-guards",
+          "ok": true,
+          "observed": "blocking: ['ips-01']"
+        },
+        {
+          "probe": "an-inline-control-deployed-fail-open-gives-up-its-own-verdict",
+          "ok": true,
+          "observed": "inline IPS with fail_open \u2192 FAIL_OPEN_INLINE, inspected False"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "firewall",
+      "question": "is a rule set evaluated or asserted",
+      "phase": "firewall",
+      "probes": [
+        {
+          "probe": "a-rule-that-matches-is-evaluated-in-order",
+          "ok": true,
+          "observed": "fw-01 rule 1 allows TCP:8443 to 10.10.1.5 \u2014 a matching rule, not an observed packet"
+        },
+        {
+          "probe": "a-deny-rule-ahead-of-the-default-is-its-own-match",
+          "ok": true,
+          "observed": "fw-01 rule 2 denies TCP:22 to 10.10.1.5 \u2014 a matching rule, not an observed packet"
+        },
+        {
+          "probe": "an-unmatched-flow-falls-to-the-default-action",
+          "ok": true,
+          "observed": "no rule matched; fw-01 falls to its default deny"
+        },
+        {
+          "probe": "a-matching-rule-is-configured-and-never-network-observed",
+          "ok": true,
+          "observed": "CONFIGURED, and the caveat \u2014 only a capture says what happened \u2014 travels with the answer"
+        },
+        {
+          "probe": "a-rule-that-names-no-service-is-refused",
+          "ok": true,
+          "observed": "a rule with no port \u2192 RULE_WITHOUT_SERVICE"
+        },
+        {
+          "probe": "a-firewall-carries-its-vendor-chain-like-any-other-device",
+          "ok": true,
+          "observed": "fw-01 HAS_MODEL Palo Alto PA-5220, SUPPLIED_BY Palo Alto"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "rate-limit",
+      "question": "is a limit a policy or a paragraph",
+      "phase": "ratelimit",
+      "probes": [
+        {
+          "probe": "a-limit-is-a-number-a-window-and-a-scope",
+          "ok": true,
+          "observed": "100 per 1s per CLIENT"
+        },
+        {
+          "probe": "the-behaviour-at-the-edge-is-part-of-the-policy",
+          "ok": true,
+          "observed": "429 by configuration, pass-through when the limiter fails"
+        },
+        {
+          "probe": "a-policy-is-joined-to-the-device-that-enforces-it",
+          "ok": true,
+          "observed": "waf-01:443 ENFORCES rl-payments-edge, rl-payments-edge LIMITS waf-01:443"
+        },
+        {
+          "probe": "a-limit-of-zero-or-a-window-of-zero-is-refused",
+          "ok": true,
+          "observed": "0 per 1s \u2192 INVALID_RATE_LIMIT"
+        },
+        {
+          "probe": "a-scope-nobody-has-is-refused",
+          "ok": true,
+          "observed": "EVERYONE \u2192 UNKNOWN_RATE_SCOPE"
+        },
+        {
+          "probe": "the-policy-is-a-node-with-its-own-id",
+          "ok": true,
+          "observed": "TECH-RL-001"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "rate-limit-gap",
+      "question": "does one healthy segment hide one sick one",
+      "phase": "ratelimit",
+      "probes": [
+        {
+          "probe": "a-limiter-deployed-fail-open-passes-what-it-was-meant-to-stop",
+          "ok": true,
+          "observed": "fail_open=True \u2192 LIMIT_FAIL_OPEN"
+        },
+        {
+          "probe": "traffic-above-the-limit-with-no-refusal-is-not-enforcement",
+          "ok": true,
+          "observed": "250 rps observed, limit 100, 0 refused \u2192 LIMIT_NOT_ENFORCED"
+        },
+        {
+          "probe": "an-endpoint-behind-a-device-with-no-limit-read-is-a-finding",
+          "ok": true,
+          "observed": "NO_LIMIT_RECORDED on the endpoints behind a device"
+        },
+        {
+          "probe": "a-limit-that-did-refuse-is-not-a-finding",
+          "ok": true,
+          "observed": "250 rps observed, 150 refused \u2192 no LIMIT_NOT_ENFORCED"
+        },
+        {
+          "probe": "the-answer-carries-its-evidence-class",
+          "ok": true,
+          "observed": "4 rate-limit finding(s) on 1 policy row(s): LIMIT_FAIL_OPEN, LIMIT_NOT_ENFORCED, NO_LIMIT_RECORDED"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "probe-gate",
+      "question": "is a request sent or is it decided",
+      "phase": "request sending",
+      "probes": [
+        {
+          "probe": "an-allowlist-is-a-list-of-ranges-names-and-addresses",
+          "ok": true,
+          "observed": "10.10.0.0/16 (CIDR), *.bank.example (SUFFIX), 203.0.113.9:443 (HOST)"
+        },
+        {
+          "probe": "a-probe-with-no-allowlist-is-a-scan-of-the-internet",
+          "ok": true,
+          "observed": "[] \u2192 EMPTY_ALLOWLIST"
+        },
+        {
+          "probe": "an-allowlist-entry-that-does-not-parse-is-refused",
+          "ok": true,
+          "observed": "10.0.0.0/999 \u2192 ALLOWLIST_INVALID"
+        },
+        {
+          "probe": "permission-is-decided-before-budget",
+          "ok": true,
+          "observed": "an exhausted budget never turns an off-list target into an allowed one"
+        },
+        {
+          "probe": "a-method-that-can-change-state-is-refused",
+          "ok": true,
+          "observed": "POST \u2192 METHOD_NOT_SAFE"
+        },
+        {
+          "probe": "a-cidr-entry-admits-an-address-and-a-suffix-admits-a-name",
+          "ok": true,
+          "observed": "10.10.1.5 in 10.10.0.0/16; auth.bank.example under *.bank.example"
+        },
+        {
+          "probe": "the-budget-the-concurrency-and-the-backoff-each-stop-a-scan",
+          "ok": true,
+          "observed": "budget \u2192 concurrency \u2192 backoff, each with its own code"
+        },
+        {
+          "probe": "the-interval-between-requests-is-enforced-not-assumed",
+          "ok": true,
+          "observed": "100ms since the last request, floor 250ms \u2192 INTERVAL_NOT_ELAPSED"
+        },
+        {
+          "probe": "a-dry-run-decides-and-sends-nothing",
+          "ok": true,
+          "observed": "dry_run=True \u2192 DRY_RUN"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "probe-ledger",
+      "question": "is a request not sent a silence or a record",
+      "phase": "request sending",
+      "probes": [
+        {
+          "probe": "every-decision-becomes-a-record-including-the-refusals",
+          "ok": true,
+          "observed": "3 decision(s): 1 sent, 2 refused (METHOD_NOT_SAFE 1, TARGET_NOT_ALLOWED 1)"
+        },
+        {
+          "probe": "a-sent-request-is-observed-and-a-refusal-is-configured",
+          "ok": true,
+          "observed": "SEND \u2192 NETWORK_OBSERVED, refusal \u2192 CONFIGURED"
+        },
+        {
+          "probe": "each-record-names-its-collector-and-carries-a-hash",
+          "ok": true,
+          "observed": "3 record(s), collector probe-gate, sha256 each"
+        },
+        {
+          "probe": "a-decision-with-no-collector-or-no-hash-is-refused",
+          "ok": true,
+          "observed": "EVIDENCE_WITHOUT_COLLECTOR / EVIDENCE_WITHOUT_HASH"
+        },
+        {
+          "probe": "we-did-not-probe-that-segment-is-a-checkable-fact",
+          "ok": true,
+          "observed": "TARGET_NOT_ALLOWED GET 198.51.100.7:443"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "vocabulary",
+      "question": "does the graph carry the controls it reports",
+      "phase": "vocabulary",
+      "probes": [
+        {
+          "probe": "the-three-control-relations-exist-in-the-one-graph",
+          "ok": true,
+          "observed": "INSPECTS, ENFORCES, LIMITS"
+        },
+        {
+          "probe": "the-three-control-kinds-are-asset-types-with-prefixes",
+          "ok": true,
+          "observed": "IDS, IPS, RATE_LIMIT"
+        },
+        {
+          "probe": "a-control-is-a-level-in-the-chain-the-review-draws",
+          "ok": true,
+          "observed": "1 application \u2192 1 control"
+        },
+        {
+          "probe": "the-projection-reports-the-controls-it-holds",
+          "ok": true,
+          "observed": "3 sensor(s), 4 inspected route view(s)"
+        },
+        {
+          "probe": "nothing-in-this-guide-needed-a-new-projection",
+          "ok": true,
+          "observed": "cryptoscan.nbom/1 from CANONICAL_ESTATE"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the fixture is the bank's own path: the shapes are real, the rows are not",
+    "an inline control is where the traffic goes, not a rule that fired: a rule that matches is CONFIGURED and only a capture or a probe is NETWORK_OBSERVED",
+    "a tap is evidenced against a node, so TAP_ONLY says the sensor watches a node on the route \u2014 not that it captured this request",
+    "a rate-limit finding compares what was configured with one observation; a limiter that failed over after this capture is not in it",
+    "the probe gate is a decision engine: it records what would be sent, and the socket lives outside this module so the check cannot be skipped by a caller that forgets it",
+    "an allowlist that parses is not an authorisation: the signed scope for a scan is a contract with the bank, and this module only enforces the list it is given"
+  ]
+}

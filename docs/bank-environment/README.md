@@ -584,6 +584,27 @@
 > certificates** are nodes too (`HOLDS_CERTIFICATE`), bounded so a key reference cannot be
 > passed off as one.
 
+> [The controls in front of the estate](171-controls.md)
+> (**9 pass · 0 partial · 0 fail**, 53 probes) answers the six questions a bank asks about
+> its own controls — *IDS, IPS, firewall, rate limit, request sending* — and refuses the
+> answers that make a network look safer than it is. **An IDS and an IPS are two kinds**,
+> because an IPS is in the path and can drop a packet while an IDS sees a copy: the model
+> refuses an IDS that blocks (`IDS_CANNOT_BLOCK`), a tap that claims to
+> (`SENSOR_CANNOT_BLOCK_OFF_PATH`) and an inline sensor with nothing behind it
+> (`INLINE_WITHOUT_DOWNSTREAM`), and reports an IPS *deployed* as a tap (`IPS_NOT_INLINE`)
+> instead of drawing it as prevention — `PROTECTS` starts at `IPS` and never at `IDS`.
+> **Inspection is a property of a route**, not a device: `INSPECTED_INLINE`, `TAP_ONLY`,
+> `NOT_INSPECTED`, `FAIL_OPEN_INLINE`, with `INSPECTS` deliberately absent from the path
+> relations so a tap never becomes a hop. **A firewall is evaluated**, in order, first
+> match wins, default action after — and the verdict is `CONFIGURED` with the caveat
+> attached, because a matching rule is not an observed packet. **A rate limit is a number
+> and a behaviour**, joined to its enforcer (`ENFORCES`) and its targets (`LIMITS`), with
+> `LIMIT_FAIL_OPEN`, `LIMIT_LOG_ONLY`, `LIMIT_NOT_ENFORCED` and `NO_LIMIT_RECORDED` as
+> findings rather than refusals. **A request is a decision before it is a packet** —
+> method → allowlist → budget → concurrency → backoff → interval — and every decision,
+> including each refusal, becomes a record with a collector and a hash, so *we did not
+> probe that segment* is a checkable fact rather than a silence.
+
 > [The rest of the NBOM review](170-nbom-gaps.md)
 > (**11 pass · 0 partial · 0 fail**, 45 probes) is the second read of the same twenty-two
 > points, and nine things were still thin. **The ids the review asks for** now exist per

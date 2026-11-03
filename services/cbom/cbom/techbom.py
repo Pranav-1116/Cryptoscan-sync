@@ -153,6 +153,8 @@ ASSET_TYPES: tuple[str, ...] = (
     "CPU", "MEMORY", "MOTHERBOARD", "BIOS", "NIC", "STORAGE", "RAID_CONTROLLER",
     "GPU", "PCI_DEVICE", "CRYPTO_ACCELERATOR", "SMART_CARD", "SECURITY_APPLIANCE",
     "HSM_CLUSTER", "HSM_PARTITION", "DISK",
+    # controls that see the traffic, and the policy that limits it (guide 171)
+    "IDS", "IPS", "RATE_LIMIT",
     # physical and virtual platforms
     "FIREWALL", "NETWORK_SEGMENT", "HYPERVISOR", "OS", "KUBERNETES_NODE",
     "CLOUD_ACCOUNT", "CLOUD_REGION", "CLOUD_INSTANCE",
@@ -186,6 +188,7 @@ PREFIX: dict[str, str] = {
     "CRYPTO_ACCELERATOR": "ACCEL", "SMART_CARD": "SCARD",
     "SECURITY_APPLIANCE": "APPL", "HSM_CLUSTER": "HSMC", "HSM_PARTITION": "PART",
     "DISK": "DISK", "FIREWALL": "FW", "NETWORK_SEGMENT": "SEG",
+    "IDS": "IDS", "IPS": "IPS", "RATE_LIMIT": "RL",
     "HYPERVISOR": "HYP", "OS": "OS", "KUBERNETES_NODE": "NODE",
     "CLOUD_ACCOUNT": "ACCT", "CLOUD_REGION": "REGION", "CLOUD_INSTANCE": "INST",
     "EVIDENCE": "EVID", "VULNERABILITY": "VULN",
@@ -229,14 +232,16 @@ RELATIONS: dict[str, dict[str, Any]] = {
                 "to": ("NETWORK_ENDPOINT",), "chain": "NETWORK"},
     "PROTECTED_BY": {"from": ("NETWORK_ENDPOINT", "APPLICATION", "NETWORK_SEGMENT",
                               "CRYPTO_ASSET"),
-                     "to": ("WAF", "FIREWALL", "SECURITY_APPLIANCE", "HSM", "KMS", "TPM"),
+                     "to": ("WAF", "FIREWALL", "SECURITY_APPLIANCE", "HSM", "KMS", "TPM",
+                            "IPS"),
                      "chain": "NETWORK"},
     "FRONTED_BY": {"from": ("NETWORK_ENDPOINT",), "to": ("LOAD_BALANCER",),
                    "chain": "NETWORK"},
+    #: an inline IPS is a hop like any other intermediary, in and out (guide 171)
     "FORWARDS_TO": {"from": ("FIREWALL", "WAF", "LOAD_BALANCER", "API_GATEWAY",
-                             "SERVICE_MESH", "NETWORK_ENDPOINT"),
+                             "SERVICE_MESH", "NETWORK_ENDPOINT", "IPS"),
                     "to": ("WAF", "LOAD_BALANCER", "API_GATEWAY", "SERVICE_MESH",
-                           "NETWORK_ENDPOINT"),
+                           "NETWORK_ENDPOINT", "IPS"),
                     "chain": "NETWORK"},
     "ATTACHED_TO": {"from": ("NIC", "CRYPTO_ACCELERATOR"),
                     "to": ("NETWORK_ENDPOINT", "NETWORK_SEGMENT"), "chain": "NETWORK"},
@@ -264,12 +269,13 @@ RELATIONS: dict[str, dict[str, Any]] = {
                  "to": ("HSM", "KMS"), "chain": "KEYS"},
     "HAS_MODEL": {"from": ("HSM", "LOAD_BALANCER", "WAF", "API_GATEWAY", "SERVICE_MESH",
                            "DATABASE", "VPN_GATEWAY", "PHYSICAL_SERVER", "NIC", "GPU",
-                           "CRYPTO_ACCELERATOR",
+                           "CRYPTO_ACCELERATOR", "FIREWALL", "IDS", "IPS",
                            "SECURITY_APPLIANCE", "CPU", "STORAGE", "RAID_CONTROLLER",
                            "SMART_CARD", "TPM"),
                   "to": ("VENDOR_PRODUCT",), "chain": "VENDOR"},
     "HOLDS_KEY": {"from": ("HSM", "KMS"), "to": ("KEY_REFERENCE",), "chain": "KEYS"},
-    "RUNS_FIRMWARE": {"from": ("HSM", "LOAD_BALANCER", "WAF", "API_GATEWAY", "VPN_GATEWAY",
+    "RUNS_FIRMWARE": {"from": ("HSM", "LOAD_BALANCER", "WAF", "API_GATEWAY", "FIREWALL",
+                               "IDS", "IPS", "VPN_GATEWAY",
                                "DATABASE", "SERVICE_MESH", "PHYSICAL_SERVER", "TPM", "NIC",
                                "STORAGE",
                                "RAID_CONTROLLER", "GPU", "CRYPTO_ACCELERATOR",
@@ -282,7 +288,7 @@ RELATIONS: dict[str, dict[str, Any]] = {
     "SUPPORTS": {"from": ("FIRMWARE", "HSM", "TPM", "CRYPTO_ACCELERATOR", "SMART_CARD",
                           "BIOS", "NETWORK_ENDPOINT", "LOAD_BALANCER", "API_GATEWAY", "WAF",
                           "SERVICE_MESH", "DATABASE", "SSH_SERVICE", "VPN_GATEWAY",
-                          "IPSEC_TUNNEL", "OS", "VENDOR_PRODUCT"),
+                          "IPSEC_TUNNEL", "OS", "VENDOR_PRODUCT", "IDS", "IPS"),
                  "to": ("CRYPTO_CAPABILITY", "CIPHER_SUITE", "ALGORITHM"),
                  "chain": "NETWORK"},
     "PERFORMS": {"from": ("HSM", "CRYPTO_ACCELERATOR", "TPM"),
@@ -378,9 +384,23 @@ RELATIONS: dict[str, dict[str, Any]] = {
                     "chain": "NETWORK"},
     "PASSTHROUGH": {"from": ("NETWORK_ENDPOINT",), "to": ("NETWORK_ENDPOINT",),
                     "chain": "NETWORK"},
-    "PROTECTS": {"from": ("WAF", "FIREWALL", "SECURITY_APPLIANCE", "SERVICE_MESH"),
+    #: an IPS *in the path* protects; an IDS is not in the tuple on purpose — it sees a
+    #: copy of the traffic and cannot drop a packet it never carried (guide 171).
+    "PROTECTS": {"from": ("WAF", "FIREWALL", "SECURITY_APPLIANCE", "SERVICE_MESH", "IPS"),
                  "to": ("APPLICATION", "SERVICE", "NETWORK_ENDPOINT", "DATABASE",
                         "NETWORK_SEGMENT"), "chain": "NETWORK"},
+    #: what a control *sees*. Not a forwarding relation: a tap inspects a copy, and a
+    #: route that does not cross it is still a route (guide 171).
+    "INSPECTS": {"from": ("IDS", "IPS", "FIREWALL", "SECURITY_APPLIANCE", "WAF"),
+                 "to": ("NETWORK_SEGMENT", "NETWORK_ENDPOINT", "SERVICE", "APPLICATION",
+                        "DATABASE"), "chain": "NETWORK"},
+    #: a device that enforces a rate-limit policy, and what that policy applies to
+    "ENFORCES": {"from": ("WAF", "FIREWALL", "API_GATEWAY", "LOAD_BALANCER", "SERVICE_MESH",
+                          "IPS", "NETWORK_ENDPOINT"),
+                 "to": ("RATE_LIMIT",), "chain": "NETWORK"},
+    "LIMITS": {"from": ("RATE_LIMIT",),
+               "to": ("NETWORK_ENDPOINT", "SERVICE", "APPLICATION", "DATABASE"),
+               "chain": "NETWORK"},
     "AUTHENTICATES": {"from": ("SERVICE_MESH", "API_GATEWAY", "WAF"),
                       "to": ("APPLICATION", "SERVICE", "DATABASE"), "chain": "NETWORK"},
     "USES_CERTIFICATE": {"from": ("NETWORK_ENDPOINT", "APPLICATION", "SERVICE", "PROCESS",
@@ -752,6 +772,16 @@ def build(estate: Mapping[str, Any]) -> dict[str, Any]:
         row["from_id"] = assets[source_key]["id"]
         row["to_id"] = assets[target_key]["id"]
         row["id"] = f"EDGE-{_digest(source_key + row['relation'] + target_key, 8)}"
+        # the same edge from the same basis is the same edge: a second copy would double
+        # every route and every count that walks it, without adding a fact
+        twin = next((item for item in claims
+                     if item["from_key"] == source_key and item["to_key"] == target_key
+                     and item["relation"] == row["relation"]
+                     and item["basis"] == row["basis"]), None)
+        if twin is not None:
+            twin["evidence_ids"] = sorted(set(twin["evidence_ids"])
+                                          | set(row["evidence_ids"]))
+            continue
         claims.append(row)
 
     counts: dict[str, int] = {}

@@ -739,3 +739,299 @@ def test_a_service_is_served_by_the_application_that_provides_it():
     route = n.paths(bom, source="payments.bank.example:443")["routes"][0]
     assert route["nodes"] == ["payments.bank.example:443", "payments-api", "Payments API"]
     assert route["proven"] is True
+
+
+# --------------------------------------------------------------------------- #
+# Guide 171 — the controls: what sees the traffic, what limits it, what we send
+# --------------------------------------------------------------------------- #
+
+def controls_estate() -> dict:
+    """WAF → inline IPS → application, with a tap beside it and a limiter on the WAF."""
+    application = tb.asset("APPLICATION", "Payments API", evidence_ids=[EVID])
+    segment = tb.asset("NETWORK_SEGMENT", "CARDHOLDER", evidence_ids=[EVID])
+    front = endpoint(host="10.0.0.1", name="waf:443",
+                     tls={"version": "TLS1.3", "suite": "TLS_AES_256_GCM_SHA384"})
+    backend = endpoint(port=8443, host="10.0.2.5", name="app:8443",
+                       tls={"version": "TLS1.3", "suite": "TLS_AES_256_GCM_SHA384"})
+    ips = n.intrusion_sensor(name="ips-01", kind="IPS", mode="INLINE",
+                             segments=["CARDHOLDER"], endpoints=["app:8443"],
+                             forwards_to="app:8443", evidence_ids=[EVID])
+    ids = n.intrusion_sensor(name="ids-01", kind="IDS", mode="TAP",
+                             segments=["CARDHOLDER"], evidence_ids=[EVID],
+                             basis="passive-capture")
+    device = n.network_device(kind="FIREWALL", name="fw-01", vendor="Palo Alto",
+                              product="PA-5220", evidence_ids=[EVID])
+    filtered = n.filters(firewall_row=device["assets"][0], default_action="DENY",
+                         rules=[{"action": "ALLOW", "destination": "10.0.2.5", "port": 8443,
+                                 "source": "10.0.0.0/16"}], evidence_ids=[EVID])
+    limiter = n.rate_limit(name="rl-payments", enforcer_row=front, limit=100,
+                           window_seconds=1, on_exceed="429", fail_open=True,
+                           observed={"rate": 250, "rejected": 0}, targets=["waf:443"],
+                           evidence_ids=[EVID])
+    hops = n.part(claims=[
+        tb.claim("waf:443", "FORWARDS_TO", "ips-01", basis="load-balancer-config",
+                 evidence_ids=[EVID], protocol="TCP", port=8443),
+        tb.claim("ips-01", "FORWARDS_TO", "app:8443", basis="config-parse",
+                 evidence_ids=[EVID], protocol="TCP", port=8443),
+        tb.claim("app:8443", "ROUTES_TO", "Payments API", basis="api-gateway-config",
+                 evidence_ids=[EVID], protocol="TCP", port=8443),
+    ])
+    return n.estate(ips, ids, n.part(filtered, *device["assets"][1:],
+                                     claims=device["claims"]), limiter, hops, front, backend,
+                    application, segment, estate_id="controls")
+
+
+def test_an_ips_in_the_path_can_block_and_says_so():
+    sensor = n.intrusion_sensor(name="ips-01", kind="IPS", mode="INLINE",
+                                endpoints=["app:8443"], forwards_to="app:8443",
+                                evidence_ids=[EVID])
+    row = next(item for item in sensor["assets"] if item["kind"] == "IPS")
+    assert row["attributes"]["blocking"] is True
+    relates = {claim["relation"] for claim in sensor["claims"]}
+    assert {"INSPECTS", "FORWARDS_TO", "PROTECTS"} <= relates
+
+
+def test_an_ids_that_claims_to_block_is_refused():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.intrusion_sensor(name="ids-01", kind="IDS", mode="INLINE", blocks=True,
+                           forwards_to="app:8443", evidence_ids=[EVID])
+    assert refused.value.code == "IDS_CANNOT_BLOCK"
+
+
+def test_a_tap_cannot_drop_a_packet_it_never_carried():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.intrusion_sensor(name="ips-01", kind="IPS", mode="TAP", blocks=True,
+                           segments=["CARDHOLDER"], evidence_ids=[EVID])
+    assert refused.value.code == "SENSOR_CANNOT_BLOCK_OFF_PATH"
+
+
+def test_an_inline_sensor_with_nothing_behind_it_is_an_outage():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.intrusion_sensor(name="ips-01", kind="IPS", mode="INLINE",
+                           segments=["CARDHOLDER"], evidence_ids=[EVID])
+    assert refused.value.code == "INLINE_WITHOUT_DOWNSTREAM"
+
+
+def test_a_deployment_mode_the_model_does_not_know_is_refused():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.intrusion_sensor(name="ips-01", kind="IPS", mode="SIDEWAYS", evidence_ids=[EVID])
+    assert refused.value.code == "UNKNOWN_SENSOR_MODE"
+
+
+def test_a_firewall_is_not_a_sensor():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.intrusion_sensor(name="fw-01", kind="FIREWALL", evidence_ids=[EVID])
+    assert refused.value.code == "NOT_A_SENSOR"
+
+
+def test_only_an_ips_may_protect_in_the_type_table():
+    assert "IPS" in tb.RELATIONS["PROTECTS"]["from"]
+    assert "IDS" not in tb.RELATIONS["PROTECTS"]["from"]
+    refused = n.build(n.estate(
+        n.intrusion_sensor(name="ids-01", kind="IDS", mode="TAP",
+                           segments=["CARDHOLDER"], evidence_ids=[EVID]),
+        tb.asset("NETWORK_SEGMENT", "CARDHOLDER", evidence_ids=[EVID]),
+        n.part(claims=[tb.claim("ids-01", "PROTECTS", "CARDHOLDER", basis="api-poll",
+                                evidence_ids=[EVID])]),
+        estate_id="ids-protects"))
+    assert [row["code"] for row in refused["refusals"]] == ["TYPE_MISMATCH"]
+
+
+def test_a_route_that_crosses_an_inline_control_is_inspected():
+    bom = n.build(controls_estate())
+    found = n.inspection_gap(bom, source="waf:443")
+    assert found["inspected"] == len(found["routes"]) >= 1
+    assert "INSPECTED_INLINE" in {code for row in found["routes"] for code in row["codes"]}
+
+
+def test_a_route_watched_only_from_a_tap_is_tap_only():
+    application = tb.asset("APPLICATION", "Auth API", evidence_ids=[EVID])
+    listener = endpoint(port=9443, host="10.0.3.5", name="auth:9443")
+    tap = n.intrusion_sensor(name="ids-01", kind="IDS", mode="TAP",
+                             endpoints=["auth:9443"], evidence_ids=[EVID],
+                             basis="passive-capture")
+    bom = n.build(n.estate(
+        tap, listener, application,
+        n.part(claims=[tb.claim("auth:9443", "ROUTES_TO", "Auth API",
+                                basis="api-gateway-config", evidence_ids=[EVID],
+                                protocol="TCP", port=9443)]),
+        estate_id="tap-only"))
+    route = n.inspection_gap(bom, source="auth:9443")["routes"][0]
+    assert route["codes"] == ["TAP_ONLY"]
+    assert route["tap_only"] == ["ids-01"] and route["inspected"] is False
+
+
+def test_a_route_nothing_sees_is_not_inspected():
+    application = tb.asset("APPLICATION", "Auth API", evidence_ids=[EVID])
+    listener = endpoint(port=9443, host="10.0.3.5", name="auth:9443")
+    bom = n.build(n.estate(
+        listener, application,
+        n.part(claims=[tb.claim("auth:9443", "ROUTES_TO", "Auth API",
+                                basis="api-gateway-config", evidence_ids=[EVID],
+                                protocol="TCP", port=9443)]),
+        estate_id="blind"))
+    route = n.inspection_gap(bom, source="auth:9443")["routes"][0]
+    assert route["codes"] == ["NOT_INSPECTED"] and route["inspected"] is False
+
+
+def test_an_inline_control_deployed_fail_open_is_a_finding():
+    front = endpoint(name="waf:443")
+    backend = endpoint(port=8443, host="10.0.2.5", name="app:8443")
+    sensor = n.intrusion_sensor(name="ips-01", kind="IPS", mode="INLINE",
+                                endpoints=["app:8443"], forwards_to="app:8443",
+                                fail_open=True, evidence_ids=[EVID])
+    bom = n.build(n.estate(
+        sensor, front, backend, tb.asset("APPLICATION", "Payments API",
+                                         evidence_ids=[EVID]),
+        n.part(claims=[
+            tb.claim("waf:443", "FORWARDS_TO", "ips-01", basis="load-balancer-config",
+                     evidence_ids=[EVID], protocol="TCP", port=8443),
+            tb.claim("app:8443", "ROUTES_TO", "Payments API", basis="api-gateway-config",
+                     evidence_ids=[EVID], protocol="TCP", port=8443)]),
+        estate_id="fail-open"))
+    found = n.inspection_gap(bom, source="waf:443")
+    assert [row["code"] for row in found["sensor_findings"]] == ["FAIL_OPEN_SENSOR"]
+    assert found["routes"][0]["codes"] == ["FAIL_OPEN_INLINE"]
+    assert found["inspected"] == 0
+
+
+def test_an_ips_deployed_as_a_tap_is_reported_not_drawn_as_prevention():
+    tap = n.intrusion_sensor(name="ips-01", kind="IPS", mode="TAP",
+                             segments=["CARDHOLDER"], evidence_ids=[EVID],
+                             basis="passive-capture")
+    bom = n.build(n.estate(tap, tb.asset("NETWORK_SEGMENT", "CARDHOLDER",
+                                         evidence_ids=[EVID]),
+                           endpoint(name="waf:443"), estate_id="ips-as-tap"))
+    found = n.inspection_gap(bom, source="waf:443")
+    assert [row["code"] for row in found["sensor_findings"]] == ["IPS_NOT_INLINE"]
+
+
+def test_a_firewall_rule_is_evaluated_in_order_and_reports_its_class():
+    bom = n.build(controls_estate())
+    allowed = n.filter_verdict(bom, source="10.0.0.9", target="10.0.2.5", port=8443)
+    assert allowed["decision"] == "ALLOW" and allowed["confidence"] == "CONFIGURED"
+    denied = n.filter_verdict(bom, source="10.0.0.9", target="10.0.2.5", port=22)
+    assert denied["decision"] == "DENY" and denied["matched_rule"] is None
+
+
+def test_a_rule_that_names_no_service_matches_everything_and_is_refused():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.filters(firewall_row=tb.asset("FIREWALL", "fw-01", evidence_ids=[EVID]),
+                  rules=[{"action": "ALLOW", "destination": "10.0.2.5"}])
+    assert refused.value.code == "RULE_WITHOUT_SERVICE"
+
+
+def test_a_limit_of_zero_or_a_scope_nobody_has_is_refused():
+    with pytest.raises(tb.ClaimRefused) as zero:
+        n.rate_limit(name="rl", enforcer_row={"name": "waf:443"}, limit=0,
+                     evidence_ids=[EVID])
+    assert zero.value.code == "INVALID_RATE_LIMIT"
+    with pytest.raises(tb.ClaimRefused) as scope:
+        n.rate_limit(name="rl", enforcer_row={"name": "waf:443"}, limit=10,
+                     scope="EVERYONE", evidence_ids=[EVID])
+    assert scope.value.code == "UNKNOWN_RATE_SCOPE"
+
+
+def test_a_configured_limit_that_never_refuses_is_a_finding():
+    bom = n.build(controls_estate())
+    codes = {row["code"] for row in bom["rate_limits"]["findings"]}
+    assert {"LIMIT_FAIL_OPEN", "LIMIT_NOT_ENFORCED"} <= codes
+
+
+def test_a_limit_reached_by_traffic_that_was_refused_is_not_a_finding():
+    front = endpoint(name="waf:443")
+    limiter = n.rate_limit(name="rl", enforcer_row=front, limit=100,
+                           observed={"rate": 250, "rejected": 150}, targets=["waf:443"],
+                           evidence_ids=[EVID])
+    bom = n.build(n.estate(limiter, front, estate_id="enforced"))
+    assert "LIMIT_NOT_ENFORCED" not in {row["code"] for row in bom["rate_limits"]["findings"]}
+
+
+def test_an_endpoint_with_no_limit_read_is_a_finding():
+    front = endpoint(name="waf:443")
+    backend = endpoint(port=8443, host="10.0.2.5", name="app:8443")
+    bom = n.build(n.estate(
+        front, backend,
+        n.part(claims=[tb.claim("waf:443", "FORWARDS_TO", "app:8443",
+                                basis="load-balancer-config", evidence_ids=[EVID],
+                                protocol="TCP", port=8443)]),
+        estate_id="no-limit"))
+    findings = bom["rate_limits"]["findings"]
+    assert [row["code"] for row in findings] == ["NO_LIMIT_RECORDED"]
+    assert findings[0]["endpoint"] == "app:8443"
+
+
+def test_a_probe_policy_with_no_allowlist_is_a_scan_of_the_internet():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.probe_policy(allowlist=[])
+    assert refused.value.code == "EMPTY_ALLOWLIST"
+
+
+def test_an_allowlist_entry_that_does_not_parse_is_refused():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.probe_policy(allowlist=["10.0.0.0/999"])
+    assert refused.value.code == "ALLOWLIST_INVALID"
+
+
+def test_a_budget_of_zero_cannot_send_the_one_request_a_probe_is_for():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.probe_policy(allowlist=["10.0.0.0/16"], max_concurrency=0)
+    assert refused.value.code == "INVALID_PROBE_BUDGET"
+
+
+def test_the_gate_refuses_off_allowlist_first_and_explains_each_stop():
+    policy = n.probe_policy(allowlist=["10.0.0.0/16", "*.bank.example"],
+                            max_requests_per_target=2, max_concurrency=1,
+                            min_interval_ms=500, stop_after_errors=2)
+    assert n.probe_gate(policy, target="10.0.1.1:8443")["code"] == "SEND"
+    assert n.probe_gate(policy, target="payments.bank.example:443")["code"] == "SEND"
+    assert n.probe_gate(policy, target="8.8.8.8:53")["code"] == "TARGET_NOT_ALLOWED"
+    assert n.probe_gate(policy, target="10.0.1.1:8443",
+                        method="POST")["code"] == "METHOD_NOT_SAFE"
+    assert n.probe_gate(policy, target="10.0.1.1:8443",
+                        sent=2)["code"] == "BUDGET_EXHAUSTED"
+    assert n.probe_gate(policy, target="10.0.1.1:8443",
+                        in_flight=1)["code"] == "CONCURRENCY_EXHAUSTED"
+    assert n.probe_gate(policy, target="10.0.1.1:8443",
+                        recent_errors=2)["code"] == "BACKOFF_REQUIRED"
+    assert n.probe_gate(policy, target="10.0.1.1:8443", last_sent_at=10.0,
+                        now=10.1)["code"] == "INTERVAL_NOT_ELAPSED"
+
+
+def test_a_dry_run_sends_nothing_and_still_decides():
+    policy = n.probe_policy(allowlist=["10.0.0.0/16"], dry_run=True)
+    assert n.probe_gate(policy, target="10.0.1.1:8443")["code"] == "DRY_RUN"
+
+
+def test_a_request_that_was_not_sent_is_recorded_rather_than_omitted():
+    policy = n.probe_policy(allowlist=["10.0.0.0/16"])
+    decisions = [n.probe_gate(policy, target=target)
+                 for target in ("10.0.1.1:8443", "8.8.8.8:53")]
+    ledger = n.probe_ledger(decisions, observed_at=NOW)
+    assert ledger["sent"] == 1 and ledger["refused"] == 1
+    allowed, refused = ledger["records"]
+    assert allowed["evidence_type"] == "NETWORK_OBSERVED"
+    assert refused["evidence_type"] == "CONFIGURED"
+    assert refused["collector"] == "probe-gate" and refused["hash"].startswith("sha256:")
+    assert "TARGET_NOT_ALLOWED 1" in ledger["statement"]
+
+
+def test_the_same_edge_from_the_same_basis_is_one_edge():
+    front = endpoint(name="waf:443")
+    backend = endpoint(port=8443, host="10.0.2.5", name="app:8443")
+    claim = {"from": "waf:443", "relation": "FORWARDS_TO", "to": "app:8443",
+             "basis": "load-balancer-config", "evidence_ids": [EVID],
+             "protocol": "TCP", "port": 8443}
+    bom = n.build(n.estate(front, backend, {"assets": [], "claims": [claim, dict(claim)]},
+                           estate_id="twice"))
+    assert [row["relation"] for row in bom["claims"]] == ["FORWARDS_TO"]
+    assert bom["graph"]["edge_count"] == 1
+
+
+def test_a_firewall_can_run_firmware_like_the_device_it_is():
+    device = n.network_device(kind="FIREWALL", name="fw-01", vendor="Palo Alto",
+                              product="PA-5220", firmware_version="11.1.3",
+                              evidence_ids=[EVID])
+    bom = n.build(n.estate(device, estate_id="firmware"))
+    assert bom["refusals"] == []
+    assert any(row["relation"] == "RUNS_FIRMWARE" for row in bom["claims"])
