@@ -1,0 +1,3198 @@
+{
+  "schema": "cryptoscan.cbom-techbom-guide/1",
+  "generated_at": "2026-11-03T01:27:27.756904+00:00",
+  "counts": {
+    "PASS": 7,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 35,
+  "kinds": [
+    "BUSINESS_SYSTEM",
+    "APPLICATION",
+    "SERVICE",
+    "CONTAINER",
+    "IMAGE",
+    "PACKAGE",
+    "CRYPTO_LIBRARY",
+    "CRYPTO_ASSET",
+    "NETWORK_ENDPOINT",
+    "LOAD_BALANCER",
+    "API_GATEWAY",
+    "CERTIFICATE",
+    "CERTIFICATE_AUTHORITY",
+    "PUBLIC_KEY",
+    "ALGORITHM",
+    "HSM",
+    "KMS",
+    "KEY_REFERENCE",
+    "FIRMWARE",
+    "CRYPTO_CAPABILITY",
+    "HOST",
+    "VM",
+    "PHYSICAL_SERVER",
+    "TPM",
+    "VENDOR",
+    "VENDOR_PRODUCT",
+    "SOURCE",
+    "BUILD",
+    "ARTIFACT",
+    "SBOM",
+    "DEPLOYMENT",
+    "POD",
+    "PROCESS",
+    "DATABASE"
+  ],
+  "relations": {
+    "BUILT_INTO": {
+      "chain": "RUNTIME",
+      "from": [
+        "SOURCE"
+      ],
+      "to": [
+        "BUILD"
+      ]
+    },
+    "CARRIES": {
+      "chain": "HARDWARE",
+      "from": [
+        "PHYSICAL_SERVER"
+      ],
+      "to": [
+        "TPM"
+      ]
+    },
+    "CONTAINS": {
+      "chain": "SOFTWARE",
+      "from": [
+        "BUSINESS_SYSTEM"
+      ],
+      "to": [
+        "APPLICATION"
+      ]
+    },
+    "CONTAINS_KEY": {
+      "chain": "CERTIFICATE",
+      "from": [
+        "CERTIFICATE"
+      ],
+      "to": [
+        "PUBLIC_KEY"
+      ]
+    },
+    "DEPLOYED_AS": {
+      "chain": "RUNTIME",
+      "from": [
+        "IMAGE"
+      ],
+      "to": [
+        "DEPLOYMENT"
+      ]
+    },
+    "DESCRIBED_BY": {
+      "chain": "RUNTIME",
+      "from": [
+        "ARTIFACT"
+      ],
+      "to": [
+        "SBOM"
+      ]
+    },
+    "EMBEDS": {
+      "chain": "VENDOR",
+      "from": [
+        "APPLICATION",
+        "IMAGE",
+        "SERVICE"
+      ],
+      "to": [
+        "VENDOR_PRODUCT"
+      ]
+    },
+    "EXPOSES": {
+      "chain": "NETWORK",
+      "from": [
+        "APPLICATION",
+        "API_GATEWAY"
+      ],
+      "to": [
+        "NETWORK_ENDPOINT"
+      ]
+    },
+    "FORWARDS_TO": {
+      "chain": "NETWORK",
+      "from": [
+        "LOAD_BALANCER"
+      ],
+      "to": [
+        "API_GATEWAY"
+      ]
+    },
+    "FROM_IMAGE": {
+      "chain": "SOFTWARE",
+      "from": [
+        "CONTAINER"
+      ],
+      "to": [
+        "IMAGE"
+      ]
+    },
+    "FRONTED_BY": {
+      "chain": "NETWORK",
+      "from": [
+        "NETWORK_ENDPOINT"
+      ],
+      "to": [
+        "LOAD_BALANCER"
+      ]
+    },
+    "HOLDS_KEY": {
+      "chain": "KEYS",
+      "from": [
+        "HSM",
+        "KMS"
+      ],
+      "to": [
+        "KEY_REFERENCE"
+      ]
+    },
+    "HOSTED_ON": {
+      "chain": "HARDWARE",
+      "from": [
+        "HOST"
+      ],
+      "to": [
+        "VM"
+      ]
+    },
+    "ISSUED_BY": {
+      "chain": "CERTIFICATE",
+      "from": [
+        "CERTIFICATE"
+      ],
+      "to": [
+        "CERTIFICATE_AUTHORITY"
+      ]
+    },
+    "KEY_HELD_BY": {
+      "chain": "CERTIFICATE",
+      "from": [
+        "CERTIFICATE_AUTHORITY"
+      ],
+      "to": [
+        "HSM",
+        "KMS"
+      ]
+    },
+    "LINKS": {
+      "chain": "SOFTWARE",
+      "from": [
+        "PACKAGE"
+      ],
+      "to": [
+        "CRYPTO_LIBRARY"
+      ]
+    },
+    "LOADS": {
+      "chain": "RUNTIME",
+      "from": [
+        "PROCESS"
+      ],
+      "to": [
+        "CRYPTO_LIBRARY"
+      ]
+    },
+    "PACKAGED_AS": {
+      "chain": "RUNTIME",
+      "from": [
+        "ARTIFACT"
+      ],
+      "to": [
+        "IMAGE"
+      ]
+    },
+    "PRESENTS": {
+      "chain": "NETWORK",
+      "from": [
+        "NETWORK_ENDPOINT",
+        "LOAD_BALANCER",
+        "API_GATEWAY"
+      ],
+      "to": [
+        "CERTIFICATE"
+      ]
+    },
+    "PRODUCES": {
+      "chain": "RUNTIME",
+      "from": [
+        "BUILD"
+      ],
+      "to": [
+        "ARTIFACT"
+      ]
+    },
+    "PROVIDES": {
+      "chain": "SOFTWARE",
+      "from": [
+        "APPLICATION"
+      ],
+      "to": [
+        "SERVICE"
+      ]
+    },
+    "PROVIDES_ALGORITHM": {
+      "chain": "SOFTWARE",
+      "from": [
+        "CRYPTO_LIBRARY"
+      ],
+      "to": [
+        "CRYPTO_ASSET"
+      ]
+    },
+    "ROUTES_TO": {
+      "chain": "NETWORK",
+      "from": [
+        "API_GATEWAY"
+      ],
+      "to": [
+        "APPLICATION"
+      ]
+    },
+    "RUNS": {
+      "chain": "SOFTWARE",
+      "from": [
+        "SERVICE"
+      ],
+      "to": [
+        "CONTAINER"
+      ]
+    },
+    "RUNS_FIRMWARE": {
+      "chain": "HARDWARE",
+      "from": [
+        "HSM",
+        "PHYSICAL_SERVER",
+        "TPM"
+      ],
+      "to": [
+        "FIRMWARE"
+      ]
+    },
+    "RUNS_ON": {
+      "chain": "HARDWARE",
+      "from": [
+        "VM"
+      ],
+      "to": [
+        "PHYSICAL_SERVER"
+      ]
+    },
+    "RUNS_PROCESS": {
+      "chain": "RUNTIME",
+      "from": [
+        "POD"
+      ],
+      "to": [
+        "PROCESS"
+      ]
+    },
+    "SCHEDULED_ON": {
+      "chain": "HARDWARE",
+      "from": [
+        "CONTAINER",
+        "POD"
+      ],
+      "to": [
+        "HOST"
+      ]
+    },
+    "SCHEDULES": {
+      "chain": "RUNTIME",
+      "from": [
+        "DEPLOYMENT"
+      ],
+      "to": [
+        "POD"
+      ]
+    },
+    "SHIPS": {
+      "chain": "SOFTWARE",
+      "from": [
+        "IMAGE"
+      ],
+      "to": [
+        "PACKAGE"
+      ]
+    },
+    "SIGNED_BY": {
+      "chain": "CERTIFICATE",
+      "from": [
+        "CERTIFICATE_AUTHORITY"
+      ],
+      "to": [
+        "CERTIFICATE_AUTHORITY"
+      ]
+    },
+    "STORES_IN": {
+      "chain": "SOFTWARE",
+      "from": [
+        "APPLICATION",
+        "SERVICE"
+      ],
+      "to": [
+        "DATABASE"
+      ]
+    },
+    "SUPPLIED_BY": {
+      "chain": "VENDOR",
+      "from": [
+        "VENDOR_PRODUCT",
+        "HSM",
+        "HOST",
+        "FIRMWARE"
+      ],
+      "to": [
+        "VENDOR"
+      ]
+    },
+    "SUPPORTS": {
+      "chain": "HARDWARE",
+      "from": [
+        "FIRMWARE"
+      ],
+      "to": [
+        "CRYPTO_CAPABILITY"
+      ]
+    },
+    "USES_ALGORITHM": {
+      "chain": "CERTIFICATE",
+      "from": [
+        "PUBLIC_KEY",
+        "CRYPTO_ASSET"
+      ],
+      "to": [
+        "ALGORITHM"
+      ]
+    },
+    "USES_CRYPTO": {
+      "chain": "SOFTWARE",
+      "from": [
+        "APPLICATION",
+        "SERVICE",
+        "PROCESS"
+      ],
+      "to": [
+        "CRYPTO_ASSET"
+      ]
+    },
+    "USES_HSM": {
+      "chain": "KEYS",
+      "from": [
+        "APPLICATION"
+      ],
+      "to": [
+        "HSM"
+      ]
+    }
+  },
+  "bases": {
+    "packet-capture": "OBSERVED",
+    "runtime-probe": "OBSERVED",
+    "process-trace": "OBSERVED",
+    "agent-inventory": "CONFIGURED",
+    "config-parse": "CONFIGURED",
+    "api-poll": "CONFIGURED",
+    "sbom-import": "IMPORTED",
+    "cmdb-import": "IMPORTED",
+    "ticket-import": "IMPORTED",
+    "vendor-datasheet": "VENDOR_DECLARED",
+    "vendor-portal": "VENDOR_DECLARED",
+    "name-match": "INFERRED",
+    "dependency-graph": "INFERRED"
+  },
+  "not_a_basis": {
+    "co-occurrence": "two assets in one scan is proximity, not a relationship",
+    "same-scan": "a shared scan says when something was seen, not how it connects",
+    "proximity": "being on the same network segment connects nothing by itself",
+    "name-similarity": "a similar name is not an identity match",
+    "assumption": "an assumption with no rule behind it is not a claim"
+  },
+  "confidence": {
+    "OBSERVED": 5,
+    "CONFIGURED": 4,
+    "IMPORTED": 3,
+    "VENDOR_DECLARED": 3,
+    "INFERRED": 2,
+    "UNKNOWN": 1
+  },
+  "bom": {
+    "schema": "cryptoscan.techbom/1",
+    "projection": true,
+    "source_of_truth": "CANONICAL_ESTATE",
+    "derived_from": "EST-2026-11-03",
+    "environment": "PRODUCTION",
+    "assets": [
+      {
+        "kind": "ALGORITHM",
+        "name": "ECDSA P-256 (ecdsa-with-SHA256)",
+        "key": "ALGORITHM:ecdsa p-256 (ecdsa-with-sha256):production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-PCAP-1"
+        ],
+        "attributes": {},
+        "id": "TECH-ALG-001",
+        "digest": "3695466829"
+      },
+      {
+        "kind": "APPLICATION",
+        "name": "Payments API",
+        "key": "APPLICATION:payments api:production",
+        "environment": "PRODUCTION",
+        "version": "2026.11.02",
+        "owner": "Payments Platform",
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-CMDB-1",
+          "EVD-TRACE-1"
+        ],
+        "attributes": {},
+        "id": "TECH-APP-001",
+        "digest": "0d760241a9"
+      },
+      {
+        "kind": "APPLICATION",
+        "name": "Payments Batch",
+        "key": "APPLICATION:payments batch:production",
+        "environment": "PRODUCTION",
+        "version": "2026.10.01",
+        "owner": "Payments Platform",
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-CMDB-1"
+        ],
+        "attributes": {},
+        "id": "TECH-APP-002",
+        "digest": "88de42169f"
+      },
+      {
+        "kind": "ARTIFACT",
+        "name": "payments-api.jar",
+        "key": "ARTIFACT:payments-api.jar:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-CI-1"
+        ],
+        "attributes": {},
+        "id": "TECH-ART-001",
+        "digest": "46d9b1bbb9"
+      },
+      {
+        "kind": "BUILD",
+        "name": "BUILD-9281",
+        "key": "BUILD:build-9281:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-CI-1"
+        ],
+        "attributes": {},
+        "id": "TECH-BUILD-001",
+        "digest": "74ecdc0b65"
+      },
+      {
+        "kind": "CERTIFICATE_AUTHORITY",
+        "name": "BANK-ICA-01",
+        "key": "CERTIFICATE_AUTHORITY:bank-ica-01:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-PCAP-1"
+        ],
+        "attributes": {},
+        "id": "TECH-CA-001",
+        "digest": "5b7edb0e19"
+      },
+      {
+        "kind": "CERTIFICATE",
+        "name": "CERT-9281",
+        "key": "CERTIFICATE:cert-9281:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-PCAP-1"
+        ],
+        "attributes": {},
+        "id": "TECH-CERT-001",
+        "digest": "34fd78c3a6"
+      },
+      {
+        "kind": "CRYPTO_ASSET",
+        "name": "AES-256-GCM",
+        "key": "CRYPTO_ASSET:aes-256-gcm:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-TRACE-1"
+        ],
+        "attributes": {
+          "evidence_type": "RUNTIME_OBSERVED"
+        },
+        "id": "TECH-CRY-001",
+        "digest": "7a89cd0e26"
+      },
+      {
+        "kind": "CRYPTO_ASSET",
+        "name": "ECDSA P-256",
+        "key": "CRYPTO_ASSET:ecdsa p-256:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-PCAP-1"
+        ],
+        "attributes": {
+          "evidence_type": "CERTIFICATE_OBSERVED"
+        },
+        "id": "TECH-CRY-002",
+        "digest": "831eb84b1f"
+      },
+      {
+        "kind": "CRYPTO_ASSET",
+        "name": "RSA-2048",
+        "key": "CRYPTO_ASSET:rsa-2048:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-SBOM-2"
+        ],
+        "attributes": {
+          "evidence_type": "STATIC_OBSERVED"
+        },
+        "id": "TECH-CRY-003",
+        "digest": "df4ca3468d"
+      },
+      {
+        "kind": "CONTAINER",
+        "name": "payments-api-7f9",
+        "key": "CONTAINER:payments-api-7f9:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-K8S-1"
+        ],
+        "attributes": {},
+        "id": "TECH-CTR-001",
+        "digest": "47456d0c10"
+      },
+      {
+        "kind": "DEPLOYMENT",
+        "name": "payments-prod",
+        "key": "DEPLOYMENT:payments-prod:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-K8S-1"
+        ],
+        "attributes": {},
+        "id": "TECH-DEP-001",
+        "digest": "b2ff055d11"
+      },
+      {
+        "kind": "NETWORK_ENDPOINT",
+        "name": "payments.bank.example:443",
+        "key": "NETWORK_ENDPOINT:payments.bank.example:443:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-PCAP-1"
+        ],
+        "attributes": {},
+        "id": "TECH-EP-001",
+        "digest": "4decd03d0a"
+      },
+      {
+        "kind": "FIRMWARE",
+        "name": "HSM fw 8.4",
+        "key": "FIRMWARE:hsm fw 8.4:production",
+        "environment": "PRODUCTION",
+        "version": "8.4",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-VENDOR-1"
+        ],
+        "attributes": {},
+        "id": "TECH-FW-001",
+        "digest": "334aad021b"
+      },
+      {
+        "kind": "API_GATEWAY",
+        "name": "payments-gw",
+        "key": "API_GATEWAY:payments-gw:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-FW-1"
+        ],
+        "attributes": {},
+        "id": "TECH-GW-001",
+        "digest": "44f0e4c32f"
+      },
+      {
+        "kind": "HOST",
+        "name": "worker-3",
+        "key": "HOST:worker-3:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-K8S-1"
+        ],
+        "attributes": {},
+        "id": "TECH-HOST-001",
+        "digest": "bbb4bbbadb"
+      },
+      {
+        "kind": "HSM",
+        "name": "HSM-01",
+        "key": "HSM:hsm-01:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": "DC1",
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-HSM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-HSM-001",
+        "digest": "cb2eadf464"
+      },
+      {
+        "kind": "IMAGE",
+        "name": "registry/payments-api:2026.11.02",
+        "key": "IMAGE:registry/payments-api:2026.11.02:production",
+        "environment": "PRODUCTION",
+        "version": "sha256:ABC",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-K8S-1"
+        ],
+        "attributes": {},
+        "id": "TECH-IMG-001",
+        "digest": "16e8ba02a7"
+      },
+      {
+        "kind": "PUBLIC_KEY",
+        "name": "CERT-9281-key",
+        "key": "PUBLIC_KEY:cert-9281-key:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-PCAP-1"
+        ],
+        "attributes": {},
+        "id": "TECH-KEY-001",
+        "digest": "1c95360af9"
+      },
+      {
+        "kind": "KEY_REFERENCE",
+        "name": "key/payments/rsa-2048",
+        "key": "KEY_REFERENCE:key/payments/rsa-2048:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-HSM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-KREF-001",
+        "digest": "bb4d937900"
+      },
+      {
+        "kind": "LOAD_BALANCER",
+        "name": "External-LB-01",
+        "key": "LOAD_BALANCER:external-lb-01:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": "DMZ",
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-FW-1"
+        ],
+        "attributes": {},
+        "id": "TECH-LB-001",
+        "digest": "d851f8e1ff"
+      },
+      {
+        "kind": "CRYPTO_LIBRARY",
+        "name": "OpenSSL 3.0.13",
+        "key": "CRYPTO_LIBRARY:openssl 3.0.13:production",
+        "environment": "PRODUCTION",
+        "version": "3.0.13",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-TRACE-1"
+        ],
+        "attributes": {},
+        "id": "TECH-LIB-001",
+        "digest": "84ae269bd6"
+      },
+      {
+        "kind": "PACKAGE",
+        "name": "openssl",
+        "key": "PACKAGE:openssl:production",
+        "environment": "PRODUCTION",
+        "version": "3.0.13",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-SBOM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-PKG-001",
+        "digest": "360f8eefb3"
+      },
+      {
+        "kind": "POD",
+        "name": "payments-api-7f9-x2",
+        "key": "POD:payments-api-7f9-x2:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-K8S-1"
+        ],
+        "attributes": {},
+        "id": "TECH-POD-001",
+        "digest": "d4a1dae65a"
+      },
+      {
+        "kind": "PROCESS",
+        "name": "pid 9211",
+        "key": "PROCESS:pid 9211:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-TRACE-1"
+        ],
+        "attributes": {},
+        "id": "TECH-PROC-001",
+        "digest": "37c6929100"
+      },
+      {
+        "kind": "VENDOR_PRODUCT",
+        "name": "HSM-9000",
+        "key": "VENDOR_PRODUCT:hsm-9000:production",
+        "environment": "PRODUCTION",
+        "version": "8.4",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-VENDOR-1"
+        ],
+        "attributes": {},
+        "id": "TECH-PROD-001",
+        "digest": "ad9d63c6b3"
+      },
+      {
+        "kind": "SBOM",
+        "name": "SBOM-9281",
+        "key": "SBOM:sbom-9281:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-SBOM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-SBOM-001",
+        "digest": "27602d8448"
+      },
+      {
+        "kind": "SOURCE",
+        "name": "git:abc123",
+        "key": "SOURCE:git:abc123:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-CI-1"
+        ],
+        "attributes": {},
+        "id": "TECH-SRC-001",
+        "digest": "547fe4bfa0"
+      },
+      {
+        "kind": "PHYSICAL_SERVER",
+        "name": "srv-12",
+        "key": "PHYSICAL_SERVER:srv-12:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-VIRT-1"
+        ],
+        "attributes": {},
+        "id": "TECH-SRV-001",
+        "digest": "70f4ac424c"
+      },
+      {
+        "kind": "SERVICE",
+        "name": "payments-api",
+        "key": "SERVICE:payments-api:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-K8S-1"
+        ],
+        "attributes": {},
+        "id": "TECH-SVC-001",
+        "digest": "063e79eb5e"
+      },
+      {
+        "kind": "BUSINESS_SYSTEM",
+        "name": "Payments",
+        "key": "BUSINESS_SYSTEM:payments:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": "Payments Platform",
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-MGMT-1"
+        ],
+        "attributes": {},
+        "id": "TECH-SYS-001",
+        "digest": "a8b927fcef"
+      },
+      {
+        "kind": "TPM",
+        "name": "srv-12-tpm",
+        "key": "TPM:srv-12-tpm:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-TPM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-TPM-001",
+        "digest": "49d6d95653"
+      },
+      {
+        "kind": "VENDOR",
+        "name": "Vendor X",
+        "key": "VENDOR:vendor x:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-VENDOR-1"
+        ],
+        "attributes": {},
+        "id": "TECH-VENDOR-001",
+        "digest": "ee91fe03fb"
+      },
+      {
+        "kind": "VM",
+        "name": "vm-worker-3",
+        "key": "VM:vm-worker-3:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-VIRT-1"
+        ],
+        "attributes": {},
+        "id": "TECH-VM-001",
+        "digest": "c7d78a42d7"
+      }
+    ],
+    "by_key": {
+      "BUSINESS_SYSTEM:payments:production": {
+        "kind": "BUSINESS_SYSTEM",
+        "name": "Payments",
+        "key": "BUSINESS_SYSTEM:payments:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": "Payments Platform",
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-MGMT-1"
+        ],
+        "attributes": {},
+        "id": "TECH-SYS-001",
+        "digest": "a8b927fcef"
+      },
+      "APPLICATION:payments api:production": {
+        "kind": "APPLICATION",
+        "name": "Payments API",
+        "key": "APPLICATION:payments api:production",
+        "environment": "PRODUCTION",
+        "version": "2026.11.02",
+        "owner": "Payments Platform",
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-CMDB-1",
+          "EVD-TRACE-1"
+        ],
+        "attributes": {},
+        "id": "TECH-APP-001",
+        "digest": "0d760241a9"
+      },
+      "APPLICATION:payments batch:production": {
+        "kind": "APPLICATION",
+        "name": "Payments Batch",
+        "key": "APPLICATION:payments batch:production",
+        "environment": "PRODUCTION",
+        "version": "2026.10.01",
+        "owner": "Payments Platform",
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-CMDB-1"
+        ],
+        "attributes": {},
+        "id": "TECH-APP-002",
+        "digest": "88de42169f"
+      },
+      "SERVICE:payments-api:production": {
+        "kind": "SERVICE",
+        "name": "payments-api",
+        "key": "SERVICE:payments-api:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-K8S-1"
+        ],
+        "attributes": {},
+        "id": "TECH-SVC-001",
+        "digest": "063e79eb5e"
+      },
+      "CONTAINER:payments-api-7f9:production": {
+        "kind": "CONTAINER",
+        "name": "payments-api-7f9",
+        "key": "CONTAINER:payments-api-7f9:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-K8S-1"
+        ],
+        "attributes": {},
+        "id": "TECH-CTR-001",
+        "digest": "47456d0c10"
+      },
+      "IMAGE:registry/payments-api:2026.11.02:production": {
+        "kind": "IMAGE",
+        "name": "registry/payments-api:2026.11.02",
+        "key": "IMAGE:registry/payments-api:2026.11.02:production",
+        "environment": "PRODUCTION",
+        "version": "sha256:ABC",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-K8S-1"
+        ],
+        "attributes": {},
+        "id": "TECH-IMG-001",
+        "digest": "16e8ba02a7"
+      },
+      "PACKAGE:openssl:production": {
+        "kind": "PACKAGE",
+        "name": "openssl",
+        "key": "PACKAGE:openssl:production",
+        "environment": "PRODUCTION",
+        "version": "3.0.13",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-SBOM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-PKG-001",
+        "digest": "360f8eefb3"
+      },
+      "CRYPTO_LIBRARY:openssl 3.0.13:production": {
+        "kind": "CRYPTO_LIBRARY",
+        "name": "OpenSSL 3.0.13",
+        "key": "CRYPTO_LIBRARY:openssl 3.0.13:production",
+        "environment": "PRODUCTION",
+        "version": "3.0.13",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-TRACE-1"
+        ],
+        "attributes": {},
+        "id": "TECH-LIB-001",
+        "digest": "84ae269bd6"
+      },
+      "CRYPTO_ASSET:aes-256-gcm:production": {
+        "kind": "CRYPTO_ASSET",
+        "name": "AES-256-GCM",
+        "key": "CRYPTO_ASSET:aes-256-gcm:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-TRACE-1"
+        ],
+        "attributes": {
+          "evidence_type": "RUNTIME_OBSERVED"
+        },
+        "id": "TECH-CRY-001",
+        "digest": "7a89cd0e26"
+      },
+      "CRYPTO_ASSET:rsa-2048:production": {
+        "kind": "CRYPTO_ASSET",
+        "name": "RSA-2048",
+        "key": "CRYPTO_ASSET:rsa-2048:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-SBOM-2"
+        ],
+        "attributes": {
+          "evidence_type": "STATIC_OBSERVED"
+        },
+        "id": "TECH-CRY-003",
+        "digest": "df4ca3468d"
+      },
+      "CRYPTO_ASSET:ecdsa p-256:production": {
+        "kind": "CRYPTO_ASSET",
+        "name": "ECDSA P-256",
+        "key": "CRYPTO_ASSET:ecdsa p-256:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-PCAP-1"
+        ],
+        "attributes": {
+          "evidence_type": "CERTIFICATE_OBSERVED"
+        },
+        "id": "TECH-CRY-002",
+        "digest": "831eb84b1f"
+      },
+      "NETWORK_ENDPOINT:payments.bank.example:443:production": {
+        "kind": "NETWORK_ENDPOINT",
+        "name": "payments.bank.example:443",
+        "key": "NETWORK_ENDPOINT:payments.bank.example:443:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-PCAP-1"
+        ],
+        "attributes": {},
+        "id": "TECH-EP-001",
+        "digest": "4decd03d0a"
+      },
+      "LOAD_BALANCER:external-lb-01:production": {
+        "kind": "LOAD_BALANCER",
+        "name": "External-LB-01",
+        "key": "LOAD_BALANCER:external-lb-01:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": "DMZ",
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-FW-1"
+        ],
+        "attributes": {},
+        "id": "TECH-LB-001",
+        "digest": "d851f8e1ff"
+      },
+      "API_GATEWAY:payments-gw:production": {
+        "kind": "API_GATEWAY",
+        "name": "payments-gw",
+        "key": "API_GATEWAY:payments-gw:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-FW-1"
+        ],
+        "attributes": {},
+        "id": "TECH-GW-001",
+        "digest": "44f0e4c32f"
+      },
+      "CERTIFICATE:cert-9281:production": {
+        "kind": "CERTIFICATE",
+        "name": "CERT-9281",
+        "key": "CERTIFICATE:cert-9281:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-PCAP-1"
+        ],
+        "attributes": {},
+        "id": "TECH-CERT-001",
+        "digest": "34fd78c3a6"
+      },
+      "PUBLIC_KEY:cert-9281-key:production": {
+        "kind": "PUBLIC_KEY",
+        "name": "CERT-9281-key",
+        "key": "PUBLIC_KEY:cert-9281-key:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-PCAP-1"
+        ],
+        "attributes": {},
+        "id": "TECH-KEY-001",
+        "digest": "1c95360af9"
+      },
+      "ALGORITHM:ecdsa p-256 (ecdsa-with-sha256):production": {
+        "kind": "ALGORITHM",
+        "name": "ECDSA P-256 (ecdsa-with-SHA256)",
+        "key": "ALGORITHM:ecdsa p-256 (ecdsa-with-sha256):production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-PCAP-1"
+        ],
+        "attributes": {},
+        "id": "TECH-ALG-001",
+        "digest": "3695466829"
+      },
+      "CERTIFICATE_AUTHORITY:bank-ica-01:production": {
+        "kind": "CERTIFICATE_AUTHORITY",
+        "name": "BANK-ICA-01",
+        "key": "CERTIFICATE_AUTHORITY:bank-ica-01:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-PCAP-1"
+        ],
+        "attributes": {},
+        "id": "TECH-CA-001",
+        "digest": "5b7edb0e19"
+      },
+      "HSM:hsm-01:production": {
+        "kind": "HSM",
+        "name": "HSM-01",
+        "key": "HSM:hsm-01:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": "DC1",
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-HSM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-HSM-001",
+        "digest": "cb2eadf464"
+      },
+      "KEY_REFERENCE:key/payments/rsa-2048:production": {
+        "kind": "KEY_REFERENCE",
+        "name": "key/payments/rsa-2048",
+        "key": "KEY_REFERENCE:key/payments/rsa-2048:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-HSM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-KREF-001",
+        "digest": "bb4d937900"
+      },
+      "FIRMWARE:hsm fw 8.4:production": {
+        "kind": "FIRMWARE",
+        "name": "HSM fw 8.4",
+        "key": "FIRMWARE:hsm fw 8.4:production",
+        "environment": "PRODUCTION",
+        "version": "8.4",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-VENDOR-1"
+        ],
+        "attributes": {},
+        "id": "TECH-FW-001",
+        "digest": "334aad021b"
+      },
+      "VENDOR_PRODUCT:hsm-9000:production": {
+        "kind": "VENDOR_PRODUCT",
+        "name": "HSM-9000",
+        "key": "VENDOR_PRODUCT:hsm-9000:production",
+        "environment": "PRODUCTION",
+        "version": "8.4",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-VENDOR-1"
+        ],
+        "attributes": {},
+        "id": "TECH-PROD-001",
+        "digest": "ad9d63c6b3"
+      },
+      "VENDOR:vendor x:production": {
+        "kind": "VENDOR",
+        "name": "Vendor X",
+        "key": "VENDOR:vendor x:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-VENDOR-1"
+        ],
+        "attributes": {},
+        "id": "TECH-VENDOR-001",
+        "digest": "ee91fe03fb"
+      },
+      "HOST:worker-3:production": {
+        "kind": "HOST",
+        "name": "worker-3",
+        "key": "HOST:worker-3:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-K8S-1"
+        ],
+        "attributes": {},
+        "id": "TECH-HOST-001",
+        "digest": "bbb4bbbadb"
+      },
+      "VM:vm-worker-3:production": {
+        "kind": "VM",
+        "name": "vm-worker-3",
+        "key": "VM:vm-worker-3:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-VIRT-1"
+        ],
+        "attributes": {},
+        "id": "TECH-VM-001",
+        "digest": "c7d78a42d7"
+      },
+      "PHYSICAL_SERVER:srv-12:production": {
+        "kind": "PHYSICAL_SERVER",
+        "name": "srv-12",
+        "key": "PHYSICAL_SERVER:srv-12:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-VIRT-1"
+        ],
+        "attributes": {},
+        "id": "TECH-SRV-001",
+        "digest": "70f4ac424c"
+      },
+      "TPM:srv-12-tpm:production": {
+        "kind": "TPM",
+        "name": "srv-12-tpm",
+        "key": "TPM:srv-12-tpm:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-TPM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-TPM-001",
+        "digest": "49d6d95653"
+      },
+      "SOURCE:git:abc123:production": {
+        "kind": "SOURCE",
+        "name": "git:abc123",
+        "key": "SOURCE:git:abc123:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-CI-1"
+        ],
+        "attributes": {},
+        "id": "TECH-SRC-001",
+        "digest": "547fe4bfa0"
+      },
+      "BUILD:build-9281:production": {
+        "kind": "BUILD",
+        "name": "BUILD-9281",
+        "key": "BUILD:build-9281:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-CI-1"
+        ],
+        "attributes": {},
+        "id": "TECH-BUILD-001",
+        "digest": "74ecdc0b65"
+      },
+      "ARTIFACT:payments-api.jar:production": {
+        "kind": "ARTIFACT",
+        "name": "payments-api.jar",
+        "key": "ARTIFACT:payments-api.jar:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-CI-1"
+        ],
+        "attributes": {},
+        "id": "TECH-ART-001",
+        "digest": "46d9b1bbb9"
+      },
+      "SBOM:sbom-9281:production": {
+        "kind": "SBOM",
+        "name": "SBOM-9281",
+        "key": "SBOM:sbom-9281:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-SBOM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-SBOM-001",
+        "digest": "27602d8448"
+      },
+      "DEPLOYMENT:payments-prod:production": {
+        "kind": "DEPLOYMENT",
+        "name": "payments-prod",
+        "key": "DEPLOYMENT:payments-prod:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-K8S-1"
+        ],
+        "attributes": {},
+        "id": "TECH-DEP-001",
+        "digest": "b2ff055d11"
+      },
+      "POD:payments-api-7f9-x2:production": {
+        "kind": "POD",
+        "name": "payments-api-7f9-x2",
+        "key": "POD:payments-api-7f9-x2:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-K8S-1"
+        ],
+        "attributes": {},
+        "id": "TECH-POD-001",
+        "digest": "d4a1dae65a"
+      },
+      "PROCESS:pid 9211:production": {
+        "kind": "PROCESS",
+        "name": "pid 9211",
+        "key": "PROCESS:pid 9211:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "EVD-TRACE-1"
+        ],
+        "attributes": {},
+        "id": "TECH-PROC-001",
+        "digest": "37c6929100"
+      }
+    },
+    "claims": [
+      {
+        "from": "Payments API",
+        "relation": "USES_CRYPTO",
+        "to": "RSA-2048",
+        "basis": "sbom-import",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "SOFTWARE",
+        "from_key": "APPLICATION:payments api:production",
+        "to_key": "CRYPTO_ASSET:rsa-2048:production",
+        "from_id": "TECH-APP-001",
+        "to_id": "TECH-CRY-003",
+        "id": "EDGE-0a9c6115"
+      },
+      {
+        "from": "pid 9211",
+        "relation": "LOADS",
+        "to": "OpenSSL 3.0.13",
+        "basis": "process-trace",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "RUNTIME",
+        "from_key": "PROCESS:pid 9211:production",
+        "to_key": "CRYPTO_LIBRARY:openssl 3.0.13:production",
+        "from_id": "TECH-PROC-001",
+        "to_id": "TECH-LIB-001",
+        "id": "EDGE-1055a73f"
+      },
+      {
+        "from": "CERT-9281-key",
+        "relation": "USES_ALGORITHM",
+        "to": "ALGORITHM:ECDSA P-256 (ecdsa-with-SHA256):production",
+        "basis": "packet-capture",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "CERTIFICATE",
+        "from_key": "PUBLIC_KEY:cert-9281-key:production",
+        "to_key": "ALGORITHM:ecdsa p-256 (ecdsa-with-sha256):production",
+        "from_id": "TECH-KEY-001",
+        "to_id": "TECH-ALG-001",
+        "id": "EDGE-11a39003"
+      },
+      {
+        "from": "payments-api-7f9-x2",
+        "relation": "RUNS_PROCESS",
+        "to": "pid 9211",
+        "basis": "process-trace",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "RUNTIME",
+        "from_key": "POD:payments-api-7f9-x2:production",
+        "to_key": "PROCESS:pid 9211:production",
+        "from_id": "TECH-POD-001",
+        "to_id": "TECH-PROC-001",
+        "id": "EDGE-13009942"
+      },
+      {
+        "from": "HSM-01",
+        "relation": "HOLDS_KEY",
+        "to": "key/payments/rsa-2048",
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "KEYS",
+        "from_key": "HSM:hsm-01:production",
+        "to_key": "KEY_REFERENCE:key/payments/rsa-2048:production",
+        "from_id": "TECH-HSM-001",
+        "to_id": "TECH-KREF-001",
+        "id": "EDGE-19eb1ca6"
+      },
+      {
+        "from": "Payments",
+        "relation": "CONTAINS",
+        "to": "Payments API",
+        "basis": "cmdb-import",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "SOFTWARE",
+        "from_key": "BUSINESS_SYSTEM:payments:production",
+        "to_key": "APPLICATION:payments api:production",
+        "from_id": "TECH-SYS-001",
+        "to_id": "TECH-APP-001",
+        "id": "EDGE-1bf7c778"
+      },
+      {
+        "from": "registry/payments-api:2026.11.02",
+        "relation": "DEPLOYED_AS",
+        "to": "payments-prod",
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "RUNTIME",
+        "from_key": "IMAGE:registry/payments-api:2026.11.02:production",
+        "to_key": "DEPLOYMENT:payments-prod:production",
+        "from_id": "TECH-IMG-001",
+        "to_id": "TECH-DEP-001",
+        "id": "EDGE-204df53f"
+      },
+      {
+        "from": "srv-12",
+        "relation": "CARRIES",
+        "to": "srv-12-tpm",
+        "basis": "agent-inventory",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "HARDWARE",
+        "from_key": "PHYSICAL_SERVER:srv-12:production",
+        "to_key": "TPM:srv-12-tpm:production",
+        "from_id": "TECH-SRV-001",
+        "to_id": "TECH-TPM-001",
+        "id": "EDGE-2a5edd75"
+      },
+      {
+        "from": "CERT-9281",
+        "relation": "ISSUED_BY",
+        "to": "BANK-ICA-01",
+        "basis": "packet-capture",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "CERTIFICATE",
+        "from_key": "CERTIFICATE:cert-9281:production",
+        "to_key": "CERTIFICATE_AUTHORITY:bank-ica-01:production",
+        "from_id": "TECH-CERT-001",
+        "to_id": "TECH-CA-001",
+        "id": "EDGE-359eff56"
+      },
+      {
+        "from": "HSM-01",
+        "relation": "RUNS_FIRMWARE",
+        "to": "HSM fw 8.4",
+        "basis": "vendor-datasheet",
+        "confidence": "VENDOR_DECLARED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "HARDWARE",
+        "from_key": "HSM:hsm-01:production",
+        "to_key": "FIRMWARE:hsm fw 8.4:production",
+        "from_id": "TECH-HSM-001",
+        "to_id": "TECH-FW-001",
+        "id": "EDGE-39f72772"
+      },
+      {
+        "from": "payments-api.jar",
+        "relation": "DESCRIBED_BY",
+        "to": "SBOM-9281",
+        "basis": "sbom-import",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "RUNTIME",
+        "from_key": "ARTIFACT:payments-api.jar:production",
+        "to_key": "SBOM:sbom-9281:production",
+        "from_id": "TECH-ART-001",
+        "to_id": "TECH-SBOM-001",
+        "id": "EDGE-417469ca"
+      },
+      {
+        "from": "payments-api",
+        "relation": "RUNS",
+        "to": "payments-api-7f9",
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "SOFTWARE",
+        "from_key": "SERVICE:payments-api:production",
+        "to_key": "CONTAINER:payments-api-7f9:production",
+        "from_id": "TECH-SVC-001",
+        "to_id": "TECH-CTR-001",
+        "id": "EDGE-42944c68"
+      },
+      {
+        "from": "CERT-9281",
+        "relation": "CONTAINS_KEY",
+        "to": "CERT-9281-key",
+        "basis": "packet-capture",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "CERTIFICATE",
+        "from_key": "CERTIFICATE:cert-9281:production",
+        "to_key": "PUBLIC_KEY:cert-9281-key:production",
+        "from_id": "TECH-CERT-001",
+        "to_id": "TECH-KEY-001",
+        "id": "EDGE-44c2a95d"
+      },
+      {
+        "from": "openssl",
+        "relation": "LINKS",
+        "to": "OpenSSL 3.0.13",
+        "basis": "sbom-import",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "SOFTWARE",
+        "from_key": "PACKAGE:openssl:production",
+        "to_key": "CRYPTO_LIBRARY:openssl 3.0.13:production",
+        "from_id": "TECH-PKG-001",
+        "to_id": "TECH-LIB-001",
+        "id": "EDGE-45adce33"
+      },
+      {
+        "from": "payments-api-7f9",
+        "relation": "SCHEDULED_ON",
+        "to": "worker-3",
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "HARDWARE",
+        "from_key": "CONTAINER:payments-api-7f9:production",
+        "to_key": "HOST:worker-3:production",
+        "from_id": "TECH-CTR-001",
+        "to_id": "TECH-HOST-001",
+        "id": "EDGE-4db72d15"
+      },
+      {
+        "from": "payments-prod",
+        "relation": "SCHEDULES",
+        "to": "payments-api-7f9-x2",
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "RUNTIME",
+        "from_key": "DEPLOYMENT:payments-prod:production",
+        "to_key": "POD:payments-api-7f9-x2:production",
+        "from_id": "TECH-DEP-001",
+        "to_id": "TECH-POD-001",
+        "id": "EDGE-5144fd58"
+      },
+      {
+        "from": "payments-api.jar",
+        "relation": "PACKAGED_AS",
+        "to": "registry/payments-api:2026.11.02",
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "RUNTIME",
+        "from_key": "ARTIFACT:payments-api.jar:production",
+        "to_key": "IMAGE:registry/payments-api:2026.11.02:production",
+        "from_id": "TECH-ART-001",
+        "to_id": "TECH-IMG-001",
+        "id": "EDGE-60242eec"
+      },
+      {
+        "from": "Payments API",
+        "relation": "USES_CRYPTO",
+        "to": "AES-256-GCM",
+        "basis": "runtime-probe",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "SOFTWARE",
+        "from_key": "APPLICATION:payments api:production",
+        "to_key": "CRYPTO_ASSET:aes-256-gcm:production",
+        "from_id": "TECH-APP-001",
+        "to_id": "TECH-CRY-001",
+        "id": "EDGE-6f3db59c"
+      },
+      {
+        "from": "Payments API",
+        "relation": "PROVIDES",
+        "to": "payments-api",
+        "basis": "config-parse",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "SOFTWARE",
+        "from_key": "APPLICATION:payments api:production",
+        "to_key": "SERVICE:payments-api:production",
+        "from_id": "TECH-APP-001",
+        "to_id": "TECH-SVC-001",
+        "id": "EDGE-7e075c41"
+      },
+      {
+        "from": "vm-worker-3",
+        "relation": "RUNS_ON",
+        "to": "srv-12",
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "HARDWARE",
+        "from_key": "VM:vm-worker-3:production",
+        "to_key": "PHYSICAL_SERVER:srv-12:production",
+        "from_id": "TECH-VM-001",
+        "to_id": "TECH-SRV-001",
+        "id": "EDGE-809fa2c2"
+      },
+      {
+        "from": "registry/payments-api:2026.11.02",
+        "relation": "SHIPS",
+        "to": "openssl",
+        "basis": "sbom-import",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "SOFTWARE",
+        "from_key": "IMAGE:registry/payments-api:2026.11.02:production",
+        "to_key": "PACKAGE:openssl:production",
+        "from_id": "TECH-IMG-001",
+        "to_id": "TECH-PKG-001",
+        "id": "EDGE-8196d870"
+      },
+      {
+        "from": "HSM-9000",
+        "relation": "SUPPLIED_BY",
+        "to": "Vendor X",
+        "basis": "vendor-datasheet",
+        "confidence": "VENDOR_DECLARED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "VENDOR",
+        "from_key": "VENDOR_PRODUCT:hsm-9000:production",
+        "to_key": "VENDOR:vendor x:production",
+        "from_id": "TECH-PROD-001",
+        "to_id": "TECH-VENDOR-001",
+        "id": "EDGE-88d6173c"
+      },
+      {
+        "from": "payments.bank.example:443",
+        "relation": "PRESENTS",
+        "to": "CERT-9281",
+        "basis": "packet-capture",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "NETWORK",
+        "from_key": "NETWORK_ENDPOINT:payments.bank.example:443:production",
+        "to_key": "CERTIFICATE:cert-9281:production",
+        "from_id": "TECH-EP-001",
+        "to_id": "TECH-CERT-001",
+        "id": "EDGE-892703be"
+      },
+      {
+        "from": "payments.bank.example:443",
+        "relation": "FRONTED_BY",
+        "to": "External-LB-01",
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "NETWORK",
+        "from_key": "NETWORK_ENDPOINT:payments.bank.example:443:production",
+        "to_key": "LOAD_BALANCER:external-lb-01:production",
+        "from_id": "TECH-EP-001",
+        "to_id": "TECH-LB-001",
+        "id": "EDGE-8e1cf52a"
+      },
+      {
+        "from": "git:abc123",
+        "relation": "BUILT_INTO",
+        "to": "BUILD-9281",
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "RUNTIME",
+        "from_key": "SOURCE:git:abc123:production",
+        "to_key": "BUILD:build-9281:production",
+        "from_id": "TECH-SRC-001",
+        "to_id": "TECH-BUILD-001",
+        "id": "EDGE-a0563ce4"
+      },
+      {
+        "from": "BUILD-9281",
+        "relation": "PRODUCES",
+        "to": "payments-api.jar",
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "RUNTIME",
+        "from_key": "BUILD:build-9281:production",
+        "to_key": "ARTIFACT:payments-api.jar:production",
+        "from_id": "TECH-BUILD-001",
+        "to_id": "TECH-ART-001",
+        "id": "EDGE-b42c3bac"
+      },
+      {
+        "from": "HSM fw 8.4",
+        "relation": "SUPPLIED_BY",
+        "to": "Vendor X",
+        "basis": "vendor-datasheet",
+        "confidence": "VENDOR_DECLARED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "VENDOR",
+        "from_key": "FIRMWARE:hsm fw 8.4:production",
+        "to_key": "VENDOR:vendor x:production",
+        "from_id": "TECH-FW-001",
+        "to_id": "TECH-VENDOR-001",
+        "id": "EDGE-bc8965fd"
+      },
+      {
+        "from": "Payments",
+        "relation": "CONTAINS",
+        "to": "Payments Batch",
+        "basis": "cmdb-import",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "SOFTWARE",
+        "from_key": "BUSINESS_SYSTEM:payments:production",
+        "to_key": "APPLICATION:payments batch:production",
+        "from_id": "TECH-SYS-001",
+        "to_id": "TECH-APP-002",
+        "id": "EDGE-bdf4bdf7"
+      },
+      {
+        "from": "Payments API",
+        "relation": "EXPOSES",
+        "to": "payments.bank.example:443",
+        "basis": "config-parse",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "NETWORK",
+        "from_key": "APPLICATION:payments api:production",
+        "to_key": "NETWORK_ENDPOINT:payments.bank.example:443:production",
+        "from_id": "TECH-APP-001",
+        "to_id": "TECH-EP-001",
+        "id": "EDGE-bec42967"
+      },
+      {
+        "from": "worker-3",
+        "relation": "HOSTED_ON",
+        "to": "vm-worker-3",
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "HARDWARE",
+        "from_key": "HOST:worker-3:production",
+        "to_key": "VM:vm-worker-3:production",
+        "from_id": "TECH-HOST-001",
+        "to_id": "TECH-VM-001",
+        "id": "EDGE-cb170f31"
+      },
+      {
+        "from": "Payments API",
+        "relation": "USES_HSM",
+        "to": "HSM-01",
+        "basis": "config-parse",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "KEYS",
+        "from_key": "APPLICATION:payments api:production",
+        "to_key": "HSM:hsm-01:production",
+        "from_id": "TECH-APP-001",
+        "to_id": "TECH-HSM-001",
+        "id": "EDGE-d9a7f1b9"
+      },
+      {
+        "from": "External-LB-01",
+        "relation": "FORWARDS_TO",
+        "to": "payments-gw",
+        "basis": "config-parse",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "NETWORK",
+        "from_key": "LOAD_BALANCER:external-lb-01:production",
+        "to_key": "API_GATEWAY:payments-gw:production",
+        "from_id": "TECH-LB-001",
+        "to_id": "TECH-GW-001",
+        "id": "EDGE-e042b489"
+      },
+      {
+        "from": "payments-gw",
+        "relation": "ROUTES_TO",
+        "to": "Payments API",
+        "basis": "config-parse",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "NETWORK",
+        "from_key": "API_GATEWAY:payments-gw:production",
+        "to_key": "APPLICATION:payments api:production",
+        "from_id": "TECH-GW-001",
+        "to_id": "TECH-APP-001",
+        "id": "EDGE-fc5da107"
+      },
+      {
+        "from": "payments-api-7f9",
+        "relation": "FROM_IMAGE",
+        "to": "registry/payments-api:2026.11.02",
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EVD-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "SOFTWARE",
+        "from_key": "CONTAINER:payments-api-7f9:production",
+        "to_key": "IMAGE:registry/payments-api:2026.11.02:production",
+        "from_id": "TECH-CTR-001",
+        "to_id": "TECH-IMG-001",
+        "id": "EDGE-ff377e14"
+      }
+    ],
+    "refusals": [],
+    "counts": {
+      "ALGORITHM": 1,
+      "API_GATEWAY": 1,
+      "APPLICATION": 2,
+      "ARTIFACT": 1,
+      "BUILD": 1,
+      "BUSINESS_SYSTEM": 1,
+      "CERTIFICATE": 1,
+      "CERTIFICATE_AUTHORITY": 1,
+      "CONTAINER": 1,
+      "CRYPTO_ASSET": 3,
+      "CRYPTO_LIBRARY": 1,
+      "DEPLOYMENT": 1,
+      "FIRMWARE": 1,
+      "HOST": 1,
+      "HSM": 1,
+      "IMAGE": 1,
+      "KEY_REFERENCE": 1,
+      "LOAD_BALANCER": 1,
+      "NETWORK_ENDPOINT": 1,
+      "PACKAGE": 1,
+      "PHYSICAL_SERVER": 1,
+      "POD": 1,
+      "PROCESS": 1,
+      "PUBLIC_KEY": 1,
+      "SBOM": 1,
+      "SERVICE": 1,
+      "SOURCE": 1,
+      "TPM": 1,
+      "VENDOR": 1,
+      "VENDOR_PRODUCT": 1,
+      "VM": 1
+    },
+    "claim_counts": {
+      "CERTIFICATE": 3,
+      "HARDWARE": 5,
+      "KEYS": 2,
+      "NETWORK": 5,
+      "RUNTIME": 8,
+      "SOFTWARE": 9,
+      "VENDOR": 2
+    },
+    "unproven_edges": [
+      "EDGE-1bf7c778",
+      "EDGE-bdf4bdf7",
+      "EDGE-8196d870",
+      "EDGE-45adce33",
+      "EDGE-0a9c6115",
+      "EDGE-39f72772",
+      "EDGE-bc8965fd",
+      "EDGE-88d6173c",
+      "EDGE-417469ca"
+    ],
+    "completeness": {
+      "rows": [
+        {
+          "kind": "ALGORITHM",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "API_GATEWAY",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "APPLICATION",
+          "observed": 2,
+          "expected": 2,
+          "coverage": 1.0,
+          "verdict": "COMPLETE"
+        },
+        {
+          "kind": "ARTIFACT",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "BUILD",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "BUSINESS_SYSTEM",
+          "observed": 1,
+          "expected": 1,
+          "coverage": 1.0,
+          "verdict": "COMPLETE"
+        },
+        {
+          "kind": "CERTIFICATE",
+          "observed": 1,
+          "expected": 2,
+          "coverage": 0.5,
+          "verdict": "PARTIAL"
+        },
+        {
+          "kind": "CERTIFICATE_AUTHORITY",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "CONTAINER",
+          "observed": 1,
+          "expected": 2,
+          "coverage": 0.5,
+          "verdict": "PARTIAL"
+        },
+        {
+          "kind": "CRYPTO_ASSET",
+          "observed": 3,
+          "expected": 4,
+          "coverage": 0.75,
+          "verdict": "PARTIAL"
+        },
+        {
+          "kind": "CRYPTO_LIBRARY",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "DEPLOYMENT",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "FIRMWARE",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "HOST",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "HSM",
+          "observed": 1,
+          "expected": 2,
+          "coverage": 0.5,
+          "verdict": "PARTIAL"
+        },
+        {
+          "kind": "IMAGE",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "KEY_REFERENCE",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "LOAD_BALANCER",
+          "observed": 1,
+          "expected": 1,
+          "coverage": 1.0,
+          "verdict": "COMPLETE"
+        },
+        {
+          "kind": "NETWORK_ENDPOINT",
+          "observed": 1,
+          "expected": 1,
+          "coverage": 1.0,
+          "verdict": "COMPLETE"
+        },
+        {
+          "kind": "PACKAGE",
+          "observed": 1,
+          "expected": 3,
+          "coverage": 0.3333,
+          "verdict": "PARTIAL"
+        },
+        {
+          "kind": "PHYSICAL_SERVER",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "POD",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "PROCESS",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "PUBLIC_KEY",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "SBOM",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "SERVICE",
+          "observed": 1,
+          "expected": 1,
+          "coverage": 1.0,
+          "verdict": "COMPLETE"
+        },
+        {
+          "kind": "SOURCE",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "TPM",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "VENDOR",
+          "observed": 1,
+          "expected": 1,
+          "coverage": 1.0,
+          "verdict": "COMPLETE"
+        },
+        {
+          "kind": "VENDOR_PRODUCT",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "VM",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        }
+      ],
+      "overall": "PARTIAL",
+      "gaps": [
+        {
+          "kind": "HSM",
+          "reason": "1 HSM collector unavailable (vendor API offline)"
+        },
+        {
+          "kind": "PACKAGE",
+          "reason": "payments-batch container not reachable; its manifest was not collected"
+        }
+      ],
+      "unmeasured": [
+        "ALGORITHM",
+        "API_GATEWAY",
+        "ARTIFACT",
+        "BUILD",
+        "CERTIFICATE_AUTHORITY",
+        "CRYPTO_LIBRARY",
+        "DEPLOYMENT",
+        "FIRMWARE",
+        "HOST",
+        "IMAGE",
+        "KEY_REFERENCE",
+        "PHYSICAL_SERVER",
+        "POD",
+        "PROCESS",
+        "PUBLIC_KEY",
+        "SBOM",
+        "SOURCE",
+        "TPM",
+        "VENDOR_PRODUCT",
+        "VM"
+      ],
+      "statement": "PARTIAL: 6 kind(s) complete, 5 short, 2 stated gap(s), 20 unmeasured",
+      "rationale": "an overall verdict of COMPLETE means every kind with an expected number met it; a kind with no expected number is UNMEASURED and never counts as complete"
+    },
+    "statement": "34 technology asset(s) across 31 kind(s) and 34 evidenced relationship(s); 9 edge(s) not proven; 0 claim(s) refused",
+    "not_proven": [
+      "that a relationship exists because two assets exist: an edge is only in this document when something said so, and the basis is printed beside it",
+      "that a declared edge is deployed: IMPORTED and VENDOR_DECLARED are kept as they are and are not counted as proven paths in a blast radius",
+      "what is inside a running process: a certificate on an endpoint is not the application's crypto library, and the model never joins them",
+      "that the estate is complete: the completeness block states the denominator and the reason for every gap, and an unmeasured layer is UNMEASURED, not zero",
+      "that ids are permanent: `id` is readable and renumbers when the estate changes, so anything durable must key on `key`"
+    ]
+  },
+  "summary": {
+    "schema": "cryptoscan.techbom/1",
+    "assets": 34,
+    "relationships": 34,
+    "by_kind": {
+      "ALGORITHM": 1,
+      "API_GATEWAY": 1,
+      "APPLICATION": 2,
+      "ARTIFACT": 1,
+      "BUILD": 1,
+      "BUSINESS_SYSTEM": 1,
+      "CERTIFICATE": 1,
+      "CERTIFICATE_AUTHORITY": 1,
+      "CONTAINER": 1,
+      "CRYPTO_ASSET": 3,
+      "CRYPTO_LIBRARY": 1,
+      "DEPLOYMENT": 1,
+      "FIRMWARE": 1,
+      "HOST": 1,
+      "HSM": 1,
+      "IMAGE": 1,
+      "KEY_REFERENCE": 1,
+      "LOAD_BALANCER": 1,
+      "NETWORK_ENDPOINT": 1,
+      "PACKAGE": 1,
+      "PHYSICAL_SERVER": 1,
+      "POD": 1,
+      "PROCESS": 1,
+      "PUBLIC_KEY": 1,
+      "SBOM": 1,
+      "SERVICE": 1,
+      "SOURCE": 1,
+      "TPM": 1,
+      "VENDOR": 1,
+      "VENDOR_PRODUCT": 1,
+      "VM": 1
+    },
+    "by_chain": {
+      "CERTIFICATE": 3,
+      "HARDWARE": 5,
+      "KEYS": 2,
+      "NETWORK": 5,
+      "RUNTIME": 8,
+      "SOFTWARE": 9,
+      "VENDOR": 2
+    },
+    "by_confidence": {
+      "CONFIGURED": 18,
+      "IMPORTED": 6,
+      "OBSERVED": 7,
+      "VENDOR_DECLARED": 3
+    },
+    "refusals": 0,
+    "unproven_edges": 9,
+    "completeness": "PARTIAL",
+    "statement": "34 technology asset(s) across 31 kind(s) and 34 evidenced relationship(s); 9 edge(s) not proven; 0 claim(s) refused",
+    "not_proven": [
+      "that a relationship exists because two assets exist: an edge is only in this document when something said so, and the basis is printed beside it",
+      "that a declared edge is deployed: IMPORTED and VENDOR_DECLARED are kept as they are and are not counted as proven paths in a blast radius",
+      "what is inside a running process: a certificate on an endpoint is not the application's crypto library, and the model never joins them",
+      "that the estate is complete: the completeness block states the denominator and the reason for every gap, and an unmeasured layer is UNMEASURED, not zero",
+      "that ids are permanent: `id` is readable and renumbers when the estate changes, so anything durable must key on `key`"
+    ]
+  },
+  "radius": {
+    "schema": "cryptoscan.techbom/1",
+    "query": "ECDSA P-256",
+    "seeds": [
+      "TECH-CRY-002",
+      "TECH-ALG-001"
+    ],
+    "reachable": [
+      {
+        "id": "TECH-GW-001",
+        "kind": "API_GATEWAY",
+        "name": "payments-gw",
+        "hops": 5,
+        "proven": true
+      },
+      {
+        "id": "TECH-APP-001",
+        "kind": "APPLICATION",
+        "name": "Payments API",
+        "hops": 4,
+        "proven": true
+      },
+      {
+        "id": "TECH-CERT-001",
+        "kind": "CERTIFICATE",
+        "name": "CERT-9281",
+        "hops": 2,
+        "proven": true
+      },
+      {
+        "id": "TECH-LB-001",
+        "kind": "LOAD_BALANCER",
+        "name": "External-LB-01",
+        "hops": 6,
+        "proven": true
+      },
+      {
+        "id": "TECH-EP-001",
+        "kind": "NETWORK_ENDPOINT",
+        "name": "payments.bank.example:443",
+        "hops": 3,
+        "proven": true
+      },
+      {
+        "id": "TECH-KEY-001",
+        "kind": "PUBLIC_KEY",
+        "name": "CERT-9281-key",
+        "hops": 1,
+        "proven": true
+      }
+    ],
+    "impacts": {
+      "API_GATEWAY": [
+        "TECH-GW-001"
+      ],
+      "APPLICATION": [
+        "TECH-APP-001"
+      ],
+      "CERTIFICATE": [
+        "TECH-CERT-001"
+      ],
+      "LOAD_BALANCER": [
+        "TECH-LB-001"
+      ],
+      "NETWORK_ENDPOINT": [
+        "TECH-EP-001"
+      ],
+      "PUBLIC_KEY": [
+        "TECH-KEY-001"
+      ]
+    },
+    "systems": [],
+    "network_paths": [
+      "EDGE-892703be",
+      "EDGE-bec42967",
+      "EDGE-e042b489",
+      "EDGE-fc5da107"
+    ],
+    "crypto_assets": [],
+    "quantum_sensitive": [],
+    "pqc_blockers": [],
+    "possible": [
+      "TECH-SYS-001"
+    ],
+    "edges_used": 7,
+    "statement": "ECDSA P-256: 6 dependent asset(s) across 6 kind(s), 0 business system(s), 0 migration blocker(s); 1 reachable only through an inference",
+    "not_proven": [
+      "that a dependency is exclusive: the graph holds the relationships the sources asserted, and a path nobody recorded is missing, not absent",
+      "that a downstream asset is affected in practice: reachability is exposure, and impact needs the owner's assessment"
+    ]
+  },
+  "reconciliation": {
+    "schema": "cryptoscan.techbom/1",
+    "findings": [
+      {
+        "subject": "Payments API",
+        "attribute": "openssl version",
+        "status": "CONFLICT",
+        "values": [
+          "3.0.11",
+          "3.0.13"
+        ],
+        "sources": 3,
+        "strongest": "OBSERVED",
+        "resolution": "UNRESOLVED",
+        "observations": [
+          {
+            "value": "3.0.11",
+            "source": "runtime",
+            "basis": "process-trace",
+            "confidence": "OBSERVED",
+            "evidence_ids": []
+          },
+          {
+            "value": "3.0.13",
+            "source": "sbom",
+            "basis": "sbom-import",
+            "confidence": "IMPORTED",
+            "evidence_ids": []
+          },
+          {
+            "value": "3.0.13",
+            "source": "vendor declaration",
+            "basis": "vendor-datasheet",
+            "confidence": "VENDOR_DECLARED",
+            "evidence_ids": []
+          }
+        ],
+        "statement": "Payments API openssl version: 2 values across 3 source(s) \u2014 kept as a conflict, because choosing one would hide which layer disagrees"
+      }
+    ],
+    "conflicts": [
+      {
+        "subject": "Payments API",
+        "attribute": "openssl version",
+        "status": "CONFLICT",
+        "values": [
+          "3.0.11",
+          "3.0.13"
+        ],
+        "sources": 3,
+        "strongest": "OBSERVED",
+        "resolution": "UNRESOLVED",
+        "observations": [
+          {
+            "value": "3.0.11",
+            "source": "runtime",
+            "basis": "process-trace",
+            "confidence": "OBSERVED",
+            "evidence_ids": []
+          },
+          {
+            "value": "3.0.13",
+            "source": "sbom",
+            "basis": "sbom-import",
+            "confidence": "IMPORTED",
+            "evidence_ids": []
+          },
+          {
+            "value": "3.0.13",
+            "source": "vendor declaration",
+            "basis": "vendor-datasheet",
+            "confidence": "VENDOR_DECLARED",
+            "evidence_ids": []
+          }
+        ],
+        "statement": "Payments API openssl version: 2 values across 3 source(s) \u2014 kept as a conflict, because choosing one would hide which layer disagrees"
+      }
+    ],
+    "statement": "1 reconciled attribute(s), 1 in conflict and left unresolved",
+    "not_proven": [
+      "which of two conflicting values is deployed: resolving that needs a probe at the place the value matters, and this module will not pick a winner",
+      "that agreement means correctness: several layers reading one import agree with the import"
+    ]
+  },
+  "rows": [
+    {
+      "id": "assets",
+      "question": "is there an explicit asset model with identity that survives?",
+      "phase": "review techbom / 6",
+      "probes": [
+        {
+          "probe": "an-asset-carries-a-stable-key-a-readable-id-and-its-evidence",
+          "ok": true,
+          "observed": "TECH-APP-001 \u00b7 APPLICATION:payments api:production \u00b7 2 evidence id(s)"
+        },
+        {
+          "probe": "the-estate-produces-every-layer-of-the-model",
+          "ok": true,
+          "observed": "34 assets across 31 kinds"
+        },
+        {
+          "probe": "an-asset-with-no-evidence-is-refused",
+          "ok": true,
+          "observed": "an asset with no evidence id is a claim, not an asset"
+        },
+        {
+          "probe": "two-assets-with-the-same-identity-are-refused-not-merged",
+          "ok": true,
+          "observed": "the first description is kept and the second refused"
+        },
+        {
+          "probe": "ids-are-deterministic-for-one-estate-and-not-durable",
+          "ok": true,
+          "observed": "same estate, same ids; anything durable keys on `key`"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "claims",
+      "question": "is a relationship a claim with a basis, or a proximity guess?",
+      "phase": "review techbom / 5 and 22",
+      "probes": [
+        {
+          "probe": "every-relationship-carries-a-basis-a-class-and-an-evidence-id",
+          "ok": true,
+          "observed": "34 claim(s), each with its basis printed"
+        },
+        {
+          "probe": "co-occurrence-is-refused-by-name",
+          "ok": true,
+          "observed": "two assets in one scan is proximity, not a relationship"
+        },
+        {
+          "probe": "the-other-proximity-bases-are-refused-too",
+          "ok": true,
+          "observed": "same-scan \u00b7 proximity \u00b7 name-similarity \u00b7 assumption"
+        },
+        {
+          "probe": "an-edge-may-not-be-stronger-than-its-evidence",
+          "ok": true,
+          "observed": "a vendor datasheet stays VENDOR_DECLARED however it is labelled"
+        },
+        {
+          "probe": "an-inference-must-name-its-rule-so-it-can-be-argued-with",
+          "ok": true,
+          "observed": "an unnamed inference is an assumption with better manners"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "boundaries",
+      "question": "do the layers stay apart instead of standing in for each other?",
+      "phase": "review techbom / 9, 10, 12, 13, 22",
+      "probes": [
+        {
+          "probe": "a-certificate-does-not-prove-the-application-s-crypto",
+          "ok": true,
+          "observed": "the algorithm is reached through the key that carries it"
+        },
+        {
+          "probe": "a-network-hop-does-not-reach-into-application-internals",
+          "ok": true,
+          "observed": "a container is scheduled on a host; an endpoint is not"
+        },
+        {
+          "probe": "a-runtime-crypto-use-may-not-be-evidenced-by-a-manifest",
+          "ok": true,
+          "observed": "RUNTIME_OBSERVED, STATIC_OBSERVED and CERTIFICATE_OBSERVED stay apart"
+        },
+        {
+          "probe": "an-edge-to-an-undeclared-node-is-refused-not-invented",
+          "ok": true,
+          "observed": "an edge may only join assets the estate declares"
+        },
+        {
+          "probe": "the-seven-chains-are-modelled-and-distinguishable",
+          "ok": true,
+          "observed": "CERTIFICATE, HARDWARE, KEYS, NETWORK, RUNTIME, SOFTWARE, VENDOR"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "completeness",
+      "question": "is coverage explicit, with a denominator and a reason per gap?",
+      "phase": "review techbom / 16",
+      "probes": [
+        {
+          "probe": "the-overall-verdict-is-partial-and-says-so",
+          "ok": true,
+          "observed": "PARTIAL: 6 kind(s) complete, 5 short, 2 stated gap(s), 20 unmeasured"
+        },
+        {
+          "probe": "every-kind-is-measured-against-a-denominator",
+          "ok": true,
+          "observed": "HSM 1 / 2, coverage 0.50"
+        },
+        {
+          "probe": "each-gap-carries-the-reason-a-person-would-ask-for",
+          "ok": true,
+          "observed": "1 HSM collector unavailable (vendor API offline) \u00b7 payments-batch container not reachable; its manifest was not collected"
+        },
+        {
+          "probe": "a-kind-with-no-denominator-is-unmeasured-not-complete",
+          "ok": true,
+          "observed": "a count nobody can divide by is not coverage"
+        },
+        {
+          "probe": "an-asset-count-is-never-printed-without-its-relationships-and-verdict",
+          "ok": true,
+          "observed": "34 technology asset(s) across 31 kind(s) and 34 evidenced relationship(s); 9 edge(s) not proven; 0 claim(s) refused"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "reconciliation",
+      "question": "does a disagreement survive into the report instead of being lost?",
+      "phase": "review techbom / 18",
+      "probes": [
+        {
+          "probe": "four-sources-three-agreeing-is-still-a-conflict",
+          "ok": true,
+          "observed": "Payments API openssl version: 2 values across 4 source(s) \u2014 kept as a conflict, because choosing one would hide which layer disagrees"
+        },
+        {
+          "probe": "the-conflict-is-left-unresolved-instead-of-picking-a-winner",
+          "ok": true,
+          "observed": "observed 3.0.11 \u00b7 artifact 3.0.13 \u00b7 vendor 3.0.13 \u00b7 resolution UNRESOLVED"
+        },
+        {
+          "probe": "agreement-is-reported-and-not-called-verification",
+          "ok": true,
+          "observed": "Payments API runtime: OpenJDK 21 from 2 source(s); agreement is not verification"
+        },
+        {
+          "probe": "a-proximity-source-cannot-settle-an-attribute",
+          "ok": true,
+          "observed": "a scan-time co-occurrence is not a statement about the attribute"
+        },
+        {
+          "probe": "the-report-says-what-it-cannot-decide",
+          "ok": true,
+          "observed": "2 stated limit(s)"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "radius_and_time",
+      "question": "can the bom answer what breaks, and what changed?",
+      "phase": "review techbom / 15, 19, 20",
+      "probes": [
+        {
+          "probe": "a-blast-radius-is-proven-for-applications-and-declared-above-them",
+          "ok": true,
+          "observed": "the application is proven by config and capture; the business system above it is only an import"
+        },
+        {
+          "probe": "reachability-is-not-the-same-as-impact",
+          "ok": true,
+          "observed": "6 dependent(s), each with its hop count"
+        },
+        {
+          "probe": "a-migration-blocker-is-named-where-it-sits",
+          "ok": true,
+          "observed": "a migration that replaces an algorithm on this path has to change this device or its firmware"
+        },
+        {
+          "probe": "a-declared-edge-is-not-counted-as-a-proven-dependency-path",
+          "ok": true,
+          "observed": "VENDOR_DECLARED paths land in `possible`, not in `reachable`"
+        },
+        {
+          "probe": "a-version-change-is-a-named-event-with-both-values",
+          "ok": true,
+          "observed": "openssl: 3.0.13 \u2192 3.0.11"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "projection",
+      "question": "is TechBOM a projection, and does it know what it cannot say?",
+      "phase": "review techbom / 17",
+      "probes": [
+        {
+          "probe": "the-document-declares-itself-a-projection",
+          "ok": true,
+          "observed": "evidence \u2192 canonical estate \u2192 TechBOM, never the other way round"
+        },
+        {
+          "probe": "a-techbom-cannot-be-fed-back-in-as-its-own-source",
+          "ok": true,
+          "observed": "no second source of truth, by construction"
+        },
+        {
+          "probe": "the-summary-reports-confidence-not-just-a-count",
+          "ok": true,
+          "observed": "{\"CONFIGURED\": 18, \"IMPORTED\": 6, \"OBSERVED\": 7, \"VENDOR_DECLARED\": 3}"
+        },
+        {
+          "probe": "a-bom-that-loses-its-evidence-is-refused-at-the-asset",
+          "ok": true,
+          "observed": "the asset model is not the place a fact arrives unbacked"
+        },
+        {
+          "probe": "the-report-states-what-it-does-not-prove",
+          "ok": true,
+          "observed": "5 stated limit(s)"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the estate is a fixture, not a bank: every asset and edge here is the shape of the argument, and none of it is an observation of a real network",
+    "an edge is in the graph because a source asserted it. A relationship nobody recorded is missing, and this model does not infer it from proximity",
+    "completeness is only as honest as its denominator, which comes from authorisation and the scan plan, not from this module",
+    "a blast radius is exposure, not impact: whether a dependent system actually breaks is the owner's assessment",
+    "reconciliation preserves a conflict and cannot resolve it \u2014 resolution needs a probe at the place the value matters",
+    "readable ids renumber when the estate changes, so only `key` may be used as a durable reference"
+  ]
+}

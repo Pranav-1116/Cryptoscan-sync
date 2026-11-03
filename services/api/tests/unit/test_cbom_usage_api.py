@@ -1061,3 +1061,56 @@ def test_passive_observation_expires_a_stale_capture(client):
     assert body["expired"] == ["CAP-1"]
     assert body["facts"] == []
     assert body["live"] == 0
+
+
+_TECH_ASSET = {"kind": "APPLICATION", "name": "Payments API", "version": "2026.11.02",
+               "evidence_ids": ["EVD-1"]}
+_HSM_ASSET = {"kind": "HSM", "name": "HSM-01", "evidence_ids": ["EVD-2"]}
+
+
+def test_techbom_keeps_an_evidenced_relationship_and_its_class(client):
+    body = _post(client, "/techbom", {
+        "estate": {"schema": "cryptoscan.techbom-estate/1",
+                   "assets": [_TECH_ASSET, _HSM_ASSET],
+                   "claims": [{"from": "Payments API", "relation": "USES_HSM",
+                               "to": "HSM-01", "basis": "config-parse",
+                               "evidence_ids": ["EVD-3"]}]}}).json()
+    assert body["projection"] is True
+    assert body["claims"][0]["confidence"] == "CONFIGURED"
+    assert body["refusals"] == []
+    assert body["statement"].startswith("2 technology asset(s)")
+    assert body["assets"][0]["id"] == "TECH-APP-001"
+
+
+def test_techbom_refuses_co_occurrence_and_over_claiming(client):
+    body = _post(client, "/techbom", {
+        "estate": {"schema": "cryptoscan.techbom-estate/1",
+                   "assets": [_TECH_ASSET, _HSM_ASSET],
+                   "claims": [
+                       {"from": "Payments API", "relation": "USES_HSM", "to": "HSM-01",
+                        "basis": "co-occurrence", "evidence_ids": ["EVD-9"]},
+                       {"from": "Payments API", "relation": "USES_HSM", "to": "HSM-01",
+                        "basis": "vendor-datasheet", "evidence_ids": ["EVD-9"],
+                        "confidence": "OBSERVED"}]}}).json()
+    assert body["claims"] == []
+    codes = [row["code"] for row in body["refusals"]]
+    assert codes == ["CO_OCCURRENCE_NOT_EVIDENCE", "CLAIM_STRONGER_THAN_EVIDENCE"]
+
+
+def test_techbom_names_a_migration_blocker_in_a_blast_radius(client):
+    body = _post(client, "/techbom", {
+        "query": "HSM-01",
+        "estate": {"schema": "cryptoscan.techbom-estate/1",
+                   "assets": [_TECH_ASSET, _HSM_ASSET],
+                   "claims": [{"from": "Payments API", "relation": "USES_HSM",
+                               "to": "HSM-01", "basis": "config-parse",
+                               "evidence_ids": ["EVD-3"]}]}}).json()
+    assert body["blast_radius"]["seeds"] == ["TECH-HSM-001"]
+    assert body["blast_radius"]["pqc_blockers"][0]["kind"] == "HSM"
+
+
+def test_techbom_refuses_a_projection_as_its_own_source(client):
+    response = _post(client, "/techbom", {
+        "estate": {"schema": "cryptoscan.techbom/1", "assets": [], "claims": []}})
+    assert response.status_code == 422
+    assert "techbom-estate" in response.json()["detail"]

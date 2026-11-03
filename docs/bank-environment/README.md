@@ -555,6 +555,33 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [TechBOM is a projection of evidenced relationships](164-techbom.md)
+> (**7 pass · 0 partial · 0 fail**, 35 probes) takes the TechBOM review
+> (`techbom-review-2026-11-03.md`) and builds the one thing five concatenated BOMs cannot
+> give: **a relationship is a claim**. `cbom.techbom` models 34 asset kinds and 26
+> relations across seven chains — software, network, certificate, keys, hardware, vendor
+> and runtime deployment identity (`SOURCE → BUILD → ARTIFACT → SBOM → IMAGE →
+> DEPLOYMENT → POD → PROCESS`) — and every edge carries a **basis, a confidence class and
+> an evidence id**. The four rules that stop the usual failures are enforced, not
+> documented: **co-occurrence is refused by name** (`Payments API` and `HSM-01` in one
+> scan is `CO_OCCURRENCE_NOT_EVIDENCE`, not `USES_HSM`); **an edge may never be stronger
+> than its evidence** (a vendor datasheet stays `VENDOR_DECLARED` however the caller
+> labels it, and asking for `OBSERVED` is refused); **the layers cannot stand in for each
+> other** (an endpoint `PRESENTS` a certificate and an algorithm is reached through the
+> key that carries it, so `APPLICATION → ALGORITHM` does not exist; a manifest cannot
+> evidence a runtime use); and **a TechBOM is never its own source** (`build()` takes a
+> canonical estate, `from_document()` refuses a projection). What it *answers*: identity
+> that is two-part on purpose (`key` is content-addressed and durable, `TECH-APP-001` is
+> readable and renumbers), **completeness with a denominator** — `HSM 1 / 2, coverage
+> 0.50, PARTIAL, one collector unavailable` — where a kind with no expected number is
+> `UNMEASURED` rather than complete, **reconciliation that keeps a conflict** (four
+> sources, three agreeing, still `CONFLICT` / `UNRESOLVED`, because agreement is not
+> verification), a **blast radius** that counts only paths where every edge is observed or
+> configured and reports the rest as `possible`, migration blockers named at the HSM and
+> firmware that sit on the path, and **typed drift** (`TECHNOLOGY_VERSION_CHANGED`,
+> `openssl: 3.0.13 → 3.0.11`). `POST /cbom/techbom` exposes it, typed, with an optional
+> blast-radius query.
+
 > [Passive observation, with the privacy contract enforced in code](163-passive-observation-privacy.md)
 > (**5 pass · 0 partial · 0 fail**, 25 probes) closes NBOM review item 15, which the
 > review gates on a privacy contract — so the contract here is **checked before a record

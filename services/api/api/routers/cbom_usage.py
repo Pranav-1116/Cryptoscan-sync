@@ -337,6 +337,31 @@ class CbomTlsStateResponse(BaseModel):
     statement: str
 
 
+class CbomTechbomRequest(BaseModel):
+    estate: dict = Field(default_factory=dict, description=(
+        "A cryptoscan.techbom-estate/1 document: `assets`, `claims`, `expected` "
+        "denominators and stated `gaps`"))
+    query: str | None = Field(default=None, description=(
+        "Optional blast radius: an asset name, an id, or an algorithm"))
+
+
+class CbomTechbomResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    projection: bool
+    source_of_truth: str
+    statement: str
+    counts: dict
+    claim_counts: dict
+    refusals: list[dict]
+    unproven_edges: list[str]
+    completeness: dict
+    assets: list[dict]
+    claims: list[dict]
+    summary: dict
+    blast_radius: dict | None = None
+    not_proven: list[str]
+
+
 class CbomPassiveRequest(BaseModel):
     contract: dict = Field(default_factory=dict, description=(
         "The privacy contract that governs this collection: contract_id, owner, "
@@ -734,6 +759,35 @@ def cbom_tls_state(body: CbomTlsStateRequest,
             checks["disabled"] = ts.disabled(result, endpoint=body.endpoint,
                                              version=body.version)
     return {**result, "checks": checks, "summary": ts.summary(result)}
+
+
+@router.post("/techbom", response_model=CbomTechbomResponse)
+def cbom_techbom(body: CbomTechbomRequest,
+                 user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """TechBOM as a projection: assets, evidenced relationships, coverage and reach.
+
+    This is not five BOMs concatenated. Every edge is a **claim** with a basis, and the
+    basis caps its confidence: a vendor datasheet is `VENDOR_DECLARED` however the caller
+    labels it, an import is `IMPORTED`, an agent poll is `CONFIGURED`, a capture is
+    `OBSERVED`. A claim with no basis, or with a basis of proximity, is **refused by
+    name** — "Payments API and HSM-01 appeared in one scan" is not `USES_HSM`. The layers
+    cannot stand in for each other either, which is a type rule rather than prose: an
+    endpoint `PRESENTS` a certificate, and an algorithm is reached through the key that
+    carries it, so `APPLICATION → ALGORITHM` does not exist. The document is a projection
+    of the canonical estate and says so; a TechBOM is never accepted as its own input.
+    """
+    from cbom import techbom as tb
+
+    try:
+        bom = tb.build(body.estate)
+        radius = tb.blast_radius(bom, query=body.query) if body.query else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        **bom,
+        "summary": tb.summary(bom),
+        "blast_radius": radius,
+    }
 
 
 @router.post("/passive", response_model=CbomPassiveResponse)
