@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.cbom-hbom-guide/1",
-  "generated_at": "2026-11-03T02:15:11.764894+00:00",
+  "generated_at": "2026-11-03T02:28:12.850126+00:00",
   "counts": {
     "PASS": 16,
     "PARTIAL": 0,
@@ -1155,7 +1155,7 @@
         {
           "probe": "a-link-is-a-reference-pinned-by-digest-not-a-copy",
           "ok": true,
-          "observed": "bom-link:hbom:2c0d9361b2a69200"
+          "observed": "bom-link:hbom:5beb0d852d073219"
         }
       ],
       "verdict": "PASS",

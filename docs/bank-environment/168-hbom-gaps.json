@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.cbom-hbom-gaps-guide/1",
-  "generated_at": "2026-11-03T02:15:12.023398+00:00",
+  "generated_at": "2026-11-03T02:28:13.103668+00:00",
   "counts": {
     "PASS": 9,
     "PARTIAL": 0,
@@ -122,6 +122,7 @@
   "classes": {
     "OBSERVED": 5,
     "NETWORK_OBSERVED": 5,
+    "RUNTIME_OBSERVED": 5,
     "CONFIGURED": 4,
     "CAPABILITY": 3,
     "IMPORTED": 3,
@@ -251,7 +252,7 @@
         {
           "probe": "the-eight-classes-the-review-names-are-all-present",
           "ok": true,
-          "observed": "8 classes, including the two this round added"
+          "observed": "9 classes, including the two this round added"
         }
       ],
       "verdict": "PASS",

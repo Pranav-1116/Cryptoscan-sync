@@ -584,6 +584,36 @@
 > certificates** are nodes too (`HOLDS_CERTIFICATE`), bounded so a key reference cannot be
 > passed off as one.
 
+> [The network is a graph](169-nbom.md)
+> (**18 pass · 0 partial · 0 fail**, 81 probes) is the answer to the NBOM review
+> (`nbom-review-2026-11-03.md`), which is twenty-two points and, underneath them, four
+> rules. **An address is not an identity**: `10.10.10.20:443` is a location, so the endpoint
+> is a node (`TECH-EP-001` to read, `NETWORK_ENDPOINT-9281` to hold) and the thing behind it
+> is reached by a claim that must name its basis — DNS, SNI, a Kubernetes ingress rule, an
+> API gateway route, a load balancer backend, a service registry or a runtime observation.
+> A matching name is refused as a routing basis (`ROUTING_BASIS_NOT_EVIDENCE`). **Supported
+> is not negotiated and negotiated is not used**: `SUPPORTS` says what a listener accepts,
+> `NEGOTIATES` carries an evidence floor and a configuration file cannot claim a session
+> (`NEGOTIATION_NEEDS_A_HANDSHAKE`), and `USES_CRYPTO` says what a process did — a class of
+> its own, `RUNTIME_OBSERVED`, because a TLS handshake on 443 does not prove the
+> application's internal cipher (this estate negotiates AES-256-GCM on the wire and
+> encrypts with AES-128-CBC inside). **A cipher suite is four dependencies**, so
+> `TLS_AES_256_GCM_SHA384` walks to its bulk cipher, its hash, its key exchange and its
+> authentication, and AES-128-GCM — supported, never negotiated — is reported as
+> `supported_only` and never as used. **Termination is a topology**: `TERMINATES_TLS`,
+> `RE_ENCRYPTS` and `PASSTHROUGH` are three edges, and a passthrough that presents a
+> certificate is refused (`PASSTHROUGH_WITH_CERTIFICATE`) rather than drawn. The rest
+> follows: the certificate is a five-edge chain to its curve, its signature algorithm and
+> its root; the sidecar, not the application, holds the mTLS certificate (`PROXY_FOR`);
+> SSH is four negotiated algorithms and IPsec is three plus a zone, with the gateway's
+> proposals kept apart from what the tunnel uses; a key is a reference with a purpose,
+> algorithm and size, and key material is refused by name and by PEM marker
+> (`KEY_MATERIAL_REFUSED`); database TLS and TDE are two dependencies, never one encrypted
+> flag. Every edge carries source, target, relationship, basis, confidence, evidence id,
+> protocol, port and both timestamps — 74 edges, none of them missing that record — and
+> coverage is `PARTIAL` at 420 observed + 50 unavailable + 30 unknown of 500 expected,
+> propagated to the CBOM's network evidence and to the twin rather than rounded to healthy.
+
 > [Hardware is a view of the estate](167-hbom.md)
 > (**16 pass · 0 partial · 0 fail**, 72 probes) answers the HBOM review
 > (`hbom-review-2026-11-03.md`) by putting hardware into the **same graph** as the rest of

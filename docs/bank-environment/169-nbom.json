@@ -1,0 +1,1110 @@
+{
+  "schema": "cryptoscan.cbom-nbom-guide/1",
+  "generated_at": "2026-11-03T02:27:55.655948+00:00",
+  "counts": {
+    "PASS": 18,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 81,
+  "statement": "10 network endpoint(s), 74 evidenced edge(s), 3 TLS boundary mode(s) in use; 0 claim(s) refused",
+  "counts_by_kind": {
+    "ALGORITHM": 2,
+    "API_GATEWAY": 1,
+    "APPLICATION": 2,
+    "BUSINESS_SYSTEM": 1,
+    "CERTIFICATE": 3,
+    "CERTIFICATE_AUTHORITY": 2,
+    "CIPHER_SUITE": 3,
+    "CRYPTO_ASSET": 12,
+    "CRYPTO_CAPABILITY": 3,
+    "CRYPTO_LIBRARY": 1,
+    "DATABASE": 1,
+    "FIRMWARE": 5,
+    "HOST": 1,
+    "HSM": 1,
+    "IPSEC_TUNNEL": 1,
+    "KEY_REFERENCE": 1,
+    "LOAD_BALANCER": 1,
+    "NETWORK_ENDPOINT": 10,
+    "NETWORK_SEGMENT": 1,
+    "PHYSICAL_SERVER": 1,
+    "PROCESS": 2,
+    "PUBLIC_KEY": 1,
+    "SERVICE": 2,
+    "SERVICE_MESH": 1,
+    "SSH_SERVICE": 1,
+    "VENDOR": 5,
+    "VENDOR_PRODUCT": 5,
+    "VPN_GATEWAY": 2,
+    "WAF": 1
+  },
+  "graph": {
+    "nodes": 70,
+    "edges": 74,
+    "edges_missing_a_record": []
+  },
+  "tls_modes": {
+    "PASSTHROUGH": 1,
+    "RE_ENCRYPTS": 1,
+    "TERMINATES_TLS": 1
+  },
+  "negotiated": {
+    "query": "payments.bank.example:443",
+    "negotiated": [
+      {
+        "key": "CIPHER_SUITE:tls_aes_256_gcm_sha384:production",
+        "id": "TECH-SUITE-002",
+        "kind": "CIPHER_SUITE",
+        "name": "TLS_AES_256_GCM_SHA384",
+        "stable_id": "CIPHER_SUITE-2589",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "tls_version": "TLS1.3",
+          "kex": "X25519",
+          "auth": "ECDSA-P256",
+          "bulk": "AES-256-GCM",
+          "mac": "SHA-384"
+        }
+      }
+    ],
+    "supported_only": [
+      {
+        "key": "CIPHER_SUITE:tls_chacha20_poly1305_sha256:production",
+        "id": "TECH-SUITE-003",
+        "kind": "CIPHER_SUITE",
+        "name": "TLS_CHACHA20_POLY1305_SHA256",
+        "stable_id": "CIPHER_SUITE-2857",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "tls_version": "TLS1.3",
+          "kex": "X25519",
+          "auth": "ECDSA-P256",
+          "bulk": "ChaCha20-Poly1305",
+          "mac": "SHA-256"
+        }
+      },
+      {
+        "key": "CIPHER_SUITE:tls_aes_128_gcm_sha256:production",
+        "id": "TECH-SUITE-001",
+        "kind": "CIPHER_SUITE",
+        "name": "TLS_AES_128_GCM_SHA256",
+        "stable_id": "CIPHER_SUITE-8452",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "tls_version": "TLS1.3",
+          "kex": "X25519",
+          "auth": "ECDSA-P256",
+          "bulk": "AES-128-GCM",
+          "mac": "SHA-256"
+        }
+      }
+    ],
+    "crypto": [
+      {
+        "key": "CRYPTO_ASSET:ecdsa-p256:production",
+        "id": "TECH-CRY-006",
+        "kind": "CRYPTO_ASSET",
+        "name": "ECDSA-P256",
+        "stable_id": "CRYPTO_ASSET-2460",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "ECDSA",
+          "curve": "P-256",
+          "evidence_type": "NETWORK_OBSERVED"
+        }
+      },
+      {
+        "key": "CRYPTO_ASSET:x25519:production",
+        "id": "TECH-CRY-012",
+        "kind": "CRYPTO_ASSET",
+        "name": "X25519",
+        "stable_id": "CRYPTO_ASSET-1532",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "ECDH",
+          "curve": "X25519",
+          "evidence_type": "NETWORK_OBSERVED"
+        }
+      },
+      {
+        "key": "CRYPTO_ASSET:sha-384:production",
+        "id": "TECH-CRY-010",
+        "kind": "CRYPTO_ASSET",
+        "name": "SHA-384",
+        "stable_id": "CRYPTO_ASSET-7956",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "SHA",
+          "key_size": 384,
+          "evidence_type": "NETWORK_OBSERVED"
+        }
+      },
+      {
+        "key": "CRYPTO_ASSET:aes-256-gcm:production",
+        "id": "TECH-CRY-002",
+        "kind": "CRYPTO_ASSET",
+        "name": "AES-256-GCM",
+        "stable_id": "CRYPTO_ASSET-1278",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "AES",
+          "key_size": 256,
+          "mode": "GCM",
+          "evidence_type": "NETWORK_OBSERVED"
+        }
+      }
+    ],
+    "runtime_crypto": [
+      {
+        "key": "CRYPTO_ASSET:aes-128-cbc:production",
+        "id": "TECH-CRY-001",
+        "kind": "CRYPTO_ASSET",
+        "name": "AES-128-CBC",
+        "stable_id": "CRYPTO_ASSET-2364",
+        "environment": "PRODUCTION",
+        "version": null,
+        "attributes": {
+          "algorithm": "AES",
+          "key_size": 128,
+          "mode": "CBC",
+          "evidence_type": "RUNTIME_OBSERVED"
+        }
+      }
+    ],
+    "statement": "1 suite(s) negotiated, 2 supported but never negotiated, 4 crypto asset(s) behind the session, 1 used inside a process",
+    "not_proven": [
+      "that the negotiated suite is what the application uses internally: the handshake belongs to the listener, and the process's own crypto is only known from RUNTIME_OBSERVED evidence"
+    ]
+  },
+  "chain": {
+    "query": "NETWORK_ENDPOINT:payments.bank.example:443:production",
+    "levels": {
+      "endpoint": [],
+      "service": [
+        {
+          "key": "SERVICE:payments-api:production",
+          "id": "TECH-SVC-002",
+          "kind": "SERVICE",
+          "name": "payments-api",
+          "stable_id": "SERVICE-7739",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "port": 8080,
+            "protocol": "TCP"
+          }
+        }
+      ],
+      "application": [
+        {
+          "key": "APPLICATION:payments api:production",
+          "id": "TECH-APP-002",
+          "kind": "APPLICATION",
+          "name": "Payments API",
+          "stable_id": "APPLICATION-7633",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {}
+        }
+      ],
+      "system": [
+        {
+          "key": "BUSINESS_SYSTEM:payments system:production",
+          "id": "TECH-SYS-001",
+          "kind": "BUSINESS_SYSTEM",
+          "name": "Payments System",
+          "stable_id": "BUSINESS_SYSTEM-9284",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {}
+        }
+      ],
+      "device": [
+        {
+          "key": "API_GATEWAY:api-gw-01:production",
+          "id": "TECH-GW-001",
+          "kind": "API_GATEWAY",
+          "name": "API-GW-01",
+          "stable_id": "API_GATEWAY-0478",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "vendor": "Kong",
+            "product": "Kong Gateway",
+            "model": "3.6",
+            "firmware_version": "3.6.1"
+          }
+        },
+        {
+          "key": "SERVICE_MESH:mesh-01:production",
+          "id": "TECH-MESH-001",
+          "kind": "SERVICE_MESH",
+          "name": "MESH-01",
+          "stable_id": "SERVICE_MESH-1601",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "vendor": "Istio",
+            "product": "Istio",
+            "model": "1.20",
+            "firmware_version": "1.20.3"
+          }
+        },
+        {
+          "key": "WAF:waf-01:production",
+          "id": "TECH-WAF-001",
+          "kind": "WAF",
+          "name": "WAF-01",
+          "stable_id": "WAF-9740",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "vendor": "Palo Alto",
+            "product": "PA-VM",
+            "model": "PA-VM-300",
+            "firmware_version": "11.1.3"
+          }
+        }
+      ],
+      "database": [
+        {
+          "key": "DATABASE:db-01:production",
+          "id": "TECH-DB-001",
+          "kind": "DATABASE",
+          "name": "DB-01",
+          "stable_id": "DATABASE-5924",
+          "environment": "PRODUCTION",
+          "version": "16.2",
+          "attributes": {
+            "engine": "PostgreSQL"
+          }
+        }
+      ],
+      "keys": [
+        {
+          "key": "HSM:hsm-001:production",
+          "id": "TECH-HSM-001",
+          "kind": "HSM",
+          "name": "HSM-001",
+          "stable_id": "HSM-8551",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "manufacturer": "SyntheticHSM",
+            "model": "PaymentHSM-9000"
+          }
+        },
+        {
+          "key": "KEY_REFERENCE:key-ref-8271:production",
+          "id": "TECH-KREF-001",
+          "kind": "KEY_REFERENCE",
+          "name": "KEY-REF-8271",
+          "stable_id": "KEY_REFERENCE-9655",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "key_ref": "arn:key/8271",
+            "purpose": "SIGN",
+            "algorithm": "RSA",
+            "key_size": 2048,
+            "holder": "HSM-001"
+          }
+        }
+      ],
+      "crypto": [
+        {
+          "key": "CRYPTO_ASSET:aes-256-gcm:production",
+          "id": "TECH-CRY-002",
+          "kind": "CRYPTO_ASSET",
+          "name": "AES-256-GCM",
+          "stable_id": "CRYPTO_ASSET-1278",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "algorithm": "AES",
+            "key_size": 256,
+            "mode": "GCM",
+            "evidence_type": "NETWORK_OBSERVED"
+          }
+        },
+        {
+          "key": "CRYPTO_ASSET:ecdsa-p256:production",
+          "id": "TECH-CRY-006",
+          "kind": "CRYPTO_ASSET",
+          "name": "ECDSA-P256",
+          "stable_id": "CRYPTO_ASSET-2460",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "algorithm": "ECDSA",
+            "curve": "P-256",
+            "evidence_type": "NETWORK_OBSERVED"
+          }
+        },
+        {
+          "key": "CRYPTO_ASSET:sha-384:production",
+          "id": "TECH-CRY-010",
+          "kind": "CRYPTO_ASSET",
+          "name": "SHA-384",
+          "stable_id": "CRYPTO_ASSET-7956",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "algorithm": "SHA",
+            "key_size": 384,
+            "evidence_type": "NETWORK_OBSERVED"
+          }
+        },
+        {
+          "key": "CRYPTO_ASSET:x25519:production",
+          "id": "TECH-CRY-012",
+          "kind": "CRYPTO_ASSET",
+          "name": "X25519",
+          "stable_id": "CRYPTO_ASSET-1532",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "algorithm": "ECDH",
+            "curve": "X25519",
+            "evidence_type": "NETWORK_OBSERVED"
+          }
+        },
+        {
+          "key": "CIPHER_SUITE:tls_aes_128_gcm_sha256:production",
+          "id": "TECH-SUITE-001",
+          "kind": "CIPHER_SUITE",
+          "name": "TLS_AES_128_GCM_SHA256",
+          "stable_id": "CIPHER_SUITE-8452",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "tls_version": "TLS1.3",
+            "kex": "X25519",
+            "auth": "ECDSA-P256",
+            "bulk": "AES-128-GCM",
+            "mac": "SHA-256"
+          }
+        },
+        {
+          "key": "CIPHER_SUITE:tls_aes_256_gcm_sha384:production",
+          "id": "TECH-SUITE-002",
+          "kind": "CIPHER_SUITE",
+          "name": "TLS_AES_256_GCM_SHA384",
+          "stable_id": "CIPHER_SUITE-2589",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "tls_version": "TLS1.3",
+            "kex": "X25519",
+            "auth": "ECDSA-P256",
+            "bulk": "AES-256-GCM",
+            "mac": "SHA-384"
+          }
+        },
+        {
+          "key": "CIPHER_SUITE:tls_chacha20_poly1305_sha256:production",
+          "id": "TECH-SUITE-003",
+          "kind": "CIPHER_SUITE",
+          "name": "TLS_CHACHA20_POLY1305_SHA256",
+          "stable_id": "CIPHER_SUITE-2857",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "tls_version": "TLS1.3",
+            "kex": "X25519",
+            "auth": "ECDSA-P256",
+            "bulk": "ChaCha20-Poly1305",
+            "mac": "SHA-256"
+          }
+        }
+      ],
+      "vendor": [
+        {
+          "key": "VENDOR_PRODUCT:istio istio:production",
+          "id": "TECH-PROD-003",
+          "kind": "VENDOR_PRODUCT",
+          "name": "Istio Istio",
+          "stable_id": "VENDOR_PRODUCT-2795",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "vendor": "Istio",
+            "product": "Istio",
+            "model": "1.20"
+          }
+        },
+        {
+          "key": "VENDOR_PRODUCT:kong kong gateway:production",
+          "id": "TECH-PROD-004",
+          "kind": "VENDOR_PRODUCT",
+          "name": "Kong Kong Gateway",
+          "stable_id": "VENDOR_PRODUCT-5033",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "vendor": "Kong",
+            "product": "Kong Gateway",
+            "model": "3.6"
+          }
+        },
+        {
+          "key": "VENDOR_PRODUCT:palo alto pa-vm:production",
+          "id": "TECH-PROD-005",
+          "kind": "VENDOR_PRODUCT",
+          "name": "Palo Alto PA-VM",
+          "stable_id": "VENDOR_PRODUCT-8527",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {
+            "vendor": "Palo Alto",
+            "product": "PA-VM",
+            "model": "PA-VM-300"
+          }
+        },
+        {
+          "key": "VENDOR:istio:production",
+          "id": "TECH-VENDOR-003",
+          "kind": "VENDOR",
+          "name": "Istio",
+          "stable_id": "VENDOR-7429",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {}
+        },
+        {
+          "key": "VENDOR:kong:production",
+          "id": "TECH-VENDOR-004",
+          "kind": "VENDOR",
+          "name": "Kong",
+          "stable_id": "VENDOR-7861",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {}
+        },
+        {
+          "key": "VENDOR:palo alto:production",
+          "id": "TECH-VENDOR-005",
+          "kind": "VENDOR",
+          "name": "Palo Alto",
+          "stable_id": "VENDOR-5585",
+          "environment": "PRODUCTION",
+          "version": null,
+          "attributes": {}
+        }
+      ]
+    },
+    "statement": "1 service \u2192 1 application \u2192 1 system \u2192 3 device \u2192 1 database \u2192 2 keys \u2192 7 crypto \u2192 6 vendor",
+    "not_proven": [
+      "that an endpoint's backend is the application the name suggests: the edge cites a DNS record, an SNI value, an ingress rule, a gateway route or a runtime observation, and each of those is printed beside it",
+      "that a supported algorithm is in use: supported, negotiated and used are three relations with three evidence classes, and only NEGOTIATES and USES_CRYPTO count as what a session or a process did"
+    ]
+  },
+  "coverage": {
+    "expected": 500,
+    "observed": 420,
+    "unavailable": 50,
+    "unknown": 30,
+    "permission_denied": 0,
+    "forbidden": 0,
+    "unaccounted": 0,
+    "verdict": "PARTIAL",
+    "propagates": {
+      "nbom": "PARTIAL",
+      "cbom_network_evidence": "PARTIAL",
+      "digital_twin_network": "PARTIAL"
+    },
+    "statement": "expected 500 endpoint(s): observed 420, unavailable 50, unknown 30, permission denied 0 \u2014 coverage PARTIAL",
+    "rule": "an unavailable endpoint is not an absent endpoint: it is counted in the denominator and reported as unseen, and every view that reads this projection inherits PARTIAL until it is accounted for"
+  },
+  "lifecycle": {
+    "ACTIVE": 14,
+    "FIRST_SEEN": 1,
+    "UNKNOWN": 59
+  },
+  "refusals": [],
+  "rows": [
+    {
+      "id": "endpoint-identity",
+      "question": "is an address an identity, or a location",
+      "phase": "1\u20132",
+      "probes": [
+        {
+          "probe": "an-endpoint-is-host-and-port-and-an-address-alone-is-refused",
+          "ok": true,
+          "observed": "10.10.10.20 with no port \u2192 ENDPOINT_WITHOUT_HOST_OR_PORT"
+        },
+        {
+          "probe": "one-address-hosts-two-virtual-hosts-as-two-endpoints",
+          "ok": true,
+          "observed": "10.10.10.20 carries 3 listener(s), two of them virtual hosts with their own SNI and their own service"
+        },
+        {
+          "probe": "each-endpoint-reaches-its-own-service-not-the-first-one",
+          "ok": true,
+          "observed": "payments.bank.example:443 \u2192 payments-api, auth.bank.example:443 \u2192 auth-api"
+        },
+        {
+          "probe": "the-chain-reads-endpoint-service-application-system",
+          "ok": true,
+          "observed": "1 service \u2192 1 application \u2192 1 system \u2192 3 device \u2192 1 database \u2192 2 keys \u2192 7 crypto \u2192 6 vendor"
+        },
+        {
+          "probe": "a-stable-id-survives-renumbering-a-readable-one-does-not",
+          "ok": true,
+          "observed": "TECH-EP-007 reads; NETWORK_ENDPOINT-5437 holds"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "routing-evidence",
+      "question": "what ties an endpoint to the application behind it",
+      "phase": "2, 16",
+      "probes": [
+        {
+          "probe": "a-name-match-is-refused-as-a-routing-basis",
+          "ok": true,
+          "observed": "name-match \u2192 ROUTING_BASIS_NOT_EVIDENCE"
+        },
+        {
+          "probe": "every-basis-the-review-names-is-a-basis-the-model-knows",
+          "ok": true,
+          "observed": "8 of 8 routing bases are classified"
+        },
+        {
+          "probe": "the-routing-edge-carries-its-record",
+          "ok": true,
+          "observed": "ROUTES_TO payments.bank.example:443 \u2192 payments-api (sni-header, NETWORK_OBSERVED, port 443)"
+        },
+        {
+          "probe": "no-edge-in-the-projection-is-missing-its-record",
+          "ok": true,
+          "observed": "74 edge(s), 0 incomplete"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "tls-boundaries",
+      "question": "is TLS termination a topology or a flag",
+      "phase": "3, 12",
+      "probes": [
+        {
+          "probe": "the-three-modes-are-three-relations",
+          "ok": true,
+          "observed": "TERMINATES_TLS, RE_ENCRYPTS, PASSTHROUGH"
+        },
+        {
+          "probe": "each-mode-in-the-estate-is-counted-separately",
+          "ok": true,
+          "observed": "tls modes: {'PASSTHROUGH': 1, 'RE_ENCRYPTS': 1, 'TERMINATES_TLS': 1}"
+        },
+        {
+          "probe": "termination-with-a-tls-upstream-is-refused-as-a-re-encryption",
+          "ok": true,
+          "observed": "TERMINATE with a TLS backend \u2192 TERMINATION_WITH_TLS_UPSTREAM"
+        },
+        {
+          "probe": "re-encryption-without-upstream-tls-is-refused",
+          "ok": true,
+          "observed": "RE_ENCRYPT onto a plaintext backend \u2192 RE_ENCRYPT_WITHOUT_UPSTREAM_TLS"
+        },
+        {
+          "probe": "a-passthrough-may-not-present-a-certificate",
+          "ok": true,
+          "observed": "PASSTHROUGH with a certificate \u2192 PASSTHROUGH_WITH_CERTIFICATE"
+        },
+        {
+          "probe": "a-waf-that-terminates-tls-is-a-hop-and-a-protection-edge",
+          "ok": true,
+          "observed": "WAF-01 PROTECTS Payments API, waf-01:443 TERMINATES_TLS waf-01:8080"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "certificate-chain",
+      "question": "does a certificate dependency go deeper than its name",
+      "phase": "4",
+      "probes": [
+        {
+          "probe": "the-certificate-chain-is-five-edges-not-one-row",
+          "ok": true,
+          "observed": "CONTAINS_KEY, USES_ALGORITHM, SIGNED_WITH, ISSUED_BY, SIGNED_BY"
+        },
+        {
+          "probe": "the-curve-and-the-key-size-live-on-the-algorithm-node",
+          "ok": true,
+          "observed": "ECDSA P-256: curve P-256, 256 bits"
+        },
+        {
+          "probe": "the-signature-algorithm-is-its-own-dependency",
+          "ok": true,
+          "observed": "CERT-001 SIGNED_WITH ECDSA-SHA256"
+        },
+        {
+          "probe": "the-chain-reaches-the-root",
+          "ok": true,
+          "observed": "Intermediate CA SIGNED_BY Root CA"
+        },
+        {
+          "probe": "the-endpoint-presents-the-certificate-it-was-observed-with",
+          "ok": true,
+          "observed": "waf-01:443 PRESENTS CERT-001"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "negotiated-crypto",
+      "question": "which cryptography did the session actually use",
+      "phase": "5\u20136",
+      "probes": [
+        {
+          "probe": "a-cipher-suite-is-decomposed-into-four-crypto-dependencies",
+          "ok": true,
+          "observed": "TLS_AES_256_GCM_SHA384 \u2192 bulk, mac, kex, auth"
+        },
+        {
+          "probe": "one-suite-was-negotiated-out-of-three-supported",
+          "ok": true,
+          "observed": "negotiated ['TLS_AES_256_GCM_SHA384'], supported only 2"
+        },
+        {
+          "probe": "AES-128-is-supported-and-never-reported-as-used",
+          "ok": true,
+          "observed": "AES-128-GCM is supported-only; AES-128-CBC appears only from the process"
+        },
+        {
+          "probe": "a-capability-list-cannot-claim-what-was-negotiated",
+          "ok": true,
+          "observed": "capability-list \u2192 CLAIM_WEAKER_THAN_RELATION_REQUIRES"
+        },
+        {
+          "probe": "a-configuration-file-cannot-claim-a-session",
+          "ok": true,
+          "observed": "config-parse \u2192 NEGOTIATION_NEEDS_A_HANDSHAKE"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "runtime",
+      "question": "does a network observation prove the application's crypto",
+      "phase": "7",
+      "probes": [
+        {
+          "probe": "the-process-is-a-node-between-the-application-and-its-library",
+          "ok": true,
+          "observed": "payments-api[1821] LOADS OpenSSL 3.0.13"
+        },
+        {
+          "probe": "a-runtime-observation-is-its-own-class",
+          "ok": true,
+          "observed": "3 edge(s) RUNTIME_OBSERVED, 6 edge(s) NETWORK_OBSERVED"
+        },
+        {
+          "probe": "the-network-cipher-and-the-internal-cipher-are-not-the-same-fact",
+          "ok": true,
+          "observed": "443/TLS is AES-256-GCM; the process encrypts with AES-128-CBC"
+        },
+        {
+          "probe": "a-runtime-claim-cannot-be-made-from-a-configuration-file",
+          "ok": true,
+          "observed": "config-parse on a RUNTIME_OBSERVED asset \u2192 EVIDENCE_CLASS_MISMATCH"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "keys",
+      "question": "does the HSM dependency carry keys or metadata",
+      "phase": "8",
+      "probes": [
+        {
+          "probe": "an-application-reaches-its-hsm-through-an-operation",
+          "ok": true,
+          "observed": "Payments API USES_HSM HSM-001 (operation SIGN)"
+        },
+        {
+          "probe": "the-key-is-a-reference-with-metadata-and-nothing-else",
+          "ok": true,
+          "observed": "KEY-REF-8271: ref, purpose SIGN, RSA-2048, ACTIVE"
+        },
+        {
+          "probe": "key-material-is-refused-by-name",
+          "ok": true,
+          "observed": "private_key \u2192 KEY_MATERIAL_REFUSED"
+        },
+        {
+          "probe": "a-pem-in-a-fact-is-refused-too",
+          "ok": true,
+          "observed": "a PEM body \u2192 KEY_MATERIAL_REFUSED"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "database",
+      "question": "is DB TLS the same dependency as DB TDE",
+      "phase": "9",
+      "probes": [
+        {
+          "probe": "the-application-reaches-the-database-and-its-port",
+          "ok": true,
+          "observed": "Payments API STORES_IN DB-01, DB-01 LISTENS_ON db-01:5432"
+        },
+        {
+          "probe": "the-database-session-negotiates-a-suite",
+          "ok": true,
+          "observed": "db-01:5432 NEGOTIATES TLS_AES_256_GCM_SHA384"
+        },
+        {
+          "probe": "tls-in-transit-and-tde-at-rest-are-two-dependencies",
+          "ok": true,
+          "observed": "in transit TLS1.3 / AES-256-GCM; at rest AES-256-XTS"
+        },
+        {
+          "probe": "the-two-are-not-merged-into-one-encrypted-flag",
+          "ok": true,
+          "observed": "TLS_AES_256_GCM_SHA384 \u2260 AES-256-XTS"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "mesh",
+      "question": "does the sidecar do the TLS, or the application",
+      "phase": "10",
+      "probes": [
+        {
+          "probe": "the-sidecar-proxies-the-application",
+          "ok": true,
+          "observed": "envoy-sidecar PROXY_FOR Payments API"
+        },
+        {
+          "probe": "the-mesh-authenticates-what-it-proxies",
+          "ok": true,
+          "observed": "MESH-01 AUTHENTICATES Payments API (mTLS, bank.internal)"
+        },
+        {
+          "probe": "the-mtls-certificate-belongs-to-the-proxy-not-the-application",
+          "ok": true,
+          "observed": "envoy-sidecar USES_CERTIFICATE CERT-MESH-001; the application holds none"
+        },
+        {
+          "probe": "the-trust-domain-travels-with-the-edge",
+          "ok": true,
+          "observed": "trust_domain=bank.internal on PROXY_FOR"
+        },
+        {
+          "probe": "who-terminated-the-handshake-is-a-question-with-an-answer",
+          "ok": true,
+          "observed": "1 certificate holder(s) on 1 endpoint(s); 1 application(s) are proxied"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "gateway-waf",
+      "question": "do the boxes in the path say how they are in the path",
+      "phase": "11\u201312",
+      "probes": [
+        {
+          "probe": "the-gateway-routes-to-the-application-with-its-own-config-as-evidence",
+          "ok": true,
+          "observed": "API-GW-01 ROUTES_TO Payments API via api-gateway-config"
+        },
+        {
+          "probe": "the-waf-protects-what-it-fronts",
+          "ok": true,
+          "observed": "WAF-01 PROTECTS Payments API"
+        },
+        {
+          "probe": "the-chain-from-the-internet-reaches-the-application-in-order",
+          "ok": true,
+          "observed": "waf terminate \u2192 lb re-encrypt \u2192 mesh passthrough"
+        },
+        {
+          "probe": "every-listener-names-the-device-that-owns-it",
+          "ok": true,
+          "observed": "WAF-01, LB-01 and API-GW-01 each LISTENS_ON their own port"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "ssh",
+      "question": "is SSH a port or a set of negotiated algorithms",
+      "phase": "13",
+      "probes": [
+        {
+          "probe": "ssh-is-four-negotiated-parameters-not-a-version",
+          "ok": true,
+          "observed": "X25519, Ed25519, ChaCha20-Poly1305, HMAC-SHA2-256"
+        },
+        {
+          "probe": "the-ssh-service-listens-on-a-port-and-runs-on-a-host",
+          "ok": true,
+          "observed": "sshd@srv-payments-01 LISTENS_ON :22 and RUNS_ON srv-payments-01"
+        },
+        {
+          "probe": "the-ssh-parameters-are-network observations-not-capability-claims",
+          "ok": true,
+          "observed": "banner-read parameters are NETWORK_OBSERVED"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "vpn",
+      "question": "does the IPsec dependency reach the zone and the algorithms",
+      "phase": "14",
+      "probes": [
+        {
+          "probe": "the-tunnel-negotiates-encryption-integrity-and-a-dh-group",
+          "ok": true,
+          "observed": "negotiated ['AES-256', 'CERT-VPN-001', 'DH-Group-19', 'SHA-256']"
+        },
+        {
+          "probe": "what-the-gateway-would-accept-is-kept-apart-from-what-it-uses",
+          "ok": true,
+          "observed": "supported ['AES-128 proposal', 'SHA-1 proposal'], negotiated ['AES-256', 'CERT-VPN-001', 'DH-Group-19', 'SHA-256']"
+        },
+        {
+          "probe": "the-tunnel-ends-in-a-network-zone",
+          "ok": true,
+          "observed": "branch-to-payments TUNNELS_TO Payment Network"
+        },
+        {
+          "probe": "the-tunnel-reads-its-ike-version-from-the-tunnel-not-from-prose",
+          "ok": true,
+          "observed": "IKEv2"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "topology",
+      "question": "is the network a list of endpoints or a graph",
+      "phase": "15\u201316",
+      "probes": [
+        {
+          "probe": "the-projection-is-a-graph-not-a-list",
+          "ok": true,
+          "observed": "70 node(s), 74 edge(s)"
+        },
+        {
+          "probe": "every-network-edge-carries-a-port-and-a-protocol",
+          "ok": true,
+          "observed": "25 of 25 network edge(s) name a port"
+        },
+        {
+          "probe": "the-adjacency-can-be-walked-from-the-internet-inward",
+          "ok": true,
+          "observed": "Payments API \u2192 DB-01 and Payments API \u2192 HSM-001"
+        },
+        {
+          "probe": "the-edge-record-carries-the-fields-the-review-names",
+          "ok": true,
+          "observed": "9 field(s) on each of 74 edge(s)"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "lifecycle",
+      "question": "does a relationship have a life",
+      "phase": "17",
+      "probes": [
+        {
+          "probe": "an-edge-seen-once-and-an-edge-seen-twice-are-different-states",
+          "ok": true,
+          "observed": "lifecycle: 14 ACTIVE, 1 FIRST_SEEN, 59 UNKNOWN"
+        },
+        {
+          "probe": "an-edge-with-no-timestamps-is-unknown-not-active",
+          "ok": true,
+          "observed": "59 edge(s) UNKNOWN"
+        },
+        {
+          "probe": "an-edge-that-moved-is-superseded-not-removed-and-added",
+          "ok": true,
+          "observed": "1 network change(s): 1 EDGE_SUPERSEDED"
+        },
+        {
+          "probe": "the-superseded-edge-names-both-targets",
+          "ok": true,
+          "observed": "LB/SNI edge: payments-api \u2192 payments-api-v2"
+        },
+        {
+          "probe": "every-change-carries-its-crypto-impact",
+          "ok": true,
+          "observed": "1 event(s), each with a crypto impact block"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "twin",
+      "question": "is NBOM a projection of the twin or a second database",
+      "phase": "18",
+      "probes": [
+        {
+          "probe": "the-twin-knows-who-connects-to-whom-and-how",
+          "ok": true,
+          "observed": "72 pair(s), 37 relationship/protocol combination(s)"
+        },
+        {
+          "probe": "the-twin-carries-certificates-keys-and-applications",
+          "ok": true,
+          "observed": "4 certificate edge(s), keys ['HSM-001', 'KEY-REF-8271']"
+        },
+        {
+          "probe": "a-projection-cannot-be-its-own-source",
+          "ok": true,
+          "observed": "NBOM as input \u2192 PROJECTION_AS_SOURCE"
+        },
+        {
+          "probe": "a-techbom-cannot-build-an-nbom-either",
+          "ok": true,
+          "observed": "TechBOM as estate \u2192 ValueError"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "vendor-hardware",
+      "question": "does the network join VBOM and HBOM",
+      "phase": "19\u201320",
+      "probes": [
+        {
+          "probe": "a-load-balancer-has-a-vendor-a-product-and-a-firmware",
+          "ok": true,
+          "observed": "LB-01 \u2192 F5 BIG-IP i5800 \u2192 firmware 17.1.1 \u2192 F5"
+        },
+        {
+          "probe": "the-vendor-chain-reaches-the-vendor-node",
+          "ok": true,
+          "observed": "VENDOR F5 in the estate"
+        },
+        {
+          "probe": "a-network-device-sits-on-hardware",
+          "ok": true,
+          "observed": "LB-01 RUNS_ON SRV-PAY-01"
+        },
+        {
+          "probe": "the-endpoint-reaches-the-device-that-owns-it",
+          "ok": true,
+          "observed": "LB-01 LISTENS_ON lb-01:443"
+        },
+        {
+          "probe": "a-device-kind-the-model-does-not-build-is-refused",
+          "ok": true,
+          "observed": "ROUTER \u2192 NOT_A_NETWORK_DEVICE"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "coverage",
+      "question": "does coverage propagate, or does it get rounded to healthy",
+      "phase": "21",
+      "probes": [
+        {
+          "probe": "coverage-is-reported-with-its-denominator",
+          "ok": true,
+          "observed": "expected 500 endpoint(s): observed 420, unavailable 50, unknown 30, permission denied 0 \u2014 coverage PARTIAL"
+        },
+        {
+          "probe": "an-unavailable-endpoint-makes-the-verdict-partial",
+          "ok": true,
+          "observed": "PARTIAL with 50 unavailable and 30 unknown"
+        },
+        {
+          "probe": "partial-propagates-to-every-view-that-reads-the-projection",
+          "ok": true,
+          "observed": "nbom, cbom network evidence and the twin all PARTIAL"
+        },
+        {
+          "probe": "coverage-that-does-not-add-up-is-refused",
+          "ok": true,
+          "observed": "80 + 40 out of 100 \u2192 COVERAGE_DOES_NOT_RECONCILE"
+        },
+        {
+          "probe": "an-unavailable-endpoint-is-not-dropped-from-the-denominator",
+          "ok": true,
+          "observed": "420 observed + 50 unavailable + 30 unknown = 500 expected"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "spine",
+      "question": "does the biggest missing chain exist end to end",
+      "phase": "22",
+      "probes": [
+        {
+          "probe": "the-review-s-whole-vocabulary-exists",
+          "ok": true,
+          "observed": "10 of 10 relations exist"
+        },
+        {
+          "probe": "the-chain-reaches-the-business-system-the-database-and-the-keys",
+          "ok": true,
+          "observed": "1 service \u2192 1 application \u2192 1 system \u2192 3 device \u2192 1 database \u2192 2 keys \u2192 7 crypto \u2192 6 vendor"
+        },
+        {
+          "probe": "the-chain-also-reaches-the-crypto-behind-the-session",
+          "ok": true,
+          "observed": "7 crypto node(s) behind the endpoint"
+        },
+        {
+          "probe": "every-layer-of-the-review-s-stack-is-a-kind-in-one-graph",
+          "ok": true,
+          "observed": "14 layers, one ASSET_TYPES tuple"
+        },
+        {
+          "probe": "no-edge-in-the-graph-was-drawn-without-a-basis",
+          "ok": true,
+          "observed": "74 edge(s), each with a basis"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the fixture is the review's own example estate, not a bank's collector output: the shapes are real, the rows are not",
+    "a routing edge is only as good as its basis: an SNI value ties a name to a listener, and this model does not resolve DNS itself",
+    "supported, negotiated and used are separated as relations, but a suite's negotiation is one observation, and a session that was never captured leaves only the policy behind it",
+    "the sidecar is modelled as a process because that is what presents the certificate; a mesh that terminates outside a sidecar needs its own collector",
+    "coverage is only as honest as the denominator, which comes from a CMDB the platform does not own",
+    "a tunnel's parameters are read from configuration unless a status poll supplied them, and the two are told apart by evidence class"
+  ]
+}

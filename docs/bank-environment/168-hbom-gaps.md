@@ -1,6 +1,6 @@
 # The rest of the HBOM review
 
-`cryptoscan.cbom-hbom-gaps-guide/1` · generated 2026-11-03T02:15:12.023398+00:00 · **9 pass · 0 partial · 0 fail** · 43 probes
+`cryptoscan.cbom-hbom-gaps-guide/1` · generated 2026-11-03T02:28:13.103668+00:00 · **9 pass · 0 partial · 0 fail** · 43 probes
 
 Guide 167 answered the review at the level of relations. Read back against the
 text, nine things were still missing — device metadata, the other direction of
@@ -53,6 +53,7 @@ evidence          EVIDENCE node + EVIDENCED_BY edge, floor IMPORTED
 |---|---|
 | `OBSERVED` | 5 |
 | `NETWORK_OBSERVED` | 5 |
+| `RUNTIME_OBSERVED` | 5 |
 | `CONFIGURED` | 4 |
 | `CAPABILITY` | 3 |
 | `IMPORTED` | 3 |
@@ -101,7 +102,7 @@ evidence          EVIDENCE node + EVIDENCED_BY edge, floor IMPORTED
 - **PASS** `a-capability-list-claim-carries-capability-and-not-more` — SUPPORTS from a capability list → CAPABILITY
 - **PASS** `a-network-observation-is-an-observation` — NETWORK_OBSERVED is proven, because a capture saw it
 - **PASS** `a-capability-can-never-be-promoted-into-the-proven-set` — CAPABILITY is walked and reported, never counted as blast radius
-- **PASS** `the-eight-classes-the-review-names-are-all-present` — 8 classes, including the two this round added
+- **PASS** `the-eight-classes-the-review-names-are-all-present` — 9 classes, including the two this round added
 
 ## `product-lifecycle` — PASS
 

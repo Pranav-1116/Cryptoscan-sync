@@ -1,6 +1,6 @@
 # Hardware is a view of the estate
 
-`cryptoscan.cbom-hbom-guide/1` · generated 2026-11-03T02:15:11.764894+00:00 · **16 pass · 0 partial · 0 fail** · 72 probes
+`cryptoscan.cbom-hbom-guide/1` · generated 2026-11-03T02:28:12.850126+00:00 · **16 pass · 0 partial · 0 fail** · 72 probes
 
 The HBOM review's sixteen points, answered by putting hardware into the graph the
 rest of the estate already lives in. The device is a tree, the HSM has depth, and
@@ -251,7 +251,7 @@ device → firmware      RUNS_FIRMWARE     the release, with its own lifecycle
 
 - **PASS** `one-hardware-asset-walks-into-the-other-four-views` — HSM-001: HBOM 20, CBOM 7, SBOM 4, TBOM 2, NBOM 4, VBOM 2, EVIDENCE 1, VULNERABILITY 1 — one graph, read as separate views
 - **PASS** `the-walk-reaches-the-application-and-the-business-system` — HBOM → CBOM → SBOM → NBOM → VBOM, one graph
-- **PASS** `a-link-is-a-reference-pinned-by-digest-not-a-copy` — bom-link:hbom:2c0d9361b2a69200
+- **PASS** `a-link-is-a-reference-pinned-by-digest-not-a-copy` — bom-link:hbom:5beb0d852d073219
 
 ## `projection` — PASS
 

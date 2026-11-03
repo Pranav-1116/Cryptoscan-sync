@@ -54,6 +54,10 @@ OBSERVED = "OBSERVED"
 #: an observation taken off the wire rather than out of an agent. It is an observation all
 #: the same, and it is kept apart so a packet says what a packet can prove (review hbom 4).
 NETWORK_OBSERVED = "NETWORK_OBSERVED"
+#: something watched a running process rather than a socket. A TLS handshake on the wire
+#: says nothing about the cipher the application used inside its own process, so the two
+#: observations are separate classes (review nbom 7).
+RUNTIME_OBSERVED = "RUNTIME_OBSERVED"
 CONFIGURED = "CONFIGURED"
 IMPORTED = "IMPORTED"
 VENDOR_DECLARED = "VENDOR_DECLARED"
@@ -66,6 +70,7 @@ UNKNOWN = "UNKNOWN"
 CONFIDENCE: dict[str, int] = {
     OBSERVED: 5,
     NETWORK_OBSERVED: 5,
+    RUNTIME_OBSERVED: 5,
     CONFIGURED: 4,
     CAPABILITY: 3,
     IMPORTED: 3,
@@ -77,7 +82,8 @@ CONFIDENCE: dict[str, int] = {
 #: a dependency path is *proven* only when something saw or read the device itself.
 #: IMPORTED, VENDOR_DECLARED and INFERRED are claims about a claim: they are walked, and
 #: they are reported as possibilities rather than as blast radius.
-PROVEN: frozenset[str] = frozenset({OBSERVED, NETWORK_OBSERVED, CONFIGURED})
+PROVEN: frozenset[str] = frozenset({OBSERVED, NETWORK_OBSERVED, RUNTIME_OBSERVED,
+                                   CONFIGURED})
 
 #: every basis a claim may cite, and the strongest class it can support. A basis that is
 #: not here is refused rather than guessed, and ``co-occurrence`` is deliberately absent:
@@ -101,6 +107,21 @@ BASES: dict[str, str] = {
     "scan-manifest": CONFIGURED,
     "name-match": INFERRED,
     "dependency-graph": INFERRED,
+    # how a network endpoint is tied to the thing behind it (review nbom 2). None of
+    # these is a name comparison: each is a record that says which backend listens.
+    "dns-resolution": CONFIGURED,
+    "sni-header": NETWORK_OBSERVED,
+    "deployment-metadata": CONFIGURED,
+    "kubernetes-ingress": CONFIGURED,
+    "api-gateway-config": CONFIGURED,
+    "load-balancer-config": CONFIGURED,
+    "service-registry": CONFIGURED,
+    "mesh-config": CONFIGURED,
+    "database-config": CONFIGURED,
+    "vpn-config": CONFIGURED,
+    "tls-handshake": NETWORK_OBSERVED,
+    "ssh-banner": NETWORK_OBSERVED,
+    "runtime-observation": RUNTIME_OBSERVED,
 }
 
 #: bases that look like evidence and are not. Named so the refusal can quote the reason.
@@ -123,6 +144,8 @@ ASSET_TYPES: tuple[str, ...] = (
     # network
     "NETWORK_ENDPOINT", "WAF", "LOAD_BALANCER", "API_GATEWAY", "SERVICE_MESH",
     "CERTIFICATE", "CERTIFICATE_AUTHORITY", "PUBLIC_KEY", "ALGORITHM",
+    # the named things a network observation lands on (review nbom 1–3, 13–14)
+    "CIPHER_SUITE", "SSH_SERVICE", "VPN_GATEWAY", "IPSEC_TUNNEL",
     # keys and hardware
     "HSM", "KMS", "KEY_REFERENCE", "FIRMWARE", "CRYPTO_CAPABILITY",
     "HOST", "VM", "PHYSICAL_SERVER", "TPM",
@@ -156,6 +179,8 @@ PREFIX: dict[str, str] = {
     "VENDOR_PRODUCT": "PROD", "SOURCE": "SRC", "BUILD": "BUILD", "ARTIFACT": "ART",
     "SBOM": "SBOM", "DEPLOYMENT": "DEP", "POD": "POD", "PROCESS": "PROC",
     "DATABASE": "DB",
+    "CIPHER_SUITE": "SUITE", "SSH_SERVICE": "SSH", "VPN_GATEWAY": "VPN",
+    "IPSEC_TUNNEL": "TUN",
     "CPU": "CPU", "MEMORY": "MEM", "MOTHERBOARD": "MB", "BIOS": "BIOS", "NIC": "NIC",
     "STORAGE": "STG", "RAID_CONTROLLER": "RAID", "GPU": "GPU", "PCI_DEVICE": "PCI",
     "CRYPTO_ACCELERATOR": "ACCEL", "SMART_CARD": "SCARD",
@@ -180,7 +205,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
     "LINKS": {"from": ("PACKAGE",), "to": ("CRYPTO_LIBRARY",), "chain": "SOFTWARE"},
     "PROVIDES_ALGORITHM": {"from": ("CRYPTO_LIBRARY",), "to": ("CRYPTO_ASSET",),
                            "chain": "SOFTWARE"},
-    "USES_CRYPTO": {"from": ("APPLICATION", "SERVICE", "PROCESS"),
+    "USES_CRYPTO": {"from": ("APPLICATION", "SERVICE", "PROCESS", "CIPHER_SUITE",
+                             "CERTIFICATE", "PUBLIC_KEY", "SSH_SERVICE", "IPSEC_TUNNEL"),
                     "to": ("CRYPTO_ASSET",), "chain": "SOFTWARE"},
     "STORES_IN": {"from": ("APPLICATION", "SERVICE"), "to": ("DATABASE",),
                   "chain": "SOFTWARE"},
@@ -199,23 +225,26 @@ RELATIONS: dict[str, dict[str, Any]] = {
     "FOUND_ON": {"from": ("CRYPTO_ASSET",), "to": ("HOST", "APPLICATION", "HOST"),
                  "chain": "HARDWARE"},
     # network path
-    "EXPOSES": {"from": ("APPLICATION", "API_GATEWAY"), "to": ("NETWORK_ENDPOINT",),
-                "chain": "NETWORK"},
+    "EXPOSES": {"from": ("APPLICATION", "API_GATEWAY", "SERVICE", "SERVICE_MESH"),
+                "to": ("NETWORK_ENDPOINT",), "chain": "NETWORK"},
     "PROTECTED_BY": {"from": ("NETWORK_ENDPOINT", "APPLICATION", "NETWORK_SEGMENT",
                               "CRYPTO_ASSET"),
                      "to": ("WAF", "FIREWALL", "SECURITY_APPLIANCE", "HSM", "KMS", "TPM"),
                      "chain": "NETWORK"},
     "FRONTED_BY": {"from": ("NETWORK_ENDPOINT",), "to": ("LOAD_BALANCER",),
                    "chain": "NETWORK"},
-    "FORWARDS_TO": {"from": ("FIREWALL", "WAF", "LOAD_BALANCER", "API_GATEWAY"),
+    "FORWARDS_TO": {"from": ("FIREWALL", "WAF", "LOAD_BALANCER", "API_GATEWAY",
+                             "SERVICE_MESH", "NETWORK_ENDPOINT"),
                     "to": ("WAF", "LOAD_BALANCER", "API_GATEWAY", "SERVICE_MESH",
                            "NETWORK_ENDPOINT"),
                     "chain": "NETWORK"},
     "ATTACHED_TO": {"from": ("NIC", "CRYPTO_ACCELERATOR"),
                     "to": ("NETWORK_ENDPOINT", "NETWORK_SEGMENT"), "chain": "NETWORK"},
-    "ROUTES_TO": {"from": ("API_GATEWAY", "SERVICE_MESH", "NETWORK_ENDPOINT"),
-                  "to": ("APPLICATION",), "chain": "NETWORK"},
-    "PRESENTS": {"from": ("NETWORK_ENDPOINT", "LOAD_BALANCER", "API_GATEWAY"),
+    "ROUTES_TO": {"from": ("API_GATEWAY", "SERVICE_MESH", "NETWORK_ENDPOINT",
+                           "LOAD_BALANCER"),
+                  "to": ("APPLICATION", "SERVICE", "DATABASE"), "chain": "NETWORK"},
+    "PRESENTS": {"from": ("NETWORK_ENDPOINT", "LOAD_BALANCER", "API_GATEWAY", "WAF",
+                          "SERVICE_MESH", "DATABASE"),
                  "to": ("CERTIFICATE",), "chain": "NETWORK"},
     # certificate → key → algorithm → issuer
     "CONTAINS_KEY": {"from": ("CERTIFICATE",), "to": ("PUBLIC_KEY",), "chain": "CERTIFICATE"},
@@ -231,14 +260,18 @@ RELATIONS: dict[str, dict[str, Any]] = {
                           "chain": "CERTIFICATE"},
     # keys and hardware
     "USES_HSM": {"from": ("APPLICATION", "SERVICE", "PROCESS", "LOAD_BALANCER",
-                          "API_GATEWAY", "FIREWALL", "SECURITY_APPLIANCE"),
+                          "API_GATEWAY", "FIREWALL", "SECURITY_APPLIANCE", "DATABASE"),
                  "to": ("HSM", "KMS"), "chain": "KEYS"},
-    "HAS_MODEL": {"from": ("HSM", "PHYSICAL_SERVER", "NIC", "GPU", "CRYPTO_ACCELERATOR",
+    "HAS_MODEL": {"from": ("HSM", "LOAD_BALANCER", "WAF", "API_GATEWAY", "SERVICE_MESH",
+                           "DATABASE", "VPN_GATEWAY", "PHYSICAL_SERVER", "NIC", "GPU",
+                           "CRYPTO_ACCELERATOR",
                            "SECURITY_APPLIANCE", "CPU", "STORAGE", "RAID_CONTROLLER",
                            "SMART_CARD", "TPM"),
                   "to": ("VENDOR_PRODUCT",), "chain": "VENDOR"},
     "HOLDS_KEY": {"from": ("HSM", "KMS"), "to": ("KEY_REFERENCE",), "chain": "KEYS"},
-    "RUNS_FIRMWARE": {"from": ("HSM", "PHYSICAL_SERVER", "TPM", "NIC", "STORAGE",
+    "RUNS_FIRMWARE": {"from": ("HSM", "LOAD_BALANCER", "WAF", "API_GATEWAY", "VPN_GATEWAY",
+                               "DATABASE", "SERVICE_MESH", "PHYSICAL_SERVER", "TPM", "NIC",
+                               "STORAGE",
                                "RAID_CONTROLLER", "GPU", "CRYPTO_ACCELERATOR",
                                "SECURITY_APPLIANCE", "SMART_CARD"),
                       "to": ("FIRMWARE",), "chain": "HARDWARE"},
@@ -247,8 +280,11 @@ RELATIONS: dict[str, dict[str, Any]] = {
     # a datasheet can say a device supports an algorithm; only a probe can say it
     # performed the operation there (RELATION_BASIS_CEILING keeps the two apart)
     "SUPPORTS": {"from": ("FIRMWARE", "HSM", "TPM", "CRYPTO_ACCELERATOR", "SMART_CARD",
-                          "BIOS"),
-                 "to": ("CRYPTO_CAPABILITY",), "chain": "HARDWARE"},
+                          "BIOS", "NETWORK_ENDPOINT", "LOAD_BALANCER", "API_GATEWAY", "WAF",
+                          "SERVICE_MESH", "DATABASE", "SSH_SERVICE", "VPN_GATEWAY",
+                          "IPSEC_TUNNEL", "OS"),
+                 "to": ("CRYPTO_CAPABILITY", "CIPHER_SUITE", "ALGORITHM"),
+                 "chain": "NETWORK"},
     "PERFORMS": {"from": ("HSM", "CRYPTO_ACCELERATOR", "TPM"),
                  "to": ("CRYPTO_CAPABILITY",), "chain": "HARDWARE"},
     "IMPLEMENTS": {"from": ("CRYPTO_CAPABILITY",), "to": ("ALGORITHM",),
@@ -285,7 +321,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
                      "chain": "HARDWARE"},
     "HOSTED_ON": {"from": ("HOST",), "to": ("VM",), "chain": "HARDWARE"},
     "RUNS_ON": {"from": ("VM", "PROCESS", "APPLICATION", "SERVICE", "HYPERVISOR",
-                         "KUBERNETES_NODE", "OS"),
+                         "KUBERNETES_NODE", "OS", "LOAD_BALANCER", "WAF", "API_GATEWAY",
+                         "SERVICE_MESH", "DATABASE", "VPN_GATEWAY", "SSH_SERVICE"),
                 "to": ("PHYSICAL_SERVER", "HOST", "VM", "KUBERNETES_NODE",
                        "CLOUD_INSTANCE", "HYPERVISOR"),
                 "chain": "HARDWARE"},
@@ -294,7 +331,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
                         "chain": "HARDWARE"},
     "HOSTS_OS": {"from": ("VM", "PHYSICAL_SERVER", "CLOUD_INSTANCE"), "to": ("OS",),
                  "chain": "HARDWARE"},
-    "RUNS_APPLICATION": {"from": ("OS", "KUBERNETES_NODE", "HOST", "CLOUD_INSTANCE"),
+    "RUNS_APPLICATION": {"from": ("OS", "KUBERNETES_NODE", "HOST", "CLOUD_INSTANCE",
+                                  "PROCESS", "SERVICE"),
                          "to": ("APPLICATION",), "chain": "SOFTWARE"},
     "IN_REGION": {"from": ("CLOUD_INSTANCE",), "to": ("CLOUD_REGION",),
                   "chain": "HARDWARE"},
@@ -304,7 +342,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
     # vendor
     "EMBEDS": {"from": ("APPLICATION", "IMAGE", "SERVICE"), "to": ("VENDOR_PRODUCT",),
                "chain": "VENDOR"},
-    "SUPPLIED_BY": {"from": ("VENDOR_PRODUCT", "HSM", "HOST", "FIRMWARE", "TPM", "VM",
+    "SUPPLIED_BY": {"from": ("VENDOR_PRODUCT", "HSM", "LOAD_BALANCER", "WAF", "API_GATEWAY",
+                             "DATABASE", "VPN_GATEWAY", "HOST", "FIRMWARE", "TPM", "VM",
                              "PHYSICAL_SERVER", "CPU", "MEMORY", "MOTHERBOARD", "BIOS",
                              "NIC", "STORAGE", "RAID_CONTROLLER", "GPU", "PCI_DEVICE",
                              "CRYPTO_ACCELERATOR", "SMART_CARD", "SECURITY_APPLIANCE",
@@ -318,6 +357,52 @@ RELATIONS: dict[str, dict[str, Any]] = {
     "DEPLOYED_AS": {"from": ("IMAGE",), "to": ("DEPLOYMENT",), "chain": "RUNTIME"},
     "SCHEDULES": {"from": ("DEPLOYMENT",), "to": ("POD",), "chain": "RUNTIME"},
     "RUNS_PROCESS": {"from": ("POD",), "to": ("PROCESS",), "chain": "RUNTIME"},
+    # --- network dependencies: who listens, who routes, who terminates TLS -----------
+    #: the port belongs to the endpoint; the device that owns it says so here, rather
+    #: than every consumer guessing from the IP.
+    "LISTENS_ON": {"from": ("APPLICATION", "SERVICE", "LOAD_BALANCER", "API_GATEWAY", "WAF",
+                            "SERVICE_MESH", "DATABASE", "SSH_SERVICE", "VPN_GATEWAY",
+                            "IPSEC_TUNNEL", "HSM", "KMS", "FIREWALL"),
+                   "to": ("NETWORK_ENDPOINT",), "chain": "NETWORK"},
+    #: what a listener will speak. Config and a capability list may say *supported*; only
+    #: a handshake can say *negotiated*, which is why NEGOTIATES has a floor.
+    "NEGOTIATES": {"from": ("NETWORK_ENDPOINT", "SSH_SERVICE", "IPSEC_TUNNEL"),
+                   "to": ("CIPHER_SUITE", "CRYPTO_ASSET", "ALGORITHM", "CERTIFICATE"),
+                   "chain": "NETWORK"},
+    #: the three ways TLS crosses an intermediary — three different crypto graphs.
+    "TERMINATES_TLS": {"from": ("NETWORK_ENDPOINT",), "to": ("NETWORK_ENDPOINT",),
+                       "chain": "NETWORK"},
+    "RE_ENCRYPTS": {"from": ("NETWORK_ENDPOINT",), "to": ("NETWORK_ENDPOINT",),
+                    "chain": "NETWORK"},
+    "PASSTHROUGH": {"from": ("NETWORK_ENDPOINT",), "to": ("NETWORK_ENDPOINT",),
+                    "chain": "NETWORK"},
+    "PROTECTS": {"from": ("WAF", "FIREWALL", "SECURITY_APPLIANCE", "SERVICE_MESH"),
+                 "to": ("APPLICATION", "SERVICE", "NETWORK_ENDPOINT", "DATABASE",
+                        "NETWORK_SEGMENT"), "chain": "NETWORK"},
+    "AUTHENTICATES": {"from": ("SERVICE_MESH", "API_GATEWAY", "WAF"),
+                      "to": ("APPLICATION", "SERVICE", "DATABASE"), "chain": "NETWORK"},
+    "USES_CERTIFICATE": {"from": ("NETWORK_ENDPOINT", "APPLICATION", "SERVICE", "PROCESS",
+                                  "LOAD_BALANCER", "API_GATEWAY", "WAF", "SERVICE_MESH",
+                                  "DATABASE", "SSH_SERVICE"),
+                         "to": ("CERTIFICATE",), "chain": "NETWORK"},
+    "USES_KMS": {"from": ("APPLICATION", "SERVICE", "PROCESS", "DATABASE", "LOAD_BALANCER"),
+                 "to": ("KMS",), "chain": "KEYS"},
+    "USES_KEY": {"from": ("APPLICATION", "SERVICE", "PROCESS", "DATABASE", "LOAD_BALANCER"),
+                 "to": ("KEY_REFERENCE",), "chain": "KEYS"},
+    "SIGNED_WITH": {"from": ("CERTIFICATE",), "to": ("ALGORITHM",), "chain": "CERTIFICATE"},
+    #: a sidecar does the TLS, not the application: the handshake belongs to the proxy
+    "PROXY_FOR": {"from": ("PROCESS", "SERVICE", "CONTAINER"),
+                  "to": ("APPLICATION", "SERVICE"), "chain": "NETWORK"},
+    "CONNECTS_TO": {"from": ("NETWORK_ENDPOINT", "APPLICATION", "SERVICE", "LOAD_BALANCER",
+                             "API_GATEWAY", "WAF", "SERVICE_MESH", "DATABASE", "PROCESS",
+                             "HOST", "VM", "CLOUD_INSTANCE"),
+                    "to": ("NETWORK_ENDPOINT", "APPLICATION", "SERVICE", "LOAD_BALANCER",
+                           "API_GATEWAY", "WAF", "SERVICE_MESH", "DATABASE", "HOST", "VM",
+                           "HSM", "KMS", "CLOUD_INSTANCE"),
+                    "chain": "NETWORK"},
+    "TUNNELS_TO": {"from": ("IPSEC_TUNNEL", "VPN_GATEWAY"),
+                   "to": ("NETWORK_SEGMENT", "NETWORK_ENDPOINT", "VPN_GATEWAY"),
+                   "chain": "NETWORK"},
     "LOADS": {"from": ("PROCESS",), "to": ("CRYPTO_LIBRARY",), "chain": "RUNTIME"},
 }
 
@@ -327,18 +412,30 @@ RELATIONS: dict[str, dict[str, Any]] = {
 #: there. This is the review's "capability ≠ use", as a rule rather than as prose.
 RELATION_MIN_CONFIDENCE: dict[str, str] = {
     "PERFORMS": CONFIGURED,
+    #: a load balancer's or a tunnel's configuration is a record of what it *will* use, so
+    #: CONFIGURED is enough to say "negotiated" about a policy. It is not enough to say it
+    #: about a *session*: `nbom_graph.negotiated()` raises this floor to an observation,
+    #: because a session is not a policy (review nbom 6).
+    "NEGOTIATES": CONFIGURED,
+    #: how TLS crosses a device is read from its configuration, not guessed from a route
+    "TERMINATES_TLS": CONFIGURED,
+    "RE_ENCRYPTS": CONFIGURED,
+    "PASSTHROUGH": CONFIGURED,
     "RUNS_FIRMWARE": IMPORTED,
     "EVIDENCED_BY": IMPORTED,
 }
 
 #: evidence classes a crypto-asset relation may carry, kept apart on purpose (review 9)
-CRYPTO_EVIDENCE: tuple[str, ...] = ("RUNTIME_OBSERVED", "STATIC_OBSERVED",
-                                   "CERTIFICATE_OBSERVED", "CONFIGURED")
+CRYPTO_EVIDENCE: tuple[str, ...] = ("RUNTIME_OBSERVED", "NETWORK_OBSERVED",
+                                   "STATIC_OBSERVED", "CERTIFICATE_OBSERVED", "CONFIGURED")
 
 #: which bases may evidence which crypto-asset class. A runtime observation, a static
 #: manifest row and a certificate's key are different claims about different things.
 CRYPTO_EVIDENCE_BASIS: dict[str, set[str]] = {
-    "RUNTIME_OBSERVED": {"runtime-probe", "process-trace", "packet-capture"},
+    "RUNTIME_OBSERVED": {"runtime-probe", "process-trace", "packet-capture",
+                         "runtime-observation"},
+    #: a cipher suite read off a handshake is a network observation of that suite's parts
+    "NETWORK_OBSERVED": {"tls-handshake", "packet-capture", "passive-capture", "ssh-banner"},
     "STATIC_OBSERVED": {"sbom-import", "config-parse", "cmdb-import"},
     "CERTIFICATE_OBSERVED": {"packet-capture", "api-poll", "config-parse"},
     "CONFIGURED": {"config-parse", "agent-inventory", "api-poll"},
@@ -455,12 +552,18 @@ def asset(kind: Any, name: Any, *, environment: Any = "PRODUCTION", version: Any
 
 def claim(source: Any, relation: Any, target: Any, *, basis: Any,
           evidence_ids: Iterable[Any] | None = None, source_system: Any = None,
-          confidence: Any = None, rule: Any = None, note: Any = None) -> dict[str, Any]:
+          confidence: Any = None, rule: Any = None, note: Any = None,
+          observed_at: Any = None, first_seen: Any = None, last_seen: Any = None,
+          **facts: Any) -> dict[str, Any]:
     """A relationship, as a claim that carries its own basis and class.
 
     ``confidence`` may lower the class a basis supports (a runtime probe of a *shared*
     library can be reported as a ``CONFIGURED`` use, for instance) but never raise it —
     raising is refused here and again in :func:`build` when the estate is assembled.
+
+    ``observed_at`` / ``first_seen`` / ``last_seen`` and any remaining keyword (a
+    ``protocol``, a ``port``, a ``vlan``) are kept on the edge as **facts**: a network
+    dependency that does not say which port it was read from is a drawing, not a record.
     """
     relation_text = str(relation or "").strip().upper()
     if relation_text not in RELATIONS:
@@ -505,6 +608,11 @@ def claim(source: Any, relation: Any, target: Any, *, basis: Any,
         "source_system": _norm(source_system) or None,
         "rule": _norm(rule) or None,
         "note": _norm(note) or None,
+        "observed_at": _norm(observed_at) or None,
+        "first_seen": _norm(first_seen) or None,
+        "last_seen": _norm(last_seen) or None,
+        "facts": {str(key): value for key, value in facts.items()
+                  if value not in (None, "", [], {})},
         "chain": RELATIONS[relation_text]["chain"],
     }
 
@@ -534,7 +642,7 @@ def check_types(relation: Any, source_kind: Any, target_kind: Any) -> tuple[bool
 #: because a caller describing an asset should not have to nest the interesting part.
 _ASSET_FIELDS = frozenset({"kind", "name", "environment", "version", "owner", "location",
                            "status", "first_seen", "last_seen", "source", "evidence_ids",
-                           "attributes"})
+                           "attributes", "key", "id", "digest"})
 
 
 def build(estate: Mapping[str, Any]) -> dict[str, Any]:
@@ -586,7 +694,9 @@ def build(estate: Mapping[str, Any]) -> dict[str, Any]:
                 basis=raw.get("basis"), evidence_ids=raw.get("evidence_ids"),
                 source_system=raw.get("source_system"),
                 confidence=raw.get("confidence"), rule=raw.get("rule"),
-                note=raw.get("note"),
+                note=raw.get("note"), observed_at=raw.get("observed_at"),
+                first_seen=raw.get("first_seen"), last_seen=raw.get("last_seen"),
+                **(raw.get("facts") or {}),
             )
         except ClaimRefused as exc:
             refusals.append(_refused(exc.code, raw, exc.reason))
