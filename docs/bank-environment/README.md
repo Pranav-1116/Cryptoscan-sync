@@ -624,7 +624,29 @@
 > disagrees* rather than an all-clear, and `advisory_impact('CVE-2026-0001')` walks firmware →
 > device → listener → application → business system; and the evidence audit is **per field**,
 > not a single "58 of 58 complete": 63 of 63 edges carry the six structural fields, while only
-> 11 carry all ten, and the shortfall is published as `observed_at 32/63`, `first_seen 18/63`.
+> 4 carry all twelve, and the shortfall is published as `collector 25/63`, `observed_at
+> 32/63`, `first_seen 18/63`.
+
+> [The chain, closed](174-chain-closure.md)
+> (**6 pass · 0 partial · 0 fail**, 18 probes) asks the six questions that sit *underneath*
+> the twenty-six points, because a chain can be complete and still not answer them. **The
+> edge's record** is now audited against the fields the review names — including
+> `collector` and `collector_version`, which the first pass counted separately and the
+> review counts on the edge: 73 edges carry all six structural fields, 4 carry all twelve,
+> 34 name a collector, and the rest are published as shortfalls rather than backfilled.
+> **The SBOM join** is per capability: `OpenSSL 3.0.11: 6 capabilities, 2 corroborated by
+> runtime evidence, 4 with nothing behind them, 1 use not on the list` — and `ECDSA-P256`
+> stays `LISTED_ONLY` even though a certificate carries it, because a certificate is not a
+> caller. **Four domains** — application, certificate, network, platform — are counted apart
+> and never summed: `RSA-2048` is legitimately in two of them, the report says so and prints
+> `naive total 10 vs union 9`. **The terminal hop** joins the transport walk to the workload's
+> own operation, so the path ends `… → payments-api → OpenSSL 3.0.11 (SIGN / RSA-2048) →
+> SIGN → KEY-REF-4401 → HSM-001` instead of at a listener name. **PQC readiness** is the
+> device's own answer: `RSA-2048: 7 devices on the migration path; 1 advertises ML-KEM, 1
+> publishes a capability list without it, 5 publish none at all` — and no list is `UNKNOWN`,
+> never `READY`. **The graph** carries its levels, its domains and six families (Kubernetes,
+> hardware, network, vendor, key store, supply chain), from `CANONICAL_ESTATE`, with
+> `second_store: false`.
 
 > [The review, point by point](172-nbom-depth.md)
 > (**6 pass · 0 partial · 0 fail**, 51 probes) reads the twenty-two points off the *built*

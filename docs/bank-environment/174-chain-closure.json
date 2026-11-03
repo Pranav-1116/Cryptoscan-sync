@@ -1,0 +1,2711 @@
+{
+  "schema": "cryptoscan.cbom-chain-closure/1",
+  "generated_at": "2026-11-03T07:35:44Z",
+  "estate": {
+    "id": null,
+    "assets": 64,
+    "claims": 85,
+    "refusals": 7
+  },
+  "counts": {
+    "PASS": 6,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 18,
+  "points_present": 6,
+  "statement": "6 of 6 questions close on the built projection, across 18 probes; 64 assets and 85 claims",
+  "rows": [
+    {
+      "id": "CLOSE-01",
+      "point": 1,
+      "question": "every dependency edge carries the fields the review names, the collector included",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-review-fields-are-all-declared",
+          "ok": true,
+          "observed": "9 review field(s), 12 audited; missing none"
+        },
+        {
+          "probe": "the-collector-is-counted-not-assumed",
+          "ok": true,
+          "observed": "collector on 34/73 edge(s), collector_version on 34/73"
+        },
+        {
+          "probe": "a-field-nobody-supplied-is-a-shortfall",
+          "ok": true,
+          "observed": "shortfalls ['collector 34/73', 'collector_version 34/73']; 4/73 carry all 12"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CLOSE-02",
+      "point": 2,
+      "question": "a capability listed by a source is a question, and only an evidence class answers it",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "a-verdict-and-its-classes-agree",
+          "ok": true,
+          "observed": "6 capability(ies), verdicts {'CORROBORATED': 2, 'CONFIGURED_ONLY': 0, 'STATIC_ONLY': 0, 'LISTED_ONLY': 4}; listed with no class: ['OpenSSL 3.0.11:SHA-256', 'OpenSSL 3.0.11:ECDSA-P256', 'OpenSSL 3.0.11:AES-128', 'OpenSSL 3.0.11:AES-192']"
+        },
+        {
+          "probe": "a-listed-and-unused-capability-stays-listed",
+          "ok": true,
+          "observed": "listed only ['OpenSSL 3.0.11:SHA-256', 'OpenSSL 3.0.11:ECDSA-P256', 'OpenSSL 3.0.11:AES-128', 'OpenSSL 3.0.11:AES-192']; corroborated ['OpenSSL 3.0.11:RSA-2048', 'OpenSSL 3.0.11:AES-256']"
+        },
+        {
+          "probe": "the-usage-that-was-never-listed-is-still-reported",
+          "ok": true,
+          "observed": "used but not listed: ['DES-ECB']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CLOSE-03",
+      "point": 3,
+      "question": "application, certificate, network and platform crypto are counted apart",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-four-domains-exist",
+          "ok": true,
+          "observed": "domains ['APPLICATION', 'CERTIFICATE', 'NETWORK', 'PLATFORM'], nodes [14, 5, 5, 5]"
+        },
+        {
+          "probe": "a-certificate-algorithm-is-not-an-application-use",
+          "ok": true,
+          "observed": "certificate ['ECDSA-P256', 'RSA-2048'], application ['AES-256', 'DES-ECB', 'RSA-2048']"
+        },
+        {
+          "probe": "an-overlap-is-reported-and-never-summed",
+          "ok": true,
+          "observed": "1 pair(s) share an algorithm {'APPLICATION+CERTIFICATE': ['RSA-2048']}; naive total 10 vs union 9"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CLOSE-04",
+      "point": 4,
+      "question": "the transport path ends at an operation, a key and the device that holds it",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-transport-hops-stay-hops",
+          "ok": true,
+          "observed": "3 hop(s); payments.bank.example:443 \u2192 lb-01:443, lb-01:443 \u2192 payments-api, payments-api \u2192 OpenSSL 3.0.11"
+        },
+        {
+          "probe": "the-terminal-hop-is-the-operation-with-its-parameters",
+          "ok": true,
+          "observed": "HOP 3 payments-api \u2192 OpenSSL 3.0.11 (SIGN / RSA-2048/SHA-256)"
+        },
+        {
+          "probe": "the-key-and-the-hsm-hang-off-that-hop",
+          "ok": true,
+          "observed": "key KEY-REF-4401 held by HSM-001"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CLOSE-05",
+      "point": 5,
+      "question": "a PQC requirement is answered against each device's own capability list",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-three-readiness-answers-are-distinguished",
+          "ok": true,
+          "observed": "7 device(s): {'READY': 1, 'BLOCKED': 1, 'UNKNOWN': 5}; required ['ML-KEM-768', 'ML-KEM-1024', 'X25519MLKEM768', 'ML-DSA-65']"
+        },
+        {
+          "probe": "the-firmware-publishes-a-list-without-ml-kem",
+          "ok": true,
+          "observed": "BIG-IP 17.1.1: BLOCKED \u2014 supports ['BIG-IP 17.1.1:AES-256-GCM']"
+        },
+        {
+          "probe": "a-device-that-published-no-list-is-UNKNOWN-not-READY",
+          "ok": true,
+          "observed": "ready ['HSM-001'], unknown ['lb-01:443', 'payments.bank.example:443', 'LB-01', 'BIG-IP i5800', 'TPM-01']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "CLOSE-06",
+      "point": 6,
+      "question": "the assembled graph is one projection and names the families it reaches",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "every-family-is-reached",
+          "ok": true,
+          "observed": "64 node(s) of 37 kind(s), 85 edge(s) over 46 relation(s); families present: KUBERNETES (7), HARDWARE (4), NETWORK (2), VENDOR (3), KEY_STORE (4), SUPPLY_CHAIN (5); source CANONICAL_ESTATE, one store"
+        },
+        {
+          "probe": "the-graph-reads-the-canonical-estate-and-no-second-store",
+          "ok": true,
+          "observed": "canonical CANONICAL_ESTATE, second store False; 73 edge(s) of 85 claim(s)"
+        },
+        {
+          "probe": "the-domains-and-levels-travel-with-the-graph",
+          "ok": true,
+          "observed": "levels {'system': 1, 'application': 1, 'release': 3, 'process': 7, 'provider': 3, 'operation': 3, 'algorithm': 22, 'key': 2, 'key_provider': 3, 'certificate': 5, 'endpoint': 3, 'vendor': 2, 'hardware': 5}; domain pairs ['APPLICATION+CERTIFICATE']"
+        }
+      ],
+      "failed": []
+    }
+  ],
+  "evidence": {
+    "edges": [
+      {
+        "id": "EDGE-076771ae",
+        "source": "OpenSSL 3.0.11:AES-128",
+        "source_kind": "CRYPTO_CAPABILITY",
+        "source_id": "TECH-CAP-003",
+        "target": "AES-128",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-001",
+        "relationship": "IMPLEMENTS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "capability-list",
+        "confidence": "CAPABILITY",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-08026af2",
+        "source": "OP-STATIC-003",
+        "source_kind": "CRYPTO_OPERATION",
+        "source_id": "TECH-OP-003",
+        "target": "DES-ECB",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-004",
+        "relationship": "USES_ALGORITHM",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95005",
+        "evidence_ids": [
+          "EVID-95005"
+        ],
+        "evidence_type": "STATIC_OBSERVED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "source-analysis",
+        "confidence": "STATIC_OBSERVED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {
+          "operation": "ENCRYPT"
+        }
+      },
+      {
+        "id": "EDGE-09538128",
+        "source": "payments-api[1821]",
+        "source_kind": "PROCESS",
+        "source_id": "TECH-PROC-001",
+        "target": "OpenSSL 3.0.11",
+        "target_kind": "CRYPTO_PROVIDER",
+        "target_id": "TECH-PROVIDER-001",
+        "relationship": "LOADS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "runtime-probe",
+        "confidence": "OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-0ac1de9a",
+        "source": "OpenSSL 3.0.11:AES-256",
+        "source_kind": "CRYPTO_CAPABILITY",
+        "source_id": "TECH-CAP-005",
+        "target": "AES-256",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-003",
+        "relationship": "IMPLEMENTS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "capability-list",
+        "confidence": "CAPABILITY",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-0cfe322b",
+        "source": "payments-api-ctr",
+        "source_kind": "CONTAINER",
+        "source_id": "TECH-CTR-001",
+        "target": "payments-api:4.2.0",
+        "target_kind": "IMAGE",
+        "target_id": "TECH-IMG-001",
+        "relationship": "FROM_IMAGE",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95003",
+        "evidence_ids": [
+          "EVID-95003"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "deployment-metadata",
+        "confidence": "CONFIGURED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {}
+      },
+      {
+        "id": "EDGE-10eac65f",
+        "source": "lb-01:443",
+        "source_kind": "NETWORK_ENDPOINT",
+        "source_id": "TECH-EP-001",
+        "target": "payments-api",
+        "target_kind": "SERVICE",
+        "target_id": "TECH-SVC-001",
+        "relationship": "ROUTES_TO",
+        "protocol": "TCP",
+        "port": 8080,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "load-balancer-config",
+        "confidence": "CONFIGURED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {
+          "protocol": "TCP",
+          "port": 8080
+        }
+      },
+      {
+        "id": "EDGE-12219a27",
+        "source": "payments-api[1821]",
+        "source_kind": "PROCESS",
+        "source_id": "TECH-PROC-001",
+        "target": "OpenSSL 3.0.11",
+        "target_kind": "CRYPTO_PROVIDER",
+        "target_id": "TECH-PROVIDER-001",
+        "relationship": "LOADS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "runtime-observation",
+        "confidence": "RUNTIME_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-17f3f1a9",
+        "source": "CERT-002",
+        "source_kind": "CERTIFICATE",
+        "source_id": "TECH-CERT-002",
+        "target": "PUB-002",
+        "target_kind": "PUBLIC_KEY",
+        "target_id": "TECH-KEY-002",
+        "relationship": "CONTAINS_KEY",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "packet-capture",
+        "confidence": "OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-1fc90232",
+        "source": "OpenSSL 3.0.11:SHA-256",
+        "source_kind": "CRYPTO_CAPABILITY",
+        "source_id": "TECH-CAP-008",
+        "target": "SHA-256",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-008",
+        "relationship": "IMPLEMENTS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "capability-list",
+        "confidence": "CAPABILITY",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-31b6fa87",
+        "source": "payments.bank.example:443",
+        "source_kind": "NETWORK_ENDPOINT",
+        "source_id": "TECH-EP-002",
+        "target": "CERT-001",
+        "target_kind": "CERTIFICATE",
+        "target_id": "TECH-CERT-001",
+        "relationship": "PRESENTS",
+        "protocol": "TCP",
+        "port": 443,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "tls-handshake",
+        "confidence": "NETWORK_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-31c759ab",
+        "source": "payments-api-7d9f4c-x2m8p",
+        "source_kind": "POD",
+        "source_id": "TECH-POD-001",
+        "target": "payments-api[1821]",
+        "target_kind": "PROCESS",
+        "target_id": "TECH-PROC-001",
+        "relationship": "RUNS_PROCESS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "runtime-probe",
+        "confidence": "OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-339cd17e",
+        "source": "payments-api-7d9f4c-x2m8p",
+        "source_kind": "POD",
+        "source_id": "TECH-POD-001",
+        "target": "node-07",
+        "target_kind": "KUBERNETES_NODE",
+        "target_id": "TECH-NODE-001",
+        "relationship": "SCHEDULED_ON",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95003",
+        "evidence_ids": [
+          "EVID-95003"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "deployment-metadata",
+        "confidence": "CONFIGURED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {}
+      },
+      {
+        "id": "EDGE-361c63c1",
+        "source": "src/main/java/bank/LegacySettlement.java",
+        "source_kind": "SOURCE",
+        "source_id": "TECH-SRC-001",
+        "target": "src/main/java/bank/LegacySettlement.java:Cipher.getInstance",
+        "target_kind": "CRYPTO_ASSET",
+        "target_id": "TECH-CRY-003",
+        "relationship": "DECLARES",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95005",
+        "evidence_ids": [
+          "EVID-95005"
+        ],
+        "evidence_type": "STATIC_OBSERVED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "source-analysis",
+        "confidence": "STATIC_OBSERVED",
+        "observed_at": null,
+        "first_seen": "2026-10-01T08:30:00Z",
+        "last_seen": "2026-11-02T08:30:00Z",
+        "facts": {
+          "line": 214
+        }
+      },
+      {
+        "id": "EDGE-3864b8a4",
+        "source": "OP-SIGN-001",
+        "source_kind": "CRYPTO_OPERATION",
+        "source_id": "TECH-OP-002",
+        "target": "HSM-001",
+        "target_kind": "HSM",
+        "target_id": "TECH-HSM-001",
+        "relationship": "BACKED_BY",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95006",
+        "evidence_ids": [
+          "EVID-95006"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "runtime-observation",
+        "confidence": "RUNTIME_OBSERVED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-3ffe7af7",
+        "source": "node-07",
+        "source_kind": "KUBERNETES_NODE",
+        "source_id": "TECH-NODE-001",
+        "target": "srv-k8s-07",
+        "target_kind": "PHYSICAL_SERVER",
+        "target_id": "TECH-SRV-001",
+        "relationship": "RUNS_ON",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95003",
+        "evidence_ids": [
+          "EVID-95003"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "agent-inventory",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-41f194d2",
+        "source": "OpenSSL 3.0.11:ECDSA-P256",
+        "source_kind": "CRYPTO_CAPABILITY",
+        "source_id": "TECH-CAP-006",
+        "target": "ECDSA-P256",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-005",
+        "relationship": "IMPLEMENTS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "capability-list",
+        "confidence": "CAPABILITY",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-4a52b818",
+        "source": "payments.bank.example:443",
+        "source_kind": "NETWORK_ENDPOINT",
+        "source_id": "TECH-EP-002",
+        "target": "TLS_AES_256_GCM_SHA384",
+        "target_kind": "CIPHER_SUITE",
+        "target_id": "TECH-SUITE-002",
+        "relationship": "NEGOTIATES",
+        "protocol": "TLS",
+        "port": 443,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "tls-handshake",
+        "confidence": "NETWORK_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {
+          "protocol": "TLS"
+        }
+      },
+      {
+        "id": "EDGE-4d39e72e",
+        "source": "payments-api-deploy",
+        "source_kind": "DEPLOYMENT",
+        "source_id": "TECH-DEP-001",
+        "target": "payments-api-7d9f4c-x2m8p",
+        "target_kind": "POD",
+        "target_id": "TECH-POD-001",
+        "relationship": "SCHEDULES",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95003",
+        "evidence_ids": [
+          "EVID-95003"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "deployment-metadata",
+        "confidence": "CONFIGURED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {}
+      },
+      {
+        "id": "EDGE-4f39a89c",
+        "source": "lb-01:443",
+        "source_kind": "NETWORK_ENDPOINT",
+        "source_id": "TECH-EP-001",
+        "target": "ECDHE-RSA-AES128-GCM-SHA256",
+        "target_kind": "CIPHER_SUITE",
+        "target_id": "TECH-SUITE-001",
+        "relationship": "NEGOTIATES",
+        "protocol": "TLS",
+        "port": 443,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "tls-handshake",
+        "confidence": "NETWORK_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {
+          "protocol": "TLS"
+        }
+      },
+      {
+        "id": "EDGE-4fbbc6d7",
+        "source": "CERT-002",
+        "source_kind": "CERTIFICATE",
+        "source_id": "TECH-CERT-002",
+        "target": "Bank Issuing CA",
+        "target_kind": "CERTIFICATE_AUTHORITY",
+        "target_id": "TECH-CA-001",
+        "relationship": "ISSUED_BY",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "packet-capture",
+        "confidence": "OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-5664536b",
+        "source": "payments-api[1821]",
+        "source_kind": "PROCESS",
+        "source_id": "TECH-PROC-001",
+        "target": "Payments API",
+        "target_kind": "APPLICATION",
+        "target_id": "TECH-APP-001",
+        "relationship": "RUNS_APPLICATION",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "runtime-observation",
+        "confidence": "RUNTIME_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {
+          "pid": 1821
+        }
+      },
+      {
+        "id": "EDGE-575b5049",
+        "source": "Payments System",
+        "source_kind": "BUSINESS_SYSTEM",
+        "source_id": "TECH-SYS-001",
+        "target": "Payments API",
+        "target_kind": "APPLICATION",
+        "target_id": "TECH-APP-001",
+        "relationship": "CONTAINS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95001",
+        "evidence_ids": [
+          "EVID-95001"
+        ],
+        "evidence_type": "IMPORTED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "cmdb-import",
+        "confidence": "IMPORTED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-590bdcc9",
+        "source": "payments-api-7d9f4c-x2m8p",
+        "source_kind": "POD",
+        "source_id": "TECH-POD-001",
+        "target": "payments-api-ctr",
+        "target_kind": "CONTAINER",
+        "target_id": "TECH-CTR-001",
+        "relationship": "RUNS_CONTAINER",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95003",
+        "evidence_ids": [
+          "EVID-95003"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "deployment-metadata",
+        "confidence": "CONFIGURED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {}
+      },
+      {
+        "id": "EDGE-59d251f7",
+        "source": "payments-api[1821]",
+        "source_kind": "PROCESS",
+        "source_id": "TECH-PROC-001",
+        "target": "libcrypto.so.1.1",
+        "target_kind": "CRYPTO_LIBRARY",
+        "target_id": "TECH-LIB-001",
+        "relationship": "LOADS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95009",
+        "evidence_ids": [
+          "EVID-95009"
+        ],
+        "evidence_type": "OBSERVED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "runtime-probe",
+        "confidence": "OBSERVED",
+        "observed_at": null,
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-02T08:30:00Z",
+        "facts": {}
+      },
+      {
+        "id": "EDGE-5d68aeb0",
+        "source": "CERT-002",
+        "source_kind": "CERTIFICATE",
+        "source_id": "TECH-CERT-002",
+        "target": "RSA-2048",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-007",
+        "relationship": "SIGNED_WITH",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "packet-capture",
+        "confidence": "OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-5e4c0ec2",
+        "source": "LB-01",
+        "source_kind": "LOAD_BALANCER",
+        "source_id": "TECH-LB-001",
+        "target": "BIG-IP 17.1.1",
+        "target_kind": "FIRMWARE",
+        "target_id": "TECH-FW-001",
+        "relationship": "RUNS_FIRMWARE",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95008",
+        "evidence_ids": [
+          "EVID-95008"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-60890a24",
+        "source": "LB-01",
+        "source_kind": "LOAD_BALANCER",
+        "source_id": "TECH-LB-001",
+        "target": "srv-lb-01",
+        "target_kind": "PHYSICAL_SERVER",
+        "target_id": "TECH-SRV-002",
+        "relationship": "RUNS_ON",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95008",
+        "evidence_ids": [
+          "EVID-95008"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "agent-inventory",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-65424688",
+        "source": "Payments API",
+        "source_kind": "APPLICATION",
+        "source_id": "TECH-APP-001",
+        "target": "HSM-001",
+        "target_kind": "HSM",
+        "target_id": "TECH-HSM-001",
+        "relationship": "USES_HSM",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95006",
+        "evidence_ids": [
+          "EVID-95006"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "config-parse",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-657b4c33",
+        "source": "PUB-002",
+        "source_kind": "PUBLIC_KEY",
+        "source_id": "TECH-KEY-002",
+        "target": "RSA-2048",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-007",
+        "relationship": "USES_ALGORITHM",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "packet-capture",
+        "confidence": "OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-65891d12",
+        "source": "openssl-libs 3.0.11",
+        "source_kind": "PACKAGE",
+        "source_id": "TECH-PKG-001",
+        "target": "libcrypto.so.3",
+        "target_kind": "CRYPTO_LIBRARY",
+        "target_id": "TECH-LIB-002",
+        "relationship": "LINKS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95002",
+        "evidence_ids": [
+          "EVID-95002"
+        ],
+        "evidence_type": "IMPORTED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "sbom-import",
+        "confidence": "IMPORTED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-6a63b75c",
+        "source": "OP-ENCRYPT-002",
+        "source_kind": "CRYPTO_OPERATION",
+        "source_id": "TECH-OP-001",
+        "target": "KEY-REF-4402",
+        "target_kind": "KEY_REFERENCE",
+        "target_id": "TECH-KREF-002",
+        "relationship": "USES_KEY",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "runtime-observation",
+        "confidence": "RUNTIME_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {
+          "operation": "ENCRYPT"
+        }
+      },
+      {
+        "id": "EDGE-6aa2ae9a",
+        "source": "BIG-IP i5800",
+        "source_kind": "VENDOR_PRODUCT",
+        "source_id": "TECH-PROD-001",
+        "target": "F5",
+        "target_kind": "VENDOR",
+        "target_id": "TECH-VENDOR-001",
+        "relationship": "SUPPLIED_BY",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95008",
+        "evidence_ids": [
+          "EVID-95008"
+        ],
+        "evidence_type": "VENDOR_DECLARED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "vendor-datasheet",
+        "confidence": "VENDOR_DECLARED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-6b5e70ec",
+        "source": "payments.bank.example:443",
+        "source_kind": "NETWORK_ENDPOINT",
+        "source_id": "TECH-EP-002",
+        "target": "lb-01:443",
+        "target_kind": "NETWORK_ENDPOINT",
+        "target_id": "TECH-EP-001",
+        "relationship": "FORWARDS_TO",
+        "protocol": "TCP",
+        "port": 443,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "dns-resolution",
+        "confidence": "CONFIGURED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {
+          "protocol": "TCP",
+          "port": 443
+        }
+      },
+      {
+        "id": "EDGE-7182b7c9",
+        "source": "PUB-001",
+        "source_kind": "PUBLIC_KEY",
+        "source_id": "TECH-KEY-001",
+        "target": "ECDSA-P256",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-005",
+        "relationship": "USES_ALGORITHM",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "packet-capture",
+        "confidence": "OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-7807eacf",
+        "source": "src/main/java/bank/LegacySettlement.java:Cipher.getInstance",
+        "source_kind": "CRYPTO_ASSET",
+        "source_id": "TECH-CRY-003",
+        "target": "DES-ECB",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-004",
+        "relationship": "USES_ALGORITHM",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95005",
+        "evidence_ids": [
+          "EVID-95005"
+        ],
+        "evidence_type": "STATIC_OBSERVED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "source-analysis",
+        "confidence": "STATIC_OBSERVED",
+        "observed_at": null,
+        "first_seen": "2026-10-01T08:30:00Z",
+        "last_seen": "2026-11-02T08:30:00Z",
+        "facts": {
+          "line": 214
+        }
+      },
+      {
+        "id": "EDGE-7db078cc",
+        "source": "LB-01",
+        "source_kind": "LOAD_BALANCER",
+        "source_id": "TECH-LB-001",
+        "target": "lb-01:443",
+        "target_kind": "NETWORK_ENDPOINT",
+        "target_id": "TECH-EP-001",
+        "relationship": "LISTENS_ON",
+        "protocol": "TCP",
+        "port": 443,
+        "evidence_id": "EVID-95008",
+        "evidence_ids": [
+          "EVID-95008"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "load-balancer-config",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {
+          "protocol": "TCP",
+          "port": 443
+        }
+      },
+      {
+        "id": "EDGE-7e075c41",
+        "source": "Payments API",
+        "source_kind": "APPLICATION",
+        "source_id": "TECH-APP-001",
+        "target": "payments-api",
+        "target_kind": "SERVICE",
+        "target_id": "TECH-SVC-001",
+        "relationship": "PROVIDES",
+        "protocol": "TCP",
+        "port": 8080,
+        "evidence_id": "EVID-95001",
+        "evidence_ids": [
+          "EVID-95001"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "service-registry",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-81960a95",
+        "source": "LB-01",
+        "source_kind": "LOAD_BALANCER",
+        "source_id": "TECH-LB-001",
+        "target": "F5",
+        "target_kind": "VENDOR",
+        "target_id": "TECH-VENDOR-001",
+        "relationship": "SUPPLIED_BY",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95008",
+        "evidence_ids": [
+          "EVID-95008"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-88cb5799",
+        "source": "OpenSSL 3.0.11:RSA-2048",
+        "source_kind": "CRYPTO_CAPABILITY",
+        "source_id": "TECH-CAP-007",
+        "target": "RSA-2048",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-007",
+        "relationship": "IMPLEMENTS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "capability-list",
+        "confidence": "CAPABILITY",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-8d92e7c4",
+        "source": "OP-ENCRYPT-002",
+        "source_kind": "CRYPTO_OPERATION",
+        "source_id": "TECH-OP-001",
+        "target": "AES-256",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-003",
+        "relationship": "USES_ALGORITHM",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "runtime-observation",
+        "confidence": "RUNTIME_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {
+          "operation": "ENCRYPT"
+        }
+      },
+      {
+        "id": "EDGE-933878f6",
+        "source": "node-07",
+        "source_kind": "KUBERNETES_NODE",
+        "source_id": "TECH-NODE-001",
+        "target": "prod-cluster",
+        "target_kind": "CLUSTER",
+        "target_id": "TECH-K8S-001",
+        "relationship": "MEMBER_OF_CLUSTER",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95003",
+        "evidence_ids": [
+          "EVID-95003"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "agent-inventory",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-99039e94",
+        "source": "TLS_AES_256_GCM_SHA384",
+        "source_kind": "CIPHER_SUITE",
+        "source_id": "TECH-SUITE-002",
+        "target": "X25519",
+        "target_kind": "CRYPTO_ASSET",
+        "target_id": "TECH-CRY-004",
+        "relationship": "USES_CRYPTO",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "tls-handshake",
+        "confidence": "NETWORK_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-99cf849d",
+        "source": "Payments API",
+        "source_kind": "APPLICATION",
+        "source_id": "TECH-APP-001",
+        "target": "HSM-001",
+        "target_kind": "HSM",
+        "target_id": "TECH-HSM-001",
+        "relationship": "PROTECTED_BY",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95006",
+        "evidence_ids": [
+          "EVID-95006"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "config-parse",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-9ba48e23",
+        "source": "Payments API",
+        "source_kind": "APPLICATION",
+        "source_id": "TECH-APP-001",
+        "target": "payments-api 4.2.0",
+        "target_kind": "RELEASE",
+        "target_id": "TECH-REL-001",
+        "relationship": "RELEASED_AS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95002",
+        "evidence_ids": [
+          "EVID-95002"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "agent-inventory",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {}
+      },
+      {
+        "id": "EDGE-9e489a86",
+        "source": "BIG-IP 17.1.1",
+        "source_kind": "FIRMWARE",
+        "source_id": "TECH-FW-001",
+        "target": "CVE-2026-0001",
+        "target_kind": "VULNERABILITY",
+        "target_id": "TECH-VULN-001",
+        "relationship": "HAS_VULNERABILITY",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95008",
+        "evidence_ids": [
+          "EVID-95008"
+        ],
+        "evidence_type": "VENDOR_DECLARED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "vendor-portal",
+        "confidence": "VENDOR_DECLARED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {
+          "advisory": "K-2026-0001"
+        }
+      },
+      {
+        "id": "EDGE-9ef6046a",
+        "source": "TLS_AES_256_GCM_SHA384",
+        "source_kind": "CIPHER_SUITE",
+        "source_id": "TECH-SUITE-002",
+        "target": "SHA-384",
+        "target_kind": "CRYPTO_ASSET",
+        "target_id": "TECH-CRY-002",
+        "relationship": "USES_CRYPTO",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "tls-handshake",
+        "confidence": "NETWORK_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-9f4c0979",
+        "source": "payments-api[1821]",
+        "source_kind": "PROCESS",
+        "source_id": "TECH-PROC-001",
+        "target": "OP-SIGN-001",
+        "target_kind": "CRYPTO_OPERATION",
+        "target_id": "TECH-OP-002",
+        "relationship": "INVOKES",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "runtime-observation",
+        "confidence": "RUNTIME_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {
+          "operation": "SIGN"
+        }
+      },
+      {
+        "id": "EDGE-a5b49150",
+        "source": "OP-SIGN-001",
+        "source_kind": "CRYPTO_OPERATION",
+        "source_id": "TECH-OP-002",
+        "target": "RSA-2048",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-007",
+        "relationship": "USES_ALGORITHM",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "runtime-observation",
+        "confidence": "RUNTIME_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {
+          "operation": "SIGN"
+        }
+      },
+      {
+        "id": "EDGE-b243e988",
+        "source": "Payments API",
+        "source_kind": "APPLICATION",
+        "source_id": "TECH-APP-001",
+        "target": "TPM-01",
+        "target_kind": "TPM",
+        "target_id": "TECH-TPM-001",
+        "relationship": "USES_TPM",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95003",
+        "evidence_ids": [
+          "EVID-95003"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "runtime-observation",
+        "confidence": "RUNTIME_OBSERVED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-b515cf1f",
+        "source": "Payments API",
+        "source_kind": "APPLICATION",
+        "source_id": "TECH-APP-001",
+        "target": "src/main/java/bank/LegacySettlement.java:Cipher.getInstance",
+        "target_kind": "CRYPTO_ASSET",
+        "target_id": "TECH-CRY-003",
+        "relationship": "USES_CRYPTO",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95005",
+        "evidence_ids": [
+          "EVID-95005"
+        ],
+        "evidence_type": "STATIC_OBSERVED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "source-analysis",
+        "confidence": "STATIC_OBSERVED",
+        "observed_at": null,
+        "first_seen": "2026-10-01T08:30:00Z",
+        "last_seen": "2026-11-02T08:30:00Z",
+        "facts": {
+          "file": "src/main/java/bank/LegacySettlement.java",
+          "line": 214
+        }
+      },
+      {
+        "id": "EDGE-b5ded0ba",
+        "source": "LB-01",
+        "source_kind": "LOAD_BALANCER",
+        "source_id": "TECH-LB-001",
+        "target": "BIG-IP i5800",
+        "target_kind": "VENDOR_PRODUCT",
+        "target_id": "TECH-PROD-001",
+        "relationship": "HAS_MODEL",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95008",
+        "evidence_ids": [
+          "EVID-95008"
+        ],
+        "evidence_type": "VENDOR_DECLARED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "vendor-datasheet",
+        "confidence": "VENDOR_DECLARED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-b7937d26",
+        "source": "CERT-001",
+        "source_kind": "CERTIFICATE",
+        "source_id": "TECH-CERT-001",
+        "target": "Bank Issuing CA",
+        "target_kind": "CERTIFICATE_AUTHORITY",
+        "target_id": "TECH-CA-001",
+        "relationship": "ISSUED_BY",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "packet-capture",
+        "confidence": "OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-b84bbdfe",
+        "source": "payments-api[1821]",
+        "source_kind": "PROCESS",
+        "source_id": "TECH-PROC-001",
+        "target": "OP-ENCRYPT-002",
+        "target_kind": "CRYPTO_OPERATION",
+        "target_id": "TECH-OP-001",
+        "relationship": "INVOKES",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "runtime-observation",
+        "confidence": "RUNTIME_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {
+          "operation": "ENCRYPT"
+        }
+      },
+      {
+        "id": "EDGE-b87a9875",
+        "source": "payments-api 4.2.0",
+        "source_kind": "RELEASE",
+        "source_id": "TECH-REL-001",
+        "target": "payments-api-4.2.0.jar",
+        "target_kind": "ARTIFACT",
+        "target_id": "TECH-ART-001",
+        "relationship": "BUNDLES",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95002",
+        "evidence_ids": [
+          "EVID-95002"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "agent-inventory",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {}
+      },
+      {
+        "id": "EDGE-bec42967",
+        "source": "Payments API",
+        "source_kind": "APPLICATION",
+        "source_id": "TECH-APP-001",
+        "target": "payments.bank.example:443",
+        "target_kind": "NETWORK_ENDPOINT",
+        "target_id": "TECH-EP-002",
+        "relationship": "EXPOSES",
+        "protocol": "TCP",
+        "port": 443,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "deployment-metadata",
+        "confidence": "CONFIGURED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-bf409998",
+        "source": "lb-01:443",
+        "source_kind": "NETWORK_ENDPOINT",
+        "source_id": "TECH-EP-001",
+        "target": "CERT-002",
+        "target_kind": "CERTIFICATE",
+        "target_id": "TECH-CERT-002",
+        "relationship": "PRESENTS",
+        "protocol": "TCP",
+        "port": 443,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "tls-handshake",
+        "confidence": "NETWORK_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-bf8e0fc5",
+        "source": "payments-api[1821]",
+        "source_kind": "PROCESS",
+        "source_id": "TECH-PROC-001",
+        "target": "Payments API",
+        "target_kind": "APPLICATION",
+        "target_id": "TECH-APP-001",
+        "relationship": "RUNS_APPLICATION",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95005",
+        "evidence_ids": [
+          "EVID-95005"
+        ],
+        "evidence_type": "STATIC_OBSERVED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "source-analysis",
+        "confidence": "STATIC_OBSERVED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-c77f4c26",
+        "source": "TLS_AES_256_GCM_SHA384",
+        "source_kind": "CIPHER_SUITE",
+        "source_id": "TECH-SUITE-002",
+        "target": "AES-256-GCM",
+        "target_kind": "CRYPTO_ASSET",
+        "target_id": "TECH-CRY-001",
+        "relationship": "USES_CRYPTO",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "tls-handshake",
+        "confidence": "NETWORK_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-c7fe26cc",
+        "source": "KMS-01",
+        "source_kind": "KMS",
+        "source_id": "TECH-KMS-001",
+        "target": "KEY-REF-4402",
+        "target_kind": "KEY_REFERENCE",
+        "target_id": "TECH-KREF-002",
+        "relationship": "HOLDS_KEY",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95006",
+        "evidence_ids": [
+          "EVID-95006"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-caec0b5e",
+        "source": "payments-api-4.2.0.jar",
+        "source_kind": "ARTIFACT",
+        "source_id": "TECH-ART-001",
+        "target": "payments-api:4.2.0",
+        "target_kind": "IMAGE",
+        "target_id": "TECH-IMG-001",
+        "relationship": "PACKAGED_AS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95002",
+        "evidence_ids": [
+          "EVID-95002"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "agent-inventory",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {}
+      },
+      {
+        "id": "EDGE-ccbd82b3",
+        "source": "OP-SIGN-001",
+        "source_kind": "CRYPTO_OPERATION",
+        "source_id": "TECH-OP-002",
+        "target": "KEY-REF-4401",
+        "target_kind": "KEY_REFERENCE",
+        "target_id": "TECH-KREF-001",
+        "relationship": "USES_KEY",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004",
+          "EVID-95006"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "runtime-observation",
+        "confidence": "RUNTIME_OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {
+          "operation": "SIGN"
+        }
+      },
+      {
+        "id": "EDGE-d55579ab",
+        "source": "OpenSSL 3.0.11:AES-192",
+        "source_kind": "CRYPTO_CAPABILITY",
+        "source_id": "TECH-CAP-004",
+        "target": "AES-192",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-002",
+        "relationship": "IMPLEMENTS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95004",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": "PROC-PROBE-01",
+        "collector_version": "1.4.2",
+        "basis": "capability-list",
+        "confidence": "CAPABILITY",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-d904a44a",
+        "source": "HSM-001:ML-KEM-768",
+        "source_kind": "CRYPTO_CAPABILITY",
+        "source_id": "TECH-CAP-002",
+        "target": "ML-KEM-768",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-006",
+        "relationship": "IMPLEMENTS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95008",
+        "evidence_ids": [
+          "EVID-95008"
+        ],
+        "evidence_type": "VENDOR_DECLARED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "vendor-datasheet",
+        "confidence": "VENDOR_DECLARED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-db7c605e",
+        "source": "payments",
+        "source_kind": "NAMESPACE",
+        "source_id": "TECH-NS-001",
+        "target": "prod-cluster",
+        "target_kind": "CLUSTER",
+        "target_id": "TECH-K8S-001",
+        "relationship": "MEMBER_OF_CLUSTER",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95003",
+        "evidence_ids": [
+          "EVID-95003"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "deployment-metadata",
+        "confidence": "CONFIGURED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {}
+      },
+      {
+        "id": "EDGE-dd57676c",
+        "source": "CERT-001",
+        "source_kind": "CERTIFICATE",
+        "source_id": "TECH-CERT-001",
+        "target": "PUB-001",
+        "target_kind": "PUBLIC_KEY",
+        "target_id": "TECH-KEY-001",
+        "relationship": "CONTAINS_KEY",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "packet-capture",
+        "confidence": "OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-ddb49e96",
+        "source": "payments-api[1821]",
+        "source_kind": "PROCESS",
+        "source_id": "TECH-PROC-001",
+        "target": "OpenSSL 3.0.11",
+        "target_kind": "CRYPTO_PROVIDER",
+        "target_id": "TECH-PROVIDER-001",
+        "relationship": "LOADS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95005",
+        "evidence_ids": [
+          "EVID-95005"
+        ],
+        "evidence_type": "STATIC_OBSERVED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "source-analysis",
+        "confidence": "STATIC_OBSERVED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-e072b022",
+        "source": "CERT-001",
+        "source_kind": "CERTIFICATE",
+        "source_id": "TECH-CERT-001",
+        "target": "ECDSA-P256",
+        "target_kind": "ALGORITHM",
+        "target_id": "TECH-ALG-005",
+        "relationship": "SIGNED_WITH",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95007",
+        "evidence_ids": [
+          "EVID-95007"
+        ],
+        "evidence_type": "NETWORK_OBSERVED",
+        "collector": "TLS-SENSOR-04",
+        "collector_version": "2.0.1",
+        "basis": "packet-capture",
+        "confidence": "OBSERVED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-e094d161",
+        "source": "payments-api:4.2.0",
+        "source_kind": "IMAGE",
+        "source_id": "TECH-IMG-001",
+        "target": "payments-api-deploy",
+        "target_kind": "DEPLOYMENT",
+        "target_id": "TECH-DEP-001",
+        "relationship": "DEPLOYED_AS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95003",
+        "evidence_ids": [
+          "EVID-95003"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "deployment-metadata",
+        "confidence": "CONFIGURED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {}
+      },
+      {
+        "id": "EDGE-e3bdb5bb",
+        "source": "payments-api[1821]",
+        "source_kind": "PROCESS",
+        "source_id": "TECH-PROC-001",
+        "target": "OP-STATIC-003",
+        "target_kind": "CRYPTO_OPERATION",
+        "target_id": "TECH-OP-003",
+        "relationship": "INVOKES",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95005",
+        "evidence_ids": [
+          "EVID-95005"
+        ],
+        "evidence_type": "STATIC_OBSERVED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "source-analysis",
+        "confidence": "STATIC_OBSERVED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {
+          "operation": "ENCRYPT"
+        }
+      },
+      {
+        "id": "EDGE-e62cff1e",
+        "source": "payments-api-deploy",
+        "source_kind": "DEPLOYMENT",
+        "source_id": "TECH-DEP-001",
+        "target": "payments",
+        "target_kind": "NAMESPACE",
+        "target_id": "TECH-NS-001",
+        "relationship": "RUNS_IN",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95003",
+        "evidence_ids": [
+          "EVID-95003"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "deployment-metadata",
+        "confidence": "CONFIGURED",
+        "observed_at": "2026-11-03T08:30:00Z",
+        "first_seen": "2026-11-02T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z",
+        "facts": {}
+      },
+      {
+        "id": "EDGE-e8d1da63",
+        "source": "payments-api:4.2.0",
+        "source_kind": "IMAGE",
+        "source_id": "TECH-IMG-001",
+        "target": "openssl-libs 3.0.11",
+        "target_kind": "PACKAGE",
+        "target_id": "TECH-PKG-001",
+        "relationship": "SHIPS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95002",
+        "evidence_ids": [
+          "EVID-95002"
+        ],
+        "evidence_type": "IMPORTED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "sbom-import",
+        "confidence": "IMPORTED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-e9c3844b",
+        "source": "Payments API",
+        "source_kind": "APPLICATION",
+        "source_id": "TECH-APP-001",
+        "target": "KMS-01",
+        "target_kind": "KMS",
+        "target_id": "TECH-KMS-001",
+        "relationship": "USES_KMS",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95006",
+        "evidence_ids": [
+          "EVID-95006"
+        ],
+        "evidence_type": "CONFIGURED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "api-poll",
+        "confidence": "CONFIGURED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      },
+      {
+        "id": "EDGE-eef4c85e",
+        "source": "HSM-001",
+        "source_kind": "HSM",
+        "source_id": "TECH-HSM-001",
+        "target": "KEY-REF-4401",
+        "target_kind": "KEY_REFERENCE",
+        "target_id": "TECH-KREF-001",
+        "relationship": "HOLDS_KEY",
+        "protocol": null,
+        "port": null,
+        "evidence_id": "EVID-95006",
+        "evidence_ids": [
+          "EVID-95006"
+        ],
+        "evidence_type": "RUNTIME_OBSERVED",
+        "collector": null,
+        "collector_version": null,
+        "basis": "runtime-observation",
+        "confidence": "RUNTIME_OBSERVED",
+        "observed_at": null,
+        "first_seen": null,
+        "last_seen": null,
+        "facts": {}
+      }
+    ],
+    "count": 73,
+    "structural": 73,
+    "incomplete": [],
+    "fully_recorded": 4,
+    "sparse_edges": [
+      "EDGE-076771ae",
+      "EDGE-08026af2",
+      "EDGE-09538128",
+      "EDGE-0ac1de9a",
+      "EDGE-0cfe322b",
+      "EDGE-10eac65f",
+      "EDGE-12219a27",
+      "EDGE-17f3f1a9",
+      "EDGE-1fc90232",
+      "EDGE-31b6fa87",
+      "EDGE-31c759ab",
+      "EDGE-339cd17e",
+      "EDGE-361c63c1",
+      "EDGE-3864b8a4",
+      "EDGE-3ffe7af7",
+      "EDGE-41f194d2",
+      "EDGE-4a52b818",
+      "EDGE-4d39e72e",
+      "EDGE-4f39a89c",
+      "EDGE-4fbbc6d7",
+      "EDGE-5664536b",
+      "EDGE-575b5049",
+      "EDGE-590bdcc9",
+      "EDGE-59d251f7",
+      "EDGE-5d68aeb0",
+      "EDGE-5e4c0ec2",
+      "EDGE-60890a24",
+      "EDGE-65424688",
+      "EDGE-657b4c33",
+      "EDGE-65891d12",
+      "EDGE-6a63b75c",
+      "EDGE-6aa2ae9a",
+      "EDGE-6b5e70ec",
+      "EDGE-7182b7c9",
+      "EDGE-7807eacf",
+      "EDGE-7db078cc",
+      "EDGE-7e075c41",
+      "EDGE-81960a95",
+      "EDGE-88cb5799",
+      "EDGE-933878f6",
+      "EDGE-99039e94",
+      "EDGE-99cf849d",
+      "EDGE-9ba48e23",
+      "EDGE-9e489a86",
+      "EDGE-9ef6046a",
+      "EDGE-b243e988",
+      "EDGE-b515cf1f",
+      "EDGE-b5ded0ba",
+      "EDGE-b7937d26",
+      "EDGE-b87a9875",
+      "EDGE-bec42967",
+      "EDGE-bf409998",
+      "EDGE-bf8e0fc5",
+      "EDGE-c77f4c26",
+      "EDGE-c7fe26cc",
+      "EDGE-caec0b5e",
+      "EDGE-ccbd82b3",
+      "EDGE-d55579ab",
+      "EDGE-d904a44a",
+      "EDGE-db7c605e",
+      "EDGE-dd57676c",
+      "EDGE-ddb49e96",
+      "EDGE-e072b022",
+      "EDGE-e094d161",
+      "EDGE-e3bdb5bb",
+      "EDGE-e62cff1e",
+      "EDGE-e8d1da63",
+      "EDGE-e9c3844b",
+      "EDGE-eef4c85e"
+    ],
+    "field_coverage": {
+      "source": 73,
+      "target": 73,
+      "relationship": 73,
+      "basis": 73,
+      "confidence": 73,
+      "evidence_id": 73,
+      "evidence_type": 73,
+      "collector": 34,
+      "collector_version": 34,
+      "observed_at": 41,
+      "first_seen": 18,
+      "last_seen": 18
+    },
+    "missing_fields": [
+      "collector 34/73",
+      "collector_version 34/73",
+      "observed_at 41/73",
+      "first_seen 18/73",
+      "last_seen 18/73"
+    ],
+    "with_collector": 34,
+    "collectors": [
+      "PROC-PROBE-01",
+      "TLS-SENSOR-04"
+    ],
+    "statement": "73 dependency edge(s): 73 carry all six structural fields, 4 carry all 12; 34 name a collector; short on collector 34/73, collector_version 34/73, observed_at 41/73, first_seen 18/73, last_seen 18/73",
+    "rule": "an edge without a basis, a class and an evidence id is a drawing; a field the estate did not supply is reported as a shortfall, never backfilled from a neighbour"
+  },
+  "capability_evidence": {
+    "provider": "OpenSSL 3.0.11",
+    "rows": [
+      {
+        "capability": "OpenSSL 3.0.11:SHA-256",
+        "algorithms": [
+          "SHA-256"
+        ],
+        "declared_at": "CAPABILITY",
+        "evidence_ids": [],
+        "classes": [],
+        "layers": [],
+        "verdict": "LISTED_ONLY"
+      },
+      {
+        "capability": "OpenSSL 3.0.11:ECDSA-P256",
+        "algorithms": [
+          "ECDSA-P256"
+        ],
+        "declared_at": "CAPABILITY",
+        "evidence_ids": [],
+        "classes": [],
+        "layers": [],
+        "verdict": "LISTED_ONLY"
+      },
+      {
+        "capability": "OpenSSL 3.0.11:AES-128",
+        "algorithms": [
+          "AES-128"
+        ],
+        "declared_at": "CAPABILITY",
+        "evidence_ids": [],
+        "classes": [],
+        "layers": [],
+        "verdict": "LISTED_ONLY"
+      },
+      {
+        "capability": "OpenSSL 3.0.11:RSA-2048",
+        "algorithms": [
+          "RSA-2048"
+        ],
+        "declared_at": "CAPABILITY",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "classes": [
+          "RUNTIME_OBSERVED"
+        ],
+        "layers": [
+          "runtime"
+        ],
+        "verdict": "CORROBORATED"
+      },
+      {
+        "capability": "OpenSSL 3.0.11:AES-256",
+        "algorithms": [
+          "AES-256"
+        ],
+        "declared_at": "CAPABILITY",
+        "evidence_ids": [
+          "EVID-95004"
+        ],
+        "classes": [
+          "RUNTIME_OBSERVED"
+        ],
+        "layers": [
+          "runtime"
+        ],
+        "verdict": "CORROBORATED"
+      },
+      {
+        "capability": "OpenSSL 3.0.11:AES-192",
+        "algorithms": [
+          "AES-192"
+        ],
+        "declared_at": "CAPABILITY",
+        "evidence_ids": [],
+        "classes": [],
+        "layers": [],
+        "verdict": "LISTED_ONLY"
+      }
+    ],
+    "count": 6,
+    "counts": {
+      "CORROBORATED": 2,
+      "CONFIGURED_ONLY": 0,
+      "STATIC_ONLY": 0,
+      "LISTED_ONLY": 4
+    },
+    "corroborated": [
+      "OpenSSL 3.0.11:RSA-2048",
+      "OpenSSL 3.0.11:AES-256"
+    ],
+    "listed_only": [
+      "OpenSSL 3.0.11:SHA-256",
+      "OpenSSL 3.0.11:ECDSA-P256",
+      "OpenSSL 3.0.11:AES-128",
+      "OpenSSL 3.0.11:AES-192"
+    ],
+    "used_not_listed": [
+      "DES-ECB"
+    ],
+    "statement": "OpenSSL 3.0.11: 6 capability(ies) as the source lists them; 2 corroborated by runtime or network evidence, 0 static only, 0 configured only, 4 with nothing behind them; 1 use not on the list",
+    "rule": "a capability enters the CBOM only with the class that corroborates it: the SBOM opens the question and the collectors answer it, one evidence class at a time"
+  },
+  "domains": {
+    "domains": {
+      "APPLICATION": {
+        "nodes": 14,
+        "algorithms": [
+          "AES-256",
+          "DES-ECB",
+          "RSA-2048"
+        ]
+      },
+      "PLATFORM": {
+        "nodes": 5,
+        "algorithms": []
+      },
+      "CERTIFICATE": {
+        "nodes": 5,
+        "algorithms": [
+          "ECDSA-P256",
+          "RSA-2048"
+        ]
+      },
+      "NETWORK": {
+        "nodes": 5,
+        "algorithms": [
+          "AES-256-GCM",
+          "ECDHE-RSA-AES128-GCM-SHA256",
+          "SHA-384",
+          "TLS_AES_256_GCM_SHA384",
+          "X25519"
+        ]
+      }
+    },
+    "shared_algorithms": {
+      "APPLICATION+CERTIFICATE": [
+        "RSA-2048"
+      ]
+    },
+    "pairs": [
+      "APPLICATION+CERTIFICATE"
+    ],
+    "application_only": [
+      "AES-256",
+      "DES-ECB"
+    ],
+    "statement": "application: 3 algorithm(s) from 14 node(s); certificate: 2 from 5; network: 5 from 5; platform: 5 node(s); 1 domain pair(s) share an algorithm",
+    "rule": "the domains may share an algorithm and are never summed: a certificate's ECDSA is the listener's dependency, not the application's usage"
+  },
+  "path": {
+    "endpoint": "payments.bank.example:443",
+    "hops": [
+      {
+        "hop": 1,
+        "source": "payments.bank.example:443",
+        "target": "lb-01:443",
+        "mode": "FORWARDS_TO",
+        "tls_version": "TLS1.3",
+        "suite": "TLS_AES_256_GCM_SHA384",
+        "crypto": [
+          "TLS_AES_256_GCM_SHA384"
+        ],
+        "evidence_id": "EVID-95007",
+        "class": "CONFIGURED"
+      },
+      {
+        "hop": 2,
+        "source": "lb-01:443",
+        "target": "payments-api",
+        "mode": "ROUTES_TO",
+        "tls_version": "TLS1.2",
+        "suite": "ECDHE-RSA-AES128-GCM-SHA256",
+        "crypto": [
+          "ECDHE-RSA-AES128-GCM-SHA256"
+        ],
+        "evidence_id": "EVID-95007",
+        "class": "CONFIGURED"
+      },
+      {
+        "hop": 3,
+        "source": "payments-api",
+        "target": "OpenSSL 3.0.11",
+        "mode": "SIGN",
+        "tls_version": null,
+        "suite": "RSA-2048",
+        "crypto": [
+          "RSA-2048",
+          "SHA-256"
+        ],
+        "evidence_id": "EVID-95004",
+        "class": "RUNTIME_OBSERVED"
+      }
+    ],
+    "count": 3,
+    "weakest": "CONFIGURED",
+    "proven": true,
+    "terminal": {
+      "source": "payments-api",
+      "target": "OpenSSL 3.0.11",
+      "mode": "SIGN",
+      "tls_version": null,
+      "suite": "RSA-2048",
+      "crypto": [
+        "RSA-2048",
+        "SHA-256"
+      ],
+      "evidence_id": "EVID-95004",
+      "class": "RUNTIME_OBSERVED"
+    },
+    "key": "KEY-REF-4401",
+    "holder": "HSM-001",
+    "statement": "3 hop(s): payments.bank.example:443 \u2192 lb-01:443 (TLS1.3/TLS_AES_256_GCM_SHA384) \u2192 lb-01:443 \u2192 payments-api (TLS1.2/ECDHE-RSA-AES128-GCM-SHA256) \u2192 payments-api \u2192 OpenSSL 3.0.11 (SIGN/RSA-2048) \u2192 SIGN \u2192 KEY-REF-4401 \u2192 HSM-001",
+    "rule": "a transport path ends at a workload and a workload's crypto is a different edge: the terminal hop is numbered like the others, so the operation keeps its parameters instead of becoming an attribute of the listener",
+    "not_proven": [
+      "that one request crossed every hop: the estate evidences the hops, and a request takes one path through them"
+    ]
+  },
+  "readiness": {
+    "algorithm": "RSA-2048",
+    "required": [
+      "ML-KEM-768",
+      "ML-KEM-1024",
+      "X25519MLKEM768",
+      "ML-DSA-65"
+    ],
+    "devices": [
+      {
+        "kind": "NETWORK_ENDPOINT",
+        "name": "lb-01:443",
+        "relation": "PRESENTS",
+        "readiness": "UNKNOWN",
+        "supports": [],
+        "required": [
+          "ML-KEM-768",
+          "ML-KEM-1024",
+          "X25519MLKEM768",
+          "ML-DSA-65"
+        ],
+        "matched": [],
+        "reason": "this device publishes no capability list, so its readiness is unknown and not a pass"
+      },
+      {
+        "kind": "HSM",
+        "name": "HSM-001",
+        "relation": "BACKED_BY",
+        "readiness": "READY",
+        "supports": [
+          "HSM-001:ML-KEM-768",
+          "ML-KEM-768",
+          "RSA-2048"
+        ],
+        "required": [
+          "ML-KEM-768",
+          "ML-KEM-1024",
+          "X25519MLKEM768",
+          "ML-DSA-65"
+        ],
+        "matched": [
+          "ML-KEM-768"
+        ],
+        "reason": "this device advertises a required PQC algorithm"
+      },
+      {
+        "kind": "NETWORK_ENDPOINT",
+        "name": "payments.bank.example:443",
+        "relation": "FORWARDS_TO",
+        "readiness": "UNKNOWN",
+        "supports": [],
+        "required": [
+          "ML-KEM-768",
+          "ML-KEM-1024",
+          "X25519MLKEM768",
+          "ML-DSA-65"
+        ],
+        "matched": [],
+        "reason": "this device publishes no capability list, so its readiness is unknown and not a pass"
+      },
+      {
+        "kind": "LOAD_BALANCER",
+        "name": "LB-01",
+        "relation": "LISTENS_ON",
+        "readiness": "UNKNOWN",
+        "supports": [],
+        "required": [
+          "ML-KEM-768",
+          "ML-KEM-1024",
+          "X25519MLKEM768",
+          "ML-DSA-65"
+        ],
+        "matched": [],
+        "reason": "this device publishes no capability list, so its readiness is unknown and not a pass"
+      },
+      {
+        "kind": "FIRMWARE",
+        "name": "BIG-IP 17.1.1",
+        "relation": "RUNS_FIRMWARE",
+        "readiness": "BLOCKED",
+        "supports": [
+          "BIG-IP 17.1.1:AES-256-GCM"
+        ],
+        "required": [
+          "ML-KEM-768",
+          "ML-KEM-1024",
+          "X25519MLKEM768",
+          "ML-DSA-65"
+        ],
+        "matched": [],
+        "reason": "this device publishes a capability list and none of the required algorithms is on it"
+      },
+      {
+        "kind": "VENDOR_PRODUCT",
+        "name": "BIG-IP i5800",
+        "relation": "HAS_MODEL",
+        "readiness": "UNKNOWN",
+        "supports": [],
+        "required": [
+          "ML-KEM-768",
+          "ML-KEM-1024",
+          "X25519MLKEM768",
+          "ML-DSA-65"
+        ],
+        "matched": [],
+        "reason": "this device publishes no capability list, so its readiness is unknown and not a pass"
+      },
+      {
+        "kind": "TPM",
+        "name": "TPM-01",
+        "relation": "USES_TPM",
+        "readiness": "UNKNOWN",
+        "supports": [],
+        "required": [
+          "ML-KEM-768",
+          "ML-KEM-1024",
+          "X25519MLKEM768",
+          "ML-DSA-65"
+        ],
+        "matched": [],
+        "reason": "this device publishes no capability list, so its readiness is unknown and not a pass"
+      }
+    ],
+    "count": 7,
+    "counts": {
+      "READY": 1,
+      "BLOCKED": 1,
+      "UNKNOWN": 5
+    },
+    "ready": [
+      "HSM-001"
+    ],
+    "blocked": [
+      "BIG-IP 17.1.1"
+    ],
+    "unknown": [
+      "lb-01:443",
+      "payments.bank.example:443",
+      "LB-01",
+      "BIG-IP i5800",
+      "TPM-01"
+    ],
+    "statement": "RSA-2048: 7 device(s) on the migration path; 1 advertise a required PQC algorithm, 1 publish a capability list without one, 5 publish none at all",
+    "rule": "a PQC blocker is answered in the device's own capability terms: no list is UNKNOWN, never READY, because an unasked device is not a ready one"
+  },
+  "graph": {
+    "levels": {
+      "system": 1,
+      "application": 1,
+      "release": 3,
+      "process": 7,
+      "provider": 3,
+      "operation": 3,
+      "algorithm": 22,
+      "key": 2,
+      "key_provider": 3,
+      "certificate": 5,
+      "endpoint": 3,
+      "vendor": 2,
+      "hardware": 5
+    },
+    "kinds": {
+      "ALGORITHM": 8,
+      "APPLICATION": 1,
+      "ARTIFACT": 1,
+      "BUSINESS_SYSTEM": 1,
+      "CERTIFICATE": 2,
+      "CERTIFICATE_AUTHORITY": 1,
+      "CIPHER_SUITE": 2,
+      "CLUSTER": 1,
+      "CONTAINER": 1,
+      "CRYPTO_ASSET": 4,
+      "CRYPTO_CAPABILITY": 8,
+      "CRYPTO_LIBRARY": 2,
+      "CRYPTO_OPERATION": 3,
+      "CRYPTO_PROVIDER": 1,
+      "DEPLOYMENT": 1,
+      "EVIDENCE": 2,
+      "FIRMWARE": 1,
+      "HSM": 1,
+      "IMAGE": 1,
+      "KEY_REFERENCE": 2,
+      "KMS": 1,
+      "KUBERNETES_NODE": 1,
+      "LOAD_BALANCER": 1,
+      "NAMESPACE": 1,
+      "NETWORK_ENDPOINT": 2,
+      "PACKAGE": 1,
+      "PHYSICAL_SERVER": 2,
+      "POD": 1,
+      "PROCESS": 1,
+      "PUBLIC_KEY": 2,
+      "RELEASE": 1,
+      "SERVICE": 1,
+      "SOURCE": 1,
+      "TPM": 1,
+      "VENDOR": 1,
+      "VENDOR_PRODUCT": 1,
+      "VULNERABILITY": 1
+    },
+    "relations": {
+      "BACKED_BY": 1,
+      "BUNDLES": 1,
+      "CARRIES": 1,
+      "CONTAINS": 1,
+      "CONTAINS_KEY": 2,
+      "DECLARES": 1,
+      "DEPLOYED_AS": 1,
+      "EVIDENCED_BY": 2,
+      "EXPOSES": 1,
+      "FORWARDS_TO": 1,
+      "FROM_IMAGE": 1,
+      "HAS_MODEL": 1,
+      "HAS_VULNERABILITY": 1,
+      "HOLDS_KEY": 2,
+      "IMPLEMENTS": 7,
+      "INVOKES": 3,
+      "ISSUED_BY": 2,
+      "LINKS": 1,
+      "LISTENS_ON": 1,
+      "LOADS": 4,
+      "MEMBER_OF_CLUSTER": 2,
+      "NEGOTIATES": 2,
+      "PACKAGED_AS": 1,
+      "PRESENTS": 2,
+      "PROTECTED_BY": 1,
+      "PROVIDES": 1,
+      "RELEASED_AS": 1,
+      "ROUTES_TO": 1,
+      "RUNS_APPLICATION": 2,
+      "RUNS_CONTAINER": 1,
+      "RUNS_FIRMWARE": 1,
+      "RUNS_IN": 1,
+      "RUNS_ON": 2,
+      "RUNS_PROCESS": 1,
+      "SCHEDULED_ON": 1,
+      "SCHEDULES": 1,
+      "SHIPS": 1,
+      "SIGNED_WITH": 2,
+      "SUPPLIED_BY": 2,
+      "SUPPORTS": 9,
+      "USES_ALGORITHM": 6,
+      "USES_CRYPTO": 4,
+      "USES_HSM": 1,
+      "USES_KEY": 2,
+      "USES_KMS": 1,
+      "USES_TPM": 1
+    },
+    "relation_count": 46,
+    "domains": {
+      "domains": {
+        "APPLICATION": {
+          "nodes": 14,
+          "algorithms": [
+            "AES-256",
+            "DES-ECB",
+            "RSA-2048"
+          ]
+        },
+        "PLATFORM": {
+          "nodes": 5,
+          "algorithms": []
+        },
+        "CERTIFICATE": {
+          "nodes": 5,
+          "algorithms": [
+            "ECDSA-P256",
+            "RSA-2048"
+          ]
+        },
+        "NETWORK": {
+          "nodes": 5,
+          "algorithms": [
+            "AES-256-GCM",
+            "ECDHE-RSA-AES128-GCM-SHA256",
+            "SHA-384",
+            "TLS_AES_256_GCM_SHA384",
+            "X25519"
+          ]
+        }
+      },
+      "shared_algorithms": {
+        "APPLICATION+CERTIFICATE": [
+          "RSA-2048"
+        ]
+      },
+      "pairs": [
+        "APPLICATION+CERTIFICATE"
+      ],
+      "application_only": [
+        "AES-256",
+        "DES-ECB"
+      ],
+      "statement": "application: 3 algorithm(s) from 14 node(s); certificate: 2 from 5; network: 5 from 5; platform: 5 node(s); 1 domain pair(s) share an algorithm",
+      "rule": "the domains may share an algorithm and are never summed: a certificate's ECDSA is the listener's dependency, not the application's usage"
+    },
+    "evidence": {
+      "edges": 73,
+      "structural": 73,
+      "fully_recorded": 4,
+      "with_collector": 34
+    },
+    "families": {
+      "KUBERNETES": [
+        "CLUSTER",
+        "CONTAINER",
+        "DEPLOYMENT",
+        "KUBERNETES_NODE",
+        "NAMESPACE",
+        "POD",
+        "SERVICE"
+      ],
+      "HARDWARE": [
+        "FIRMWARE",
+        "KUBERNETES_NODE",
+        "PHYSICAL_SERVER",
+        "TPM"
+      ],
+      "NETWORK": [
+        "LOAD_BALANCER",
+        "NETWORK_ENDPOINT"
+      ],
+      "VENDOR": [
+        "VENDOR",
+        "VENDOR_PRODUCT",
+        "VULNERABILITY"
+      ],
+      "KEY_STORE": [
+        "HSM",
+        "KEY_REFERENCE",
+        "KMS",
+        "TPM"
+      ],
+      "SUPPLY_CHAIN": [
+        "ARTIFACT",
+        "CRYPTO_LIBRARY",
+        "IMAGE",
+        "PACKAGE",
+        "RELEASE"
+      ]
+    },
+    "canonical": "CANONICAL_ESTATE",
+    "second_store": false,
+    "statement": "64 node(s) of 37 kind(s), 85 edge(s) over 46 relation(s); families present: KUBERNETES (7), HARDWARE (4), NETWORK (2), VENDOR (3), KEY_STORE (4), SUPPLY_CHAIN (5); source CANONICAL_ESTATE, one store",
+    "rule": "the CBOM, the HBOM and the twin read one projection: a second store that agrees on the day it is built is a second truth waiting to disagree"
+  },
+  "limits": [
+    "the estate is guide 173's fixture, extended: every shape is real, the rows are not",
+    "a collector is named only where an evidence record exists; an edge with none is reported short and never borrows its neighbour's",
+    "the domains classify algorithms by who cites them, so an algorithm cited by nobody appears in no domain rather than in all four",
+    "the terminal hop is the first runtime operation reached from the landing workload; a workload that invokes three operations shows one and the chain query shows all",
+    "a PQC readiness answer is the device's own published list, which is a claim and not a test: READY means it says it can, and nobody has run it",
+    "the graph is one projection of the canonical estate; it proves there is no second store here and not that no other team keeps one"
+  ]
+}

@@ -763,13 +763,16 @@ def measure() -> dict[str, Any]:
         _probe("the-fields-the-estate-did-not-supply-are-reported",
                audit["fully_recorded"] < audit["count"]
                and any(field.startswith("first_seen") for field in audit["missing_fields"]),
-               f"{audit['fully_recorded']} of {audit['count']} carry all ten; short on "
+               f"{audit['fully_recorded']} of {audit['count']} carry all "
+               f"{len(d.EDGE_FIELDS)}; short on "
                + ", ".join(audit["missing_fields"][:4])),
         _probe("a-collector-is-named-where-a-record-exists",
                audit["with_collector"] >= 2,
                f"{audit['with_collector']} edge(s) name a collector: {audit['collectors']}"),
-        _probe("the-ten-fields-are-declared",
-               len(d.EDGE_FIELDS) == 10 and len(audit["field_coverage"]) == 10,
+        _probe("every-field-the-review-names-is-declared",
+               {"evidence_id", "evidence_type", "source", "collector", "collector_version",
+                "observed_at", "confidence", "first_seen", "last_seen"}
+               <= set(d.EDGE_FIELDS) and len(audit["field_coverage"]) == len(d.EDGE_FIELDS),
                f"EDGE_FIELDS = {list(d.EDGE_FIELDS)}"),
     ])
 
@@ -951,7 +954,7 @@ def measure() -> dict[str, Any]:
             "collections the bank never ran is not visible here",
             "the advisory answers are keyed on the names the estate holds — a firmware "
             "version nobody recorded cannot match a CVE",
-            "the edge audit counts records, not truth: an edge can carry all ten fields "
+            "the edge audit counts records, not truth: an edge can carry every field "
             "and still be wrong, which is what the conflict and change queries are for",
         ],
     }

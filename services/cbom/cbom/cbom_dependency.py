@@ -1515,7 +1515,8 @@ def _blocker(bom: Mapping[str, Any], node: Mapping[str, Any], claim: Mapping[str
 #: ``collector_version`` are printed when an evidence record exists and left null when it
 #: does not — an edge must never borrow a collector from a neighbour.
 EDGE_FIELDS: tuple[str, ...] = ("source", "target", "relationship", "basis", "confidence",
-                               "evidence_id", "evidence_type", "observed_at", "first_seen",
+                               "evidence_id", "evidence_type", "collector",
+                               "collector_version", "observed_at", "first_seen",
                                "last_seen")
 
 
@@ -1537,7 +1538,10 @@ def evidence_audit(bom: Mapping[str, Any]) -> dict[str, Any]:
     to avoid.
 
     So the audit counts per field and publishes the shortfall. "58 of 58 complete" over
-    four empty columns is not an audit, it is a slogan.
+    four empty columns is not an audit, it is a slogan. ``collector`` and
+    ``collector_version`` are counted like the rest: an edge whose evidence record names no
+    collector is short, and borrowing the neighbour's would make the column true and the
+    audit false.
     """
     rows = [edge_record(bom, claim) for claim in bom.get("claims") or []
             if claim["relation"] in CHAIN_RELATIONS]
@@ -1560,12 +1564,471 @@ def evidence_audit(bom: Mapping[str, Any]) -> dict[str, Any]:
         "with_collector": len(collected),
         "collectors": sorted({row["collector"] for row in collected}),
         "statement": (f"{len(rows)} dependency edge(s): {len(rows) - len(structural)} carry "
-                      f"all six structural fields, {len(fully)} carry all ten; "
-                      f"{len(collected)} name a collector"
+                      f"all six structural fields, {len(fully)} carry all "
+                      f"{len(EDGE_FIELDS)}; {len(collected)} name a collector"
                       + (f"; short on {', '.join(sparse)}" if sparse else "")),
         "rule": ("an edge without a basis, a class and an evidence id is a drawing; a field "
                  "the estate did not supply is reported as a shortfall, never backfilled "
                  "from a neighbour"),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# An SBOM opens a question; only an evidence class answers it
+# --------------------------------------------------------------------------- #
+
+#: what a capability's evidence can amount to. ``CORROBORATED`` needs a runtime or a
+#: network observation, because a compiled-in cipher nobody called is a capability.
+CAPABILITY_VERDICTS: tuple[str, ...] = ("CORROBORATED", "CONFIGURED_ONLY", "STATIC_ONLY",
+                                        "LISTED_ONLY")
+
+PROVEN_CLASSES: frozenset[str] = frozenset({tb.OBSERVED, tb.RUNTIME_OBSERVED,
+                                            tb.NETWORK_OBSERVED})
+
+
+def _capability_verdict(classes: Iterable[str]) -> str:
+    seen = set(classes)
+    if seen & PROVEN_CLASSES:
+        return "CORROBORATED"
+    if tb.STATIC_OBSERVED in seen:
+        return "STATIC_ONLY"
+    if tb.CONFIGURED in seen:
+        return "CONFIGURED_ONLY"
+    return "LISTED_ONLY"
+
+
+#: who has to cite an algorithm before the citation counts as evidence *of use*. A
+#: certificate that carries RSA, an HSM that supports it and a vendor that lists it are all
+#: statements about the algorithm, and none of them is a statement about a caller: only a
+#: caller's edge corroborates a capability.
+USAGE_SOURCE_KINDS: tuple[str, ...] = ("CRYPTO_OPERATION", "SOURCE", "PROCESS",
+                                       "APPLICATION", "SERVICE", "CONTAINER", "POD",
+                                       "CIPHER_SUITE", "NETWORK_ENDPOINT", "CRYPTO_ASSET")
+
+
+def _algorithm_evidence(bom: Mapping[str, Any],
+                        algorithm_key: str) -> tuple[list[str], list[str], list[str]]:
+    """The classes, the layers and the evidence ids on the edges that cite an algorithm."""
+    classes: set[str] = set()
+    evidence: set[str] = set()
+    for claim in bom["claims"]:
+        if claim["to_key"] != algorithm_key:
+            continue
+        if claim["relation"] not in ("USES_ALGORITHM", "USES_CRYPTO"):
+            continue
+        if bom["by_key"][claim["from_key"]]["kind"] not in USAGE_SOURCE_KINDS:
+            continue
+        classes.add(claim["confidence"])
+        evidence.update(claim.get("evidence_ids") or [])
+    layers = [layer for layer, klass in USAGE_LAYERS if klass in classes]
+    return sorted(classes), layers, sorted(evidence)
+
+
+def capability_evidence(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]:
+    """The SBOM → CBOM join, capability by capability (cbom 2).
+
+    An SBOM says a provider was built with AES-256. That is one fact, and on its own it is
+    not a CBOM row: it becomes one when *some* collector corroborates it — a source hit
+    (``STATIC_OBSERVED``), a policy (``CONFIGURED``), a runtime probe
+    (``RUNTIME_OBSERVED``) or a handshake (``NETWORK_OBSERVED``). Each capability is
+    therefore reported with the classes that stand behind it and a verdict, so "OpenSSL
+    supports AES-128" can never be read as "the bank uses AES-128".
+    """
+    key = _resolve_one(bom, query)
+    row = bom["by_key"][key]
+    rows: list[dict[str, Any]] = []
+    for claim in bom["claims"]:
+        if claim["from_key"] != key or claim["relation"] != "SUPPORTS":
+            continue
+        node = bom["by_key"][claim["to_key"]]
+        algorithms = [bom["by_key"][inner["to_key"]]["name"]
+                      for inner in bom["claims"]
+                      if inner["from_key"] == node["key"] and inner["relation"] == "IMPLEMENTS"]
+        if not algorithms:
+            algorithms = [node["name"]]
+        classes: set[str] = set()
+        layers: set[str] = set()
+        evidence: set[str] = set()
+        for name in algorithms:
+            try:
+                algorithm_key = _resolve_one(bom, name)
+            except tb.ClaimRefused:
+                continue
+            found, found_layers, found_evidence = _algorithm_evidence(bom, algorithm_key)
+            classes.update(found)
+            layers.update(found_layers)
+            evidence.update(found_evidence)
+        rows.append({
+            "capability": node["name"], "algorithms": algorithms,
+            "declared_at": claim["confidence"], "evidence_ids": sorted(evidence),
+            "classes": sorted(classes), "layers": sorted(layers),
+            "verdict": _capability_verdict(classes)})
+    counts = {verdict: len([entry for entry in rows if entry["verdict"] == verdict])
+              for verdict in CAPABILITY_VERDICTS}
+    comparison = capability_vs_usage(bom, query=query)
+    return {
+        "provider": row["name"], "rows": rows, "count": len(rows), "counts": counts,
+        "corroborated": [entry["capability"] for entry in rows
+                         if entry["verdict"] == "CORROBORATED"],
+        "listed_only": [entry["capability"] for entry in rows
+                        if entry["verdict"] == "LISTED_ONLY"],
+        "used_not_listed": comparison["used_not_capable"],
+        "statement": (f"{row['name']}: {len(rows)} capability(ies) as the source lists them; "
+                      f"{counts['CORROBORATED']} corroborated by runtime or network "
+                      f"evidence, {counts['STATIC_ONLY']} static only, "
+                      f"{counts['CONFIGURED_ONLY']} configured only, "
+                      f"{counts['LISTED_ONLY']} with nothing behind them"
+                      + (f"; {len(comparison['used_not_capable'])} use not on the list"
+                         if comparison["used_not_capable"] else "")),
+        "rule": ("a capability enters the CBOM only with the class that corroborates it: the "
+                 "SBOM opens the question and the collectors answer it, one evidence class "
+                 "at a time"),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Four domains, because a certificate is not an application
+# --------------------------------------------------------------------------- #
+
+#: the kinds that belong to each crypto domain. Algorithms are deliberately absent: an
+#: algorithm has no domain of its own, it belongs to whoever cites it.
+CRYPTO_DOMAIN_KINDS: dict[str, tuple[str, ...]] = {
+    "APPLICATION": ("CRYPTO_OPERATION", "CRYPTO_PROVIDER", "CRYPTO_LIBRARY",
+                    "CRYPTO_CAPABILITY"),
+    "PLATFORM": ("HSM", "KMS", "TPM", "FIRMWARE", "VENDOR_PRODUCT", "CRYPTO_ACCELERATOR",
+                 "BIOS"),
+    "CERTIFICATE": ("CERTIFICATE", "CERTIFICATE_AUTHORITY", "PUBLIC_KEY"),
+    "NETWORK": ("CIPHER_SUITE", "NETWORK_ENDPOINT", "LOAD_BALANCER", "API_GATEWAY",
+                "SERVICE_MESH", "WAF"),
+}
+
+
+def crypto_domains(bom: Mapping[str, Any]) -> dict[str, Any]:
+    """Application, platform, certificate and network crypto, counted apart (cbom 10).
+
+    The same algorithm can legitimately appear in three of the four: RSA-2048 is what an
+    application signs with, what a certificate carries and what a suite key-exchanges
+    with. The failure this prevents is not the overlap, it is a *sum*: "the bank has three
+    ECDSA uses" when two of them are a certificate and the listener that presents it.
+    """
+    domains: dict[str, set[str]] = {name: set() for name in CRYPTO_DOMAIN_KINDS}
+    algorithms: dict[str, set[str]] = {name: set() for name in CRYPTO_DOMAIN_KINDS}
+    for row in bom["assets"]:
+        for name, kinds in CRYPTO_DOMAIN_KINDS.items():
+            if row["kind"] in kinds:
+                domains[name].add(row["name"])
+    for claim in bom["claims"]:
+        source = bom["by_key"][claim["from_key"]]
+        target = bom["by_key"][claim["to_key"]]
+        if target["kind"] not in ("ALGORITHM", "CRYPTO_ASSET", "CIPHER_SUITE"):
+            continue
+        if source["kind"] == "CRYPTO_OPERATION" and claim["relation"] == "USES_ALGORITHM":
+            algorithms["APPLICATION"].add(target["name"])
+        elif source["kind"] in ("CERTIFICATE", "PUBLIC_KEY") and claim["relation"] in (
+                "USES_ALGORITHM", "SIGNED_WITH"):
+            algorithms["CERTIFICATE"].add(target["name"])
+        elif source["kind"] in ("CIPHER_SUITE", "NETWORK_ENDPOINT") and claim["relation"] in (
+                "USES_CRYPTO", "NEGOTIATES"):
+            algorithms["NETWORK"].add(target["name"])
+        elif source["kind"] in ("KEY_REFERENCE",) and claim["relation"] == "USES_ALGORITHM":
+            algorithms["PLATFORM"].add(target["name"])
+    order = list(CRYPTO_DOMAIN_KINDS)
+    shared: dict[str, list[str]] = {}
+    for index, left in enumerate(order):
+        for right in order[index + 1:]:
+            common = algorithms[left] & algorithms[right]
+            if common:
+                shared[f"{left}+{right}"] = sorted(common)
+    overlap = sorted(shared)
+    return {
+        "domains": {name: {"nodes": len(domains[name]),
+                           "algorithms": sorted(algorithms[name])}
+                    for name in CRYPTO_DOMAIN_KINDS},
+        "shared_algorithms": shared,
+        "pairs": overlap,
+        "application_only": sorted(algorithms["APPLICATION"]
+                                   - algorithms["CERTIFICATE"] - algorithms["NETWORK"]),
+        "statement": (f"application: {len(algorithms['APPLICATION'])} algorithm(s) from "
+                      f"{len(domains['APPLICATION'])} node(s); certificate: "
+                      f"{len(algorithms['CERTIFICATE'])} from {len(domains['CERTIFICATE'])}; "
+                      f"network: {len(algorithms['NETWORK'])} from "
+                      f"{len(domains['NETWORK'])}; platform: "
+                      f"{len(domains['PLATFORM'])} node(s); {len(overlap)} domain pair(s) "
+                      "share an algorithm"),
+        "rule": ("the domains may share an algorithm and are never summed: a certificate's "
+                 "ECDSA is the listener's dependency, not the application's usage"),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# The whole path: a client, its hops, and the operation at the end
+# --------------------------------------------------------------------------- #
+
+#: the relations that carry a request down from a listener to the workload that serves it,
+#: and the relations that point from a workload back up at the application it runs. The
+#: second list is not optional: a listener routes to a *service*, and the service is what the
+#: application provides, so the walk has to cross that edge backwards to reach a process.
+LANDING_RELATIONS: tuple[str, ...] = ("ROUTES_TO", "FORWARDS_TO", "RUNS", "RUNS_PROCESS",
+                                      "RUNS_APPLICATION", "RUNS_CONTAINER", "RUNS_IN")
+WORKLOAD_RELATIONS: tuple[str, ...] = ("PROVIDES", "RUNS_APPLICATION", "RUNS_PROCESS",
+                                       "RUNS_CONTAINER", "RUNS_IN", "RELEASED_AS",
+                                       "DEPLOYED_AS")
+
+
+def _operation_of(bom: Mapping[str, Any], key: str, *, max_depth: int = 3
+                  ) -> tuple[Mapping[str, Any], Mapping[str, Any]] | None:
+    """The operation a landing node reaches, and the edge that says so.
+
+    The walk is deliberately small and bidirectional: a listener routes to a service, the
+    service is provided by an application, and the application's process is the node that
+    invokes an operation. Following only the arrows gives up at the service, which is how a
+    path report ends at a name instead of at a signature.
+    """
+    frontier: list[tuple[str, int]] = [(key, 0)]
+    seen: set[str] = {key}
+    while frontier:
+        current, depth = frontier.pop(0)
+        invokes = [claim for claim in bom["claims"]
+                   if claim["from_key"] == current and claim["relation"] == "INVOKES"
+                   and bom["by_key"][claim["to_key"]]["kind"] == "CRYPTO_OPERATION"]
+        if invokes:
+            # a runtime observation outranks a static hit when a process does both
+            invokes.sort(key=lambda claim: claim["confidence"] != tb.RUNTIME_OBSERVED)
+            claim = invokes[0]
+            return bom["by_key"][claim["to_key"]], claim
+        if depth >= max_depth:
+            continue
+        for claim in bom["claims"]:
+            neighbour = None
+            if claim["from_key"] == current and claim["relation"] in LANDING_RELATIONS:
+                neighbour = claim["to_key"]
+            elif claim["to_key"] == current and claim["relation"] in WORKLOAD_RELATIONS:
+                neighbour = claim["from_key"]
+            if neighbour is None or neighbour in seen:
+                continue
+            seen.add(neighbour)
+            frontier.append((neighbour, depth + 1))
+    return None
+
+
+def full_path(bom: Mapping[str, Any], *, endpoint: Any, max_hops: int = 8) -> dict[str, Any]:
+    """Client → … → listener → workload → operation → key → holder (cbom 12, 25).
+
+    The review's HOP 4 is ``application → HSM (RSA signing)``, and it is the hop a network
+    walk cannot see: the listener path ends at a workload, and what that workload *does* is
+    another edge. This joins the two without collapsing them — the TLS hops stay hops, and
+    the operation is the terminal hop with its own parameters.
+    """
+    transport = endpoint_hops(bom, query=endpoint, max_hops=max_hops)
+    hops = list(transport["hops"])
+    terminal: dict[str, Any] | None = None
+    operation_row: Mapping[str, Any] | None = None
+    landing: str | None = None
+    for hop in reversed(hops):
+        try:
+            key = _resolve_one(bom, hop["target"])
+        except tb.ClaimRefused:
+            continue
+        found = _operation_of(bom, key)
+        if found is None:
+            continue
+        operation_row, claim = found
+        attributes = operation_row["attributes"] or {}
+        landing = bom["by_key"][key]["name"]
+        terminal = {
+            "source": landing,
+            "target": attributes.get("provider") or attributes.get("holder") or "provider",
+            "mode": str(attributes.get("operation") or "OPERATION").upper(),
+            "tls_version": None,
+            "suite": attributes.get("algorithm"),
+            "crypto": [value for value in (attributes.get("algorithm"),
+                                           attributes.get("hash")) if value],
+            "evidence_id": (claim.get("evidence_ids") or [None])[0],
+            "class": claim["confidence"],
+        }
+        break
+    block = crypto_hops([*hops, *([terminal] if terminal else [])])
+    key_name = holder = None
+    key_row: Mapping[str, Any] | None = None
+    if operation_row is not None:
+        for claim in bom["claims"]:
+            if claim["from_key"] != operation_row["key"] or claim["relation"] != "USES_KEY":
+                continue
+            key_row = bom["by_key"][claim["to_key"]]
+            key_name = key_row["name"]
+            break
+    if key_row is not None:
+        # the holder is either an edge off the operation (BACKED_BY) or the store that
+        # holds the key (HOLDS_KEY, which points *at* the key), and never a guess
+        for claim in bom["claims"]:
+            if claim["relation"] in ("BACKED_BY", "PROTECTED_BY") \
+                    and operation_row is not None and claim["from_key"] == operation_row["key"]:
+                holder = bom["by_key"][claim["to_key"]]["name"]
+                break
+        if holder is None:
+            for claim in bom["claims"]:
+                if claim["relation"] != "HOLDS_KEY":
+                    continue
+                if claim["to_key"] == key_row["key"]:
+                    holder = bom["by_key"][claim["from_key"]]["name"]
+                    break
+        if holder is None:
+            holder = (key_row["attributes"] or {}).get("holder")
+    return {
+        "endpoint": transport["endpoint"], "hops": block["hops"], "count": block["count"],
+        "weakest": block["weakest"], "proven": block["proven"],
+        "terminal": terminal, "key": key_name, "holder": holder,
+        "statement": (block["statement"] + (f" → {terminal['mode']}" if terminal else "")
+                      + (f" → {key_name}" if key_name else "")
+                      + (f" → {holder}" if holder else "")),
+        "rule": ("a transport path ends at a workload and a workload's crypto is a different "
+                 "edge: the terminal hop is numbered like the others, so the operation keeps "
+                 "its parameters instead of becoming an attribute of the listener"),
+        "not_proven": ["that one request crossed every hop: the estate evidences the hops, "
+                       "and a request takes one path through them"],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# PQC: is the device on the path able to do it?
+# --------------------------------------------------------------------------- #
+
+#: the kinds whose own capability list decides whether the migration can happen here.
+PQC_DEVICE_KINDS: tuple[str, ...] = ("HSM", "KMS", "TPM", "FIRMWARE", "VENDOR_PRODUCT",
+                                     "CRYPTO_LIBRARY", "CRYPTO_PROVIDER", "LOAD_BALANCER",
+                                     "NETWORK_ENDPOINT", "WAF", "API_GATEWAY",
+                                     "SERVICE_MESH", "CRYPTO_ACCELERATOR")
+
+#: the first algorithms a migration aims at. Named here so a caller can widen the question
+#: without editing a comparison.
+PQC_REQUIRED: tuple[str, ...] = ("ML-KEM-768", "ML-KEM-1024", "X25519MLKEM768",
+                                 "ML-DSA-65")
+
+PQC_READINESS: tuple[str, ...] = ("READY", "BLOCKED", "UNKNOWN")
+
+
+def _supported_names(bom: Mapping[str, Any], key: str) -> set[str]:
+    """Every algorithm name a node advertises, directly or through a capability node."""
+    names: set[str] = set()
+    for claim in bom["claims"]:
+        if claim["from_key"] != key or claim["relation"] not in ("SUPPORTS", "IMPLEMENTS"):
+            continue
+        node = bom["by_key"][claim["to_key"]]
+        names.add(node["name"].upper())
+        for inner in bom["claims"]:
+            if inner["from_key"] == node["key"] and inner["relation"] in ("IMPLEMENTS",
+                                                                          "USES_ALGORITHM"):
+                names.add(bom["by_key"][inner["to_key"]]["name"].upper())
+    return names
+
+
+def pqc_requirement(bom: Mapping[str, Any], *, query: Any,
+                    required: Iterable[Any] | None = None) -> dict[str, Any]:
+    """Which device on the migration path can actually do ML-KEM (cbom 25).
+
+    The blocker list says *where* the migration stops. This says *why*, in the device's own
+    terms: a firmware that advertises no PQC capability is ``BLOCKED``, one that advertises
+    it is ``READY``, and one that never published a capability list is ``UNKNOWN`` — which
+    is not the same answer, and must never be printed as one.
+    """
+    wanted = tuple(str(name).strip().upper() for name in (required or PQC_REQUIRED))
+    block = pqc_blockers(bom, query=query)
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for blocker in block["blockers"]:
+        if blocker["kind"] not in PQC_DEVICE_KINDS or blocker["name"] in seen:
+            continue
+        seen.add(blocker["name"])
+        key = _resolve_one(bom, blocker["name"])
+        supports = _supported_names(bom, key)
+        matched = [name for name in wanted if any(name in known for known in supports)]
+        readiness = ("READY" if matched
+                     else "BLOCKED" if supports else "UNKNOWN")
+        rows.append({
+            "kind": blocker["kind"], "name": blocker["name"],
+            "relation": blocker["relation"], "readiness": readiness,
+            "supports": sorted(supports), "required": list(wanted),
+            "matched": matched,
+            "reason": ("this device advertises a required PQC algorithm"
+                       if readiness == "READY" else
+                       "this device publishes a capability list and none of the required "
+                       "algorithms is on it" if readiness == "BLOCKED" else
+                       "this device publishes no capability list, so its readiness is "
+                       "unknown and not a pass")})
+    counts = {state: len([row for row in rows if row["readiness"] == state])
+              for state in PQC_READINESS}
+    return {
+        "algorithm": block["algorithm"], "required": list(wanted), "devices": rows,
+        "count": len(rows), "counts": counts,
+        "ready": [row["name"] for row in rows if row["readiness"] == "READY"],
+        "blocked": [row["name"] for row in rows if row["readiness"] == "BLOCKED"],
+        "unknown": [row["name"] for row in rows if row["readiness"] == "UNKNOWN"],
+        "statement": (f"{block['algorithm']}: {len(rows)} device(s) on the migration path; "
+                      f"{counts['READY']} advertise a required PQC algorithm, "
+                      f"{counts['BLOCKED']} publish a capability list without one, "
+                      f"{counts['UNKNOWN']} publish none at all"),
+        "rule": ("a PQC blocker is answered in the device's own capability terms: no list "
+                 "is UNKNOWN, never READY, because an unasked device is not a ready one"),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# The graph, assembled — one projection, no second store
+# --------------------------------------------------------------------------- #
+
+#: the families a bank recognises in its estate. A chain that names an image but no
+#: namespace is a chain a platform team cannot act on.
+GRAPH_FAMILIES: dict[str, tuple[str, ...]] = {
+    "KUBERNETES": ("CONTAINER", "POD", "DEPLOYMENT", "NAMESPACE", "CLUSTER",
+                   "KUBERNETES_NODE", "SERVICE"),
+    "HARDWARE": ("HOST", "PHYSICAL_SERVER", "VM", "CLOUD_INSTANCE", "FIRMWARE", "BIOS",
+                 "OS", "CRYPTO_ACCELERATOR", "TPM", "KUBERNETES_NODE", "SMART_CARD"),
+    "NETWORK": ("NETWORK_ENDPOINT", "LOAD_BALANCER", "API_GATEWAY", "SERVICE_MESH", "WAF",
+                "FIREWALL"),
+    "VENDOR": ("VENDOR", "VENDOR_PRODUCT", "VULNERABILITY"),
+    "KEY_STORE": ("HSM", "KMS", "TPM", "KEY_REFERENCE"),
+    "SUPPLY_CHAIN": ("IMAGE", "ARTIFACT", "RELEASE", "SBOM", "BUILD", "PACKAGE",
+                     "CRYPTO_LIBRARY"),
+}
+
+
+def dependency_graph(bom: Mapping[str, Any]) -> dict[str, Any]:
+    """The assembled dependency graph, and the families it reaches (cbom 26).
+
+    The review's final picture is one graph. The way that goes wrong in practice is a
+    second store: a CBOM file, an HBOM file and a topology file that agree on the day they
+    are generated. So this returns the *same* projection the queries above read, with the
+    families it reaches and the domains it keeps apart, and states plainly that there is
+    one store and it is the canonical estate.
+    """
+    counts: dict[str, int] = {}
+    for row in bom["assets"]:
+        counts[row["kind"]] = counts.get(row["kind"], 0) + 1
+    relations: dict[str, int] = {}
+    for claim in bom["claims"]:
+        relations[claim["relation"]] = relations.get(claim["relation"], 0) + 1
+    audit = evidence_audit(bom)
+    families = {name: sorted(kind for kind in GRAPH_FAMILIES[name] if counts.get(kind))
+                for name in GRAPH_FAMILIES}
+    distinct = sorted(relation for relation in relations if relations[relation])
+    return {
+        "levels": levels(bom), "kinds": dict(sorted(counts.items())),
+        "relations": dict(sorted(relations.items())), "relation_count": len(distinct),
+        "domains": crypto_domains(bom),
+        "evidence": {"edges": audit["count"], "structural": audit["structural"],
+                     "fully_recorded": audit["fully_recorded"],
+                     "with_collector": audit["with_collector"]},
+        "families": families,
+        "canonical": bom.get("source_of_truth"),
+        "second_store": False,
+        "statement": (f"{sum(counts.values())} node(s) of {len(counts)} kind(s), "
+                      f"{len(bom['claims'])} edge(s) over {len(distinct)} relation(s); "
+                      f"families present: "
+                      + ", ".join(f"{name} ({len(kinds)})"
+                                  for name, kinds in families.items() if kinds)
+                      + f"; source {bom.get('source_of_truth') or 'unknown'}, one store"),
+        "rule": ("the CBOM, the HBOM and the twin read one projection: a second store that "
+                 "agrees on the day it is built is a second truth waiting to disagree"),
     }
 
 

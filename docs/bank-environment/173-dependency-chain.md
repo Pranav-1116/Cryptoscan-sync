@@ -1,6 +1,6 @@
 # The dependency chain, twenty-six points
 
-`cryptoscan.cbom-dependency-guide/1` · generated 2026-11-03T06:40:17Z · **26 pass · 0 partial · 0 fail** · 84 probes
+`cryptoscan.cbom-dependency-guide/1` · generated 2026-11-03T07:35:52Z · **26 pass · 0 partial · 0 fail** · 84 probes
 
 **26/26 points of the chain are present in the built projection.**
 
@@ -308,9 +308,9 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 *every dependency edge carries its record, and a collector where one exists* (guide 173, evidence)
 
 - **PASS** `no-dependency-edge-is-missing-a-required-field` — 63 of 63 carry all six structural fields
-- **PASS** `the-fields-the-estate-did-not-supply-are-reported` — 11 of 63 carry all ten; short on observed_at 32/63, first_seen 18/63, last_seen 18/63
+- **PASS** `the-fields-the-estate-did-not-supply-are-reported` — 4 of 63 carry all 12; short on collector 25/63, collector_version 25/63, observed_at 32/63, first_seen 18/63
 - **PASS** `a-collector-is-named-where-a-record-exists` — 25 edge(s) name a collector: ['PROC-PROBE-01', 'TLS-SENSOR-04']
-- **PASS** `the-ten-fields-are-declared` — EDGE_FIELDS = ['source', 'target', 'relationship', 'basis', 'confidence', 'evidence_id', 'evidence_type', 'observed_at', 'first_seen', 'last_seen']
+- **PASS** `every-field-the-review-names-is-declared` — EDGE_FIELDS = ['source', 'target', 'relationship', 'basis', 'confidence', 'evidence_id', 'evidence_type', 'collector', 'collector_version', 'observed_at', 'first_seen', 'last_seen']
 
 ## `CBOM-20` — PASS
 
@@ -380,4 +380,4 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 - a capability is the provider's own list, self-reported; it says what the build was compiled with and nothing about which of those paths a caller took
 - the lifecycle compares two projections: a dependency that moved between collections the bank never ran is not visible here
 - the advisory answers are keyed on the names the estate holds — a firmware version nobody recorded cannot match a CVE
-- the edge audit counts records, not truth: an edge can carry all ten fields and still be wrong, which is what the conflict and change queries are for
+- the edge audit counts records, not truth: an edge can carry every field and still be wrong, which is what the conflict and change queries are for

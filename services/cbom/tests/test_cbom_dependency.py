@@ -557,3 +557,210 @@ def test_the_answer_to_which_systems_depend_carries_its_denominator():
                                                "quotable_as_total": False})
     assert "12 of 70" in block["statement"]
     assert block["quotable_as_total"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Guide 174: the collector on the edge, domains, the terminal hop, PQC readiness
+# --------------------------------------------------------------------------- #
+
+REVIEW_FIELDS = ("evidence_id", "evidence_type", "source", "collector", "collector_version",
+                 "observed_at", "confidence", "first_seen", "last_seen")
+
+
+def closure_document() -> dict:
+    """Guide 173's capability estate plus a certificate chain, a suite and two devices."""
+    application = application_row()
+    process = process_row()
+    library = tb.asset("CRYPTO_LIBRARY", "libcrypto.so.3", evidence_ids=[EVID])
+    algorithm = rsa()
+    aes = aes_algorithm()
+    aes_128 = n.algorithm(name="AES-128", family="AES", key_size=128, evidence_ids=[EVID])
+    provider_row = tb.asset("CRYPTO_PROVIDER", "OpenSSL 3.0.11", version="3.0.11",
+                            evidence_ids=[EVID_RT], family="OPENSSL")
+    capabilities = [dep.capability(provider_row=provider_row, algorithm_row=row,
+                                   basis="capability-list", evidence_ids=[EVID_RT])
+                    for row in (algorithm, aes, aes_128)]
+    openssl = dep.provider(name="OpenSSL 3.0.11", family="OPENSSL", version="3.0.11",
+                           process_row=process, library_row=library,
+                           provider_row=provider_row,
+                           capabilities=[row["assets"][-1] for row in capabilities],
+                           evidence_ids=[EVID_RT])
+    key = n.key_reference(name="KEY-REF-4401", key_ref="pkcs11:token=bank;id=4401",
+                          purpose="SIGNING", algorithm="RSA", key_size=2048,
+                          holder="HSM-001", evidence_ids=[EVID])
+    hsm = tb.asset("HSM", "HSM-001", evidence_ids=[EVID])
+    tpm = tb.asset("TPM", "TPM-01", evidence_ids=[EVID])
+    firmware = tb.asset("FIRMWARE", "BIG-IP 17.1.1", evidence_ids=[EVID], version="17.1.1")
+    lb = tb.asset("LOAD_BALANCER", "LB-01", evidence_ids=[EVID])
+    signing = dep.runtime_operation(
+        name="OP-SIGN-001", process_row=process, application_row=application,
+        operation="SIGN", algorithm_row=algorithm, provider_row=openssl["assets"][0],
+        key_row=key, key_size=2048, padding="PSS", hash_name="SHA-256",
+        evidence_ids=[EVID_RT], observed_at=NOW, first_seen=EARLIER, last_seen=NOW)
+    bound = dep.key_binding(operation_row=signing["assets"][0], key_row=key,
+                            holder_row=hsm, basis="runtime-observation",
+                            evidence_ids=[EVID])
+    public = n.endpoint(host="203.0.113.10", port=443, name="payments.bank.example:443",
+                        tls={"version": "TLS1.3"}, evidence_ids=[EVID])
+    lb_front = n.endpoint(host="10.10.0.30", port=443, name="lb-01:443",
+                          tls={"version": "TLS1.2"}, evidence_ids=[EVID])
+    bulk = tb.asset("CRYPTO_ASSET", "AES-256-GCM", evidence_ids=[EVID], algorithm="AES")
+    suite = n.cipher_suite(name="TLS_AES_256_GCM_SHA384", tls_version="TLS1.3",
+                           bulk="AES-256-GCM", evidence_ids=[EVID])
+    certificate = n.certificate(name="CERT-001", subject="CN=payments.bank.example",
+                                issuer="Bank Issuing CA", signature_algorithm="ECDSA-SHA256",
+                                evidence_ids=[EVID])
+    ecdsa = n.algorithm(name="ECDSA-P256", family="ECDSA", curve="P-256", evidence_ids=[EVID])
+    public_key = tb.asset("PUBLIC_KEY", "PUB-001", evidence_ids=[EVID], key_size=256)
+    issuer = n.authority(name="Bank Issuing CA", evidence_ids=[EVID])
+    lb_certificate = n.certificate(name="CERT-002", subject="CN=lb-01",
+                                   issuer="Bank Issuing CA",
+                                   signature_algorithm="RSA-SHA256", evidence_ids=[EVID])
+    lb_key = tb.asset("PUBLIC_KEY", "PUB-002", evidence_ids=[EVID], key_size=2048)
+    mlkem = n.algorithm(name="ML-KEM-768", family="ML-KEM", key_size=768, evidence_ids=[EVID])
+    hsm_capability = dep.capability(provider_row=hsm, algorithm_row=mlkem,
+                                    basis="vendor-datasheet", evidence_ids=[EVID])
+    firmware_capability = dep.capability(provider_row=firmware, algorithm_row=bulk,
+                                         basis="capability-list", evidence_ids=[EVID])
+    network = dep.network_binding(endpoint_row=public, suite_row=suite,
+                                  parts={"bulk": bulk}, certificate_row=certificate,
+                                  application_row=application, evidence_ids=[EVID],
+                                  observed_at=NOW)
+    hops = n.part(claims=[
+        tb.claim("payments.bank.example:443", "FORWARDS_TO", "lb-01:443",
+                 basis="dns-resolution", evidence_ids=[EVID]),
+        tb.claim("lb-01:443", "ROUTES_TO", "Payments API", basis="load-balancer-config",
+                 evidence_ids=[EVID]),
+        tb.claim("LB-01", "LISTENS_ON", "lb-01:443", basis="load-balancer-config",
+                 evidence_ids=[EVID]),
+        tb.claim("LB-01", "RUNS_FIRMWARE", "BIG-IP 17.1.1", basis="agent-inventory",
+                 evidence_ids=[EVID]),
+    ])
+    return n.estate(
+        application, process, library, algorithm, aes, aes_128, provider_row, hsm, tpm,
+        firmware, lb, key, public, lb_front, bulk, suite, certificate, lb_certificate,
+        ecdsa, public_key, lb_key, issuer, mlkem,
+        n.serves(application_row=application, service_row=process,
+                 system_row=n.service_of(name="Payments System", kind="BUSINESS_SYSTEM",
+                                         evidence_ids=[EVID]), evidence_ids=[EVID]),
+        *capabilities, openssl, signing, bound, network, hops, hsm_capability,
+        firmware_capability,
+        n.certificate_chain(certificate_row=certificate, key_row=public_key,
+                            key_algorithm_row=ecdsa, signature_algorithm_row=ecdsa,
+                            issuer_row=issuer, evidence_ids=[EVID]),
+        n.certificate_chain(certificate_row=lb_certificate, key_row=lb_key,
+                            key_algorithm_row=algorithm, signature_algorithm_row=algorithm,
+                            issuer_row=issuer, evidence_ids=[EVID]),
+        n.part(claims=[tb.claim("lb-01:443", "PRESENTS", "CERT-002",
+                                basis="tls-handshake", evidence_ids=[EVID])]),
+        estate_id="closure-test")
+
+
+def closure_estate() -> dict:
+    return tb.build(closure_document())
+
+
+def test_the_edge_audit_counts_the_fields_the_review_names():
+    bom = closure_estate()
+    assert set(REVIEW_FIELDS) <= set(dep.EDGE_FIELDS)
+    audit = dep.evidence_audit(bom)
+    assert set(audit["field_coverage"]) == set(dep.EDGE_FIELDS)
+    assert audit["structural"] == audit["count"]
+
+
+def test_a_capability_says_which_class_of_evidence_stands_behind_it():
+    bom = closure_estate()
+    block = dep.capability_evidence(bom, query="OpenSSL 3.0.11")
+    assert block["count"] == 3
+    verdicts = {row["capability"]: row["verdict"] for row in block["rows"]}
+    assert verdicts["OpenSSL 3.0.11:RSA-2048"] == "CORROBORATED"
+    assert verdicts["OpenSSL 3.0.11:AES-128"] == "LISTED_ONLY"
+    for row in block["rows"]:
+        assert (row["verdict"] == "LISTED_ONLY") == (not row["classes"])
+
+
+def test_a_capability_evidence_query_refuses_an_unknown_node():
+    bom = closure_estate()
+    with pytest.raises(tb.ClaimRefused) as excinfo:
+        dep.capability_evidence(bom, query="BoringSSL")
+    assert excinfo.value.code == "UNKNOWN_NODE"
+
+
+def test_application_and_certificate_crypto_are_two_domains():
+    bom = closure_estate()
+    domains = dep.crypto_domains(bom)
+    application = domains["domains"]["APPLICATION"]["algorithms"]
+    certificate = domains["domains"]["CERTIFICATE"]["algorithms"]
+    assert "RSA-2048" in application
+    assert "ECDSA-P256" in certificate
+    assert "ECDSA-P256" not in application
+
+
+def test_the_domains_are_reported_with_their_overlap_and_never_summed():
+    bom = closure_estate()
+    domains = dep.crypto_domains(bom)
+    shared = domains["shared_algorithms"].get("APPLICATION+CERTIFICATE", [])
+    assert "RSA-2048" in shared
+    counts = [len(domain["algorithms"]) for domain in domains["domains"].values()]
+    assert sum(counts) > len(set().union(*[set(domain["algorithms"])
+                                           for domain in domains["domains"].values()]))
+
+
+def test_the_path_ends_at_the_operation_the_key_and_the_holder():
+    bom = closure_estate()
+    path = dep.full_path(bom, endpoint="payments.bank.example:443")
+    assert path["count"] == 3
+    assert path["hops"][0]["tls_version"] == "TLS1.3"
+    assert path["terminal"]["mode"] == "SIGN"
+    assert "RSA-2048" in path["terminal"]["crypto"]
+    assert path["key"] == "KEY-REF-4401"
+    assert path["holder"] == "HSM-001"
+
+
+def test_a_path_from_the_load_balancer_is_shorter_and_lands_on_the_same_operation():
+    bom = closure_estate()
+    edge = dep.full_path(bom, endpoint="payments.bank.example:443")
+    inner = dep.full_path(bom, endpoint="lb-01:443")
+    assert inner["count"] < edge["count"]
+    assert inner["terminal"]["mode"] == edge["terminal"]["mode"] == "SIGN"
+    assert inner["key"] == "KEY-REF-4401"
+
+
+def test_pqc_readiness_is_the_devices_own_answer():
+    bom = closure_estate()
+    block = dep.pqc_requirement(bom, query="RSA-2048")
+    verdicts = {row["name"]: row["readiness"] for row in block["devices"]}
+    assert verdicts["HSM-001"] == "READY"
+    assert verdicts["BIG-IP 17.1.1"] == "BLOCKED"
+    assert verdicts["LB-01"] == "UNKNOWN"
+    assert block["counts"] == {"READY": 1, "BLOCKED": 1, "UNKNOWN": 3}
+
+
+def test_a_device_that_publishes_no_list_is_never_READY():
+    bom = closure_estate()
+    block = dep.pqc_requirement(bom, query="RSA-2048")
+    assert "LB-01" in block["unknown"] and "LB-01" not in block["ready"]
+    assert block["unknown"] and not set(block["unknown"]) & set(block["ready"])
+
+
+def test_the_required_algorithms_are_parameters_not_constants():
+    bom = closure_estate()
+    block = dep.pqc_requirement(bom, query="RSA-2048", required=["ML-KEM-768"])
+    verdicts = {row["name"]: row["readiness"] for row in block["devices"]}
+    assert verdicts["HSM-001"] == "READY"
+    assert block["required"] == ["ML-KEM-768"]
+    narrowed = dep.pqc_requirement(bom, query="RSA-2048", required=["SLH-DSA-128"])
+    assert {row["name"]: row["readiness"] for row in narrowed["devices"]}["HSM-001"] \
+        == "BLOCKED"
+
+
+def test_the_assembled_graph_names_its_families_and_its_one_store():
+    bom = closure_estate()
+    graph = dep.dependency_graph(bom)
+    assert graph["canonical"] == "CANONICAL_ESTATE"
+    assert graph["second_store"] is False
+    assert graph["families"]["KEY_STORE"]
+    assert graph["levels"]["application"] == 1
+    assert set(graph["domains"]["domains"]) == {"APPLICATION", "PLATFORM", "CERTIFICATE",
+                                                "NETWORK"}
+    assert graph["evidence"]["edges"] == graph["evidence"]["structural"]
