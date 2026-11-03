@@ -282,7 +282,9 @@ class HardwareBomResponse(BaseModel):
     skipped: list[dict]
     refusals: list[dict]
     bom: dict
+    product_lifecycle: dict
     blast_radius: dict | None = None
+    impact: dict | None = None
 
 
 @router.get("/hardware", response_model=HardwareBomResponse)
@@ -301,8 +303,9 @@ def technology_bom_hardware(
     place, or that carries no observation time, is listed under ``skipped`` with the
     reason instead of being defaulted into a server.
 
-    With ``device=`` the response also carries the blast radius — the applications,
-    business systems, cryptographic assets and network paths that go with that device.
+    The response always carries the vendor `product_lifecycle` — a product past end of life
+    with the devices, applications and systems behind it. With ``device=`` it also carries
+    the blast radius and the review's one-line impact (`1 HSM, 3 applications, …`).
     """
     from cbom import hbom_graph as hg
 
@@ -335,9 +338,11 @@ def technology_bom_hardware(
         "skipped": body["skipped"],
         "refusals": bom["refusals"],
         "bom": bom,
+        "product_lifecycle": hg.product_lifecycle(bom),
     }
     if device:
         answer["blast_radius"] = hg.radius(bom, query=device)
+        answer["impact"] = hg.impact_summary(bom, query=device)
     return answer
 
 

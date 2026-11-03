@@ -112,6 +112,13 @@ relationships, the NBOM path and the vendor view — because there is one identi
 | 15 | Cross-BOM correlation | `correlate()` — one hardware asset walked into its CBOM algorithm, SBOM library, application, NBOM endpoint and VBOM vendor |
 | 16 | Not a source of truth | `build()` takes a canonical estate, `from_document()` refuses an HBOM or a TechBOM, and there is no second table |
 
+A second read of the same text, line by line, found nine more things the first pass had
+answered only in prose — device metadata, the review's direction of "runs", the two
+evidence classes, product lifecycle, network appliances with all fourteen facts, the
+review's sentence as a number, `DEVICE_REPLACED`, evidence as nodes, and the certificates
+an HSM holds. Each is now built, and guide 168
+(`docs/bank-environment/168-hbom-gaps.md`, **9 pass · 0 partial · 0 fail**) measures it.
+
 ## Scope decisions taken here
 
 - **A hardware asset is a typed node in the one graph, never a row in a hardware table.**

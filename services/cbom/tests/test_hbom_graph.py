@@ -626,7 +626,13 @@ def test_stored_rows_become_devices_with_their_own_fingerprint_as_evidence():
 def test_a_stored_row_never_claims_observed():
     body = h.stored_hardware([_row()])
     bom = h.build(h.estate({"assets": body["assets"], "claims": body["claims"]}))
-    assert {row["confidence"] for row in bom["claims"]} == {"CONFIGURED"}
+    read = {row["confidence"] for row in bom["claims"]
+            if row["relation"] not in {"HAS_MODEL", "SUPPLIED_BY"}}
+    assert read == {"CONFIGURED"}
+    # the vendor chain is the row's claim about the product, not an observation of it
+    declared = {row["confidence"] for row in bom["claims"]
+                if row["relation"] in {"HAS_MODEL", "SUPPLIED_BY"}}
+    assert declared == {"VENDOR_DECLARED"}
     assert "CONFIGURED at best" in body["statement"]
 
 
@@ -659,4 +665,204 @@ def test_a_stored_firmware_string_is_a_release_and_a_dict_is_a_lifecycle():
 def test_stored_capabilities_are_supports_claims_not_uses():
     body = h.stored_hardware([_row()])
     relations = {claim["relation"] for claim in body["claims"]}
-    assert relations == {"RUNS_FIRMWARE", "SUPPORTS"}
+    assert relations == {"RUNS_FIRMWARE", "SUPPORTS", "HAS_MODEL", "SUPPLIED_BY"}
+
+
+# ---- what the second read of the review added -------------------------------
+
+def test_a_cpu_is_a_topology_that_has_to_reconcile():
+    topology = h.cpu_topology(sockets=2, cores_per_socket=16, threads_per_core=2,
+                              numa_nodes=2, frequency_mhz=2600)
+    assert topology["cores"] == 32 and topology["threads"] == 64
+    assert "2 socket(s) x 16 core(s)" in topology["topology"]
+    with pytest.raises(tb.ClaimRefused) as refused:
+        h.cpu_topology(sockets=2, cores_per_socket=16, threads_per_core=2, cores=48)
+    assert refused.value.code == "TOPOLOGY_DOES_NOT_RECONCILE"
+
+
+def test_a_certification_names_a_standard_and_says_whether_it_is_backed():
+    backed = h.hardware("HSM", manufacturer="X", model="Y", evidence_ids=[EVIDENCE],
+                        certifications=[{"standard": "FIPS 140-3", "level": "Level 3",
+                                         "expires": "2027-06-30",
+                                         "evidence_id": EVIDENCE}])
+    unbacked = h.hardware("HSM", manufacturer="X", model="Y", evidence_ids=[EVIDENCE],
+                          certifications=["Common Criteria EAL4+"])
+    assert backed["attributes"]["certifications"][0]["backed"] is True
+    assert unbacked["attributes"]["certifications"][0]["backed"] is False
+    with pytest.raises(tb.ClaimRefused) as refused:
+        h.hardware("HSM", manufacturer="X", model="Y", evidence_ids=[EVIDENCE],
+                   certifications=[{"level": "Level 3"}])
+    assert refused.value.code == "CERTIFICATION_WITHOUT_STANDARD"
+
+
+def test_a_sku_is_kept_beside_the_part_number():
+    row = h.hardware("PHYSICAL_SERVER", manufacturer="Dell", model="R760",
+                     sku="PER760-32C", part_number="0R760A", evidence_ids=[EVIDENCE])
+    assert row["attributes"]["sku"] == "PER760-32C"
+    assert row["attributes"]["part_number"] == "0R760A"
+
+
+def test_a_host_runs_what_sits_on_it_as_well_as_the_other_way_round():
+    host = h.hardware("PHYSICAL_SERVER", manufacturer="Dell", model="R760",
+                      serial_number="SN-1", evidence_ids=[EVIDENCE])
+    application = tb.asset("APPLICATION", "Payments API", evidence_ids=[EVIDENCE])
+    bom = h.build(h.estate(h.merge({"assets": [host, application], "claims": [
+        h.claim(host["name"], "RUNS", "Payments API", basis="process-trace",
+                evidence_ids=[EVIDENCE]),
+        h.claim("Payments API", "RUNS_ON", host["name"], basis="config-parse",
+                evidence_ids=[EVIDENCE]),
+    ]})))
+    assert bom["refusals"] == []
+    assert {(row["relation"], row["confidence"]) for row in bom["claims"]} == {
+        ("RUNS", "OBSERVED"), ("RUNS_ON", "CONFIGURED")}
+
+
+def test_a_host_cannot_run_an_algorithm():
+    host = h.hardware("PHYSICAL_SERVER", manufacturer="Dell", model="R760",
+                      serial_number="SN-1", evidence_ids=[EVIDENCE])
+    algorithm = tb.asset("ALGORITHM", "RSA-2048", evidence_ids=[EVIDENCE])
+    bom = h.build(h.estate(h.merge({"assets": [host, algorithm], "claims": [
+        h.claim(host["name"], "RUNS", "RSA-2048", basis="process-trace",
+                evidence_ids=[EVIDENCE])]})))
+    assert bom["refusals"][0]["code"] == "TYPE_MISMATCH"
+
+
+def test_capability_and_network_observation_are_classes_of_their_own():
+    assert tb.BASES["capability-list"] == tb.CAPABILITY
+    assert tb.CAPABILITY in tb.CONFIDENCE and tb.CAPABILITY not in tb.PROVEN
+    assert tb.BASES["passive-capture"] == tb.NETWORK_OBSERVED
+    assert tb.NETWORK_OBSERVED in tb.PROVEN
+    claim = tb.claim("HSM-001", "SUPPORTS", "cap RSA", basis="capability-list",
+                     evidence_ids=[EVIDENCE])
+    assert claim["confidence"] == tb.CAPABILITY
+
+
+def test_a_network_appliance_carries_its_facts_and_its_two_references():
+    balancer = h.network_device(
+        "LOAD_BALANCER", name="payments-lb", manufacturer="F5", model="BIG-IP i5800",
+        firmware_version="17.1.1", ip="10.10.0.20", mac="aa:bb:cc:00:20:01",
+        interface="1.1", vlan="VLAN-10", zone="EDGE", subnet="10.10.0.0/24",
+        routing="static-default", ha_role="ACTIVE",
+        tls={"min_version": "TLS1.2", "pqc": "hybrid-x25519mlkem768"},
+        certificate="cert:payments-edge", hsm="HSM-001", evidence_ids=[EVIDENCE])
+    attributes = balancer["assets"][0]["attributes"]
+    for name in ("ip", "mac", "interface", "vlan", "zone", "subnet", "routing",
+                 "ha_role", "firmware_version", "tls_capability",
+                 "certificate_reference", "hsm_reference"):
+        assert attributes.get(name), name
+    relations = {claim["relation"] for claim in balancer["claims"]}
+    assert relations == {"PRESENTS", "USES_HSM"}
+
+
+def test_a_builder_refuses_a_kind_it_does_not_model():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        h.network_device("ROUTER", manufacturer="Cisco", model="ASR",
+                         evidence_ids=[EVIDENCE])
+    assert refused.value.code == "NOT_A_NETWORK_DEVICE"
+
+
+def test_a_product_past_end_of_life_reaches_the_business_behind_it():
+    product = h.product("SyntheticHSM PaymentHSM-9000", vendor="SyntheticHSM",
+                        model="PaymentHSM-9000", status="RETIRED",
+                        eol_date="2026-09-30", replacement="PaymentHSM-9100",
+                        evidence_ids=[EVIDENCE])
+    device = h.hsm("HSM-001", vendor="SyntheticHSM", product="PaymentHSM-9000",
+                   model="PaymentHSM-9000", firmware_version="8.4.2",
+                   applications=["Payments API"], systems=["Payments"],
+                   evidence_ids=[EVIDENCE], product_asset=product)
+    application = tb.asset("APPLICATION", "Payments API", evidence_ids=[EVIDENCE])
+    system = tb.asset("BUSINESS_SYSTEM", "Payments", evidence_ids=[EVIDENCE])
+    bom = h.build(h.estate(h.merge(device, {"assets": [application, system],
+                                            "claims": []})))
+    lifecycle = h.product_lifecycle(bom)
+    ended = lifecycle["products"][0]
+    assert ended["status"] == "RETIRED" and ended["actionable"] is True
+    assert ended["devices"] == ["HSM-001"]
+    assert ended["systems"] == ["Payments"]
+    assert ended["replacement"] == "PaymentHSM-9100"
+
+
+def test_a_product_status_this_model_does_not_know_is_refused():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        h.product("p", vendor="v", status="PROBABLY-FINE", evidence_ids=[EVIDENCE])
+    assert refused.value.code == "UNKNOWN_PRODUCT_STATUS"
+
+
+def test_the_review_sentence_is_a_measurement_over_the_graph():
+    bom = h.build(payments())
+    summary = h.impact_summary(bom, query="HSM-001")
+    assert summary["hsm"] >= 1 and summary["applications"] >= 1
+    assert "affected" in summary["statement"]
+    assert summary["crypto_assets"] >= 1
+
+
+def test_a_swapped_unit_in_the_same_bay_is_one_device_replaced_event():
+    def device(identifier: str, serial: str) -> dict:
+        return h.hardware("HSM", asset_id=identifier, manufacturer="SyntheticHSM",
+                          model="PaymentHSM-9000", serial_number=serial,
+                          rack="R12", slot="U8", evidence_ids=[EVIDENCE])
+
+    before = h.build(h.estate(h.merge(device("HSM-001", "SN-1"))))
+    after = h.build(h.estate(h.merge(device("HSM-009", "SN-9"))))
+    feed = h.drift(before, after)
+    replaced = [event for event in feed["events"]
+                if event["change"] == "DEVICE_REPLACED"]
+    assert len(replaced) == 1
+    assert replaced[0]["previous_asset_id"] == "HSM-001"
+    assert replaced[0]["asset_id"] == "HSM-009"
+    assert "DEVICE_ADDED" not in feed["by_change"]
+    assert "DEVICE_REMOVED" not in feed["by_change"]
+
+
+def test_a_device_in_a_free_bay_is_still_an_addition():
+    before = h.build(h.estate(h.merge(h.hardware(
+        "HSM", asset_id="HSM-001", manufacturer="X", model="Y", serial_number="SN-1",
+        rack="R12", slot="U8", evidence_ids=[EVIDENCE]))))
+    after = h.build(h.estate(h.merge(h.hardware(
+        "HSM", asset_id="HSM-002", manufacturer="X", model="Y", serial_number="SN-2",
+        rack="R13", slot="U1", evidence_ids=[EVIDENCE]))))
+    assert h.drift(before, after)["by_change"] == {"DEVICE_ADDED": 1, "DEVICE_REMOVED": 1}
+
+
+def test_evidence_becomes_a_node_and_a_device_an_edge_to_it():
+    record = ev()
+    device = h.hardware("HSM", manufacturer="X", model="Y", evidence_ids=[EVIDENCE],
+                        evidence=[record])
+    bom = h.build(h.estate(h.merge({"assets": [device], "claims": []})))
+    node = next(row for row in bom["assets"] if row["kind"] == "EVIDENCE")
+    assert node["name"] == EVIDENCE and node["attributes"]["hash"] == "sha256:3b1f"
+    edge = next(row for row in bom["claims"] if row["relation"] == "EVIDENCED_BY")
+    assert edge["to"] == EVIDENCE and edge["confidence"] == "CONFIGURED"
+
+
+def test_an_evidence_edge_cannot_be_an_inference():
+    record = ev()
+    device = h.hardware("HSM", manufacturer="X", model="Y", evidence_ids=[EVIDENCE],
+                        evidence=[record])
+    node = tb.asset("EVIDENCE", EVIDENCE, evidence_ids=[EVIDENCE], hash="sha256:3b1f")
+    bom = h.build(h.estate(h.merge({"assets": [device, node], "claims": [
+        h.claim(device["name"], "EVIDENCED_BY", EVIDENCE, basis="name-match",
+                rule="a similar name", evidence_ids=[EVIDENCE])]})))
+    assert "CLAIM_WEAKER_THAN_RELATION_REQUIRES" in [row["code"]
+                                                     for row in bom["refusals"]]
+
+
+def test_an_hsm_certificate_is_a_node_with_an_edge_from_the_device():
+    device = h.hsm("HSM-001", vendor="SyntheticHSM", product="P-9000", model="P-9000",
+                   firmware_version="8.4.2", certificates=["cert:payments-root"],
+                   evidence_ids=[EVIDENCE])
+    bom = h.build(h.estate(h.merge(device)))
+    assert any(row["kind"] == "CERTIFICATE" and row["name"] == "cert:payments-root"
+               for row in bom["assets"])
+    edge = next(row for row in bom["claims"]
+                if row["relation"] == "HOLDS_CERTIFICATE")
+    assert edge["from"] == "HSM-001" and edge["to"] == "cert:payments-root"
+
+
+def test_a_key_reference_cannot_be_held_as_a_certificate():
+    device = h.hardware("HSM", manufacturer="X", model="Y", evidence_ids=[EVIDENCE])
+    reference = tb.asset("KEY_REFERENCE", "KREF-0007", evidence_ids=[EVIDENCE])
+    bom = h.build(h.estate(h.merge({"assets": [device, reference], "claims": [
+        h.claim(device["name"], "HOLDS_CERTIFICATE", "KREF-0007", basis="api-poll",
+                evidence_ids=[EVIDENCE])]})))
+    assert bom["refusals"][0]["code"] == "TYPE_MISMATCH"

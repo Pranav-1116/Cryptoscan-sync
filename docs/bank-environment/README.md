@@ -555,6 +555,35 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [The rest of the HBOM review](168-hbom-gaps.md)
+> (**9 pass · 0 partial · 0 fail**, 43 probes) is the second read of the same review, line
+> by line — nine things guide 167 still left missing, and each one built. **Device
+> metadata**: a `sku`, the `certifications` a device holds (`standard`, `level`, `expires`
+> and the attestation behind them — one with no evidence id is kept but marked *unbacked*,
+> because "certified" is what an auditor asks about), and a CPU written as a **topology
+> that has to reconcile** — `2 sockets × 16 cores × 2 threads = 64` or
+> `TOPOLOGY_DOES_NOT_RECONCILE`. **The other direction of "runs"**: the review draws
+> `HOST-001 ↓ RUNS Payments API`, and guide 167 only had the application pointing at the
+> host. **Two evidence classes the ladder was missing**: `CAPABILITY` (what a device says
+> it can do — above an import, below anything read from the device, never in the proven
+> set) and `NETWORK_OBSERVED` (an observation taken off the wire, which *is* proven).
+> **Product lifecycle**: a model that went `RETIRED` walks to its devices, applications and
+> systems — `SyntheticHSM PaymentHSM-9000 RETIRED → 1 device, 2 applications, 2 systems`,
+> with a replacement recorded rather than implied. **Network appliances with all fourteen
+> facts** — IP, MAC, interface, VLAN, zone, subnet, routing, HA role, firmware, vendor,
+> model, TLS capability, certificate and HSM reference — where the last two are **edges**
+> (`PRESENTS`, `USES_HSM`), so a load balancer that offloads TLS to an HSM says so and
+> NBOM reads the same edge. **The review's sentence as a measurement**:
+> `HSM-001: 2 HSMs affected, 2 applications affected, 2 business systems affected, 3
+> cryptographic assets affected, 3 network paths affected`. **`DEVICE_REPLACED`** — a
+> swapped unit in the same rack slot is now one event naming both identities, not an add
+> and a remove; it was effectively unreachable before, because a new serial mints a new
+> canonical id. **Evidence as nodes**: each cited record becomes an `EVIDENCE` node and each
+> device an `EVIDENCED_BY` edge with a floor of `IMPORTED` — a register in a side table is a
+> document nobody can walk, and `correlate('HSM-001')` now reaches `EVID-829182`. **HSM
+> certificates** are nodes too (`HOLDS_CERTIFICATE`), bounded so a key reference cannot be
+> passed off as one.
+
 > [Hardware is a view of the estate](167-hbom.md)
 > (**16 pass · 0 partial · 0 fail**, 72 probes) answers the HBOM review
 > (`hbom-review-2026-11-03.md`) by putting hardware into the **same graph** as the rest of

@@ -1,0 +1,457 @@
+{
+  "schema": "cryptoscan.cbom-hbom-gaps-guide/1",
+  "generated_at": "2026-11-03T02:15:12.023398+00:00",
+  "counts": {
+    "PASS": 9,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 43,
+  "statement": "23 hardware asset(s) across 20 kind(s) and 47 relationship(s) touching them out of 55 in the estate; 2 device root(s); 190 declared field(s) the collectors did not supply; 1 firmware release(s) tracked",
+  "summary": {
+    "schema": "cryptoscan.hbom/1",
+    "assets": 23,
+    "by_kind": {
+      "BIOS": 1,
+      "CERTIFICATE": 2,
+      "CPU": 1,
+      "CRYPTO_CAPABILITY": 2,
+      "EVIDENCE": 1,
+      "FIREWALL": 1,
+      "FIRMWARE": 1,
+      "HSM": 2,
+      "HSM_CLUSTER": 1,
+      "HSM_PARTITION": 1,
+      "LOAD_BALANCER": 1,
+      "MEMORY": 1,
+      "MOTHERBOARD": 1,
+      "NIC": 1,
+      "PHYSICAL_SERVER": 1,
+      "RAID_CONTROLLER": 1,
+      "STORAGE": 1,
+      "TPM": 1,
+      "VENDOR": 1,
+      "VENDOR_PRODUCT": 1
+    },
+    "identities_provisional": 1,
+    "field_gaps": 190,
+    "component_roots": 2,
+    "firmware_actionable": [],
+    "refusals": 1,
+    "coverage": "UNMEASURED",
+    "statement": "23 hardware asset(s) across 20 kind(s) and 47 relationship(s) touching them out of 55 in the estate; 2 device root(s); 190 declared field(s) the collectors did not supply; 1 firmware release(s) tracked",
+    "not_proven": [
+      "that the tree is complete: a component nobody inventoried is absent, and the field gaps count what the collectors admitted they did not see",
+      "that a capability is a use: SUPPORTS is the device's own list, and an application's USES_CRYPTO is a claim about the application",
+      "that a device is where the network says it is: an address is an observation and never an identity",
+      "that a firmware status is current: EOL is what the vendor said at the time the release was recorded"
+    ]
+  },
+  "counts_by_kind": {
+    "BIOS": 1,
+    "CERTIFICATE": 2,
+    "CPU": 1,
+    "CRYPTO_CAPABILITY": 2,
+    "EVIDENCE": 1,
+    "FIREWALL": 1,
+    "FIRMWARE": 1,
+    "HSM": 2,
+    "HSM_CLUSTER": 1,
+    "HSM_PARTITION": 1,
+    "LOAD_BALANCER": 1,
+    "MEMORY": 1,
+    "MOTHERBOARD": 1,
+    "NIC": 1,
+    "PHYSICAL_SERVER": 1,
+    "RAID_CONTROLLER": 1,
+    "STORAGE": 1,
+    "TPM": 1,
+    "VENDOR": 1,
+    "VENDOR_PRODUCT": 1
+  },
+  "impact": {
+    "schema": "cryptoscan.hbom/1",
+    "query": "HSM-001",
+    "seed": "HSM-001",
+    "hsm": 2,
+    "applications": 2,
+    "business_systems": 2,
+    "crypto_assets": 3,
+    "network_paths": 3,
+    "devices": 15,
+    "statement": "HSM-001: 2 HSMs affected, 2 applications affected, 2 business systems affected, 3 cryptographic assets affected, 3 network paths affected; 5 node(s) only through a declared edge",
+    "not_proven": [
+      "that reachability is impact: a device in the path is exposure, and whether the business stops needs the owner's assessment",
+      "that the path is complete: a relationship nobody recorded is missing here, not absent from the estate"
+    ]
+  },
+  "product_lifecycle": {
+    "schema": "cryptoscan.hbom/1",
+    "products": [
+      {
+        "product": "SyntheticHSM PaymentHSM-9000",
+        "model": "PaymentHSM-9000",
+        "status": "RETIRED",
+        "eol_date": "2026-09-30",
+        "replacement": "PaymentHSM-9100",
+        "devices": [
+          "HSM-001"
+        ],
+        "applications": [
+          "Card Authorization",
+          "Payments API"
+        ],
+        "systems": [
+          "Card Services",
+          "Payments"
+        ],
+        "crypto_assets": [
+          "HSM-001 ML-KEM-768 ENCAPSULATE",
+          "HSM-001 RSA-2048 SIGN/VERIFY",
+          "RSA-2048"
+        ],
+        "actionable": true
+      }
+    ],
+    "statement": "1 vendor product(s) in the chain, 1 past end of life: SyntheticHSM PaymentHSM-9000 RETIRED \u2192 1 device(s), 2 application(s), 2 system(s)",
+    "not_proven": [
+      "that the vendor's lifecycle page is current: the status is what was recorded when the product row was written",
+      "that a replacement exists in this estate: the field names one, and nothing here checks it was bought"
+    ]
+  },
+  "classes": {
+    "OBSERVED": 5,
+    "NETWORK_OBSERVED": 5,
+    "CONFIGURED": 4,
+    "CAPABILITY": 3,
+    "IMPORTED": 3,
+    "VENDOR_DECLARED": 3,
+    "INFERRED": 2,
+    "UNKNOWN": 1
+  },
+  "certifications": [
+    [
+      {
+        "standard": "FIPS 140-3",
+        "level": "Level 3",
+        "expires": "2027-06-30",
+        "evidence_id": "EVID-829182",
+        "backed": true
+      }
+    ],
+    [
+      {
+        "standard": "FIPS 140-2",
+        "level": "Level 2",
+        "expires": null,
+        "evidence_id": "EVID-829182",
+        "backed": true
+      }
+    ]
+  ],
+  "rows": [
+    {
+      "id": "metadata",
+      "question": "does a device carry a SKU, certifications and a CPU topology",
+      "phase": "review hbom / 1 (metadata)",
+      "probes": [
+        {
+          "probe": "a-device-carries-a-sku-as-well-as-a-part-number",
+          "ok": true,
+          "observed": "SKU PER760-32C on ASSET-HW-010788"
+        },
+        {
+          "probe": "a-certification-names-a-standard-a-level-and-an-expiry",
+          "ok": true,
+          "observed": "FIPS 140-3 Level 3 until 2027-06-30"
+        },
+        {
+          "probe": "a-certification-without-a-standard-is-refused",
+          "ok": true,
+          "observed": "level without a standard \u2192 CERTIFICATION_WITHOUT_STANDARD"
+        },
+        {
+          "probe": "a-certification-with-no-attestation-behind-it-says-so",
+          "ok": true,
+          "observed": "kept, but marked unbacked rather than presented as certified"
+        },
+        {
+          "probe": "a-cpu-is-a-topology-whose-arithmetic-reconciles",
+          "ok": true,
+          "observed": "2 socket(s) x 16 core(s) x 2 thread(s) = 64 logical processor(s)"
+        },
+        {
+          "probe": "a-topology-that-does-not-add-up-is-refused",
+          "ok": true,
+          "observed": "2 sockets x 16 cores \u2260 48 claimed \u2192 TOPOLOGY_DOES_NOT_RECONCILE"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "host-runs",
+      "question": "can a host say what it runs, as the review draws it",
+      "phase": "review hbom / 3",
+      "probes": [
+        {
+          "probe": "a-host-runs-the-applications-that-sit-on-it",
+          "ok": true,
+          "observed": "2 RUNS edge(s) out of the host, basis process-trace"
+        },
+        {
+          "probe": "the-reverse-direction-is-kept-as-well",
+          "ok": true,
+          "observed": "Payments API RUNS_ON the same host, from configuration"
+        },
+        {
+          "probe": "both-directions-are-claims-with-their-own-basis",
+          "ok": true,
+          "observed": "RUNS OBSERVED from a process trace, RUNS_ON CONFIGURED from configuration"
+        },
+        {
+          "probe": "a-host-cannot-run-an-algorithm",
+          "ok": true,
+          "observed": "RUNS ends at software, never at an algorithm"
+        },
+        {
+          "probe": "the-business-to-hardware-chain-reads-in-one-direction",
+          "ok": true,
+          "observed": "from the host: Payments; from the HSM: both systems, through two apps"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "classes",
+      "question": "are CAPABILITY and NETWORK_OBSERVED classes of their own",
+      "phase": "review hbom / 4 (evidence classes)",
+      "probes": [
+        {
+          "probe": "capability-is-an-evidence-class-of-its-own",
+          "ok": true,
+          "observed": "CAPABILITY sits above an import and below anything read from the device"
+        },
+        {
+          "probe": "a-capability-list-claim-carries-capability-and-not-more",
+          "ok": true,
+          "observed": "SUPPORTS from a capability list \u2192 CAPABILITY"
+        },
+        {
+          "probe": "a-network-observation-is-an-observation",
+          "ok": true,
+          "observed": "NETWORK_OBSERVED is proven, because a capture saw it"
+        },
+        {
+          "probe": "a-capability-can-never-be-promoted-into-the-proven-set",
+          "ok": true,
+          "observed": "CAPABILITY is walked and reported, never counted as blast radius"
+        },
+        {
+          "probe": "the-eight-classes-the-review-names-are-all-present",
+          "ok": true,
+          "observed": "8 classes, including the two this round added"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "product-lifecycle",
+      "question": "does a retired model reach the business",
+      "phase": "review hbom / 5",
+      "probes": [
+        {
+          "probe": "a-product-past-end-of-life-is-actionable",
+          "ok": true,
+          "observed": "SyntheticHSM PaymentHSM-9000 \u2192 RETIRED (EOL 2026-09-30)"
+        },
+        {
+          "probe": "the-lifecycle-walk-names-the-devices-behind-the-product",
+          "ok": true,
+          "observed": "device(s): HSM-001"
+        },
+        {
+          "probe": "and-the-applications-and-systems-above-them",
+          "ok": true,
+          "observed": "2 application(s), 2 system(s)"
+        },
+        {
+          "probe": "a-replacement-is-recorded-rather-than-implied",
+          "ok": true,
+          "observed": "replacement PaymentHSM-9100"
+        },
+        {
+          "probe": "an-unknown-product-status-is-refused",
+          "ok": true,
+          "observed": "PROBABLY-FINE \u2192 UNKNOWN_PRODUCT_STATUS"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "network-appliance",
+      "question": "do network appliances carry their fourteen facts",
+      "phase": "review hbom / 6",
+      "probes": [
+        {
+          "probe": "an-appliance-carries-the-fourteen-facts-the-review-lists",
+          "ok": true,
+          "observed": "14 of 14 facts present on payments-lb"
+        },
+        {
+          "probe": "its-certificate-is-an-edge-not-a-string",
+          "ok": true,
+          "observed": "payments-lb PRESENTS cert:payments-edge"
+        },
+        {
+          "probe": "its-hsm-offload-is-an-edge-too",
+          "ok": true,
+          "observed": "a load balancer may offload TLS to an HSM, and says so"
+        },
+        {
+          "probe": "the-tls-capability-is-recorded-beside-the-certificate",
+          "ok": true,
+          "observed": "TLS1.2 with a hybrid ML-KEM key exchange offered"
+        },
+        {
+          "probe": "a-router-is-not-an-appliance-this-builder-invents",
+          "ok": true,
+          "observed": "ROUTER \u2192 NOT_A_NETWORK_DEVICE rather than a guessed shape"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "impact-units",
+      "question": "does the review's sentence become a number",
+      "phase": "review hbom / 7",
+      "probes": [
+        {
+          "probe": "the-review-sentence-is-produced-from-the-graph",
+          "ok": true,
+          "observed": "HSM-001: 2 HSMs affected, 2 applications affected, 2 business systems affected, 3 cryptographic assets affected, 3 network paths affected; 5 node(s) only through a declared edge"
+        },
+        {
+          "probe": "the-counts-are-numbers-a-ticket-can-quote",
+          "ok": true,
+          "observed": "2 HSM, 2 applications, 2 systems, 3 crypto assets, 3 paths"
+        },
+        {
+          "probe": "the-path-counts-the-appliances-as-well-as-the-endpoint",
+          "ok": true,
+          "observed": "3 network path(s) including the load balancer"
+        },
+        {
+          "probe": "nothing-is-counted-twice",
+          "ok": true,
+          "observed": "a device reached twice is one device, and the counts are sets"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "device-replaced",
+      "question": "is a swapped device one event, not two",
+      "phase": "review hbom / 9",
+      "probes": [
+        {
+          "probe": "a-swapped-unit-in-the-same-rack-slot-is-one-event",
+          "ok": true,
+          "observed": "1 DEVICE_REPLACED event(s)"
+        },
+        {
+          "probe": "it-is-not-reported-as-an-add-and-a-remove",
+          "ok": true,
+          "observed": "change types: DEVICE_REPLACED"
+        },
+        {
+          "probe": "it-names-both-identities-so-the-audit-trail-survives",
+          "ok": true,
+          "observed": "HSM-001 \u2192 HSM-009 in the same bay"
+        },
+        {
+          "probe": "a-device-in-a-free-bay-is-still-an-addition",
+          "ok": true,
+          "observed": "a new serial with no rack placement in common \u2192 DEVICE_ADDED"
+        },
+        {
+          "probe": "the-replacement-carries-the-cryptography-behind-the-bay",
+          "ok": true,
+          "observed": "every event still carries its impact block"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "evidence-nodes",
+      "question": "is the evidence walkable, not just listed",
+      "phase": "review hbom / 13",
+      "probes": [
+        {
+          "probe": "every-cited-evidence-record-is-a-node-in-the-graph",
+          "ok": true,
+          "observed": "1 EVIDENCE node(s): EVID-829182"
+        },
+        {
+          "probe": "the-node-carries-the-hash-and-the-collector",
+          "ok": true,
+          "observed": "hash, collector, version and timestamp all travel with the node"
+        },
+        {
+          "probe": "each-device-gets-an-evidenced_by-edge-to-it",
+          "ok": true,
+          "observed": "15 EVIDENCED_BY edge(s) from 15 asset(s)"
+        },
+        {
+          "probe": "an-evidence-edge-cannot-be-weaker-than-an-import",
+          "ok": true,
+          "observed": "name-match EVIDENCED_BY \u2192 CLAIM_WEAKER_THAN_RELATION_REQUIRES"
+        },
+        {
+          "probe": "a-consumer-can-reach-the-evidence-from-the-device",
+          "ok": true,
+          "observed": "correlate('HSM-001') reaches EVID-829182"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "hsm-certificates",
+      "question": "does an HSM's certificate graph reach it",
+      "phase": "review hbom / 2 (certificates)",
+      "probes": [
+        {
+          "probe": "a-certificate-an-hsm-holds-is-a-node",
+          "ok": true,
+          "observed": "2 certificate node(s) in the hardware view"
+        },
+        {
+          "probe": "the-holds-edge-runs-from-the-device-to-the-certificate",
+          "ok": true,
+          "observed": "HSM-001 HOLDS_CERTIFICATE cert:payments-root"
+        },
+        {
+          "probe": "an-hsm-cannot-hold-a-key-reference-through-that-relation",
+          "ok": true,
+          "observed": "HOLDS_CERTIFICATE ends at a certificate, not at a key reference"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the fixture is a small bank estate; the shapes are real and the rows are not",
+    "a certification is a record of an attestation, not the attestation itself: the expiry is what the collector read, and nothing here re-checks it",
+    "a replaced device is inferred from the bay it sits in, so two devices swapped between bays are two replacements nobody can see",
+    "product lifecycle status is what was recorded when the row was written",
+    "evidence nodes are synthesised from the records a collector cited: an unrecorded observation has no node"
+  ]
+}

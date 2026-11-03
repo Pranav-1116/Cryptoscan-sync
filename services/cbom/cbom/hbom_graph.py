@@ -56,17 +56,18 @@ HARDWARE_KINDS: tuple[str, ...] = (
     "PHYSICAL_SERVER", "HOST", "VM", "HSM", "TPM", "CPU", "MEMORY", "MOTHERBOARD",
     "BIOS", "NIC", "STORAGE", "RAID_CONTROLLER", "GPU", "PCI_DEVICE",
     "CRYPTO_ACCELERATOR", "SMART_CARD", "SECURITY_APPLIANCE", "HSM_CLUSTER",
-    "HSM_PARTITION", "DISK", "FIRMWARE", "FIREWALL", "NETWORK_SEGMENT", "HYPERVISOR",
-    "OS", "KUBERNETES_NODE", "CLOUD_ACCOUNT", "CLOUD_REGION", "CLOUD_INSTANCE",
+    "HSM_PARTITION", "DISK", "FIRMWARE", "FIREWALL", "LOAD_BALANCER", "API_GATEWAY",
+    "WAF", "NETWORK_SEGMENT", "HYPERVISOR", "OS", "KUBERNETES_NODE", "CLOUD_ACCOUNT",
+    "CLOUD_REGION", "CLOUD_INSTANCE",
 )
 
 #: the kinds the hardware view renders: the devices themselves plus the vendor, advisory
 #: and evidence rows a hardware document is expected to show. An application, a crypto
 #: asset or a network endpoint stays in the graph and is reached by a walk — it is not a
 #: hardware row, and dressing it as one is how an HBOM starts duplicating the CBOM.
-HBOM_KINDS: tuple[str, ...] = HARDWARE_KINDS + ("CRYPTO_CAPABILITY", "VENDOR",
-                                               "VENDOR_PRODUCT", "VULNERABILITY",
-                                               "EVIDENCE")
+HBOM_KINDS: tuple[str, ...] = HARDWARE_KINDS + ("CRYPTO_CAPABILITY", "CERTIFICATE",
+                                               "VENDOR", "VENDOR_PRODUCT",
+                                               "VULNERABILITY", "EVIDENCE")
 
 #: the field set the review asks of every hardware asset, in its own order.
 ASSET_FIELDS: tuple[str, ...] = (
@@ -101,6 +102,11 @@ KEY_MATERIAL_MARKERS: tuple[str, ...] = (
 #: a firmware release stands somewhere; these are the states it may be in
 FIRMWARE_STATUS: tuple[str, ...] = ("SUPPORTED", "EOL", "EOS", "ANNOUNCED", "UNKNOWN")
 
+#: a product is retired before it disappears: a model going EOL is the start of a migration,
+#: not the end of the record (review hbom 5).
+PRODUCT_STATUS: tuple[str, ...] = ("SUPPORTED", "ANNOUNCED", "EOL", "EOS", "RETIRED",
+                                   "UNKNOWN")
+
 Refused = tb.ClaimRefused
 
 
@@ -128,6 +134,85 @@ def _key_material(attributes: Mapping[str, Any]) -> str | None:
                 return (f"{name} carries a PEM private key; an HBOM records the "
                         "reference and the public half, never the private half")
     return None
+
+
+def _certifications(rows: Sequence[Any] | None) -> list[dict[str, Any]]:
+    """Attestations a device holds — FIPS, Common Criteria, a national scheme.
+
+    A certification is not a boolean on a row: it names a standard, usually a level, an
+    expiry and the attestation that proves it. A row with no standard is refused rather
+    than stored as "certified", and a certification with no evidence id is kept but marked
+    unbacked, because a claim nobody can check is exactly what an auditor asks about.
+    """
+    out: list[dict[str, Any]] = []
+    for row in rows or []:
+        if isinstance(row, str):
+            body = {"standard": row}
+        elif isinstance(row, Mapping):
+            body = dict(row)
+        else:
+            raise Refused("CERTIFICATION_NOT_A_RECORD",
+                          f"{row!r} is not a certification record")
+        standard = _norm(body.get("standard") or body.get("name"))
+        if not standard:
+            raise Refused("CERTIFICATION_WITHOUT_STANDARD",
+                          "a certification has to name the standard it is against")
+        out.append({
+            "standard": standard,
+            "level": _norm(body.get("level")) or None,
+            "expires": _norm(body.get("expires") or body.get("valid_until")) or None,
+            "evidence_id": _norm(body.get("evidence_id")) or None,
+            "backed": bool(_norm(body.get("evidence_id"))),
+        })
+    return out
+
+
+def cpu_topology(*, sockets: Any, cores_per_socket: Any,
+                 threads_per_core: Any = 1, numa_nodes: Any = None,
+                 frequency_mhz: Any = None, vendor: Any = None, model: Any = None,
+                 cores: Any = None, threads: Any = None) -> dict[str, Any]:
+    """A CPU as a topology, with the arithmetic checked instead of assumed.
+
+    ``2 sockets x 16 cores x 2 threads`` is 32 cores and 64 threads; a caller that also
+    passes a total which disagrees is refused, because a component whose own numbers do not
+    reconcile is worse than one with fewer numbers (review hbom 1, "CPU topology").
+    """
+    def _count(value: Any, name: str) -> int:
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            raise Refused("TOPOLOGY_NOT_A_NUMBER",
+                          f"{name} is {value!r}, and a topology is counted") from None
+        if number < 1:
+            raise Refused("TOPOLOGY_NOT_POSITIVE", f"{name} must be at least 1")
+        return number
+
+    socket_count = _count(sockets, "sockets")
+    per_socket = _count(cores_per_socket, "cores_per_socket")
+    per_core = _count(threads_per_core, "threads_per_core")
+    physical = socket_count * per_socket
+    logical = physical * per_core
+    if cores is not None and _count(cores, "cores") != physical:
+        raise Refused(
+            "TOPOLOGY_DOES_NOT_RECONCILE",
+            f"{socket_count} socket(s) x {per_socket} core(s) is {physical} physical "
+            f"core(s), and the caller says {cores}; one of the two is wrong")
+    if threads is not None and _count(threads, "threads") != logical:
+        raise Refused(
+            "TOPOLOGY_DOES_NOT_RECONCILE",
+            f"{physical} core(s) x {per_core} thread(s) is {logical}, and the caller says "
+            f"{threads}")
+    body: dict[str, Any] = {
+        "sockets": socket_count, "cores_per_socket": per_socket,
+        "threads_per_core": per_core, "cores": physical, "threads": logical,
+        "topology": f"{socket_count} socket(s) x {per_socket} core(s) x "
+                    f"{per_core} thread(s) = {logical} logical processor(s)",
+    }
+    for name, value in (("numa_nodes", numa_nodes), ("frequency_mhz", frequency_mhz),
+                        ("vendor", vendor), ("model", model)):
+        if value not in (None, ""):
+            body[name] = _norm(value)
+    return body
 
 
 def evidence(evidence_id: Any, *, collector: Any, collector_version: Any = None,
@@ -238,7 +323,9 @@ def hardware(asset_type: Any, *, name: Any = None, asset_id: Any = None,
              asset_tag: Any = None, uuid: Any = None, firmware_version: Any = None,
              bios_version: Any = None, hardware_revision: Any = None,
              location: Any = None, datacenter: Any = None, rack: Any = None,
-             slot: Any = None, owner: Any = None, environment: Any = "PRODUCTION",
+             slot: Any = None, owner: Any = None, sku: Any = None,
+             certifications: Sequence[Any] | None = None,
+             environment: Any = "PRODUCTION",
              status: Any = "ACTIVE", first_seen: Any = None, last_seen: Any = None,
              evidence_ids: Sequence[Any] | None = None,
              identity_evidence: Mapping[str, Any] | None = None,
@@ -313,6 +400,8 @@ def hardware(asset_type: Any, *, name: Any = None, asset_id: Any = None,
         "rack": _norm(rack) or None,
         "slot": _norm(slot) or None,
         "owner": _norm(owner) or None,
+        "sku": _norm(sku) or None,
+        "certifications": _certifications(certifications),
         "environment": _norm(environment).upper() or "PRODUCTION",
         "status": _norm(status).upper() or "ACTIVE",
         "first_seen": _norm(first_seen) or None,
@@ -421,6 +510,78 @@ def capability(name: Any, *, algorithm: Any, key_types: Iterable[Any] | None = N
                     operations=sorted(_norm(v).upper() for v in (operations or [])
                                       if _norm(v)),
                     evidence_ids=list(evidence_ids or []))
+
+
+def network_device(asset_type: Any, *, name: Any = None, manufacturer: Any = None,
+                   model: Any = None, serial_number: Any = None, sku: Any = None,
+                   firmware_version: Any = None, ip: Any = None, mac: Any = None,
+                   interface: Any = None, vlan: Any = None, zone: Any = None,
+                   subnet: Any = None, routing: Any = None, ha_role: Any = None,
+                   tls: Mapping[str, Any] | None = None, certificate: Any = None,
+                   hsm: Any = None, location: Any = None, datacenter: Any = None,
+                   rack: Any = None, slot: Any = None, owner: Any = None,
+                   evidence_ids: Sequence[Any], basis: str = "api-poll",
+                   environment: Any = "PRODUCTION", **fields: Any) -> dict[str, Any]:
+    """A network appliance with the fourteen facts the review asks of one.
+
+    IP, MAC, interface, VLAN, zone, subnet, routing, HA role, firmware, vendor, model, TLS
+    capability, certificate and HSM reference — and the two references are **claims**, not
+    strings: ``PRESENTS`` reaches the certificate and ``USES_HSM`` reaches the key custody
+    behind the TLS offload. HBOM and NBOM then read the same edges instead of two lists.
+    """
+    kind = _norm(asset_type).upper()
+    if kind not in {"FIREWALL", "LOAD_BALANCER", "API_GATEWAY", "WAF",
+                    "SECURITY_APPLIANCE"}:
+        raise Refused("NOT_A_NETWORK_DEVICE",
+                      f"{kind or '(none)'} is not a network appliance this builder knows")
+    tls_facts = dict(tls or {})
+    device = hardware(
+        kind, name=name, manufacturer=manufacturer, model=model,
+        serial_number=serial_number, sku=sku, firmware_version=firmware_version,
+        location=location, datacenter=datacenter, rack=rack, slot=slot, owner=owner,
+        evidence_ids=evidence_ids, environment=environment,
+        ip=_norm(ip) or None, mac=_norm(mac) or None,
+        interface=_norm(interface) or None, vlan=_norm(vlan) or None,
+        zone=_norm(zone) or None, subnet=_norm(subnet) or None,
+        routing=_norm(routing) or None, ha_role=_norm(ha_role) or None,
+        tls={key: value for key, value in tls_facts.items() if value not in (None, "")}
+        or None,
+        tls_capability=(_norm(tls_facts.get("min_version")) or None),
+        certificate_reference=_norm(certificate) or None,
+        hsm_reference=_norm(hsm) or None,
+        **fields)
+    assets: list[dict[str, Any]] = [device]
+    claims: list[dict[str, Any]] = []
+    if certificate:
+        claims.append(claim(device["name"], "PRESENTS", _norm(certificate), basis=basis,
+                            evidence_ids=evidence_ids))
+    if hsm:
+        claims.append(claim(device["name"], "USES_HSM", _norm(hsm), basis=basis,
+                            evidence_ids=evidence_ids))
+    return _part(assets, claims)
+
+
+def product(name: Any, *, vendor: Any, model: Any = None, status: Any = "SUPPORTED",
+            eol_date: Any = None, eos_date: Any = None, replacement: Any = None,
+            certifications: Sequence[Any] | None = None,
+            evidence_ids: Sequence[Any] | None = None,
+            environment: Any = "PRODUCTION") -> dict[str, Any]:
+    """A vendor product with a lifecycle, so a model going EOL is a fact and not a rumour."""
+    status_text = _norm(status).upper() or "UNKNOWN"
+    if status_text not in PRODUCT_STATUS:
+        raise Refused("UNKNOWN_PRODUCT_STATUS",
+                      f"{status_text} is not one of {', '.join(PRODUCT_STATUS)}")
+    evidence_list = [_norm(value) for value in (evidence_ids or []) if _norm(value)]
+    if not evidence_list:
+        raise Refused("PRODUCT_WITHOUT_EVIDENCE",
+                      f"{_norm(name)}: a lifecycle claim needs the document it came from")
+    return tb.asset("VENDOR_PRODUCT", name, environment=environment,
+                    vendor=_norm(vendor), model=_norm(model) or None,
+                    support_status=status_text, eol_date=_norm(eol_date) or None,
+                    eos_date=_norm(eos_date) or None,
+                    replacement=_norm(replacement) or None,
+                    certifications=_certifications(certifications),
+                    evidence_ids=evidence_list)
 
 
 # --------------------------------------------------------------------------- #
@@ -583,6 +744,7 @@ def hsm(asset_id: Any = None, *, vendor: Any, product: Any, model: Any,
         certificates: Iterable[Any] | None = None,
         applications: Iterable[Any] | None = None, systems: Iterable[Any] | None = None,
         serial_number: Any = None, location: Any = None, datacenter: Any = None,
+        product_asset: Mapping[str, Any] | None = None,
         evidence_ids: Sequence[Any], capability_basis: str = "vendor-datasheet",
         environment: Any = "PRODUCTION", **fields: Any) -> dict[str, Any]:
     """An HSM with the twelve things an HSM has, not a vendor and a model string.
@@ -612,13 +774,17 @@ def hsm(asset_id: Any = None, *, vendor: Any, product: Any, model: Any,
     claims: list[dict[str, Any]] = []
 
     # vendor → product → model → firmware → asset (review point 5)
-    product_name = f"{_norm(vendor)} {_norm(product)}"
-    product_asset = tb.asset("VENDOR_PRODUCT", product_name, environment=environment,
-                             vendor=_norm(vendor), product=_norm(product),
-                             model=_norm(model), evidence_ids=list(evidence_ids))
+    product_name = (str(product_asset.get("name")) if product_asset
+                    else f"{_norm(vendor)} {_norm(product)}")
+    if product_asset:
+        product_row = dict(product_asset)
+    else:
+        product_row = tb.asset("VENDOR_PRODUCT", product_name, environment=environment,
+                               vendor=_norm(vendor), product=_norm(product),
+                               model=_norm(model), evidence_ids=list(evidence_ids))
     vendor_asset = tb.asset("VENDOR", _norm(vendor), environment=environment,
                             evidence_ids=list(evidence_ids))
-    assets += [product_asset, vendor_asset]
+    assets += [product_row, vendor_asset]
     claims.append(claim(identifier, "HAS_MODEL", product_name, basis="vendor-datasheet",
                         evidence_ids=evidence_ids))
     claims.append(claim(product_name, "SUPPLIED_BY", _norm(vendor),
@@ -655,6 +821,16 @@ def hsm(asset_id: Any = None, *, vendor: Any, product: Any, model: Any,
                                 basis="api-poll", evidence_ids=evidence_ids))
             claims.append(claim(member_asset["name"], "MEMBER_OF", cluster_name,
                                 basis="api-poll", evidence_ids=evidence_ids))
+
+    for certificate in certificates or ():
+        certificate_name = _norm(certificate)
+        if not certificate_name:
+            continue
+        assets.append(tb.asset("CERTIFICATE", certificate_name,
+                               environment=environment, evidence_ids=list(evidence_ids),
+                               source="hsm-metadata"))
+        claims.append(claim(identifier, "HOLDS_CERTIFICATE", certificate_name,
+                            basis="api-poll", evidence_ids=evidence_ids))
 
     for partition in partitions:
         label = _norm(partition.get("name")) or f"{identifier}-PART{len(assets)}"
@@ -705,6 +881,71 @@ def hsm(asset_id: Any = None, *, vendor: Any, product: Any, model: Any,
 # Build — the projection, assembled by the one graph
 # --------------------------------------------------------------------------- #
 
+def _with_evidence_nodes(document: Mapping[str, Any]) -> dict[str, Any]:
+    """Every cited evidence record becomes a node, and each device an ``EVIDENCED_BY`` edge.
+
+    A register in a side table is a document nobody can walk. As nodes, the evidence behind
+    a device is reachable from the device — which is what "how do you know this hardware
+    exists" has to mean in a graph, and what lets a consumer refuse a fact whose evidence
+    it cannot see.
+    """
+    assets = list(document.get("assets") or [])
+    claims = list(document.get("claims") or [])
+    created: dict[str, dict[str, Any]] = {}
+    for row in assets:
+        records = (row.get("attributes") or {}).get("evidence") or []
+        for record in records:
+            if not isinstance(record, Mapping):
+                continue
+            identifier = _norm(record.get("evidence_id"))
+            if not identifier or identifier in created:
+                continue
+            created[identifier] = tb.asset(
+                "EVIDENCE", identifier,
+                environment=row.get("environment") or document.get("environment")
+                or "PRODUCTION",
+                evidence_ids=[identifier],
+                collector=_norm(record.get("collector")) or None,
+                collector_version=_norm(record.get("collector_version")) or None,
+                observed_at=_norm(record.get("observed_at")) or None,
+                source=_norm(record.get("source")) or None,
+                evidence_type=_norm(record.get("evidence_type")) or None,
+                raw_reference=_norm(record.get("raw_reference")) or None,
+                normalized_fact=_norm(record.get("normalized_fact")) or None,
+                hash=_norm(record.get("hash")) or None,
+                confidence=_norm(record.get("confidence")) or None,
+                evidence_record=True)
+    if not created:
+        return dict(document)
+    cited: set[str] = set()
+    extra_claims: list[dict[str, Any]] = []
+    for row in list(assets):
+        identifiers = list(row.get("evidence_ids") or [])
+        for record in (row.get("attributes") or {}).get("evidence") or []:
+            if isinstance(record, Mapping) and _norm(record.get("evidence_id")):
+                identifiers.append(_norm(record.get("evidence_id")))
+        for identifier in dict.fromkeys(identifiers):
+            if identifier not in created:
+                continue
+            if str(row.get("kind")) not in tb.RELATIONS["EVIDENCED_BY"]["from"]:
+                continue  # a vendor or a product row is not a collected device
+            key = (str(row.get("kind")), str(row.get("name")), str(row.get("environment")))
+            if key in cited:
+                continue
+            cited.add(key)
+            basis = ("passive-capture" if "PASSIVE" in
+                     _norm((created[identifier].get("attributes") or {})
+                           .get("evidence_type")).upper()
+                     else "capability-list" if "CAPABILITY" in
+                     _norm((created[identifier].get("attributes") or {})
+                           .get("evidence_type")).upper()
+                     else "agent-inventory")
+            extra_claims.append(claim(row.get("name"), "EVIDENCED_BY", identifier,
+                                      basis=basis, evidence_ids=[identifier]))
+    return {**document, "assets": [*assets, *created.values()],
+            "claims": [*claims, *extra_claims]}
+
+
 def build(document: Mapping[str, Any]) -> dict[str, Any]:
     """Canonical hardware estate → HBOM, as a view of the TechBOM.
 
@@ -716,7 +957,7 @@ def build(document: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(document, Mapping) or document.get("schema") != ESTATE_SCHEMA:
         raise ValueError(f"build() takes a {ESTATE_SCHEMA} document; an HBOM is a "
                          "projection of the canonical estate, not a source")
-    bom = tb.build(document)
+    bom = tb.build(_with_evidence_nodes(document))
     assets = bom["assets"]
     hardware_assets = [row for row in assets if row["kind"] in HBOM_KINDS]
     hardware_keys = {row["key"] for row in hardware_assets
@@ -958,6 +1199,116 @@ def radius(document: Mapping[str, Any], *, query: Any, include_declared: bool = 
     }
 
 
+def product_lifecycle(document: Mapping[str, Any], *,
+                      max_hops: int = 6) -> dict[str, Any]:
+    """Products that have ended, and everything behind them.
+
+    The review's point 5 is that a vendor chain is only useful if it can answer "this model
+    is retired — what runs on it?". That is one walk from the product: its devices, the
+    applications wired to them, the business systems above those, and the cryptography in
+    between, with the count in the units an owner reads.
+    """
+    if not isinstance(document, Mapping) or document.get("schema") != HBOM_SCHEMA:
+        raise ValueError(f"product_lifecycle() takes a {HBOM_SCHEMA} document")
+    by_key = document.get("by_key") or {}
+    claims = document.get("claims") or []
+    products: dict[str, list[str]] = {}
+    for row in claims:
+        if row["relation"] == "HAS_MODEL":
+            products.setdefault(row["to_key"], []).append(row["from_key"])
+    rows: list[dict[str, Any]] = []
+    for key, device_keys in sorted(products.items()):
+        product = by_key.get(key)
+        if not product:
+            continue
+        status = str((product.get("attributes") or {}).get("support_status")
+                     or "UNKNOWN").upper()
+        affected: dict[str, set[str]] = {}
+        for device_key in device_keys:
+            for reached, proven in _walk(document, device_key,
+                                         max_hops=max_hops)["strength"].items():
+                row = by_key.get(reached)
+                if row is None:
+                    continue
+                affected.setdefault(row["kind"], set()).add(row["name"])
+        rows.append({
+            "product": product["name"],
+            "model": (product.get("attributes") or {}).get("model"),
+            "status": status,
+            "eol_date": (product.get("attributes") or {}).get("eol_date"),
+            "replacement": (product.get("attributes") or {}).get("replacement"),
+            "devices": sorted(by_key[device_key]["name"] for device_key in device_keys
+                              if device_key in by_key),
+            "applications": sorted(affected.get("APPLICATION", set())),
+            "systems": sorted(affected.get("BUSINESS_SYSTEM", set())),
+            "crypto_assets": sorted(affected.get("CRYPTO_ASSET", set())
+                                    | affected.get("CRYPTO_CAPABILITY", set())),
+            "actionable": status in {"EOL", "EOS", "RETIRED"},
+        })
+    ended = [row for row in rows if row["actionable"]]
+    return {
+        "schema": HBOM_SCHEMA,
+        "products": rows,
+        "statement": (
+            f"{len(rows)} vendor product(s) in the chain, {len(ended)} past end of life"
+            + (": " + "; ".join(
+                f"{row['product']} {row['status']} → {len(row['devices'])} device(s), "
+                f"{len(row['applications'])} application(s), {len(row['systems'])} "
+                f"system(s)" for row in ended) if ended else "")),
+        "not_proven": [
+            "that the vendor's lifecycle page is current: the status is what was recorded "
+            "when the product row was written",
+            "that a replacement exists in this estate: the field names one, and nothing "
+            "here checks it was bought",
+        ],
+    }
+
+
+def impact_summary(document: Mapping[str, Any], *, query: Any,
+                   max_hops: int = 8) -> dict[str, Any]:
+    """The review's sentence, in the review's units: *1 HSM, 3 applications, 2 systems …*.
+
+    The counts come from :func:`radius`, so they inherit its two directions and its rule
+    that one declared hop taints everything past it. Nothing is added up twice: a device
+    reached twice is one device.
+    """
+    radius_block = radius(document, query=query, max_hops=max_hops)
+    seed = radius_block.get("seed")
+    seed_kind = None
+    if seed:
+        row = next((row for row in (document.get("by_key") or {}).values()
+                    if row["name"] == seed), None)
+        seed_kind = row["kind"] if row else None
+    hsms = sorted(set(radius_block["impacts"].get("HSM", []))
+                  | ({seed} if seed_kind == "HSM" else set()))
+    counts = {
+        "hsm": len(hsms),
+        "applications": len(radius_block["applications"]),
+        "business_systems": len(radius_block["systems"]),
+        "crypto_assets": len(radius_block["crypto_assets"]),
+        "network_paths": len(radius_block["network_paths"]),
+        "devices": len([name for kind, names in radius_block["impacts"].items()
+                        if kind in HARDWARE_KINDS for name in names]),
+    }
+    plural = [("HSM", counts["hsm"]), ("application", counts["applications"]),
+              ("business system", counts["business_systems"]),
+              ("cryptographic asset", counts["crypto_assets"]),
+              ("network path", counts["network_paths"])]
+    return {
+        "schema": HBOM_SCHEMA,
+        "query": radius_block.get("query"),
+        "seed": seed,
+        **counts,
+        "statement": (
+            (f"{seed}: " if seed else "")
+            + ", ".join(f"{count} {label}{'' if count == 1 else 's'} affected"
+                        for label, count in plural)
+            + (f"; {len(radius_block['possible'])} node(s) only through a declared edge"
+               if radius_block["possible"] else "")),
+        "not_proven": list(radius_block.get("not_proven") or []),
+    }
+
+
 def _confidence_counts(claims: Iterable[Mapping[str, Any]]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for row in claims:
@@ -1071,12 +1422,44 @@ def drift(previous: Mapping[str, Any], current: Mapping[str, Any], *,
     after = current.get("hardware_by_key") or {}
     events: list[dict[str, Any]] = []
 
-    for key in sorted(set(after) - set(before)):
+    def placement(row: Mapping[str, Any]) -> tuple[Any, ...] | None:
+        attributes = row.get("attributes") or {}
+        rack, slot = attributes.get("rack"), attributes.get("slot")
+        if not (rack or slot):
+            return None
+        return (row["kind"], attributes.get("datacenter"), rack, slot)
+
+    added = sorted(set(after) - set(before))
+    removed = sorted(set(before) - set(after))
+    replacements: list[tuple[str, str]] = []
+    removed_by_placement: dict[tuple[Any, ...], str] = {}
+    for key in removed:
+        slot_key = placement(before[key])
+        if slot_key:
+            removed_by_placement.setdefault(slot_key, key)
+    for key in list(added):
+        slot_key = placement(after[key])
+        old_key = removed_by_placement.pop(slot_key, None) if slot_key else None
+        if old_key is None:
+            continue
+        # a different canonical id in the same bay is a swapped device, not two events
+        replacements.append((old_key, key))
+        added.remove(key)
+        removed.remove(old_key)
+        old, new = before[old_key], after[key]
+        events.append({
+            "change": "DEVICE_REPLACED", "category": "HARDWARE_DRIFT",
+            "asset_id": new["name"], "kind": new["kind"], "asset": key,
+            "previous_asset_id": old["name"],
+            "detail": (f"{new['kind']} {old['name']} → {new['name']} in the same bay "
+                       f"({(new.get('attributes') or {}).get('rack')}/"
+                       f"{(new.get('attributes') or {}).get('slot')})")})
+    for key in added:
         row = after[key]
         events.append({"change": "DEVICE_ADDED", "category": "HARDWARE_DRIFT",
                        "asset_id": row["name"], "kind": row["kind"], "asset": key,
                        "detail": f"{row['kind']} {row['name']} appeared"})
-    for key in sorted(set(before) - set(after)):
+    for key in removed:
         row = before[key]
         events.append({"change": "DEVICE_REMOVED", "category": "HARDWARE_DRIFT",
                        "asset_id": row["name"], "kind": row["kind"], "asset": key,
@@ -1373,6 +1756,30 @@ def stored_hardware(rows: Iterable[Mapping[str, Any]], *,
             continue
         assets.append(device)
 
+        # the vendor chain a stored row can support: manufacturer → product → device. The
+        # lifecycle status is whatever the row recorded, and UNKNOWN when it recorded none.
+        vendor_name = _norm(row.get("manufacturer"))
+        model_name = _norm(row.get("model"))
+        if vendor_name and model_name:
+            product_name = f"{vendor_name} {model_name}"
+            lifecycle_status = (_norm(row.get("lifecycle")) or "UNKNOWN").upper()
+            if lifecycle_status not in PRODUCT_STATUS:
+                lifecycle_status = "UNKNOWN"
+            product_row = tb.asset("VENDOR_PRODUCT", product_name,
+                                   environment=environment, vendor=vendor_name,
+                                   model=model_name, support_status=lifecycle_status,
+                                   eol_date=_norm(row.get("eol_date")) or None,
+                                   evidence_ids=[record["evidence_id"]])
+            vendor_row = tb.asset("VENDOR", vendor_name, environment=environment,
+                                  evidence_ids=[record["evidence_id"]])
+            assets += [product_row, vendor_row]
+            claims.append(claim(device["name"], "HAS_MODEL", product_name,
+                                basis="vendor-datasheet",
+                                evidence_ids=[record["evidence_id"]]))
+            claims.append(claim(product_name, "SUPPLIED_BY", vendor_name,
+                                basis="vendor-datasheet",
+                                evidence_ids=[record["evidence_id"]]))
+
         if payload:
             release = firmware(
                 f"{_norm(row.get('manufacturer'))} {_norm(row.get('model'))} firmware "
@@ -1482,7 +1889,9 @@ __all__ = [
     "DRIFT_TYPES", "BOM_OF_KIND", "evidence", "identity", "hardware", "firmware",
     "vulnerability", "capability", "claim", "merge", "estate", "component", "server",
     "HBOM_KINDS", "CONTAINMENT_RELATIONS", "hsm", "build", "coverage", "drift",
-    "correlate", "radius", "stored_hardware", "DEVICE_TYPE_KINDS",
+    "correlate", "radius", "stored_hardware", "DEVICE_TYPE_KINDS", "cpu_topology",
+    "network_device", "product", "product_lifecycle", "impact_summary",
+    "cpu_topology",
     "from_document", "summary",
     "bom_link",
 ]

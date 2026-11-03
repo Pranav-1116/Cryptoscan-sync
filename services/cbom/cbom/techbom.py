@@ -51,15 +51,23 @@ ESTATE_SCHEMA = "cryptoscan.techbom-estate/1"
 # --------------------------------------------------------------------------- #
 
 OBSERVED = "OBSERVED"
+#: an observation taken off the wire rather than out of an agent. It is an observation all
+#: the same, and it is kept apart so a packet says what a packet can prove (review hbom 4).
+NETWORK_OBSERVED = "NETWORK_OBSERVED"
 CONFIGURED = "CONFIGURED"
 IMPORTED = "IMPORTED"
 VENDOR_DECLARED = "VENDOR_DECLARED"
+#: what a device says it *can* do. Below anything that was read from the device, above an
+#: import, because a capability list is still a statement about the device itself.
+CAPABILITY = "CAPABILITY"
 INFERRED = "INFERRED"
 UNKNOWN = "UNKNOWN"
 
 CONFIDENCE: dict[str, int] = {
     OBSERVED: 5,
+    NETWORK_OBSERVED: 5,
     CONFIGURED: 4,
+    CAPABILITY: 3,
     IMPORTED: 3,
     VENDOR_DECLARED: 3,
     INFERRED: 2,
@@ -69,13 +77,15 @@ CONFIDENCE: dict[str, int] = {
 #: a dependency path is *proven* only when something saw or read the device itself.
 #: IMPORTED, VENDOR_DECLARED and INFERRED are claims about a claim: they are walked, and
 #: they are reported as possibilities rather than as blast radius.
-PROVEN: frozenset[str] = frozenset({OBSERVED, CONFIGURED})
+PROVEN: frozenset[str] = frozenset({OBSERVED, NETWORK_OBSERVED, CONFIGURED})
 
 #: every basis a claim may cite, and the strongest class it can support. A basis that is
 #: not here is refused rather than guessed, and ``co-occurrence`` is deliberately absent:
 #: it is not a basis, it is the absence of one.
 BASES: dict[str, str] = {
     "packet-capture": OBSERVED,
+    "passive-capture": NETWORK_OBSERVED,
+    "capability-list": CAPABILITY,
     "runtime-probe": OBSERVED,
     "process-trace": OBSERVED,
     "agent-inventory": CONFIGURED,
@@ -161,7 +171,10 @@ RELATIONS: dict[str, dict[str, Any]] = {
     # business → software
     "CONTAINS": {"from": ("BUSINESS_SYSTEM",), "to": ("APPLICATION",), "chain": "SOFTWARE"},
     "PROVIDES": {"from": ("APPLICATION",), "to": ("SERVICE",), "chain": "SOFTWARE"},
-    "RUNS": {"from": ("SERVICE",), "to": ("CONTAINER",), "chain": "SOFTWARE"},
+    "RUNS": {"from": ("SERVICE", "PHYSICAL_SERVER", "HOST", "VM", "OS",
+                      "KUBERNETES_NODE", "HYPERVISOR", "CLOUD_INSTANCE"),
+             "to": ("CONTAINER", "APPLICATION", "SERVICE", "POD", "PROCESS"),
+             "chain": "SOFTWARE"},
     "FROM_IMAGE": {"from": ("CONTAINER",), "to": ("IMAGE",), "chain": "SOFTWARE"},
     "SHIPS": {"from": ("IMAGE",), "to": ("PACKAGE",), "chain": "SOFTWARE"},
     "LINKS": {"from": ("PACKAGE",), "to": ("CRYPTO_LIBRARY",), "chain": "SOFTWARE"},
@@ -195,12 +208,13 @@ RELATIONS: dict[str, dict[str, Any]] = {
     "FRONTED_BY": {"from": ("NETWORK_ENDPOINT",), "to": ("LOAD_BALANCER",),
                    "chain": "NETWORK"},
     "FORWARDS_TO": {"from": ("FIREWALL", "WAF", "LOAD_BALANCER", "API_GATEWAY"),
-                    "to": ("WAF", "LOAD_BALANCER", "API_GATEWAY", "SERVICE_MESH"),
+                    "to": ("WAF", "LOAD_BALANCER", "API_GATEWAY", "SERVICE_MESH",
+                           "NETWORK_ENDPOINT"),
                     "chain": "NETWORK"},
     "ATTACHED_TO": {"from": ("NIC", "CRYPTO_ACCELERATOR"),
                     "to": ("NETWORK_ENDPOINT", "NETWORK_SEGMENT"), "chain": "NETWORK"},
-    "ROUTES_TO": {"from": ("API_GATEWAY", "SERVICE_MESH"), "to": ("APPLICATION",),
-                  "chain": "NETWORK"},
+    "ROUTES_TO": {"from": ("API_GATEWAY", "SERVICE_MESH", "NETWORK_ENDPOINT"),
+                  "to": ("APPLICATION",), "chain": "NETWORK"},
     "PRESENTS": {"from": ("NETWORK_ENDPOINT", "LOAD_BALANCER", "API_GATEWAY"),
                  "to": ("CERTIFICATE",), "chain": "NETWORK"},
     # certificate → key → algorithm → issuer
@@ -213,9 +227,12 @@ RELATIONS: dict[str, dict[str, Any]] = {
                   "chain": "CERTIFICATE"},
     "KEY_HELD_BY": {"from": ("CERTIFICATE_AUTHORITY",), "to": ("HSM", "KMS"),
                     "chain": "CERTIFICATE"},
+    "HOLDS_CERTIFICATE": {"from": ("HSM", "KMS", "TPM"), "to": ("CERTIFICATE",),
+                          "chain": "CERTIFICATE"},
     # keys and hardware
-    "USES_HSM": {"from": ("APPLICATION", "SERVICE", "PROCESS"), "to": ("HSM", "KMS"),
-                 "chain": "KEYS"},
+    "USES_HSM": {"from": ("APPLICATION", "SERVICE", "PROCESS", "LOAD_BALANCER",
+                          "API_GATEWAY", "FIREWALL", "SECURITY_APPLIANCE"),
+                 "to": ("HSM", "KMS"), "chain": "KEYS"},
     "HAS_MODEL": {"from": ("HSM", "PHYSICAL_SERVER", "NIC", "GPU", "CRYPTO_ACCELERATOR",
                            "SECURITY_APPLIANCE", "CPU", "STORAGE", "RAID_CONTROLLER",
                            "SMART_CARD", "TPM"),

@@ -1,27 +1,31 @@
 {
   "schema": "cryptoscan.cbom-hbom-guide/1",
-  "generated_at": "2026-11-03T02:03:11.966030+00:00",
+  "generated_at": "2026-11-03T02:15:11.764894+00:00",
   "counts": {
     "PASS": 16,
     "PARTIAL": 0,
     "FAIL": 0
   },
   "probes": 72,
-  "statement": "26 hardware asset(s) across 22 kind(s) and 35 relationship(s) touching them out of 48 in the estate; 2 device root(s); 244 declared field(s) the collectors did not supply; 1 firmware release(s) tracked",
+  "statement": "31 hardware asset(s) across 27 kind(s) and 60 relationship(s) touching them out of 69 in the estate; 2 device root(s); 286 declared field(s) the collectors did not supply; 1 firmware release(s) tracked",
   "summary": {
     "schema": "cryptoscan.hbom/1",
-    "assets": 26,
+    "assets": 31,
     "by_kind": {
+      "API_GATEWAY": 1,
       "BIOS": 1,
+      "CERTIFICATE": 1,
       "CPU": 1,
       "CRYPTO_ACCELERATOR": 1,
       "CRYPTO_CAPABILITY": 3,
+      "EVIDENCE": 1,
       "FIREWALL": 1,
       "FIRMWARE": 1,
       "GPU": 1,
       "HSM": 2,
       "HSM_CLUSTER": 1,
       "HSM_PARTITION": 2,
+      "LOAD_BALANCER": 1,
       "MEMORY": 1,
       "MOTHERBOARD": 1,
       "NETWORK_SEGMENT": 1,
@@ -33,17 +37,18 @@
       "TPM": 1,
       "VENDOR": 1,
       "VENDOR_PRODUCT": 1,
-      "VULNERABILITY": 1
+      "VULNERABILITY": 1,
+      "WAF": 1
     },
     "identities_provisional": 0,
-    "field_gaps": 244,
+    "field_gaps": 286,
     "component_roots": 2,
     "firmware_actionable": [
       "PaymentHSM firmware 8.4.2"
     ],
     "refusals": 2,
     "coverage": "PARTIAL",
-    "statement": "26 hardware asset(s) across 22 kind(s) and 35 relationship(s) touching them out of 48 in the estate; 2 device root(s); 244 declared field(s) the collectors did not supply; 1 firmware release(s) tracked",
+    "statement": "31 hardware asset(s) across 27 kind(s) and 60 relationship(s) touching them out of 69 in the estate; 2 device root(s); 286 declared field(s) the collectors did not supply; 1 firmware release(s) tracked",
     "not_proven": [
       "that the tree is complete: a component nobody inventoried is absent, and the field gaps count what the collectors admitted they did not see",
       "that a capability is a use: SUPPORTS is the device's own list, and an application's USES_CRYPTO is a claim about the application",
@@ -52,16 +57,20 @@
     ]
   },
   "counts_by_kind": {
+    "API_GATEWAY": 1,
     "BIOS": 1,
+    "CERTIFICATE": 1,
     "CPU": 1,
     "CRYPTO_ACCELERATOR": 1,
     "CRYPTO_CAPABILITY": 3,
+    "EVIDENCE": 1,
     "FIREWALL": 1,
     "FIRMWARE": 1,
     "GPU": 1,
     "HSM": 2,
     "HSM_CLUSTER": 1,
     "HSM_PARTITION": 2,
+    "LOAD_BALANCER": 1,
     "MEMORY": 1,
     "MOTHERBOARD": 1,
     "NETWORK_SEGMENT": 1,
@@ -73,7 +82,8 @@
     "TPM": 1,
     "VENDOR": 1,
     "VENDOR_PRODUCT": 1,
-    "VULNERABILITY": 1
+    "VULNERABILITY": 1,
+    "WAF": 1
   },
   "views": {
     "ALGORITHM": 3,
@@ -81,11 +91,13 @@
     "APPLICATION": 3,
     "BIOS": 1,
     "BUSINESS_SYSTEM": 2,
+    "CERTIFICATE": 1,
     "CPU": 1,
     "CRYPTO_ACCELERATOR": 1,
     "CRYPTO_ASSET": 2,
     "CRYPTO_CAPABILITY": 3,
     "CRYPTO_LIBRARY": 1,
+    "EVIDENCE": 1,
     "FIREWALL": 1,
     "FIRMWARE": 1,
     "GPU": 1,
@@ -111,79 +123,79 @@
   },
   "fields": {
     "asset_id": {
-      "declared": 20,
+      "declared": 23,
       "missing": 0
     },
     "asset_type": {
-      "declared": 20,
+      "declared": 23,
       "missing": 0
     },
     "bios_version": {
       "declared": 0,
-      "missing": 20
+      "missing": 23
     },
     "datacenter": {
       "declared": 3,
-      "missing": 17
+      "missing": 20
     },
     "environment": {
-      "declared": 20,
+      "declared": 23,
       "missing": 0
     },
     "evidence_id": {
-      "declared": 20,
+      "declared": 23,
       "missing": 0
     },
     "firmware_version": {
       "declared": 6,
-      "missing": 14
+      "missing": 17
     },
     "first_seen": {
       "declared": 0,
-      "missing": 20
+      "missing": 23
     },
     "hardware_revision": {
       "declared": 0,
-      "missing": 20
+      "missing": 23
     },
     "last_seen": {
       "declared": 0,
-      "missing": 20
+      "missing": 23
     },
     "location": {
       "declared": 2,
-      "missing": 18
+      "missing": 21
     },
     "manufacturer": {
       "declared": 5,
-      "missing": 15
+      "missing": 18
     },
     "model": {
       "declared": 13,
-      "missing": 7
+      "missing": 10
     },
     "owner": {
       "declared": 1,
-      "missing": 19
+      "missing": 22
     },
     "part_number": {
       "declared": 1,
-      "missing": 19
+      "missing": 22
     },
     "rack": {
       "declared": 1,
-      "missing": 19
+      "missing": 22
     },
     "serial_number": {
       "declared": 2,
-      "missing": 18
+      "missing": 21
     },
     "slot": {
       "declared": 2,
-      "missing": 18
+      "missing": 21
     },
     "status": {
-      "declared": 20,
+      "declared": 23,
       "missing": 0
     }
   },
@@ -351,77 +363,82 @@
           "hops": 1
         },
         {
+          "asset_id": "ASSET-HW-010788-BIOS",
+          "kind": "BIOS",
+          "hops": 2
+        },
+        {
+          "asset_id": "ASSET-HW-010788-CPU",
+          "kind": "CPU",
+          "hops": 2
+        },
+        {
+          "asset_id": "ASSET-HW-010788-ACCEL",
+          "kind": "CRYPTO_ACCELERATOR",
+          "hops": 2
+        },
+        {
+          "asset_id": "ASSET-HW-946725",
+          "kind": "FIREWALL",
+          "hops": 2
+        },
+        {
+          "asset_id": "ASSET-HW-010788-GPU1",
+          "kind": "GPU",
+          "hops": 2
+        },
+        {
+          "asset_id": "ASSET-HW-010788-MEM",
+          "kind": "MEMORY",
+          "hops": 2
+        },
+        {
+          "asset_id": "ASSET-HW-010788-MB",
+          "kind": "MOTHERBOARD",
+          "hops": 2
+        },
+        {
+          "asset_id": "ASSET-HW-453116",
+          "kind": "NETWORK_SEGMENT",
+          "hops": 2
+        },
+        {
+          "asset_id": "ASSET-HW-010788-NIC1",
+          "kind": "NIC",
+          "hops": 2
+        },
+        {
+          "asset_id": "ASSET-HW-010788-PCI1",
+          "kind": "PCI_DEVICE",
+          "hops": 2
+        },
+        {
           "asset_id": "ASSET-HW-010788",
           "kind": "PHYSICAL_SERVER",
           "hops": 2
         },
         {
-          "asset_id": "ASSET-HW-010788-BIOS",
-          "kind": "BIOS",
-          "hops": 3
-        },
-        {
-          "asset_id": "ASSET-HW-010788-CPU",
-          "kind": "CPU",
-          "hops": 3
-        },
-        {
-          "asset_id": "ASSET-HW-010788-ACCEL",
-          "kind": "CRYPTO_ACCELERATOR",
-          "hops": 3
-        },
-        {
-          "asset_id": "ASSET-HW-010788-GPU1",
-          "kind": "GPU",
-          "hops": 3
-        },
-        {
-          "asset_id": "ASSET-HW-010788-MEM",
-          "kind": "MEMORY",
-          "hops": 3
-        },
-        {
-          "asset_id": "ASSET-HW-010788-MB",
-          "kind": "MOTHERBOARD",
-          "hops": 3
-        },
-        {
-          "asset_id": "ASSET-HW-010788-NIC1",
-          "kind": "NIC",
-          "hops": 3
-        },
-        {
-          "asset_id": "ASSET-HW-010788-PCI1",
-          "kind": "PCI_DEVICE",
-          "hops": 3
-        },
-        {
           "asset_id": "ASSET-HW-010788-RAID",
           "kind": "RAID_CONTROLLER",
-          "hops": 3
+          "hops": 2
         },
         {
           "asset_id": "ASSET-HW-010788-STG1",
           "kind": "STORAGE",
-          "hops": 3
+          "hops": 2
         },
         {
           "asset_id": "ASSET-HW-010788-TPM",
           "kind": "TPM",
-          "hops": 3
-        },
-        {
-          "asset_id": "ASSET-HW-946725",
-          "kind": "FIREWALL",
-          "hops": 4
-        },
-        {
-          "asset_id": "ASSET-HW-453116",
-          "kind": "NETWORK_SEGMENT",
-          "hops": 4
+          "hops": 2
         }
       ],
       "CBOM": [
+        {
+          "asset_id": "cert:abab",
+          "kind": "CERTIFICATE",
+          "hops": 1
+        },
         {
           "asset_id": "RSA-2048",
           "kind": "CRYPTO_ASSET",
@@ -521,6 +538,13 @@
           "hops": 2
         }
       ],
+      "EVIDENCE": [
+        {
+          "asset_id": "EVID-829182",
+          "kind": "EVIDENCE",
+          "hops": 1
+        }
+      ],
       "VULNERABILITY": [
         {
           "asset_id": "CVE-2026-1111",
@@ -529,8 +553,8 @@
         }
       ]
     },
-    "views": 7,
-    "statement": "HSM-001: HBOM 20, CBOM 6, SBOM 4, TBOM 2, NBOM 4, VBOM 2, VULNERABILITY 1 \u2014 one graph, read as separate views",
+    "views": 8,
+    "statement": "HSM-001: HBOM 20, CBOM 7, SBOM 4, TBOM 2, NBOM 4, VBOM 2, EVIDENCE 1, VULNERABILITY 1 \u2014 one graph, read as separate views",
     "not_proven": [
       "that two assets in different views are the same fact: they are the same asset when an edge joins them, and co-occurrence is not a join",
       "that the walk is exhaustive: a relationship nobody recorded is missing here, not absent from the estate"
@@ -1058,7 +1082,7 @@
         {
           "probe": "every-device-cites-an-evidence-id",
           "ok": true,
-          "observed": "26 asset(s), each with at least one evidence id"
+          "observed": "31 asset(s), each with at least one evidence id"
         },
         {
           "probe": "the-register-keeps-the-eleven-parts-the-review-asks-for",
@@ -1102,12 +1126,12 @@
         {
           "probe": "the-estate-carries-its-own-completeness-with-the-gap-reasons",
           "ok": true,
-          "observed": "PARTIAL: 3 kind(s) complete, 3 short, 2 stated gap(s), 27 unmeasured"
+          "observed": "PARTIAL: 3 kind(s) complete, 3 short, 2 stated gap(s), 28 unmeasured"
         },
         {
           "probe": "a-kind-with-no-denominator-is-unmeasured-not-complete",
           "ok": true,
-          "observed": "27 kind(s) unmeasured"
+          "observed": "28 kind(s) unmeasured"
         }
       ],
       "verdict": "PASS",
@@ -1121,7 +1145,7 @@
         {
           "probe": "one-hardware-asset-walks-into-the-other-four-views",
           "ok": true,
-          "observed": "HSM-001: HBOM 20, CBOM 6, SBOM 4, TBOM 2, NBOM 4, VBOM 2, VULNERABILITY 1 \u2014 one graph, read as separate views"
+          "observed": "HSM-001: HBOM 20, CBOM 7, SBOM 4, TBOM 2, NBOM 4, VBOM 2, EVIDENCE 1, VULNERABILITY 1 \u2014 one graph, read as separate views"
         },
         {
           "probe": "the-walk-reaches-the-application-and-the-business-system",
@@ -1131,7 +1155,7 @@
         {
           "probe": "a-link-is-a-reference-pinned-by-digest-not-a-copy",
           "ok": true,
-          "observed": "bom-link:hbom:fb56fc820a1525e5"
+          "observed": "bom-link:hbom:2c0d9361b2a69200"
         }
       ],
       "verdict": "PASS",
@@ -1145,7 +1169,7 @@
         {
           "probe": "the-hbom-is-the-techbom-restricted-to-hardware",
           "ok": true,
-          "observed": "26 hardware row(s) out of 42 estate assets"
+          "observed": "31 hardware row(s) out of 43 estate assets"
         },
         {
           "probe": "an-hbom-cannot-be-fed-back-in-as-a-source",
@@ -1160,7 +1184,7 @@
         {
           "probe": "the-same-estate-produces-the-same-ids-and-the-same-statement",
           "ok": true,
-          "observed": "26 hardware asset(s) across 22 kind(s) and 35 relationship(s) touching them out of 48 in the estate; 2 device root(s); 244 declared field(s) the collectors did not supply; 1 firmware release(s) tracked"
+          "observed": "31 hardware asset(s) across 27 kind(s) and 60 relationship(s) touching them out of 69 in the estate; 2 device root(s); 286 declared field(s) the collectors did not supply; 1 firmware release(s) tracked"
         }
       ],
       "verdict": "PASS",

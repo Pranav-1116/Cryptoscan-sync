@@ -795,7 +795,7 @@ def row_projection(modules: dict[str, Any]) -> dict[str, Any]:
     techbom_doc = t.build(_document(h, t)[0])
     probes = [
         _probe("the-hbom-is-the-techbom-restricted-to-hardware",
-               {row["key"] for row in bom["assets"]} <=
+               {row["key"] for row in bom["assets"] if row["kind"] != "EVIDENCE"} <=
                {row["key"] for row in techbom_doc["assets"]},
                f"{len(bom['assets'])} hardware row(s) out of "
                f"{len(techbom_doc['assets'])} estate assets"),

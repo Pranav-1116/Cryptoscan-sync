@@ -1,6 +1,6 @@
 # Hardware is a view of the estate
 
-`cryptoscan.cbom-hbom-guide/1` · generated 2026-11-03T02:03:11.966030+00:00 · **16 pass · 0 partial · 0 fail** · 72 probes
+`cryptoscan.cbom-hbom-guide/1` · generated 2026-11-03T02:15:11.764894+00:00 · **16 pass · 0 partial · 0 fail** · 72 probes
 
 The HBOM review's sixteen points, answered by putting hardware into the graph the
 rest of the estate already lives in. The device is a tree, the HSM has depth, and
@@ -15,22 +15,26 @@ crypto → device        PROTECTED_BY      the key is held there
 device → firmware      RUNS_FIRMWARE     the release, with its own lifecycle
 ```
 
-26 hardware asset(s) across 22 kind(s) and 35 relationship(s) touching them out of 48 in the estate; 2 device root(s); 244 declared field(s) the collectors did not supply; 1 firmware release(s) tracked
+31 hardware asset(s) across 27 kind(s) and 60 relationship(s) touching them out of 69 in the estate; 2 device root(s); 286 declared field(s) the collectors did not supply; 1 firmware release(s) tracked
 
 ## What the view holds
 
 | kind | rows |
 |---|---|
+| `API_GATEWAY` | 1 |
 | `BIOS` | 1 |
+| `CERTIFICATE` | 1 |
 | `CPU` | 1 |
 | `CRYPTO_ACCELERATOR` | 1 |
 | `CRYPTO_CAPABILITY` | 3 |
+| `EVIDENCE` | 1 |
 | `FIREWALL` | 1 |
 | `FIRMWARE` | 1 |
 | `GPU` | 1 |
 | `HSM` | 2 |
 | `HSM_CLUSTER` | 1 |
 | `HSM_PARTITION` | 2 |
+| `LOAD_BALANCER` | 1 |
 | `MEMORY` | 1 |
 | `MOTHERBOARD` | 1 |
 | `NETWORK_SEGMENT` | 1 |
@@ -43,43 +47,41 @@ device → firmware      RUNS_FIRMWARE     the release, with its own lifecycle
 | `VENDOR` | 1 |
 | `VENDOR_PRODUCT` | 1 |
 | `VULNERABILITY` | 1 |
+| `WAF` | 1 |
 
 | kind | in the estate |
 |---|---|
 | `ALGORITHM` | 3 |
-| `API_GATEWAY` | 1 |
 | `APPLICATION` | 3 |
 | `BUSINESS_SYSTEM` | 2 |
 | `CRYPTO_ASSET` | 2 |
 | `CRYPTO_LIBRARY` | 1 |
-| `LOAD_BALANCER` | 1 |
 | `NETWORK_ENDPOINT` | 1 |
 | `PROCESS` | 1 |
-| `WAF` | 1 |
 
 ## Field coverage — what the collectors did not supply
 
 | field | declared | missing |
 |---|---|---|
-| `asset_id` | 20 | 0 |
-| `asset_type` | 20 | 0 |
-| `bios_version` | 0 | 20 |
-| `datacenter` | 3 | 17 |
-| `environment` | 20 | 0 |
-| `evidence_id` | 20 | 0 |
-| `firmware_version` | 6 | 14 |
-| `first_seen` | 0 | 20 |
-| `hardware_revision` | 0 | 20 |
-| `last_seen` | 0 | 20 |
-| `location` | 2 | 18 |
-| `manufacturer` | 5 | 15 |
-| `model` | 13 | 7 |
-| `owner` | 1 | 19 |
-| `part_number` | 1 | 19 |
-| `rack` | 1 | 19 |
-| `serial_number` | 2 | 18 |
-| `slot` | 2 | 18 |
-| `status` | 20 | 0 |
+| `asset_id` | 23 | 0 |
+| `asset_type` | 23 | 0 |
+| `bios_version` | 0 | 23 |
+| `datacenter` | 3 | 20 |
+| `environment` | 23 | 0 |
+| `evidence_id` | 23 | 0 |
+| `firmware_version` | 6 | 17 |
+| `first_seen` | 0 | 23 |
+| `hardware_revision` | 0 | 23 |
+| `last_seen` | 0 | 23 |
+| `location` | 2 | 21 |
+| `manufacturer` | 5 | 18 |
+| `model` | 13 | 10 |
+| `owner` | 1 | 22 |
+| `part_number` | 1 | 22 |
+| `rack` | 1 | 22 |
+| `serial_number` | 2 | 21 |
+| `slot` | 2 | 21 |
+| `status` | 23 | 0 |
 
 **Blast radius** — HSM-001: 2 application(s), 2 business system(s), 4 cryptographic asset(s), 5 network path(s) affected; 5 reached only through a declared edge
 
@@ -87,7 +89,7 @@ device → firmware      RUNS_FIRMWARE     the release, with its own lifecycle
 
 **Firmware** — PaymentHSM firmware 8.4.2 (8.4.2): EOL, run by HSM-001, 1 advisory(ies)
 
-**Cross-BOM** — HSM-001: HBOM 20, CBOM 6, SBOM 4, TBOM 2, NBOM 4, VBOM 2, VULNERABILITY 1 — one graph, read as separate views
+**Cross-BOM** — HSM-001: HBOM 20, CBOM 7, SBOM 4, TBOM 2, NBOM 4, VBOM 2, EVIDENCE 1, VULNERABILITY 1 — one graph, read as separate views
 
 | Row | Question | Verdict | Probes |
 |---|---|---|---|
@@ -228,7 +230,7 @@ device → firmware      RUNS_FIRMWARE     the release, with its own lifecycle
 
 *does every fact say how it is known* (review hbom / 13)
 
-- **PASS** `every-device-cites-an-evidence-id` — 26 asset(s), each with at least one evidence id
+- **PASS** `every-device-cites-an-evidence-id` — 31 asset(s), each with at least one evidence id
 - **PASS** `the-register-keeps-the-eleven-parts-the-review-asks-for` — linux-hardware-collector 1.4.2 at 2026-11-03T08:30:00Z
 - **PASS** `an-observation-without-a-hash-is-refused` — evidence that cannot be re-checked is a memory
 - **PASS** `a-hardware-asset-without-evidence-is-refused` — how the platform knows the device exists is part of the asset
@@ -240,25 +242,25 @@ device → firmware      RUNS_FIRMWARE     the release, with its own lifecycle
 
 - **PASS** `coverage-states-the-denominator-and-every-bucket` — expected 200, collected 120, unavailable 50, permission denied 20, unknown 10 — coverage PARTIAL (60%)
 - **PASS** `coverage-that-does-not-add-up-is-refused` — 190 accounted for of 200 expected → COVERAGE_DOES_NOT_RECONCILE
-- **PASS** `the-estate-carries-its-own-completeness-with-the-gap-reasons` — PARTIAL: 3 kind(s) complete, 3 short, 2 stated gap(s), 27 unmeasured
-- **PASS** `a-kind-with-no-denominator-is-unmeasured-not-complete` — 27 kind(s) unmeasured
+- **PASS** `the-estate-carries-its-own-completeness-with-the-gap-reasons` — PARTIAL: 3 kind(s) complete, 3 short, 2 stated gap(s), 28 unmeasured
+- **PASS** `a-kind-with-no-denominator-is-unmeasured-not-complete` — 28 kind(s) unmeasured
 
 ## `crossbom` — PASS
 
 *does the HBOM correlate with the other BOMs* (review hbom / 15)
 
-- **PASS** `one-hardware-asset-walks-into-the-other-four-views` — HSM-001: HBOM 20, CBOM 6, SBOM 4, TBOM 2, NBOM 4, VBOM 2, VULNERABILITY 1 — one graph, read as separate views
+- **PASS** `one-hardware-asset-walks-into-the-other-four-views` — HSM-001: HBOM 20, CBOM 7, SBOM 4, TBOM 2, NBOM 4, VBOM 2, EVIDENCE 1, VULNERABILITY 1 — one graph, read as separate views
 - **PASS** `the-walk-reaches-the-application-and-the-business-system` — HBOM → CBOM → SBOM → NBOM → VBOM, one graph
-- **PASS** `a-link-is-a-reference-pinned-by-digest-not-a-copy` — bom-link:hbom:fb56fc820a1525e5
+- **PASS** `a-link-is-a-reference-pinned-by-digest-not-a-copy` — bom-link:hbom:2c0d9361b2a69200
 
 ## `projection` — PASS
 
 *is the HBOM a view and never a source* (review hbom / 16)
 
-- **PASS** `the-hbom-is-the-techbom-restricted-to-hardware` — 26 hardware row(s) out of 42 estate assets
+- **PASS** `the-hbom-is-the-techbom-restricted-to-hardware` — 31 hardware row(s) out of 43 estate assets
 - **PASS** `an-hbom-cannot-be-fed-back-in-as-a-source` — from_document(HBOM) → refused: a projection is not a source
 - **PASS** `a-techbom-cannot-produce-an-hbom-either` — from_document(TechBOM) → refused
-- **PASS** `the-same-estate-produces-the-same-ids-and-the-same-statement` — 26 hardware asset(s) across 22 kind(s) and 35 relationship(s) touching them out of 48 in the estate; 2 device root(s); 244 declared field(s) the collectors did not supply; 1 firmware release(s) tracked
+- **PASS** `the-same-estate-produces-the-same-ids-and-the-same-statement` — 31 hardware asset(s) across 27 kind(s) and 60 relationship(s) touching them out of 69 in the estate; 2 device root(s); 286 declared field(s) the collectors did not supply; 1 firmware release(s) tracked
 
 ## What this does not prove
 

@@ -603,7 +603,12 @@ async def test_hardware_view_reads_stored_rows_and_refuses_what_it_cannot_place(
     # the stored row's own fingerprint is the evidence hash, and its class is CONFIGURED
     record = body["bom"]["evidence_register"][hsm["evidence_ids"][0]]
     assert record["hash"] == "ab" * 32
-    assert body["bom"]["claims"][0]["confidence"] == "CONFIGURED"
+    read = {row["confidence"] for row in body["bom"]["claims"]
+            if row["relation"] not in {"HAS_MODEL", "SUPPLIED_BY"}}
+    assert read == {"CONFIGURED"}
+    # the vendor chain is the row's claim about the product, one class lower
+    assert {row["confidence"] for row in body["bom"]["claims"]
+            if row["relation"] in {"HAS_MODEL", "SUPPLIED_BY"}} == {"VENDOR_DECLARED"}
     assert body["coverage"]["overall"] == "UNMEASURED"
 
 
@@ -635,3 +640,19 @@ async def test_hardware_view_answers_what_breaks_with_a_device(app_db):
     radius = resp.json()["blast_radius"]
     assert radius["seed"] == "HSM-0001"
     assert "application(s)" in radius["statement"]
+
+
+@pytest.mark.asyncio
+async def test_hardware_view_reports_the_product_lifecycle_and_impact(app_db):
+    transport = ASGITransport(app=app_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/v1/technology-bom/hardware",
+                                params={"device": "HSM-0001"})
+    body = resp.json()
+    products = body["product_lifecycle"]["products"]
+    assert [row["product"] for row in products] == ["ZELNX KMS-S3"]
+    # the row recorded no lifecycle, so the product is UNKNOWN rather than assumed supported
+    assert products[0]["status"] == "UNKNOWN"
+    assert products[0]["devices"] == ["HSM-0001"]
+    assert body["impact"]["hsm"] >= 1
+    assert "affected" in body["impact"]["statement"]
