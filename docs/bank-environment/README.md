@@ -627,6 +627,45 @@
 > 4 carry all twelve, and the shortfall is published as `collector 25/63`, `observed_at
 > 32/63`, `first_seen 18/63`.
 
+> [The VBOM dependency graph](178-vbom-dependency.md) (**29 pass · 0 partial · 0 fail**,
+> 90 probes) is the vendor BOM at dependency depth. Until now the VBOM was a vendor record
+> with a crypto inventory attached: `Vendor X → RSA`. It is now ten levels —
+> `VENDOR → PRODUCT → RELEASE → FIRMWARE / PACKAGE → ASSET → APPLICATION → CRYPTO → RUNTIME
+> → BUSINESS SYSTEM` — and `cbom/vbom_dependency.py` builds every one of them from a payload,
+> as a projection of the same estate the HBOM, NBOM, SBOM and CBOM read. **A product is a
+> node with its own identity** (`product_family`, `product_type`), **a release is a node
+> because a vendor's evidence is about a release**: `RSA supported` printed for payShield 8.4
+> is a statement about 8.4, and `applicability` answers `VERSION_MISMATCH` when the asset runs
+> 9.2. Eight applicability states, decided in a fixed precedence where the *first failing
+> question* wins — `PRODUCT_MISMATCH → VERSION_MISMATCH → SUPERSEDED → EXPIRED →
+> DEPLOYMENT_UNVERIFIED → PARTIAL_MATCH → MATCHED` — and `MATCHED` is the hardest to reach
+> because it needs product, release and firmware to line up **and** a verified deployment;
+> the recorded estate reaches five of them at once (`MATCHED 7, PARTIAL_MATCH 4,
+> VERSION_MISMATCH 8, EXPIRED 2, DEPLOYMENT_UNVERIFIED 4`). **Declared is never used**: the
+> ML-KEM capability on payShield 9.2 and on OpenSSL 3.0.13 is `VENDOR_DECLARED` and
+> `NOT_OBSERVED`, and `pqc_posture` answers `declared DECLARED / deployment UNKNOWN / usage
+> NOT_OBSERVED` rather than `PQC READY = TRUE`. **A version conflict is a finding with four
+> layers named** — `VENDOR_DECLARED 3.0.13`, `SBOM_OBSERVED 3.0.11`, `RUNTIME_OBSERVED
+> 3.0.11` — and the model does not vote on which the bank is running. The questions the graph
+> exists for are answered as paths: `vendor → product → asset` reaches `HSM-001` with its
+> location, environment and owner; `vendor → product → release → package → application`
+> reaches `Payments API` through `pkg:generic/payshield-sdk`; `vendor → crypto → application
+> → system` answers *which business systems depend on this vendor for RSA* (and answers
+> **nothing** for 3DES, which it does not offer); `vendor → package → process → operation`
+> ends in an `OBSERVED` `RSA SIGN`; the F5 load balancer reaches `payments.bank.example:443`
+> and the application behind it; the DigiCert CA reaches `CERT-001` and the same endpoint;
+> firmware carries `release_date`, `support_status`, `eol_date`, `eos_date`,
+> `security_status` and `pqc_capability` on its own; vendor evidence ages (`EXPIRED`,
+> `VENDOR_EVIDENCE_STALE`, `UNKNOWN`) instead of being trusted forever; risk **travels**
+> (`score 138 = base 46 × 3 business systems` for Thales, `10 = base 5 × 2` for the EOL Acme
+> product that reaches no system at all); history records `VENDOR_CHANGED` with the evidence
+> on both sides; and coverage separates **82 identified / 13 unknown / 5 internal** at 82%
+> rather than calling an unmapped component an in-house one. Five rows are refused by name —
+> a product with no vendor, a release with no version, an asset with no product, a capability
+> with no document, and a firmware the estate never recorded (a `colour` change is ignored
+> too: it is not a dependency field) — and the twin closes with **10/10 levels populated and
+> 0 gaps**.
+
 > [Live collection: payloads, transports and the chain they build](177-sbom-live-collection.md)
 > (**16 pass · 0 partial · 0 fail**, 48 probes) closes the other end of 176. That guide began
 > with a store somebody had already filled; this one begins with the answer each bank system

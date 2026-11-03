@@ -173,8 +173,8 @@ ASSET_TYPES: tuple[str, ...] = (
     "CLOUD_ACCOUNT", "CLOUD_REGION", "CLOUD_INSTANCE",
     # evidence and vendor lifecycle
     "EVIDENCE", "VULNERABILITY",
-    # vendor
-    "VENDOR", "VENDOR_PRODUCT",
+    # vendor, and the release a vendor's evidence actually applies to (guide 178)
+    "VENDOR", "VENDOR_PRODUCT", "PRODUCT_VERSION",
     # runtime deployment identity
     "SOURCE", "BUILD", "ARTIFACT", "SBOM", "DEPLOYMENT", "POD", "PROCESS",
     "RELEASE", "NAMESPACE", "CLUSTER",
@@ -198,7 +198,7 @@ PREFIX: dict[str, str] = {
     "HSM": "HSM", "KMS": "KMS", "KEY_REFERENCE": "KREF", "FIRMWARE": "FW",
     "CRYPTO_CAPABILITY": "CAP", "CRYPTO_OPERATION": "OP", "HOST": "HOST", "VM": "VM",
     "PHYSICAL_SERVER": "SRV", "TPM": "TPM", "VENDOR": "VENDOR",
-    "VENDOR_PRODUCT": "PROD", "SOURCE": "SRC", "BUILD": "BUILD", "ARTIFACT": "ART",
+    "VENDOR_PRODUCT": "PROD", "PRODUCT_VERSION": "VER", "SOURCE": "SRC", "BUILD": "BUILD", "ARTIFACT": "ART",
     "SBOM": "SBOM", "DEPLOYMENT": "DEP", "POD": "POD", "PROCESS": "PROC",
     "REPOSITORY": "REPO", "COMMIT": "SHA", "REPLICA_SET": "RS", "IMAGE_LAYER": "LAYER",
     "RELEASE": "REL", "NAMESPACE": "NS", "CLUSTER": "K8S",
@@ -297,7 +297,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
                            "DATABASE", "VPN_GATEWAY", "PHYSICAL_SERVER", "NIC", "GPU",
                            "CRYPTO_ACCELERATOR", "FIREWALL", "IDS", "IPS",
                            "SECURITY_APPLIANCE", "CPU", "STORAGE", "RAID_CONTROLLER",
-                           "SMART_CARD", "TPM"),
+                           "SMART_CARD", "TPM", "CERTIFICATE_AUTHORITY", "HOST", "VM",
+                           "KMS"),
                   "to": ("VENDOR_PRODUCT",), "chain": "VENDOR"},
     "HOLDS_KEY": {"from": ("HSM", "KMS"), "to": ("KEY_REFERENCE",), "chain": "KEYS"},
     "RUNS_FIRMWARE": {"from": ("HSM", "LOAD_BALANCER", "WAF", "API_GATEWAY", "FIREWALL",
@@ -315,7 +316,7 @@ RELATIONS: dict[str, dict[str, Any]] = {
                           "BIOS", "NETWORK_ENDPOINT", "LOAD_BALANCER", "API_GATEWAY", "WAF",
                           "SERVICE_MESH", "DATABASE", "SSH_SERVICE", "VPN_GATEWAY",
                           "IPSEC_TUNNEL", "OS", "VENDOR_PRODUCT", "IDS", "IPS",
-                          "CRYPTO_PROVIDER", "CRYPTO_LIBRARY"),
+                          "CRYPTO_PROVIDER", "CRYPTO_LIBRARY", "PRODUCT_VERSION"),
                  "to": ("CRYPTO_CAPABILITY", "CIPHER_SUITE", "ALGORITHM"),
                  "chain": "NETWORK"},
     #: an application does not "use crypto"; it asks for an operation, and the operation
@@ -402,6 +403,20 @@ RELATIONS: dict[str, dict[str, Any]] = {
                              "CRYPTO_ACCELERATOR", "SMART_CARD", "SECURITY_APPLIANCE",
                              "FIREWALL"),
                     "to": ("VENDOR",), "chain": "VENDOR"},
+    #: a product has releases, and a vendor's claim is about a release: "RSA supported" on
+    #: 8.4 says nothing about 9.2 (guide 178). The version is a node because applicability
+    #: is decided by a comparison, and a comparison needs something to compare.
+    "RELEASES": {"from": ("VENDOR_PRODUCT",), "to": ("PRODUCT_VERSION",),
+                 "chain": "VENDOR"},
+    #: firmware is a release too, and it is what a device actually runs
+    "FIRMWARE_OF": {"from": ("FIRMWARE",), "to": ("PRODUCT_VERSION",), "chain": "VENDOR"},
+    #: what a release ships: a vendor SDK version is a package, not a promise
+    "SHIPS_PACKAGE": {"from": ("PRODUCT_VERSION",), "to": ("PACKAGE", "CRYPTO_LIBRARY"),
+                      "chain": "SOFTWARE"},
+    #: the document a declaration came from, so "the vendor says" has a page behind it
+    "DOCUMENTED_BY": {"from": ("VENDOR", "VENDOR_PRODUCT", "PRODUCT_VERSION", "FIRMWARE",
+                               "CRYPTO_CAPABILITY", "CRYPTO_LIBRARY"),
+                      "to": ("EVIDENCE",), "chain": "VENDOR"},
     #: a source file declares a crypto call. The file is a node because the review asks
     #: for app → source file → crypto API → algorithm, and an evidence id alone cannot
     #: name which file a hit came from (guide 173, point 3).

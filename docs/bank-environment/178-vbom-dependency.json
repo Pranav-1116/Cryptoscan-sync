@@ -1,0 +1,846 @@
+{
+  "schema": "cryptoscan.vbom-dependency-guide/1",
+  "guide": 178,
+  "generated_at": "2026-11-03T10:55:14Z",
+  "as_of": "2026-11-03",
+  "counts": {
+    "PASS": 29,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "points": 29,
+  "probes": 90,
+  "probes_passed": 90,
+  "statement": "29 of 29 points of vendor-dependency depth hold, across 90 probes; 57 asset(s) and 85 claim(s) over 10 vendor level(s)",
+  "levels": {
+    "vendor": 5,
+    "product": 6,
+    "release": 7,
+    "firmware": 4,
+    "package": 2,
+    "asset": 7,
+    "application": 2,
+    "crypto": 8,
+    "runtime": 1,
+    "system": 2
+  },
+  "applicability": {
+    "MATCHED": 6,
+    "DEPLOYMENT_UNVERIFIED": 4,
+    "VERSION_MISMATCH": 8,
+    "EXPIRED": 2,
+    "PARTIAL_MATCH": 4
+  },
+  "coverage": {
+    "total": 100,
+    "identified": 82,
+    "unknown": 13,
+    "internal": 5,
+    "coverage_percent": 82.0,
+    "accounted_percent": 87.0
+  },
+  "refusals": [
+    {
+      "code": "PRODUCT_WITHOUT_VENDOR",
+      "subject": "Orphan Product",
+      "reason": "a product with no vendor cannot be attributed, and an unattributed product is a supply-chain blind spot wearing a product name"
+    },
+    {
+      "code": "VENDOR_CLAIM_WITHOUT_DOCUMENT",
+      "subject": "Acme Datacrypt 4.2 RSA-2048",
+      "reason": "the vendor claims this on a page nobody filed: a capability with no document cannot be cited, aged, or argued with"
+    },
+    {
+      "code": "RELEASE_WITHOUT_VERSION",
+      "subject": "payShield 9000",
+      "reason": "a release with no version is not a release: applicability is a version comparison, and this row has nothing to compare"
+    },
+    {
+      "code": "ASSET_WITHOUT_PRODUCT",
+      "subject": "HSM-004",
+      "reason": "an asset that names no product cannot be attributed to a vendor, and an unattributed asset is a vendor dependency nobody owns"
+    }
+  ],
+  "estate_refusals": [
+    {
+      "code": "UNKNOWN_REF",
+      "subject": "Acme Datacrypt firmware 4.2.0",
+      "reason": "RUNS_FIRMWARE names Acme Datacrypt firmware 4.2.0, which no asset in this estate declares; an edge to an undeclared node is refused, not invented"
+    }
+  ],
+  "twin": {
+    "levels": {
+      "vendor": 5,
+      "product": 6,
+      "release": 7,
+      "firmware": 4,
+      "package": 2,
+      "asset": 7,
+      "application": 2,
+      "crypto": 8,
+      "runtime": 1,
+      "system": 2
+    },
+    "vendor_edges": {
+      "DOCUMENTED_BY": 18,
+      "FIRMWARE_OF": 4,
+      "HAS_MODEL": 6,
+      "PRODUCT_OF": 4,
+      "RELEASES": 7,
+      "RUNS_FIRMWARE": 4,
+      "SHIPS_PACKAGE": 2,
+      "SUPPLIED_BY": 6,
+      "SUPPORTS": 9
+    },
+    "gaps": []
+  },
+  "rows": [
+    {
+      "id": "VBOM-01",
+      "number": 1,
+      "section": "vendor\u2192product",
+      "question": "a product is a first-class node with its own identity",
+      "probes": [
+        {
+          "probe": "the-vendor-has-products-not-algorithms",
+          "ok": true,
+          "observed": "payShield 9000, payShield SDK"
+        },
+        {
+          "probe": "each-product-carries-family-and-type",
+          "ok": true,
+          "observed": "payShield 9000=HSM/payShield, payShield SDK=SDK/payShield"
+        },
+        {
+          "probe": "a-product-with-no-vendor-is-refused-by-name",
+          "ok": true,
+          "observed": "Orphan Product refused (PRODUCT_WITHOUT_VENDOR)"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-02",
+      "number": 2,
+      "section": "vendor\u2192product\u2192version",
+      "question": "a claim is attached to a release, not to a company",
+      "probes": [
+        {
+          "probe": "the-product-has-more-than-one-release",
+          "ok": true,
+          "observed": "8.4 [MAINTENANCE], 9.2 [SUPPORTED]"
+        },
+        {
+          "probe": "each-release-carries-its-own-capabilities",
+          "ok": true,
+          "observed": "{'8.4': 3, '9.2': 2}"
+        },
+        {
+          "probe": "a-release-with-no-version-is-refused",
+          "ok": true,
+          "observed": "a release row with an empty version is refused"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-03",
+      "number": 3,
+      "section": "version-applicability",
+      "question": "applicability is one of eight states, and the first failing question decides",
+      "probes": [
+        {
+          "probe": "eight-states-are-named",
+          "ok": true,
+          "observed": "MATCHED, PARTIAL_MATCH, VERSION_MISMATCH, PRODUCT_MISMATCH, DEPLOYMENT_UNVERIFIED, EXPIRED, SUPERSEDED, UNKNOWN"
+        },
+        {
+          "probe": "every-state-has-a-stated-meaning",
+          "ok": true,
+          "observed": "8 meanings"
+        },
+        {
+          "probe": "the-estate-reaches-five-of-them",
+          "ok": true,
+          "observed": "DEPLOYMENT_UNVERIFIED 4, EXPIRED 2, MATCHED 6, PARTIAL_MATCH 4, VERSION_MISMATCH 8"
+        },
+        {
+          "probe": "a-claim-about-another-product-is-PRODUCT_MISMATCH",
+          "ok": true,
+          "observed": "PRODUCT_MISMATCH"
+        },
+        {
+          "probe": "a-replaced-revision-is-SUPERSEDED",
+          "ok": true,
+          "observed": "revision DOC-1006 replaced the claim"
+        },
+        {
+          "probe": "a-claim-with-no-version-is-UNKNOWN",
+          "ok": true,
+          "observed": "UNKNOWN"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-04",
+      "number": 4,
+      "section": "vendor\u2192asset",
+      "question": "a vendor dependency reaches the asset the bank actually runs",
+      "probes": [
+        {
+          "probe": "the-asset-is-reached-through-the-product",
+          "ok": true,
+          "observed": "HSM-001, HSM-002, HSM-005"
+        },
+        {
+          "probe": "the-asset-carries-location-environment-and-owner",
+          "ok": true,
+          "observed": "HSM-001 DC-01/PRODUCTION/Payments; HSM-002 DC-02/PRODUCTION/Payments; HSM-005 DC-02/PRODUCTION/Payments"
+        },
+        {
+          "probe": "an-asset-with-no-product-is-refused-by-name",
+          "ok": true,
+          "observed": "HSM-004 refused (ASSET_WITHOUT_PRODUCT)"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-05",
+      "number": 5,
+      "section": "vendor\u2192hardware",
+      "question": "a hardware vendor's product reaches the device, with the HBOM's identity",
+      "probes": [
+        {
+          "probe": "the-chain-runs-vendor-product-firmware-asset",
+          "ok": true,
+          "observed": "HSM-001: Thales \u2192 payShield 9000 \u2192 payShield 9000 firmware 8.4.2 \u2192 HSM-001"
+        },
+        {
+          "probe": "the-firmware-carries-dates-and-support-state",
+          "ok": true,
+          "observed": "MAINTENANCE until 2027-01-31"
+        },
+        {
+          "probe": "the-hardware-identity-is-shared-with-the-hbom",
+          "ok": true,
+          "observed": "HSM-001: HSM payShield 9000 serial PS9K-0001 \u2014 shared with HBOM as TECH-HSM-001"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-06",
+      "number": 6,
+      "section": "vendor\u2192software",
+      "question": "a software vendor reaches an application through a package",
+      "probes": [
+        {
+          "probe": "the-release-ships-a-package",
+          "ok": true,
+          "observed": "pkg:generic/openssl, pkg:generic/payshield-sdk"
+        },
+        {
+          "probe": "the-package-reaches-the-application",
+          "ok": true,
+          "observed": "Payments API, Reporting API"
+        },
+        {
+          "probe": "the-sdk-version-and-the-sbom-version-are-both-kept",
+          "ok": true,
+          "observed": "Thales: 1 package(s), 1 declared/observed conflict(s) \u2014 pkg:generic/payshield-sdk declared 5.7, saw 5.4"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-07",
+      "number": 7,
+      "section": "vendor\u2192crypto",
+      "question": "a capability is a provider, an algorithm, a key size, a mode and a purpose",
+      "probes": [
+        {
+          "probe": "the-capability-carries-key-size-mode-and-purpose",
+          "ok": true,
+          "observed": "AES-256-GCM capability (key block), ECDSA-P-256 capability (firmware signing), ML-KEM-768 capability (key transport), RSA-2048 capability (card verification), RSA-3072 capability (no purpose)"
+        },
+        {
+          "probe": "a-capability-implements-an-algorithm-node",
+          "ok": true,
+          "observed": "every capability names its ALGORITHM node"
+        },
+        {
+          "probe": "the-class-is-VENDOR_DECLARED",
+          "ok": true,
+          "observed": "VENDOR_DECLARED"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-08",
+      "number": 8,
+      "section": "declared\u2260observed",
+      "question": "a vendor's ML-KEM claim is a declaration, never a usage",
+      "probes": [
+        {
+          "probe": "the-unused-capabilities-are-named",
+          "ok": true,
+          "observed": "ECDSA-P-256 capability, ML-KEM-768 capability"
+        },
+        {
+          "probe": "the-used-ones-are-observed-not-declared",
+          "ok": true,
+          "observed": "AES-256-GCM capability=RUNTIME_OBSERVED, ECDSA-P-256 capability=VENDOR_DECLARED, ML-KEM-768 capability=VENDOR_DECLARED, RSA-2048 capability=RUNTIME_OBSERVED, RSA-3072 capability=RUNTIME_OBSERVED"
+        },
+        {
+          "probe": "declared-count-and-observed-count-are-both-printed",
+          "ok": true,
+          "observed": "5 declared, 3 observed"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-09",
+      "number": 9,
+      "section": "vendor\u2192application",
+      "question": "the question is which applications depend on the product",
+      "probes": [
+        {
+          "probe": "the-applications-are-named",
+          "ok": true,
+          "observed": "Payments API, Reporting API"
+        },
+        {
+          "probe": "the-path-that-reaches-each-one-is-returned",
+          "ok": true,
+          "observed": "SUPPLIED_BY \u2192 EMBEDS"
+        },
+        {
+          "probe": "a-vendor-that-reaches-nothing-says-so",
+          "ok": true,
+          "observed": "Acme Legacy: no application is reachable from it"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-10",
+      "number": 10,
+      "section": "vendor\u2192business system",
+      "question": "business impact is a property of the graph",
+      "probes": [
+        {
+          "probe": "the-systems-are-reached",
+          "ok": true,
+          "observed": "Payments System, Reporting System"
+        },
+        {
+          "probe": "the-impact-is-not-taken-from-the-vendor-criticality-field",
+          "ok": true,
+          "observed": "Thales: 2 business system(s) \u2014 Payments System, Reporting System"
+        },
+        {
+          "probe": "an-eol-product-on-a-device-nothing-uses-reaches-no-system",
+          "ok": true,
+          "observed": "Acme Legacy: reaches no business system"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-11",
+      "number": 11,
+      "section": "vendor\u2192crypto\u2192system",
+      "question": "which business systems depend on this vendor for this algorithm",
+      "probes": [
+        {
+          "probe": "the-answer-names-the-algorithm-and-the-systems",
+          "ok": true,
+          "observed": "OpenSSL Project \u2192 RSA \u2192 2 application(s) \u2192 2 business system(s): Payments System, Reporting System"
+        },
+        {
+          "probe": "the-crypto-assets-that-carry-it-are-listed",
+          "ok": true,
+          "observed": "RSA-2048 capability, RSA-2048 use, RSA-3072 capability"
+        },
+        {
+          "probe": "an-algorithm-the-vendor-does-not-offer-answers-nothing",
+          "ok": true,
+          "observed": "OpenSSL Project \u2192 3DES \u2192 0 application(s) \u2192 0 business system(s): none"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-12",
+      "number": 12,
+      "section": "vendor\u2192runtime",
+      "question": "the last hop is a process that was watched",
+      "probes": [
+        {
+          "probe": "a-process-loads-the-vendors-package",
+          "ok": true,
+          "observed": "payments-api 1821"
+        },
+        {
+          "probe": "the-operations-are-observations-and-not-declarations",
+          "ok": true,
+          "observed": "RSA SIGN [OBSERVED via process-trace], AES ENCRYPT [OBSERVED via process-trace]"
+        },
+        {
+          "probe": "the-observation-carries-its-evidence-reference",
+          "ok": true,
+          "observed": "probe:srv-k8s-03:1821, probe:srv-k8s-03:1821"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-13",
+      "number": 13,
+      "section": "vendor\u2192network",
+      "question": "a network vendor's device reaches the application behind it",
+      "probes": [
+        {
+          "probe": "the-device-and-endpoint-are-reached",
+          "ok": true,
+          "observed": "F5: 1 network device(s), 1 endpoint(s), 1 application(s) behind them"
+        },
+        {
+          "probe": "the-endpoint-routes-to-the-application",
+          "ok": true,
+          "observed": "Payments API"
+        },
+        {
+          "probe": "the-network-identity-names-the-tls-mode",
+          "ok": true,
+          "observed": "LB-001: payments.bank.example:443 \u2014 the NBOM records the same nodes"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-14",
+      "number": 14,
+      "section": "vendor\u2192certificate",
+      "question": "a PKI vendor reaches the endpoint its certificate is on",
+      "probes": [
+        {
+          "probe": "the-ca-the-certificate-and-the-endpoint-are-reached",
+          "ok": true,
+          "observed": "DigiCert: 1 CA instance(s), 1 certificate(s), 1 endpoint(s) \u2014 CERT-001"
+        },
+        {
+          "probe": "the-certificate-is-issued-by-the-instance",
+          "ok": true,
+          "observed": "CERT-001 ISSUED_BY Issuing CA"
+        },
+        {
+          "probe": "the-application-behind-the-endpoint-is-named",
+          "ok": true,
+          "observed": "Payments API"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-15",
+      "number": 15,
+      "section": "vendor\u2192firmware",
+      "question": "firmware is versioned, dated and supportable on its own",
+      "probes": [
+        {
+          "probe": "every-firmware-row-carries-its-fields",
+          "ok": true,
+          "observed": "4 firmware rows"
+        },
+        {
+          "probe": "the-firmware-that-is-eol-is-named",
+          "ok": true,
+          "observed": "BIG-IP 9000 firmware 15.1.0[EOL], BIG-IP 9000 firmware 17.1.0[SUPPORTED], payShield 9000 firmware 8.4.2[MAINTENANCE], payShield 9000 firmware 9.2.1[SUPPORTED]"
+        },
+        {
+          "probe": "a-device-that-runs-unrecorded-firmware-is-refused",
+          "ok": true,
+          "observed": "HSM-003's firmware is not a node the estate holds"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-16",
+      "number": 16,
+      "section": "vendor-lifecycle",
+      "question": "a lifecycle state is derived, dated and terminal",
+      "probes": [
+        {
+          "probe": "the-seven-states-are-named",
+          "ok": true,
+          "observed": "ACTIVE, SUPPORTED, MAINTENANCE, EOL, EOS, RETIRED, UNKNOWN"
+        },
+        {
+          "probe": "eol-is-terminal",
+          "ok": true,
+          "observed": "Acme Datacrypt: EOL \u2014 the vendor states EOL"
+        },
+        {
+          "probe": "the-fan-out-names-what-the-product-reaches",
+          "ok": true,
+          "observed": "Acme Datacrypt [EOL] \u2192 1 asset, 1 release"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-17",
+      "number": 17,
+      "section": "evidence-freshness",
+      "question": "vendor evidence ages, and is labelled rather than deleted",
+      "probes": [
+        {
+          "probe": "an-expired-document-is-EXPIRED",
+          "ok": true,
+          "observed": "FRESH 4, VENDOR_EVIDENCE_STALE 1, EXPIRED 2, UNKNOWN 0"
+        },
+        {
+          "probe": "an-undated-document-cannot-be-fresh",
+          "ok": true,
+          "observed": "DOC-X: UNKNOWN \u2014 the document carries no received_at, so its age is unknown"
+        },
+        {
+          "probe": "an-old-document-is-STALE-not-trusted",
+          "ok": true,
+          "observed": "DOC-0900: VENDOR_EVIDENCE_STALE \u2014 received 885 days ago, past the 365-day review cadence"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-18",
+      "number": 18,
+      "section": "document\u2192deployment",
+      "question": "five checks decide whether a document applies",
+      "probes": [
+        {
+          "probe": "the-five-checks-are-answered-per-row",
+          "ok": true,
+          "observed": "24 declaration(s), five checks each"
+        },
+        {
+          "probe": "a-matching-verified-deployment-is-MATCHED",
+          "ok": true,
+          "observed": "6 MATCHED"
+        },
+        {
+          "probe": "a-mismatch-is-not-silently-applied",
+          "ok": true,
+          "observed": "24 declaration(s): 6 MATCHED, 18 otherwise \u2014 DEPLOYMENT_UNVERIFIED, EXPIRED, MATCHED, PARTIAL_MATCH, VERSION_MISMATCH"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-19",
+      "number": 19,
+      "section": "vendor\u2192SBOM",
+      "question": "a declared version and an SBOM version that differ is a finding",
+      "probes": [
+        {
+          "probe": "the-conflict-names-both-versions",
+          "ok": true,
+          "observed": "3.0.13 is not 3.0.11"
+        },
+        {
+          "probe": "the-conflict-is-not-called-annotated-as-agreement",
+          "ok": true,
+          "observed": "VENDOR_DEPLOYMENT_VERSION_CONFLICT"
+        },
+        {
+          "probe": "a-matching-package-is-IMPORTED",
+          "ok": true,
+          "observed": "1 package(s), 1 conflict(s)"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-20",
+      "number": 20,
+      "section": "vendor\u2192CBOM",
+      "question": "the declaration and the observation are two answers, both kept",
+      "probes": [
+        {
+          "probe": "declared-only-algorithms-are-named",
+          "ok": true,
+          "observed": "ECDSA, ML-KEM"
+        },
+        {
+          "probe": "the-algorithms-in-both-are-named",
+          "ok": true,
+          "observed": "AES, RSA"
+        },
+        {
+          "probe": "the-declaration-keeps-its-own-class",
+          "ok": true,
+          "observed": "VENDOR_DECLARED"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-21",
+      "number": 21,
+      "section": "vendor\u2192HBOM",
+      "question": "the VBOM and the HBOM name the same hardware node",
+      "probes": [
+        {
+          "probe": "the-identity-carries-kind-model-serial-and-firmware",
+          "ok": true,
+          "observed": "HSM-001: HSM payShield 9000 serial PS9K-0001 \u2014 shared with HBOM as TECH-HSM-001"
+        },
+        {
+          "probe": "the-identity-is-a-digest-the-other-boms-can-cite",
+          "ok": true,
+          "observed": "b024e7677e"
+        },
+        {
+          "probe": "the-device-is-reached-by-a-claim-not-by-a-name-match",
+          "ok": true,
+          "observed": "HSM-001 HAS_MODEL payShield 9000"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-22",
+      "number": 22,
+      "section": "vendor\u2192NBOM",
+      "question": "the VBOM and the NBOM name the same network nodes",
+      "probes": [
+        {
+          "probe": "the-device-listens-on-a-host-port-endpoint",
+          "ok": true,
+          "observed": "payments.bank.example:443"
+        },
+        {
+          "probe": "the-endpoint-is-routed-to-an-application-by-a-record",
+          "ok": true,
+          "observed": "Payments API"
+        },
+        {
+          "probe": "the-vendor-device-is-a-node-the-nbom-holds",
+          "ok": true,
+          "observed": "LB-001 is a LOAD_BALANCER node"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-23",
+      "number": 23,
+      "section": "vendor\u2192twin",
+      "question": "the VBOM is a projection of the estate, not a vendor database",
+      "probes": [
+        {
+          "probe": "every-one-of-the-ten-levels-is-populated",
+          "ok": true,
+          "observed": "the twin holds 57 node(s) and 85 claim(s); 10/10 vendor level(s) are populated"
+        },
+        {
+          "probe": "the-vendor-edges-are-in-the-graph",
+          "ok": true,
+          "observed": "DOCUMENTED_BY 18, FIRMWARE_OF 4, HAS_MODEL 6, PRODUCT_OF 4, RELEASES 7, RUNS_FIRMWARE 4, SHIPS_PACKAGE 2, SUPPLIED_BY 6, SUPPORTS 9"
+        },
+        {
+          "probe": "the-projection-carries-a-refusal-log",
+          "ok": true,
+          "observed": "4 builder refusal(s), 1 estate refusal(s)"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-24",
+      "number": 24,
+      "section": "vendor-conflict",
+      "question": "a version conflict keeps all four layers and picks none",
+      "probes": [
+        {
+          "probe": "the-four-layers-are-named",
+          "ok": true,
+          "observed": "pkg:generic/openssl: VENDOR_DECLARED=3.0.13, SBOM_OBSERVED=3.0.11, RUNTIME_OBSERVED=3.0.11; pkg:generic/payshield-sdk: VENDOR_DECLARED=5.7, SBOM_OBSERVED=5.4"
+        },
+        {
+          "probe": "the-conflict-code-is-explicit",
+          "ok": true,
+          "observed": "VENDOR_DEPLOYMENT_VERSION_CONFLICT"
+        },
+        {
+          "probe": "no-layer-is-called-the-truth",
+          "ok": true,
+          "observed": "no layer is promoted"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-25",
+      "number": 25,
+      "section": "vendor-history",
+      "question": "a vendor relationship has a history with evidence on both sides",
+      "probes": [
+        {
+          "probe": "the-vendor-change-is-VENDOR_CHANGED",
+          "ok": true,
+          "observed": "HSM-001: vendor Acme Legacy \u2192 Thales at 2026-10-01"
+        },
+        {
+          "probe": "both-sides-carry-an-evidence-reference",
+          "ok": true,
+          "observed": "DOC-0800\u2192DOC-1006, DOC-0900\u2192DOC-1001"
+        },
+        {
+          "probe": "a-field-that-is-not-a-dependency-is-ignored",
+          "ok": true,
+          "observed": "3 change(s), 'colour' excluded"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-26",
+      "number": 26,
+      "section": "vendor-coverage",
+      "question": "unknown is not internal and neither is no-vendor",
+      "probes": [
+        {
+          "probe": "the-coverage-is-computed-not-claimed",
+          "ok": true,
+          "observed": "82 of 100 component(s) have a vendor (82.0%); 13 unknown, 5 internal \u2014 87.0% of the estate is accounted for"
+        },
+        {
+          "probe": "unknown-and-internal-are-counted-separately",
+          "ok": true,
+          "observed": "13 unknown, 5 internal"
+        },
+        {
+          "probe": "the-unidentified-components-are-listed",
+          "ok": true,
+          "observed": "pkg:generic/mystery-000, pkg:generic/mystery-001, pkg:generic/mystery-002 \u2026"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-27",
+      "number": 27,
+      "section": "vendor-risk",
+      "question": "risk travels through dependencies, and stops where they stop",
+      "probes": [
+        {
+          "probe": "the-score-is-composed-of-the-levels-it-reaches",
+          "ok": true,
+          "observed": "Thales: score 138 = base 46 \u00d7 3 (2 business system(s)); levels reached: application 2, asset 3, crypto 2, firmware 2, package 2, product 3, release 4, runtime 1, system 2, vendor 1"
+        },
+        {
+          "probe": "a-terminal-lifecycle-doubles-the-score",
+          "ok": true,
+          "observed": "10 = base 5 \u00d7 2 (Acme Datacrypt EOL)"
+        },
+        {
+          "probe": "a-vendor-that-reaches-no-system-scores-nothing-propagated",
+          "ok": true,
+          "observed": "Acme reaches no system: s system(s)) \u00d7 2 (1 product(s) end of life); levels reached: asset 1, product 1, release 1"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-28",
+      "number": 28,
+      "section": "vendor-PQC",
+      "question": "vendor PQC is DECLARED, deployment is UNKNOWN, usage is NOT_OBSERVED",
+      "probes": [
+        {
+          "probe": "the-vendor-claim-is-DECLARED",
+          "ok": true,
+          "observed": "Thales: vendor PQC capability DECLARED (payShield 9000 firmware 9.2.1); deployment PQC capability UNKNOWN; PQC usage NOT_OBSERVED"
+        },
+        {
+          "probe": "the-runtime-is-NOT_OBSERVED",
+          "ok": true,
+          "observed": "NOT_OBSERVED"
+        },
+        {
+          "probe": "the-answer-is-not-PQC-READY",
+          "ok": true,
+          "observed": "declared DECLARED, deployment UNKNOWN, runtime NOT_OBSERVED"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "VBOM-29",
+      "number": 29,
+      "section": "the-graph",
+      "question": "the graph the review drew is the graph the module builds",
+      "probes": [
+        {
+          "probe": "every-level-of-the-drawn-graph-exists",
+          "ok": true,
+          "observed": "vendor 5, product 6, release 7, firmware 4, package 2, asset 7, application 2, crypto 8, runtime 1, system 2"
+        },
+        {
+          "probe": "the-total-is-assets-and-claims-not-a-vendor-list",
+          "ok": true,
+          "observed": "57 assets, 85 claims"
+        },
+        {
+          "probe": "the-applicability-of-the-estate-is-published",
+          "ok": true,
+          "observed": "DEPLOYMENT_UNVERIFIED 4, EXPIRED 2, MATCHED 6, PARTIAL_MATCH 4, VERSION_MISMATCH 8"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    }
+  ],
+  "limits": [
+    "the payload is a recorded vendor estate, not a live pull: the module is proven against the shapes a bank files, not against a running procurement system",
+    "applicability compares strings: 8.4 covers 8.4.2 and 8.4 does not cover 8.40, because a version algebra invented here would be a guess about the vendor",
+    "a MATCHED claim says the capability exists on the release that is deployed; it does not say anything used it",
+    "the risk weights are stated constants, printed so a bank can replace them with its own rather than trusting hours nobody can see",
+    "coverage counts answers, not correct answers: a wrong vendor field is counted as an identified one"
+  ]
+}
