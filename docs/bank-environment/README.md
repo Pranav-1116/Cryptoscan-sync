@@ -555,6 +555,28 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [IPsec negotiates twice, and PFS is not the DH group in phase 1](162-ipsec-crypto-depth.md)
+> (**6 pass · 0 partial · 0 fail**, 30 probes) closes NBOM review item 14. A tunnel has
+> **two security associations** — an IKE SA (phase 1: encryption, PRF/integrity, DH
+> group) and a CHILD SA (phase 2: ESP encryption, ESP integrity, PFS group) — and
+> `cbom.ipsec_crypto` records both rather than one "VPN cipher". The distinction that
+> matters in practice is the last column: a CHILD SA with **no PFS group** derives its
+> keys from the IKE SA, so one compromised peer key exposes every rekeyed tunnel back to
+> the start, and `AES-256 / SHA-256 / DH14` looks strong while having no forward secrecy
+> for data. PFS is therefore its own field, never inferred from the phase-1 group, and a
+> weak PFS group (DH2, 1024-bit) is judged on its own. Three VPN-specific traps are
+> modelled: **IKEv1 aggressive mode with a pre-shared key** sends a hash of the PSK that
+> can be attacked offline (not a finding under IKEv2, which has no such mode, and an
+> IKEv2 record claiming it is normalised); **`ENCR_NULL`** is reported as
+> `NO_CONFIDENTIALITY` — legitimate on a private circuit, not over the internet — and
+> never called safe; and a tunnel with **only phase 1** is `NO_CHILD_SA`, because one SA
+> is not a tunnel. The estate names every weak transform in use, every peer without
+> forward secrecy and every IKEv1 peer, and a document that is not an IPsec estate is
+> refused rather than converted. `to_algorithms()` emits
+> `KEY_EXCHANGE`/`PRF_AND_INTEGRITY`/`BULK` facts carrying their phase and group size;
+> quantum exposure names DH groups and not AES. `POST /cbom/ipsec` exposes it, typed,
+> behind the reader roles.
+
 > [SSH negotiates four things, two of them per direction](161-ssh-crypto-depth.md)
 > (**5 pass · 0 partial · 0 fail**, 25 probes) closes NBOM review item 13. SSH is not a
 > cipher suite: `cbom.ssh_crypto` records **key exchange, host key, cipher and MAC**, and

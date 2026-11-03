@@ -190,7 +190,7 @@ is a `CRYPTOGRAPHIC_REGRESSION` — a strong signal, not a conclusion.
 | 10, 11 fronting hops and termination | implemented | guides 148, 149 (`network_assets`, `termination_paths`) |
 | 12 topology with evidence | **done in this round** | guide 160 (`cbom.topology`); `usage_graph` keeps the graph-engine edges |
 | 13 SSH depth | **done in this round** | guide 161 (`cbom.ssh_crypto`) |
-| 14 VPN/IPsec | not implemented | open |
+| 14 VPN/IPsec | **done in this round** | guide 162 (`cbom.ipsec_crypto`) |
 | 15 passive observation | not implemented | open (privacy contract required) |
 | 16 NBOM → CBOM | implemented | guide 148 |
 | 17 NBOM → twin | implemented | guide 152 |

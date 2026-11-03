@@ -337,6 +337,28 @@ class CbomTlsStateResponse(BaseModel):
     statement: str
 
 
+class CbomIpsecRequest(BaseModel):
+    tunnels: list[dict] = Field(default_factory=list, description=(
+        "IPsec SAs: peer, local, ike_version, authentication, mode, state, evidence_id, "
+        "observed_at, source, and `ike`/`child` objects, each with `proposal` and the "
+        "CHILD SA additionally with `pfs` and `lifetime`"))
+
+
+class CbomIpsecResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    tunnels: list[dict]
+    peers: list[str]
+    refused: list[dict]
+    without_pfs: list[str]
+    ikev1: list[str]
+    weak_transforms_in_use: list[str]
+    statement: str
+    not_proven: list[str]
+    facts: list[dict]
+    quantum_vulnerable: list[str]
+    summary: dict
+
+
 class CbomSshRequest(BaseModel):
     sessions: list[dict] = Field(default_factory=list, description=(
         "SSH sessions: host, port, banner, evidence_id, observed_at, source, "
@@ -684,6 +706,31 @@ def cbom_tls_state(body: CbomTlsStateRequest,
             checks["disabled"] = ts.disabled(result, endpoint=body.endpoint,
                                              version=body.version)
     return {**result, "checks": checks, "summary": ts.summary(result)}
+
+
+@router.post("/ipsec", response_model=CbomIpsecResponse)
+def cbom_ipsec(body: CbomIpsecRequest,
+               user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """IPsec: two security associations, and forward secrecy for data as its own answer.
+
+    Review item 14. A tunnel negotiates an **IKE SA** (phase 1) and a **CHILD SA**
+    (phase 2) separately. A CHILD SA with no PFS group derives its keys from the IKE SA's
+    material, so one compromised peer key exposes every rekeyed tunnel back to the start
+    — and `AES-256 / SHA-256 / DH14` in phase 1 says nothing about it, which is why PFS
+    is a field here rather than an inference. IKEv1 aggressive mode with a pre-shared
+    key is reported as its own finding (a hash of the PSK travels on the wire), and
+    `ENCR_NULL` is reported without being called safe or unsafe.
+    """
+    from cbom import ipsec_crypto as ic
+
+    estate = ic.estate(body.tunnels)
+    algorithms = ic.to_algorithms(estate) if estate["tunnels"] else None
+    return {
+        **estate,
+        "facts": (algorithms or {}).get("facts", []),
+        "quantum_vulnerable": (algorithms or {}).get("quantum_vulnerable", []),
+        "summary": ic.summary(estate),
+    }
 
 
 @router.post("/ssh", response_model=CbomSshResponse)

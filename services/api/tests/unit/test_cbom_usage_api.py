@@ -967,3 +967,39 @@ def test_ssh_refuses_a_session_with_no_evidence(client):
     body = _post(client, "/ssh", {"sessions": [{"host": "x"}]}).json()
     assert body["sessions"] == []
     assert "no evidence id" in body["refused"][0]["reason"]
+
+
+def test_ipsec_keeps_the_two_phases_and_pfs_separate(client):
+    body = _post(client, "/ipsec", {"tunnels": [{
+        "peer": "dc1.fw.bank.example", "ike_version": "IKEv2",
+        "authentication": "CERTIFICATE", "evidence_id": "VPN-1",
+        "ike": {"proposal": ["AES256", "SHA256", "DH14"]},
+        "child": {"proposal": ["AES256", "SHA256"], "pfs": "DH14"}}]}).json()
+    tunnel = body["tunnels"][0]
+    assert {row["phase"] for row in tunnel["ike_proposal"]} == {"IKE"}
+    assert {row["phase"] for row in tunnel["child_proposal"]} == {"CHILD"}
+    assert tunnel["forward_secrecy_for_data"] is True
+    assert body["without_pfs"] == []
+    assert body["statement"].startswith("1 IPsec SA pair(s)")
+
+
+def test_ipsec_flags_a_modern_proposal_without_pfs_and_ikev1_aggressive(client):
+    body = _post(client, "/ipsec", {"tunnels": [
+        {"peer": "partner.example", "ike_version": "IKEv2", "evidence_id": "VPN-3",
+         "ike": {"proposal": ["AES128", "SHA1", "DH19"]},
+         "child": {"proposal": ["AES128GCM16"]}},
+        {"peer": "branch42.fw.bank.example", "ike_version": "1",
+         "authentication": "PSK", "mode": "AGGRESSIVE", "evidence_id": "VPN-2",
+         "ike": {"proposal": ["3DES", "SHA1", "DH2"]},
+         "child": {"proposal": ["3DES", "MD5"]}}]}).json()
+    assert body["without_pfs"] == ["branch42.fw.bank.example", "partner.example"]
+    assert body["ikev1"] == ["branch42.fw.bank.example"]
+    assert body["summary"]["worst"]["branch42.fw.bank.example"] == "OFFLINE_PSK_ATTACK"
+    assert set(body["weak_transforms_in_use"]) == {"3des", "dh2", "md5", "sha1"}
+
+
+def test_ipsec_refuses_an_sa_with_no_evidence(client):
+    body = _post(client, "/ipsec", {"tunnels": [{"peer": "x.example",
+                                                 "ike_version": "IKEv2"}]}).json()
+    assert body["tunnels"] == []
+    assert "no evidence id" in body["refused"][0]["reason"]

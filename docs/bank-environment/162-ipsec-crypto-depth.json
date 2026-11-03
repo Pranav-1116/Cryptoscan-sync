@@ -1,0 +1,813 @@
+{
+  "schema": "cryptoscan.cbom-ipsec-guide/1",
+  "generated_at": "2026-11-03T01:15:20.888936+00:00",
+  "counts": {
+    "PASS": 6,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 30,
+  "phases": [
+    "IKE",
+    "CHILD"
+  ],
+  "versions": [
+    "IKEV1",
+    "IKEV2"
+  ],
+  "weak_transforms": {
+    "des": "56-bit key",
+    "3des": "64-bit block cipher with a sweet32 birthday bound",
+    "null": "no confidentiality at all",
+    "md5": "MD5 integrity",
+    "sha1": "SHA-1 integrity",
+    "sha-1": "SHA-1 integrity",
+    "dh1": "768-bit MODP group",
+    "dh2": "1024-bit MODP group",
+    "dh5": "1536-bit MODP group",
+    "modp768": "768-bit MODP group",
+    "modp1024": "1024-bit MODP group",
+    "modp1536": "1536-bit MODP group"
+  },
+  "groups": {
+    "DH14": {
+      "bits": 2048,
+      "kind": "MODP",
+      "acceptable": true
+    },
+    "MODP2048": {
+      "bits": 2048,
+      "kind": "MODP",
+      "acceptable": true
+    },
+    "DH15": {
+      "bits": 3072,
+      "kind": "MODP",
+      "acceptable": true
+    },
+    "DH16": {
+      "bits": 4096,
+      "kind": "MODP",
+      "acceptable": true
+    },
+    "DH19": {
+      "bits": 256,
+      "kind": "ECP",
+      "acceptable": true
+    },
+    "DH20": {
+      "bits": 384,
+      "kind": "ECP",
+      "acceptable": true
+    },
+    "DH21": {
+      "bits": 521,
+      "kind": "ECP",
+      "acceptable": true
+    },
+    "DH31": {
+      "bits": 255,
+      "kind": "CURVE25519",
+      "acceptable": true
+    },
+    "DH1": {
+      "bits": 768,
+      "kind": "MODP",
+      "acceptable": false
+    },
+    "DH2": {
+      "bits": 1024,
+      "kind": "MODP",
+      "acceptable": false
+    },
+    "DH5": {
+      "bits": 1536,
+      "kind": "MODP",
+      "acceptable": false
+    }
+  },
+  "estate": {
+    "schema": "cryptoscan.cbom-ipsec/1",
+    "tunnels": [
+      {
+        "schema": "cryptoscan.cbom-ipsec/1",
+        "peer": "dc1.fw.bank.example",
+        "local": "10.1.0.1",
+        "ike_version": "IKEV2",
+        "mode": "MAIN",
+        "authentication": "CERTIFICATE",
+        "ike_proposal": [
+          {
+            "transform": "aes256",
+            "phase": "IKE",
+            "rating": "ACCEPTABLE",
+            "reason": null,
+            "group_bits": null,
+            "group_kind": null,
+            "null_encryption": false,
+            "quantum_vulnerable": false
+          },
+          {
+            "transform": "sha256",
+            "phase": "IKE",
+            "rating": "ACCEPTABLE",
+            "reason": null,
+            "group_bits": null,
+            "group_kind": null,
+            "null_encryption": false,
+            "quantum_vulnerable": false
+          },
+          {
+            "transform": "dh14",
+            "phase": "IKE",
+            "rating": "ACCEPTABLE",
+            "reason": null,
+            "group_bits": 2048,
+            "group_kind": "MODP",
+            "null_encryption": false,
+            "quantum_vulnerable": true
+          }
+        ],
+        "child_proposal": [
+          {
+            "transform": "aes256",
+            "phase": "CHILD",
+            "rating": "ACCEPTABLE",
+            "reason": null,
+            "group_bits": null,
+            "group_kind": null,
+            "null_encryption": false,
+            "quantum_vulnerable": false
+          },
+          {
+            "transform": "sha256",
+            "phase": "CHILD",
+            "rating": "ACCEPTABLE",
+            "reason": null,
+            "group_bits": null,
+            "group_kind": null,
+            "null_encryption": false,
+            "quantum_vulnerable": false
+          }
+        ],
+        "pfs": {
+          "transform": "dh14",
+          "phase": "CHILD",
+          "rating": "ACCEPTABLE",
+          "reason": null,
+          "group_bits": 2048,
+          "group_kind": "MODP",
+          "null_encryption": false,
+          "quantum_vulnerable": true
+        },
+        "forward_secrecy_for_data": true,
+        "lifetime_seconds": 3600,
+        "state": "ESTABLISHED",
+        "problems": [],
+        "worst": null,
+        "evidence_ids": [
+          "VPN-1"
+        ],
+        "source": "firewall-api",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "statement": "dc1.fw.bank.example (ikev2): ike aes256, sha256, dh14; child aes256, sha256; PFS on the data path; no weak transform in this SA"
+      },
+      {
+        "schema": "cryptoscan.cbom-ipsec/1",
+        "peer": "branch42.fw.bank.example",
+        "local": "10.1.0.1",
+        "ike_version": "IKEV1",
+        "mode": "AGGRESSIVE",
+        "authentication": "PSK",
+        "ike_proposal": [
+          {
+            "transform": "3des",
+            "phase": "IKE",
+            "rating": "WEAK",
+            "reason": "64-bit block cipher with a sweet32 birthday bound",
+            "group_bits": null,
+            "group_kind": null,
+            "null_encryption": false,
+            "quantum_vulnerable": false
+          },
+          {
+            "transform": "sha1",
+            "phase": "IKE",
+            "rating": "WEAK",
+            "reason": "SHA-1 integrity",
+            "group_bits": null,
+            "group_kind": null,
+            "null_encryption": false,
+            "quantum_vulnerable": false
+          },
+          {
+            "transform": "dh2",
+            "phase": "IKE",
+            "rating": "WEAK",
+            "reason": "1024-bit MODP group",
+            "group_bits": 1024,
+            "group_kind": "MODP",
+            "null_encryption": false,
+            "quantum_vulnerable": true
+          }
+        ],
+        "child_proposal": [
+          {
+            "transform": "3des",
+            "phase": "CHILD",
+            "rating": "WEAK",
+            "reason": "64-bit block cipher with a sweet32 birthday bound",
+            "group_bits": null,
+            "group_kind": null,
+            "null_encryption": false,
+            "quantum_vulnerable": false
+          },
+          {
+            "transform": "md5",
+            "phase": "CHILD",
+            "rating": "BROKEN",
+            "reason": "MD5 integrity",
+            "group_bits": null,
+            "group_kind": null,
+            "null_encryption": false,
+            "quantum_vulnerable": false
+          }
+        ],
+        "pfs": null,
+        "forward_secrecy_for_data": false,
+        "lifetime_seconds": null,
+        "state": "ESTABLISHED",
+        "problems": [
+          {
+            "phase": "IKE",
+            "transform": "3des",
+            "rating": "WEAK",
+            "detail": "64-bit block cipher with a sweet32 birthday bound"
+          },
+          {
+            "phase": "IKE",
+            "transform": "sha1",
+            "rating": "WEAK",
+            "detail": "SHA-1 integrity"
+          },
+          {
+            "phase": "IKE",
+            "transform": "dh2",
+            "rating": "WEAK",
+            "detail": "1024-bit MODP group"
+          },
+          {
+            "phase": "CHILD",
+            "transform": "3des",
+            "rating": "WEAK",
+            "detail": "64-bit block cipher with a sweet32 birthday bound"
+          },
+          {
+            "phase": "CHILD",
+            "transform": "md5",
+            "rating": "BROKEN",
+            "detail": "MD5 integrity"
+          },
+          {
+            "phase": "CHILD",
+            "transform": null,
+            "rating": "NO_FORWARD_SECRECY",
+            "detail": "the CHILD SA has no PFS group, so its keys derive from the IKE SA and one compromised peer key exposes every rekeyed tunnel"
+          },
+          {
+            "phase": "IKE",
+            "transform": null,
+            "rating": "OFFLINE_PSK_ATTACK",
+            "detail": "IKEv1 aggressive mode sends a hash of the pre-shared key, which can be attacked offline without touching the peer"
+          }
+        ],
+        "worst": "OFFLINE_PSK_ATTACK",
+        "evidence_ids": [
+          "VPN-2"
+        ],
+        "source": "firewall-api",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "statement": "branch42.fw.bank.example (ikev1): ike 3des, sha1, dh2; child 3des, md5; no PFS group on the data path; 7 problem(s): BROKEN, NO_FORWARD_SECRECY, OFFLINE_PSK_ATTACK, WEAK"
+      },
+      {
+        "schema": "cryptoscan.cbom-ipsec/1",
+        "peer": "partner.example",
+        "local": "10.1.0.1",
+        "ike_version": "IKEV2",
+        "mode": "MAIN",
+        "authentication": "PSK",
+        "ike_proposal": [
+          {
+            "transform": "aes128",
+            "phase": "IKE",
+            "rating": "ACCEPTABLE",
+            "reason": null,
+            "group_bits": null,
+            "group_kind": null,
+            "null_encryption": false,
+            "quantum_vulnerable": false
+          },
+          {
+            "transform": "sha1",
+            "phase": "IKE",
+            "rating": "WEAK",
+            "reason": "SHA-1 integrity",
+            "group_bits": null,
+            "group_kind": null,
+            "null_encryption": false,
+            "quantum_vulnerable": false
+          },
+          {
+            "transform": "dh19",
+            "phase": "IKE",
+            "rating": "ACCEPTABLE",
+            "reason": null,
+            "group_bits": 256,
+            "group_kind": "ECP",
+            "null_encryption": false,
+            "quantum_vulnerable": true
+          }
+        ],
+        "child_proposal": [
+          {
+            "transform": "aes128gcm16",
+            "phase": "CHILD",
+            "rating": "ACCEPTABLE",
+            "reason": null,
+            "group_bits": null,
+            "group_kind": null,
+            "null_encryption": false,
+            "quantum_vulnerable": false
+          }
+        ],
+        "pfs": null,
+        "forward_secrecy_for_data": false,
+        "lifetime_seconds": null,
+        "state": "ESTABLISHED",
+        "problems": [
+          {
+            "phase": "IKE",
+            "transform": "sha1",
+            "rating": "WEAK",
+            "detail": "SHA-1 integrity"
+          },
+          {
+            "phase": "CHILD",
+            "transform": null,
+            "rating": "NO_FORWARD_SECRECY",
+            "detail": "the CHILD SA has no PFS group, so its keys derive from the IKE SA and one compromised peer key exposes every rekeyed tunnel"
+          }
+        ],
+        "worst": "NO_FORWARD_SECRECY",
+        "evidence_ids": [
+          "VPN-3"
+        ],
+        "source": "firewall-api",
+        "observed_at": "2026-11-02T00:00:00Z",
+        "statement": "partner.example (ikev2): ike aes128, sha1, dh19; child aes128gcm16; no PFS group on the data path; 2 problem(s): NO_FORWARD_SECRECY, WEAK"
+      }
+    ],
+    "peers": [
+      "branch42.fw.bank.example",
+      "dc1.fw.bank.example",
+      "partner.example"
+    ],
+    "refused": [],
+    "without_pfs": [
+      "branch42.fw.bank.example",
+      "partner.example"
+    ],
+    "ikev1": [
+      "branch42.fw.bank.example"
+    ],
+    "weak_transforms_in_use": [
+      "3des",
+      "dh2",
+      "md5",
+      "sha1"
+    ],
+    "statement": "3 IPsec SA pair(s) across 3 peer(s); 2 without a PFS group on the data path; 1 still using IKEv1; weak transforms in use: 3des, dh2, md5, sha1",
+    "not_proven": [
+      "that the negotiated proposal is the peer's policy: one SA is one choice, and a device that offers many transforms where one weak was chosen looks the same as a device that offers only the weak one",
+      "that a tunnel is carrying traffic: an established SA with no packets is a configuration, and liveness needs counters this model does not read",
+      "that a pre-shared key is strong: the model can see that PSK authentication is in use and cannot see the secret, so it cannot say whether aggressive mode is crackable here \u2014 only that it would be",
+      "that the peers' identities are verified: certificate authentication without a validated chain is as weak as the chain, and the chain is guide 159's subject"
+    ]
+  },
+  "facts": {
+    "schema": "cryptoscan.cbom-ipsec/1",
+    "facts": [
+      {
+        "algorithm": "3des",
+        "role": "BULK",
+        "phase": "IKE",
+        "parameters": {},
+        "rating": "WEAK",
+        "quantum_vulnerable": false,
+        "peer": "branch42.fw.bank.example",
+        "evidence_ids": [
+          "VPN-2"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "IPSEC"
+      },
+      {
+        "algorithm": "dh2",
+        "role": "KEY_EXCHANGE",
+        "phase": "IKE",
+        "parameters": {
+          "group_bits": 1024
+        },
+        "rating": "WEAK",
+        "quantum_vulnerable": true,
+        "peer": "branch42.fw.bank.example",
+        "evidence_ids": [
+          "VPN-2"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "IPSEC"
+      },
+      {
+        "algorithm": "md5",
+        "role": "PRF_AND_INTEGRITY",
+        "phase": "CHILD",
+        "parameters": {},
+        "rating": "BROKEN",
+        "quantum_vulnerable": false,
+        "peer": "branch42.fw.bank.example",
+        "evidence_ids": [
+          "VPN-2"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "IPSEC"
+      },
+      {
+        "algorithm": "sha1",
+        "role": "PRF_AND_INTEGRITY",
+        "phase": "IKE",
+        "parameters": {},
+        "rating": "WEAK",
+        "quantum_vulnerable": false,
+        "peer": "branch42.fw.bank.example",
+        "evidence_ids": [
+          "VPN-2"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "IPSEC"
+      },
+      {
+        "algorithm": "aes256",
+        "role": "BULK",
+        "phase": "IKE",
+        "parameters": {},
+        "rating": "ACCEPTABLE",
+        "quantum_vulnerable": false,
+        "peer": "dc1.fw.bank.example",
+        "evidence_ids": [
+          "VPN-1"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "IPSEC"
+      },
+      {
+        "algorithm": "dh14",
+        "role": "KEY_EXCHANGE",
+        "phase": "IKE",
+        "parameters": {
+          "group_bits": 2048
+        },
+        "rating": "ACCEPTABLE",
+        "quantum_vulnerable": true,
+        "peer": "dc1.fw.bank.example",
+        "evidence_ids": [
+          "VPN-1"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "IPSEC"
+      },
+      {
+        "algorithm": "sha256",
+        "role": "PRF_AND_INTEGRITY",
+        "phase": "IKE",
+        "parameters": {},
+        "rating": "ACCEPTABLE",
+        "quantum_vulnerable": false,
+        "peer": "dc1.fw.bank.example",
+        "evidence_ids": [
+          "VPN-1"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "IPSEC"
+      },
+      {
+        "algorithm": "aes128",
+        "role": "BULK",
+        "phase": "IKE",
+        "parameters": {},
+        "rating": "ACCEPTABLE",
+        "quantum_vulnerable": false,
+        "peer": "partner.example",
+        "evidence_ids": [
+          "VPN-3"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "IPSEC"
+      },
+      {
+        "algorithm": "aes128gcm16",
+        "role": "BULK",
+        "phase": "CHILD",
+        "parameters": {},
+        "rating": "ACCEPTABLE",
+        "quantum_vulnerable": false,
+        "peer": "partner.example",
+        "evidence_ids": [
+          "VPN-3"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "IPSEC"
+      },
+      {
+        "algorithm": "dh19",
+        "role": "KEY_EXCHANGE",
+        "phase": "IKE",
+        "parameters": {
+          "group_bits": 256
+        },
+        "rating": "ACCEPTABLE",
+        "quantum_vulnerable": true,
+        "peer": "partner.example",
+        "evidence_ids": [
+          "VPN-3"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "IPSEC"
+      },
+      {
+        "algorithm": "sha1",
+        "role": "PRF_AND_INTEGRITY",
+        "phase": "IKE",
+        "parameters": {},
+        "rating": "WEAK",
+        "quantum_vulnerable": false,
+        "peer": "partner.example",
+        "evidence_ids": [
+          "VPN-3"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "IPSEC"
+      }
+    ],
+    "peers": 3,
+    "quantum_vulnerable": [
+      "dh14",
+      "dh19",
+      "dh2"
+    ],
+    "statement": "11 distinct IPsec transform fact(s) across 3 peer(s)"
+  },
+  "summary": {
+    "schema": "cryptoscan.cbom-ipsec/1",
+    "tunnels": 3,
+    "peers": 3,
+    "without_pfs": [
+      "branch42.fw.bank.example",
+      "partner.example"
+    ],
+    "ikev1": [
+      "branch42.fw.bank.example"
+    ],
+    "weak_transforms_in_use": [
+      "3des",
+      "dh2",
+      "md5",
+      "sha1"
+    ],
+    "worst": {
+      "branch42.fw.bank.example": "OFFLINE_PSK_ATTACK",
+      "partner.example": "NO_FORWARD_SECRECY"
+    },
+    "refused": 0,
+    "statement": "3 IPsec SA pair(s) across 3 peer(s); 2 without a PFS group on the data path; 1 still using IKEv1; weak transforms in use: 3des, dh2, md5, sha1",
+    "not_proven": [
+      "that the negotiated proposal is the peer's policy: one SA is one choice, and a device that offers many transforms where one weak was chosen looks the same as a device that offers only the weak one",
+      "that a tunnel is carrying traffic: an established SA with no packets is a configuration, and liveness needs counters this model does not read",
+      "that a pre-shared key is strong: the model can see that PSK authentication is in use and cannot see the secret, so it cannot say whether aggressive mode is crackable here \u2014 only that it would be",
+      "that the peers' identities are verified: certificate authentication without a validated chain is as weak as the chain, and the chain is guide 159's subject"
+    ]
+  },
+  "rows": [
+    {
+      "id": "two_phases",
+      "question": "does one tunnel become two security associations?",
+      "phase": "review 14",
+      "probes": [
+        {
+          "probe": "a-tunnel-is-two-security-associations",
+          "ok": true,
+          "observed": "phase 1 and phase 2 are recorded separately"
+        },
+        {
+          "probe": "a-clean-sa-has-no-problems",
+          "ok": true,
+          "observed": "aes256/sha256/dh14 with a PFS group: 0 problem(s)"
+        },
+        {
+          "probe": "the-phase-1-group-does-not-count-as-pfs",
+          "ok": true,
+          "observed": "DH14 in phase 1 says nothing about the data path"
+        },
+        {
+          "probe": "a-phase-2-without-pfs-is-named-as-such",
+          "ok": true,
+          "observed": "no PFS group, so the CHILD keys derive from the IKE SA"
+        },
+        {
+          "probe": "the-statement-names-both-phases",
+          "ok": true,
+          "observed": "dc1.fw.bank.example (ikev2): ike aes256, sha256, dh14; child aes256, sha256; PFS on the data path; no weak transform in this SA"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "pfs",
+      "question": "is forward secrecy for data its own answer, not an inference?",
+      "phase": "review 14",
+      "probes": [
+        {
+          "probe": "the-estate-lists-peers-without-forward-secrecy",
+          "ok": true,
+          "observed": "branch42.fw.bank.example, partner.example"
+        },
+        {
+          "probe": "a-strong-looking-proposal-is-still-flagged",
+          "ok": true,
+          "observed": "aes128gcm16 sounds modern and has no PFS group"
+        },
+        {
+          "probe": "the-weak-pfs-group-is-judged-on-its-own",
+          "ok": true,
+          "observed": "PFS with a 1024-bit group is forward secrecy against yesterday"
+        },
+        {
+          "probe": "the-statement-counts-the-peer-without-pfs",
+          "ok": true,
+          "observed": "3 IPsec SA pair(s) across 3 peer(s); 2 without a PFS group on the data path; 1 still using IKEv1; weak transforms in use: 3des, dh2, md5, sha1"
+        },
+        {
+          "probe": "a-valid-pfs-group-is-not-a-problem",
+          "ok": true,
+          "observed": "DH19 (ECDH P-256) is an acceptable PFS group"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "vpn_specific",
+      "question": "are the VPN-specific traps handled rather than flattened?",
+      "phase": "review 14",
+      "probes": [
+        {
+          "probe": "ikev1-aggressive-mode-with-a-psk-is-an-offline-attack",
+          "ok": true,
+          "observed": "a hash of the PSK travels on the wire"
+        },
+        {
+          "probe": "the-same-psk-on-ikev2-is-not-that-finding",
+          "ok": true,
+          "observed": "IKEv2 has no aggressive mode"
+        },
+        {
+          "probe": "an-ikev2-record-claiming-aggressive-mode-is-normalised",
+          "ok": true,
+          "observed": "the mode does not exist in IKEv2"
+        },
+        {
+          "probe": "null-encryption-is-reported-and-not-called-safe",
+          "ok": true,
+          "observed": "integrity without encryption over the internet"
+        },
+        {
+          "probe": "a-tunnel-with-no-child-sa-says-so",
+          "ok": true,
+          "observed": "one SA is not a tunnel"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_estate",
+      "question": "does the VPN surface turn into findings with peers attached?",
+      "phase": "review 14",
+      "probes": [
+        {
+          "probe": "the-estate-names-the-weak-transforms-in-use",
+          "ok": true,
+          "observed": "3des, dh2, md5, sha1"
+        },
+        {
+          "probe": "ikev1-peers-are-listed",
+          "ok": true,
+          "observed": "branch42.fw.bank.example"
+        },
+        {
+          "probe": "a-refused-tunnel-is-listed-not-dropped",
+          "ok": true,
+          "observed": "two refusals, visible in the estate"
+        },
+        {
+          "probe": "the-summary-repeats-the-worst-finding-per-peer",
+          "ok": true,
+          "observed": "{\"branch42.fw.bank.example\": \"OFFLINE_PSK_ATTACK\", \"partner.example\": \"NO_FORWARD_SECRECY\"}"
+        },
+        {
+          "probe": "the-estate-states-what-one-sa-cannot-prove",
+          "ok": true,
+          "observed": "4 stated limit(s)"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "facts",
+      "question": "does IPsec feed the CBOM without a second vocabulary?",
+      "phase": "review 14 / 16 boundary",
+      "probes": [
+        {
+          "probe": "facts-use-the-roles-the-rest-of-the-platform-uses",
+          "ok": true,
+          "observed": "BULK, KEY_EXCHANGE, PRF_AND_INTEGRITY"
+        },
+        {
+          "probe": "every-fact-carries-its-phase-and-protocol",
+          "ok": true,
+          "observed": "11 fact(s), each cited"
+        },
+        {
+          "probe": "a-group-transform-carries-its-size",
+          "ok": true,
+          "observed": "a DH fact without its group size is not a fact"
+        },
+        {
+          "probe": "a-symmetric-cipher-is-not-called-quantum-vulnerable",
+          "ok": true,
+          "observed": "AES/3DES need a bigger key at most, not a new primitive"
+        },
+        {
+          "probe": "a-document-that-is-not-an-ipsec-estate-is-refused",
+          "ok": true,
+          "observed": "a foreign document is rejected, not converted"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "shape",
+      "question": "does the report refuse to say more than the SA shows?",
+      "phase": "review 14",
+      "probes": [
+        {
+          "probe": "an-unknown-ike-version-is-refused",
+          "ok": true,
+          "observed": "IKEv1 and IKEv2 have different transform vocabularies"
+        },
+        {
+          "probe": "an-sa-with-no-evidence-is-refused",
+          "ok": true,
+          "observed": "an SA without a record is a claim"
+        },
+        {
+          "probe": "an-unknown-transform-is-not-called-weak",
+          "ok": true,
+          "observed": "UNKNOWN, not WEAK: the table cannot see it"
+        },
+        {
+          "probe": "a-phase-outside-the-two-is-refused",
+          "ok": true,
+          "observed": "IPsec has two phases"
+        },
+        {
+          "probe": "the-only-attack-finding-describes-a-property-not-an-event",
+          "ok": true,
+          "observed": "the rating names what aggressive mode would allow, not what happened"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "one SA pair is one choice. The peer's full proposal list is a different question, and a good transform in use may be the other side's preference",
+    "an established SA is a configuration. Liveness, byte counters and whether the tunnel is carrying anything are not read here",
+    "PSK strength is invisible: the model can see that a pre-shared key is in use and that aggressive mode would expose a hash of it, not whether that secret is guessable",
+    "certificate authentication is only as strong as the chain behind it, which is guide 159's subject and not re-derived here",
+    "the weak-transform table is a hand-maintained list with a reason per entry, not a compliance mapping; an operator can dispute one row without distrusting the rest",
+    "a tunnel that is down, deleted or half-open is recorded as its state says and is not inferred to be one of those"
+  ]
+}
