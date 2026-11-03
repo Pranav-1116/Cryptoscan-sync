@@ -1,0 +1,610 @@
+{
+  "schema": "cryptoscan.cipher-suite-guide/1",
+  "generated_at": "2026-11-03T01:00:11.835358+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 24,
+  "dimensions": [
+    "KEY_EXCHANGE",
+    "AUTHENTICATION",
+    "ENCRYPTION",
+    "HASH"
+  ],
+  "evidence_sources": [
+    "NAMED_IN_SUITE",
+    "NEGOTIATED",
+    "NOT_NAMED"
+  ],
+  "ratings": [
+    "STRONG",
+    "ACCEPTABLE",
+    "WEAK",
+    "BROKEN",
+    "UNKNOWN"
+  ],
+  "batch": {
+    "schema": "cryptoscan.cipher-suite/1",
+    "handshakes": [
+      {
+        "schema": "cryptoscan.cipher-suite/1",
+        "suite": "TLS_AES_256_GCM_SHA384",
+        "tls_version": "1.3",
+        "modern": true,
+        "recognised": true,
+        "dimensions": {
+          "KEY_EXCHANGE": {
+            "dimension": "KEY_EXCHANGE",
+            "algorithm": "X25519",
+            "method": "ECDHE",
+            "parameters": {
+              "curve": "X25519"
+            },
+            "evidence": "NEGOTIATED",
+            "note": "the handshake agreed the group X25519"
+          },
+          "AUTHENTICATION": {
+            "dimension": "AUTHENTICATION",
+            "algorithm": "ECDSA-P256",
+            "method": "SIGNATURE",
+            "parameters": {
+              "curve": "P-256"
+            },
+            "evidence": "NEGOTIATED",
+            "note": "the handshake used ECDSA_SECP256R1_SHA256"
+          },
+          "ENCRYPTION": {
+            "dimension": "ENCRYPTION",
+            "algorithm": "AES-256-GCM",
+            "method": "AEAD",
+            "parameters": {
+              "key_size": 256,
+              "mode": "GCM"
+            },
+            "evidence": "NAMED_IN_SUITE",
+            "note": "an AEAD mode authenticates the record itself"
+          },
+          "HASH": {
+            "dimension": "HASH",
+            "algorithm": "SHA-384",
+            "method": "PRF",
+            "parameters": {},
+            "evidence": "NAMED_IN_SUITE",
+            "note": "the suite names this hash"
+          }
+        },
+        "not_named": [],
+        "strength": {
+          "bulk_bits": 256,
+          "mode": "GCM",
+          "aead": true,
+          "forward_secrecy": true,
+          "rating": "STRONG",
+          "broken_tokens": [],
+          "note": "an AEAD bulk cipher under an ephemeral key exchange"
+        },
+        "evidence_ids": [
+          "NET-1"
+        ],
+        "statement": "TLS_AES_256_GCM_SHA384: key_exchange=X25519 (negotiated), authentication=ECDSA-P256 (negotiated), encryption=AES-256-GCM (named_in_suite), hash=SHA-384 (named_in_suite); strong \u2014 an AEAD bulk cipher under an ephemeral key exchange",
+        "endpoint": "payments.bank.example:443"
+      },
+      {
+        "schema": "cryptoscan.cipher-suite/1",
+        "suite": "ECDHE-RSA-AES128-GCM-SHA256",
+        "tls_version": "1.2",
+        "modern": false,
+        "recognised": true,
+        "dimensions": {
+          "KEY_EXCHANGE": {
+            "dimension": "KEY_EXCHANGE",
+            "algorithm": "ECDHE",
+            "method": "ECDHE",
+            "parameters": {},
+            "evidence": "NAMED_IN_SUITE",
+            "note": "the suite identifier names the key exchange"
+          },
+          "AUTHENTICATION": {
+            "dimension": "AUTHENTICATION",
+            "algorithm": "RSA",
+            "method": "SIGNATURE",
+            "parameters": {},
+            "evidence": "NAMED_IN_SUITE",
+            "note": "the suite identifier names the signature algorithm"
+          },
+          "ENCRYPTION": {
+            "dimension": "ENCRYPTION",
+            "algorithm": "AES-128-GCM",
+            "method": "AEAD",
+            "parameters": {
+              "key_size": 128,
+              "mode": "GCM"
+            },
+            "evidence": "NAMED_IN_SUITE",
+            "note": "an AEAD mode authenticates the record itself"
+          },
+          "HASH": {
+            "dimension": "HASH",
+            "algorithm": "SHA-256",
+            "method": "PRF",
+            "parameters": {},
+            "evidence": "NAMED_IN_SUITE",
+            "note": "in a TLS 1.2 AEAD suite the trailing hash is the PRF hash only; the record is authenticated by the AEAD"
+          }
+        },
+        "not_named": [],
+        "strength": {
+          "bulk_bits": 128,
+          "mode": "GCM",
+          "aead": true,
+          "forward_secrecy": true,
+          "rating": "STRONG",
+          "broken_tokens": [],
+          "note": "an AEAD bulk cipher under an ephemeral key exchange"
+        },
+        "evidence_ids": [
+          "NET-2"
+        ],
+        "statement": "ECDHE-RSA-AES128-GCM-SHA256: key_exchange=ECDHE (named_in_suite), authentication=RSA (named_in_suite), encryption=AES-128-GCM (named_in_suite), hash=SHA-256 (named_in_suite); strong \u2014 an AEAD bulk cipher under an ephemeral key exchange",
+        "endpoint": "partner.bank.example:443"
+      },
+      {
+        "schema": "cryptoscan.cipher-suite/1",
+        "suite": "AES128-SHA",
+        "tls_version": "1.2",
+        "modern": false,
+        "recognised": true,
+        "dimensions": {
+          "KEY_EXCHANGE": {
+            "dimension": "KEY_EXCHANGE",
+            "algorithm": null,
+            "method": null,
+            "parameters": null,
+            "evidence": "NOT_NAMED",
+            "note": "this suite does not name a key exchange"
+          },
+          "AUTHENTICATION": {
+            "dimension": "AUTHENTICATION",
+            "algorithm": null,
+            "method": null,
+            "parameters": null,
+            "evidence": "NOT_NAMED",
+            "note": "this suite does not name an authentication method"
+          },
+          "ENCRYPTION": {
+            "dimension": "ENCRYPTION",
+            "algorithm": "AES-128-CBC",
+            "method": "ENCRYPT_THEN_MAC",
+            "parameters": {
+              "key_size": 128,
+              "mode": "CBC"
+            },
+            "evidence": "NAMED_IN_SUITE",
+            "note": "a CBC-mode suite authenticates separately"
+          },
+          "HASH": {
+            "dimension": "HASH",
+            "algorithm": "SHA-1",
+            "method": "PRF",
+            "parameters": {},
+            "evidence": "NAMED_IN_SUITE",
+            "note": "the suite names this hash"
+          }
+        },
+        "not_named": [
+          "KEY_EXCHANGE",
+          "AUTHENTICATION"
+        ],
+        "strength": {
+          "bulk_bits": 128,
+          "mode": "CBC",
+          "aead": false,
+          "forward_secrecy": false,
+          "rating": "WEAK",
+          "broken_tokens": [],
+          "note": "no forward secrecy was established by the named method"
+        },
+        "evidence_ids": [
+          "NET-3"
+        ],
+        "statement": "AES128-SHA: key_exchange=unknown, authentication=unknown, encryption=AES-128-CBC (named_in_suite), hash=SHA-1 (named_in_suite); weak \u2014 no forward secrecy was established by the named method",
+        "endpoint": "legacy.bank.example:443"
+      },
+      {
+        "schema": "cryptoscan.cipher-suite/1",
+        "suite": "RC4-SHA",
+        "tls_version": "1.2",
+        "modern": false,
+        "recognised": true,
+        "dimensions": {
+          "KEY_EXCHANGE": {
+            "dimension": "KEY_EXCHANGE",
+            "algorithm": null,
+            "method": null,
+            "parameters": null,
+            "evidence": "NOT_NAMED",
+            "note": "this suite does not name a key exchange"
+          },
+          "AUTHENTICATION": {
+            "dimension": "AUTHENTICATION",
+            "algorithm": null,
+            "method": null,
+            "parameters": null,
+            "evidence": "NOT_NAMED",
+            "note": "this suite does not name an authentication method"
+          },
+          "ENCRYPTION": {
+            "dimension": "ENCRYPTION",
+            "algorithm": "RC4",
+            "method": "ENCRYPT_THEN_MAC",
+            "parameters": {
+              "key_size": 128,
+              "mode": "STREAM"
+            },
+            "evidence": "NAMED_IN_SUITE",
+            "note": "a CBC-mode suite authenticates separately"
+          },
+          "HASH": {
+            "dimension": "HASH",
+            "algorithm": "SHA-1",
+            "method": "PRF",
+            "parameters": {},
+            "evidence": "NAMED_IN_SUITE",
+            "note": "the suite names this hash"
+          }
+        },
+        "not_named": [
+          "KEY_EXCHANGE",
+          "AUTHENTICATION"
+        ],
+        "strength": {
+          "bulk_bits": 128,
+          "mode": "STREAM",
+          "aead": false,
+          "forward_secrecy": false,
+          "rating": "BROKEN",
+          "broken_tokens": [
+            "RC4"
+          ],
+          "note": "RC4 must not be enabled"
+        },
+        "evidence_ids": [
+          "NET-4"
+        ],
+        "statement": "RC4-SHA: key_exchange=unknown, authentication=unknown, encryption=RC4 (named_in_suite), hash=SHA-1 (named_in_suite); broken \u2014 RC4 must not be enabled",
+        "endpoint": "broken.bank.example:443"
+      },
+      {
+        "schema": "cryptoscan.cipher-suite/1",
+        "suite": "TLS_AES_256_GCM_SHA384",
+        "tls_version": "1.3",
+        "modern": true,
+        "recognised": true,
+        "dimensions": {
+          "KEY_EXCHANGE": {
+            "dimension": "KEY_EXCHANGE",
+            "algorithm": null,
+            "method": null,
+            "parameters": null,
+            "evidence": "NOT_NAMED",
+            "note": "a TLS 1.3 suite does not name key exchange; without the negotiated group the answer is unknown, not RSA"
+          },
+          "AUTHENTICATION": {
+            "dimension": "AUTHENTICATION",
+            "algorithm": null,
+            "method": null,
+            "parameters": null,
+            "evidence": "NOT_NAMED",
+            "note": "a TLS 1.3 suite does not name authentication; without the signature algorithm or the certificate key the answer is unknown"
+          },
+          "ENCRYPTION": {
+            "dimension": "ENCRYPTION",
+            "algorithm": "AES-256-GCM",
+            "method": "AEAD",
+            "parameters": {
+              "key_size": 256,
+              "mode": "GCM"
+            },
+            "evidence": "NAMED_IN_SUITE",
+            "note": "an AEAD mode authenticates the record itself"
+          },
+          "HASH": {
+            "dimension": "HASH",
+            "algorithm": "SHA-384",
+            "method": "PRF",
+            "parameters": {},
+            "evidence": "NAMED_IN_SUITE",
+            "note": "the suite names this hash"
+          }
+        },
+        "not_named": [
+          "KEY_EXCHANGE",
+          "AUTHENTICATION"
+        ],
+        "strength": {
+          "bulk_bits": 256,
+          "mode": "GCM",
+          "aead": true,
+          "forward_secrecy": false,
+          "rating": "ACCEPTABLE",
+          "broken_tokens": [],
+          "note": "no forward secrecy was established by the named method"
+        },
+        "evidence_ids": [
+          "NET-5"
+        ],
+        "statement": "TLS_AES_256_GCM_SHA384: key_exchange=unknown, authentication=unknown, encryption=AES-256-GCM (named_in_suite), hash=SHA-384 (named_in_suite); acceptable \u2014 no forward secrecy was established by the named method",
+        "endpoint": "bare13.bank.example:443"
+      }
+    ],
+    "refused": [],
+    "endpoints": [
+      "bare13.bank.example:443",
+      "broken.bank.example:443",
+      "legacy.bank.example:443",
+      "partner.bank.example:443",
+      "payments.bank.example:443"
+    ],
+    "ratings": {
+      "STRONG": 2,
+      "ACCEPTABLE": 1,
+      "WEAK": 1,
+      "BROKEN": 1
+    },
+    "with_unknown_dimensions": 3,
+    "statement": "5 handshake(s) decomposed into four dimensions; 3 carry at least one dimension the suite does not name and the handshake did not report"
+  },
+  "algorithms": {
+    "schema": "cryptoscan.cipher-suite/1",
+    "facts": [
+      {
+        "algorithm": "AES-256-GCM",
+        "role": "BULK",
+        "parameters": {
+          "key_size": 256,
+          "mode": "GCM"
+        },
+        "suite": "TLS_AES_256_GCM_SHA384",
+        "evidence": "NAMED_IN_SUITE",
+        "from_suite": true,
+        "endpoint": "bare13.bank.example:443",
+        "evidence_ids": [
+          "NET-5"
+        ],
+        "class": "NETWORK_OBSERVED"
+      },
+      {
+        "algorithm": "SHA-384",
+        "role": "HASH",
+        "parameters": {},
+        "suite": "TLS_AES_256_GCM_SHA384",
+        "evidence": "NAMED_IN_SUITE",
+        "from_suite": true,
+        "endpoint": "bare13.bank.example:443",
+        "evidence_ids": [
+          "NET-5"
+        ],
+        "class": "NETWORK_OBSERVED"
+      }
+    ],
+    "from_suite": 2,
+    "from_handshake": 0,
+    "absent": [
+      "KEY_EXCHANGE",
+      "AUTHENTICATION"
+    ],
+    "statement": "2 algorithm fact(s) from TLS_AES_256_GCM_SHA384: 2 named by the suite, 0 reported by the handshake; 2 dimension(s) left absent rather than assumed"
+  },
+  "frontier": {
+    "schema": "cryptoscan.cipher-suite/1",
+    "suite": "TLS_AES_256_GCM_SHA384",
+    "dimensions": [
+      {
+        "dimension": "KEY_EXCHANGE",
+        "algorithm": "X25519",
+        "evidence": "NEGOTIATED",
+        "quantum_relevant": true,
+        "next_action": "replace or wrap this dimension with a post-quantum or hybrid option"
+      },
+      {
+        "dimension": "AUTHENTICATION",
+        "algorithm": "ECDSA-P256",
+        "evidence": "NEGOTIATED",
+        "quantum_relevant": true,
+        "next_action": "replace or wrap this dimension with a post-quantum or hybrid option"
+      },
+      {
+        "dimension": "ENCRYPTION",
+        "algorithm": "AES-256-GCM",
+        "evidence": "NAMED_IN_SUITE",
+        "quantum_relevant": false,
+        "next_action": "no asymmetric replacement is needed for this dimension; review the key size and mode instead"
+      },
+      {
+        "dimension": "HASH",
+        "algorithm": "SHA-384",
+        "evidence": "NAMED_IN_SUITE",
+        "quantum_relevant": false,
+        "next_action": "no asymmetric replacement is needed for this dimension; review the key size and mode instead"
+      }
+    ],
+    "statement": "2 of 4 dimension(s) are quantum-relevant"
+  },
+  "rows": [
+    {
+      "id": "four_dimensions",
+      "question": "does one suite string become four decisions with their evidence?",
+      "phase": "review 8",
+      "probes": [
+        {
+          "probe": "a-tls12-suite-names-all-four-dimensions",
+          "ok": true,
+          "observed": "ECDHE-RSA-AES128-GCM-SHA256: key_exchange=ECDHE (named_in_suite), authentication=RSA (named_\u2026"
+        },
+        {
+          "probe": "a-tls13-suite-names-two-and-takes-the-rest-from-the-handshake",
+          "ok": true,
+          "observed": "X25519 and ECDSA-P256 arrive from the handshake, not the suite"
+        },
+        {
+          "probe": "every-dimension-records-where-its-answer-came-from",
+          "ok": true,
+          "observed": "named_in_suite for the AEAD and hash, negotiated for the other two"
+        },
+        {
+          "probe": "a-missing-key-exchange-is-unknown-and-not-rsa",
+          "ok": true,
+          "observed": "a TLS 1.3 suite does not name key exchange; without the negotiated group the answer is unknown, not RSA"
+        },
+        {
+          "probe": "the-certificate-key-can-supply-the-authentication",
+          "ok": true,
+          "observed": "the certificate's key is named as the source"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "strength",
+      "question": "does the decomposition answer why a suite is weak?",
+      "phase": "review 8 / 11",
+      "probes": [
+        {
+          "probe": "an-aead-suite-under-an-ephemeral-group-is-strong",
+          "ok": true,
+          "observed": "an AEAD bulk cipher under an ephemeral key exchange"
+        },
+        {
+          "probe": "no-forward-secrecy-caps-the-rating-without-breaking-it",
+          "ok": true,
+          "observed": "the certificate key protects the session: no forward secrecy"
+        },
+        {
+          "probe": "cbc-mode-is-weak-and-says-why",
+          "ok": true,
+          "observed": "); weak \u2014 no forward secrecy was established by the named method"
+        },
+        {
+          "probe": "a-token-that-must-not-be-enabled-is-broken-not-weak",
+          "ok": true,
+          "observed": "RC4 must not be enabled"
+        },
+        {
+          "probe": "an-unrecognised-suite-is-unknown-and-says-so",
+          "ok": true,
+          "observed": "this suite is not in the token table, so its strength is unknown"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "algorithm_facts",
+      "question": "can the decomposition feed the CBOM without a second vocabulary?",
+      "phase": "review 8 / 9",
+      "probes": [
+        {
+          "probe": "the-facts-use-the-roles-the-cbom-already-knows",
+          "ok": true,
+          "observed": "BULK=AES-256-GCM, HASH=SHA-384, KEY_EXCHANGE=X25519, SIGNATURE=ECDSA-P256"
+        },
+        {
+          "probe": "handshake-facts-are-marked-as-not-coming-from-the-suite",
+          "ok": true,
+          "observed": "the suite names the AEAD and the hash; the handshake names the rest"
+        },
+        {
+          "probe": "an-absent-dimension-produces-no-fact-at-all",
+          "ok": true,
+          "observed": "two facts from a suite that names two things"
+        },
+        {
+          "probe": "facts-carry-the-evidence-and-the-endpoint-they-came-from",
+          "ok": true,
+          "observed": "NET-1 on every fact"
+        },
+        {
+          "probe": "no-fact-claims-a-quantum-verdict",
+          "ok": true,
+          "observed": "quantum relevance is the handoff's job, not this model's"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "frontier",
+      "question": "which of the four decisions does a PQC migration touch?",
+      "phase": "review 8 / 15 boundary",
+      "probes": [
+        {
+          "probe": "the-migration-frontier-names-the-dimensions-to-replace",
+          "ok": true,
+          "observed": "2 of 4 dimension(s) are quantum-relevant"
+        },
+        {
+          "probe": "a-symmetric-bulk-cipher-is-not-flagged-as-quantum-critical",
+          "ok": true,
+          "observed": "AES-256-GCM needs a bigger key at most, not a new primitive"
+        },
+        {
+          "probe": "an-unknown-dimension-asks-for-evidence-before-a-plan",
+          "ok": true,
+          "observed": "a migration plan built on an unknown dimension would be a guess"
+        },
+        {
+          "probe": "the-frontier-counts-what-is-quantum-relevant",
+          "ok": true,
+          "observed": "2 of 4 dimension(s) are quantum-relevant"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "batch_and_shape",
+      "question": "does a batch of handshakes produce a usable, honest report?",
+      "phase": "review 8",
+      "probes": [
+        {
+          "probe": "a-batch-decomposes-every-endpoint-and-counts-the-ratings",
+          "ok": true,
+          "observed": "5 handshake(s) decomposed into four dimensions; 3 carry at least one dimension the suite does not name and the handshake did not report"
+        },
+        {
+          "probe": "a-row-with-no-suite-is-refused-not-decomposed",
+          "ok": true,
+          "observed": "1 handshake(s) decomposed into four dimensions; 1 carry at least one dimension the suite does not name and the handshake did not report; 1 refused"
+        },
+        {
+          "probe": "a-non-row-is-refused",
+          "ok": true,
+          "observed": "a string is not a handshake"
+        },
+        {
+          "probe": "the-model-states-what-one-handshake-cannot-prove",
+          "ok": true,
+          "observed": "4 stated limit(s)"
+        },
+        {
+          "probe": "nothing-in-the-output-calls-anything-an-attack",
+          "ok": true,
+          "observed": "a weak suite is a configuration fact"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "one negotiated suite is one handshake. It is not the endpoint's configured set, and it is not proof that a stronger suite could not be negotiated",
+    "the group, the signature algorithm and the certificate come from the handshake or the certificate. When a collector records only the suite, those dimensions stay unknown \u2014 deliberately, because the usual guess (no key-exchange token means RSA) is wrong for TLS 1.3",
+    "forward secrecy is a property of the method named, not of the implementation: a correct ECDHE suite in a defective stack is still defective",
+    "the strength ladder is explainable rather than scored: AEAD, bulk key size, mode and whether the suite names a token that must not be enabled. A reviewer can disagree with one rating without distrusting the rest",
+    "a legacy identifier the token table does not model is reported as unknown rather than mapped to the nearest mode. `AES128` with no mode token is read as CBC because that is what the identifier means in TLS 1.2, and it is noted as such",
+    "nothing here decides quantum status: `frontier()` says which dimensions are quantum-relevant and leaves the verdict to the PQC handoff"
+  ]
+}

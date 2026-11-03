@@ -185,7 +185,7 @@ is a `CRYPTOGRAPHIC_REGRESSION` — a strong signal, not a conclusion.
 | 4, 5 coverage model and matrix | **done in this round** | guide 153 (`cbom.nbom_coverage`) |
 | 6 TLS negotiation evidence | implemented | `network_scanner`, `cbom.usage_collectors` |
 | 7 supported/configured/negotiated | **done in this round** | guide 154 (`cbom.tls_state`) |
-| 8 suite decomposition | implemented per handshake | `usage_collectors.algorithms_from_cipher_suite` |
+| 8 suite decomposition | **done in this round** | guide 158 (`cbom.cipher_suite`); parsing stays in `usage_collectors` |
 | 9 certificate correlation | partial | `usage_evidence.certificate_evidence`, `nbom` certificate component |
 | 10, 11 fronting hops and termination | implemented | guides 148, 149 (`network_assets`, `termination_paths`) |
 | 12 topology with evidence | implemented | `usage_graph` relationship kinds |

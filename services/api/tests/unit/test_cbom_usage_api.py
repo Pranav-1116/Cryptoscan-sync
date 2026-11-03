@@ -808,3 +808,38 @@ def test_history_correlate_never_reaches_an_incident_even_when_it_correlates(cli
 def test_history_correlate_refuses_a_document_that_is_not_a_snapshot(client):
     response = _post(client, "/history/correlate", {"before": {}, "after": {}})
     assert response.status_code == 422
+
+
+def test_cipher_suite_decomposition_names_where_each_dimension_came_from(client):
+    body = _post(client, "/cipher-suite", {"handshakes": [
+        {"endpoint": "payments.bank.example:443",
+         "cipher_suite": "TLS_AES_256_GCM_SHA384", "tls_version": "1.3",
+         "group": "X25519", "signature_algorithm": "ECDSA_SECP256R1_SHA256",
+         "evidence_id": "NET-1"}]}).json()
+    handshake = body["handshakes"][0]
+    dimensions = handshake["dimensions"]
+    assert dimensions["ENCRYPTION"]["evidence"] == "NAMED_IN_SUITE"
+    assert dimensions["KEY_EXCHANGE"]["algorithm"] == "X25519"
+    assert dimensions["KEY_EXCHANGE"]["evidence"] == "NEGOTIATED"
+    assert dimensions["AUTHENTICATION"]["algorithm"] == "ECDSA-P256"
+    assert body["dimensions"] == ["KEY_EXCHANGE", "AUTHENTICATION", "ENCRYPTION", "HASH"]
+    assert {fact["role"] for fact in body["algorithms"]} == {
+        "KEY_EXCHANGE", "SIGNATURE", "BULK", "HASH"}
+
+
+def test_cipher_suite_decomposition_leaves_unnamed_dimensions_unknown(client):
+    body = _post(client, "/cipher-suite", {
+        "suite": "TLS_AES_256_GCM_SHA384"}).json()
+    handshake = body["handshakes"][0]
+    assert handshake["not_named"] == ["KEY_EXCHANGE", "AUTHENTICATION"]
+    assert handshake["dimensions"]["KEY_EXCHANGE"]["algorithm"] is None
+    assert "not RSA" in handshake["dimensions"]["KEY_EXCHANGE"]["note"]
+    assert body["with_unknown_dimensions"] == 1
+    assert len(body["algorithms"]) == 2
+
+
+def test_cipher_suite_decomposition_refuses_a_handshake_with_no_suite(client):
+    response = _post(client, "/cipher-suite", {"handshakes": [{"endpoint": "x:443"}]})
+    assert response.status_code == 200
+    assert response.json()["refused"][0]["reason"] == (
+        "a decomposition needs a cipher suite")

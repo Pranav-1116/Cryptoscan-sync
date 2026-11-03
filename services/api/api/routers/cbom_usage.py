@@ -337,6 +337,32 @@ class CbomTlsStateResponse(BaseModel):
     statement: str
 
 
+class CbomCipherSuiteRequest(BaseModel):
+    handshakes: list[dict] = Field(default_factory=list, description=(
+        "completed handshakes: endpoint, cipher_suite, tls_version, group, "
+        "signature_algorithm, certificate (with public_key), evidence_id. Whatever the "
+        "suite does not name and the handshake does not report stays unknown"))
+    suite: str | None = Field(None, description=(
+        "one suite to decompose on its own, when there is no handshake to describe"))
+    group: str | None = None
+    signature_algorithm: str | None = None
+
+
+class CbomCipherSuiteResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    handshakes: list[dict]
+    refused: list[dict]
+    endpoints: list[str]
+    ratings: dict
+    with_unknown_dimensions: int
+    statement: str
+    dimensions: list[str]
+    evidence_sources: list[str]
+    algorithms: list[dict]
+    algorithm_statement: str
+    frontier: list[dict] | None = None
+
+
 class CbomCorrelateRequest(BaseModel):
     before: dict = Field(..., description="an earlier cryptoscan.nbom-history/1 snapshot")
     after: dict = Field(..., description="a later snapshot of the same estate")
@@ -583,6 +609,49 @@ def cbom_tls_state(body: CbomTlsStateRequest,
             checks["disabled"] = ts.disabled(result, endpoint=body.endpoint,
                                              version=body.version)
     return {**result, "checks": checks, "summary": ts.summary(result)}
+
+
+@router.post("/cipher-suite", response_model=CbomCipherSuiteResponse)
+def cbom_cipher_suite(body: CbomCipherSuiteRequest,
+                      user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """A suite string in, four decisions out, each with where it came from.
+
+    Review item 8: ``TLS_AES_256_GCM_SHA384`` names an AEAD and a hash and nothing
+    else. Key exchange and authentication come from the handshake — the agreed group,
+    the signature algorithm, the certificate's key. A dimension nobody reported comes
+    back ``NOT_NAMED`` rather than as the TLS 1.2 default, which is the guess that makes
+    TLS 1.3 inventories wrong.
+    """
+    from cbom import cipher_suite as cs
+
+    try:
+        if body.suite and not body.handshakes:
+            one = cs.decompose(body.suite, group=body.group,
+                               signature_algorithm=body.signature_algorithm)
+            batch = {"schema": one["schema"], "handshakes": [one], "refused": [],
+                     "endpoints": [], "ratings": {one["strength"]["rating"]: 1},
+                     "with_unknown_dimensions": 1 if one["not_named"] else 0,
+                     "statement": one["statement"]}
+        else:
+            batch = cs.handshake(body.handshakes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    algorithms = cs.to_algorithms(batch["handshakes"][0]) if batch["handshakes"] else None
+    frontier = cs.frontier(batch["handshakes"][0]) if batch["handshakes"] else None
+    return {
+        "schema": batch["schema"],
+        "handshakes": batch["handshakes"],
+        "refused": batch["refused"],
+        "endpoints": batch["endpoints"],
+        "ratings": batch["ratings"],
+        "with_unknown_dimensions": batch["with_unknown_dimensions"],
+        "statement": batch["statement"],
+        "dimensions": list(cs.DIMENSIONS),
+        "evidence_sources": list(cs.EVIDENCE),
+        "algorithms": (algorithms or {}).get("facts", []),
+        "algorithm_statement": (algorithms or {}).get("statement", ""),
+        "frontier": (frontier or {}).get("dimensions"),
+    }
 
 
 @router.post("/history/compare", response_model=CbomHistoryResponse)

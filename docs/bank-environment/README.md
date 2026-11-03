@@ -555,6 +555,26 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [A cipher suite is four decisions, and TLS 1.3 names only two](158-cipher-suite-decomposition.md)
+> (**5 pass · 0 partial · 0 fail**, 24 probes) closes NBOM review item 8. Flattening a
+> suite into a list of algorithm names loses exactly what a migration question needs, so
+> `cbom.cipher_suite` decomposes a handshake into `KEY_EXCHANGE · AUTHENTICATION ·
+> ENCRYPTION · HASH` and records **where each answer came from**: `NAMED_IN_SUITE` (the
+> identifier names it), `NEGOTIATED` (the agreed group, the signature algorithm or the
+> certificate's key came from the handshake), or `NOT_NAMED` — unknown, and specifically
+> **not RSA**, because reading "no key-exchange token" as TLS 1.2's key transport is the
+> commonest error in TLS 1.3 inventories. Parsing is not duplicated: the token table and
+> the longest-first matcher stay in `usage_collectors`, and the legacy identifiers that
+> table leaves alone (`AES128-SHA`, `ECDHE-RSA-DES-CBC3-SHA`, `RC4-SHA`) are read here
+> rather than mapped to the nearest mode. A strength ladder explains itself — AEAD, bulk
+> key size, mode, forward secrecy and a token that must not be enabled — giving
+> `STRONG`/`ACCEPTABLE`/`WEAK`/`BROKEN`/`UNKNOWN` instead of a score. `to_algorithms()`
+> emits facts in the roles the CBOM already understands, marked `from_suite` or
+> `from_handshake`, and an absent dimension produces **no fact at all**. `frontier()`
+> names the dimensions a PQC migration touches — and asks for evidence rather than
+> planning on an unknown. `POST /cbom/cipher-suite` exposes it, typed, behind the reader
+> roles.
+
 > [Network crypto correlation: several changes, one pattern, no verdict](157-network-correlation.md)
 > (**5 pass · 0 partial · 0 fail**, 27 probes) closes NBOM review item 19, which asks for
 > the strongest sentence the platform is allowed to say: a TLS downgrade **plus** a
