@@ -5,9 +5,12 @@ Region failover: primary region writes; replica receives verified shipments;
 primary "dies"; replica is promoted and CONTINUES the sequence with zero
 loss; the old primary returns as a replica and converges.
 
-PITR: consistent snapshot -> more activity -> crash -> restore snapshot +
-replay events up to a recovery point -> recovered stream state matches the
-chosen point exactly (and the chain still verifies).
+Point-in-time *platform* recovery: consistent snapshot -> more activity ->
+crash -> restore snapshot + replay signed events up to a recovery point ->
+recovered stream state matches the chosen point exactly (and the chain still
+verifies). This is not PostgreSQL WAL PITR: a pg_dump/logical artifact cannot
+be replayed to a point, and the governance backup API refuses to pretend it
+can (see docs/pitr-drill.md).
 
 Writes docs/region-failover.md and docs/pitr-drill.md. Exit 0 = both PASS.
 """
@@ -135,7 +138,7 @@ def main() -> int:
     all_ok = True
     for name, fn, doc in (
         ("Region failover", region_failover_drill, REPO / "docs" / "region-failover.md"),
-        ("Point-in-time recovery", pitr_drill, REPO / "docs" / "pitr-drill.md"),
+        ("Point-in-time platform recovery", pitr_drill, REPO / "docs" / "pitr-drill.md"),
     ):
         results = fn(root)
         ok = all(r["ok"] for r in results)
@@ -163,10 +166,12 @@ def main() -> int:
         else:
             lines += [
                 "",
-                "Model: consistent DB snapshot (SQLite online backup / pg_basebackup",
-                "in production) + append-only signed event logs. Recovery to point T",
-                "= snapshot + verified replay of events in (snapshot, T]. The",
-                "recovered stream continues with correct sequence numbering.",
+                "Model: consistent DB snapshot (SQLite online backup in this drill) +",
+                "append-only signed event logs. Recovery to point T = snapshot +",
+                "verified replay of events in (snapshot, T]. The recovered stream",
+                "continues with correct sequence numbering. PostgreSQL *physical*",
+                "recovery to a point in time needs a bank-operated base backup and",
+                "WAL archive and is out of scope for this drill.",
             ]
         lines += ["", f"**Verdict: {'PASS' if ok else 'FAIL'}**", ""]
         doc.write_text("\n".join(lines), encoding="utf-8")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,12 @@ def _script(name):
 
 suites = _script("ci_suites")
 junit = _script("check_junit")
+
+# The two compose contracts below shell out to `docker compose config`, which is the
+# authority for what the file *renders*. Without the CLI there is no render, and a
+# green result would be a guess: skip and say so instead of failing on the sandbox.
+requires_docker = pytest.mark.skipif(shutil.which("docker") is None,
+                                     reason="docker compose CLI unavailable: cannot render")
 
 
 def _workflow(name):
@@ -343,6 +350,7 @@ def test_production_guard_ci_fixtures_match_current_runtime_contract(expect_reje
         assert "production configuration is valid" in output
 
 
+@requires_docker
 def test_production_compose_refuses_migration_superuser_and_plaintext_redis(monkeypatch):
     compose = _script("check_prod_compose")
     migrator = "postgresql://cryptoscan:compose-check-only@postgres:5432/cryptoscan"
@@ -356,6 +364,7 @@ def test_production_compose_refuses_migration_superuser_and_plaintext_redis(monk
         compose.check()
 
 
+@requires_docker
 def test_production_s3_overlay_refuses_divergent_worker_and_writable_secret_mount(monkeypatch):
     compose = _script("check_prod_compose")
     render = compose.render

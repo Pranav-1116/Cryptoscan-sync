@@ -91,7 +91,10 @@ CRC/FNV/djb2/xxHash/murmur/adler never reported, comments never count.
 1. HA drill with `deploy/ha/`: kill the active API and the active worker during a scan; expect zero lost jobs (queue drill) and < 30 s API unavailability. Record in `docs/runbooks/`.
 2. SSO/SAML GA: integration test against the bank's IdP (ADFS / Entra / Ping); group→role mapping, SLO, clock-skew and signed-assertion negative tests.
 3. ITSM / SIEM connectors: ServiceNow incident on policy breach, Splunk/QRadar CEF export of findings + audit chain; smoke against a sandbox tenant.
-4. Air-gap **update** drill: build bundle on connected host → verify signature → apply on disconnected host → DB migration → rollback. Install and backup/PITR drills already ran once; update has not.
+4. Air-gap **update** drill: build bundle on connected host → verify signature → apply on disconnected host → DB migration → rollback. Install and logical backup/restore drills already ran once; the update drill
+   has not. PITR was never a platform capability — a `pg_dump` artifact cannot be
+   replayed to a point — so a real PITR drill needs the bank to operate the
+   physical base backup and WAL archive first.
 5. Product's own SBOM + SOC 2 / pen-test scheduling — company action.
 
 ## 5. Housekeeping

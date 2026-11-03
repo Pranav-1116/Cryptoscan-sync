@@ -187,9 +187,14 @@ were actually matched against a feed.
   truncation/deletion.
 * **Signing** — JWS (RFC 7515) over attestations and CBOMs; `/trust` surfaces key
   material provenance.
-* **Resilience** (`services/api` resilience group) — backup/restore and PITR
-  drills with recorded results; air-gap mode (JWKS-from-file, feed import, no
-  phone-home).
+* **Resilience** (`services/api` resilience group) — encrypted logical backup
+  (`pg_dump`/`neo4j-admin`) into a bank-owned store, integrity-verified restore
+  and retention, with recorded results; air-gap mode (JWKS-from-file, feed
+  import, no phone-home). **PostgreSQL PITR is not provided**: it needs a
+  bank-operated physical base backup and WAL archive, so the API refuses a
+  requested PIT on a logical artifact instead of reporting one. Platform
+  point-in-time recovery (snapshot + signed event-log replay) is separate and
+  documented in `docs/pitr-drill.md`.
 
 ### 10. Report, attest and operate
 

@@ -235,7 +235,7 @@ function BackupPanel() {
           <table className="table" style={{ width: "100%", marginTop: 10, fontSize: 11 }}>
             <thead><tr><th>backup</th><th>db</th><th>engine</th><th>seq</th><th>sha256</th></tr></thead>
             <tbody>
-              {stored.map((m: any) => <tr key={m.storage_key}>
+              {stored.map((m: any, index: number) => <tr key={m.storage_key || `${m.backup_id}-${index}`}>
                 <td style={{ fontFamily: "var(--mono)" }}>{m.backup_id}</td>
                 <td>{m.database_id}</td><td>{m.engine}</td><td>{m.sequence}</td>
                 <td style={{ fontFamily: "var(--mono)", fontSize: 10 }}>{String(m.ciphertext_sha256 || "").slice(0, 16)}…</td>

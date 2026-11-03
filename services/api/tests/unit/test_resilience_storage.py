@@ -6,8 +6,18 @@ import tempfile
 import pytest
 from fastapi import HTTPException
 
+from api.config.settings import get_settings
 from api.routers import resilience
 from governance import keys
+
+
+@pytest.fixture(autouse=True)
+def _fresh_settings():
+    """The API reads one cached settings object; a per-test production flip needs a
+    fresh read, or these refusals would be asserted against a stale environment."""
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 def test_production_report_refuses_unsigned_operator_assertions(monkeypatch):

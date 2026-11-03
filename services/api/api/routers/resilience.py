@@ -32,7 +32,23 @@ logger = logging.getLogger(__name__)
 
 
 def _production() -> bool:
-    return (os.environ.get("ENVIRONMENT") or os.environ.get("CRYPTOSCAN_ENV") or "development").strip().lower() == "production"
+    """Production as the platform's settings define it, not as this module guesses.
+
+    Settings load ``ENVIRONMENT`` from the environment *and* from ``.env``
+    (``SettingsConfigDict(env_file=".env")``), while the other production gates in
+    the API all read ``settings.is_production``. Reading ``os.environ`` directly
+    here meant a deployment configured through ``.env`` looked like development
+    to this router, and every refusal below — caller-supplied dump, fake WAL
+    tail, unapproved restore target, caller-asserted compliance evidence,
+    ephemeral signing keys — silently switched off. One definition, used by the
+    gates that already exist.
+    """
+    try:
+        from api.config.settings import get_settings
+
+        return bool(get_settings().is_production)
+    except Exception:  # settings must never make a safety gate fail open
+        return (os.environ.get("ENVIRONMENT") or "").strip().lower() == "production"
 
 
 def _signing_secret(db: Session | None = None) -> str:
