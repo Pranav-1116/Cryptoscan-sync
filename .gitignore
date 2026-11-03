@@ -84,3 +84,6 @@ build/
 # monitoring secrets are rendered, never committed (see README.md)
 infra/monitoring/secrets/*
 !infra/monitoring/secrets/README.md
+
+# local sandbox notes that are not part of the branch
+docs/bank-environment/90-synthetic-banking-estate.md
