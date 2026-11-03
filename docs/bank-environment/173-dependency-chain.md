@@ -1,6 +1,6 @@
 # The dependency chain, twenty-six points
 
-`cryptoscan.cbom-dependency-guide/1` · generated 2026-11-03T06:26:36Z · **26 pass · 0 partial · 0 fail** · 77 probes
+`cryptoscan.cbom-dependency-guide/1` · generated 2026-11-03T06:40:17Z · **26 pass · 0 partial · 0 fail** · 84 probes
 
 **26/26 points of the chain are present in the built projection.**
 
@@ -10,7 +10,7 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
     → HSM / KMS → CERTIFICATE / NETWORK → HARDWARE → VENDOR
 ```
 
-26 of 26 points of the dependency chain are present in the built projection, across 77 probes; 47 assets and 65 evidenced edges
+26 of 26 points of the dependency chain are present in the built projection, across 84 probes; 57 assets and 73 evidenced edges
 
 ## The levels, as the estate holds them
 
@@ -20,9 +20,9 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 | application | 1 |
 | release | 3 |
 | process | 7 |
-| provider | 2 |
+| provider | 3 |
 | operation | 3 |
-| algorithm | 10 |
+| algorithm | 19 |
 | key | 2 |
 | key_provider | 3 |
 | certificate | 1 |
@@ -32,13 +32,13 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 
 ## The chain from the application
 
-**Payments API: down 3 release → 6 process → 2 provider → 3 operation → 10 algorithm → 2 key → 3 key_provider → 1 certificate → 2 endpoint; up 1 system**
+**Payments API: down 3 release → 6 process → 3 provider → 3 operation → 9 algorithm → 2 key → 3 key_provider → 1 certificate → 2 endpoint; up 1 system**
 
 - **release** — `payments-api-4.2.0.jar`, `payments-api:4.2.0`, `payments-api 4.2.0`
 - **process** — `payments-api-deploy`, `prod-cluster`, `payments`, `payments-api-7d9f4c-x2m8p`
-- **provider** — `libcrypto.so.3`, `OpenSSL 3.0.11`
+- **provider** — `libcrypto.so.1.1`, `libcrypto.so.3`, `OpenSSL 3.0.11`
 - **operation** — `OP-ENCRYPT-002`, `OP-SIGN-001`, `OP-STATIC-003`
-- **algorithm** — `AES-256`, `DES-ECB`, `RSA-2048`, `SHA-256`
+- **algorithm** — `AES-256`, `DES-ECB`, `RSA-2048`, `AES-256-GCM`
 - **key** — `KEY-REF-4401`, `KEY-REF-4402`
 - **key_provider** — `HSM-001`, `KMS-01`, `TPM-01`
 - **certificate** — `CERT-001`
@@ -55,11 +55,11 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 
 ## Capability, and usage
 
-**OpenSSL 3.0.11: 3 capability(ies), 3 observed use(s) from 2 layer(s), 1 listed and never used, 1 used without being listed**
+**OpenSSL 3.0.11: 6 capability(ies), 3 observed use(s) from 2 layer(s), 4 listed and never used, 1 used without being listed**
 
-- capability: AES-256, RSA-2048, SHA-256
+- capability: AES-128, AES-192, AES-256, ECDSA-P256, RSA-2048, SHA-256
 - usage: AES-256, DES-ECB, RSA-2048
-- listed and never used: SHA-256
+- listed and never used: AES-128, AES-192, ECDSA-P256, SHA-256
 
 ## Disagreement
 
@@ -70,9 +70,40 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 
 ## What moved
 
-**1 changed, 0 added, 0 removed**
+**1 changed, 0 added, 1 removed**
 
 - `CRYPTO_DEPENDENCY_CHANGED` OP-SIGN-001 USES_ALGORITHM: RSA-2048 → RSA-3072 (before `EVID-95004`, after `EVID-95004`, detected 2026-11-03T08:30:00Z)
+
+## The life of a dependency edge
+
+**8 dependency edge(s): ACTIVE 1, CHANGED 2, SUPERSEDED 1, REMOVED 1, UNKNOWN 3**
+
+| dependency | state | before | now | evidence |
+|---|---|---|---|---|
+| OP-ENCRYPT-002 USES_ALGORITHM | ACTIVE | AES-256 | AES-256 | `EVID-95004` |
+| OP-SIGN-001 USES_ALGORITHM | SUPERSEDED | RSA-2048 | RSA-3072 | `EVID-95004` |
+| OP-STATIC-003 USES_ALGORITHM | UNKNOWN | DES-ECB | DES-ECB | `EVID-95005` |
+| Payments API USES_CRYPTO | CHANGED | src/main/java/bank/LegacySettlement.java:Cipher.getInstance | src/main/java/bank/LegacySettlement.java:Cipher.getInstance | `EVID-95005` |
+| TLS_AES_256_GCM_SHA384 USES_CRYPTO | UNKNOWN | X25519 | X25519 | `EVID-95007` |
+| payments-api[1821] LOADS OpenSSL 3.0.11 | UNKNOWN | OpenSSL 3.0.11 | OpenSSL 3.0.11 | `EVID-95004` |
+| payments-api[1821] LOADS libcrypto.so.1.1 | REMOVED | libcrypto.so.1.1 | — | `EVID-95009` |
+| src/main/java/bank/LegacySettlement.java:Cipher.getInstance USES_ALGORITHM | CHANGED | DES-ECB | DES-ECB | `EVID-95005` |
+
+## An advisory against the provider
+
+**OpenSSL 3.0.11 3.0.11 vs advisory 3.0.11: 1 process(es), 1 application(s), 1 business system(s), 3 operation(s) affected**
+
+- APPLICATION: Payments API
+- BUSINESS_SYSTEM: Payments System
+- PROCESS: payments-api[1821]
+
+## An advisory against the firmware
+
+**CVE-2026-0001: 1 firmware record(s), 1 device(s), 1 application(s) behind them**
+
+| firmware | devices | vendor | listeners | applications |
+|---|---|---|---|---|
+| BIG-IP 17.1.1 | LB-01 | F5 | lb-01:443, payments.bank.example:443 | Payments API |
 
 ## The PQC blocker is the path
 
@@ -101,7 +132,7 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 | `CBOM-02` | an SBOM becomes a CBOM through capability and evidence, never a preset edge | **PASS** | 3, 0 failing |
 | `CBOM-03` | a source hit is a dependency at STATIC_OBSERVED and never a runtime use | **PASS** | 4, 0 failing |
 | `CBOM-04` | a runtime observation names the process, the provider and the parameters | **PASS** | 3, 0 failing |
-| `CBOM-05` | the provider is a node, so a library advisory maps to assets | **PASS** | 3, 0 failing |
+| `CBOM-05` | the provider is a node, so a library advisory maps to assets | **PASS** | 5, 0 failing |
 | `CBOM-06` | the operation is a node with its parameters, not a cipher name | **PASS** | 3, 0 failing |
 | `CBOM-07` | a key reaches the graph as metadata and never as material | **PASS** | 3, 0 failing |
 | `CBOM-08` | an HSM that supports RSA is not an application that uses the HSM | **PASS** | 3, 0 failing |
@@ -109,17 +140,17 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 | `CBOM-10` | the certificate chain is a listener dependency, not the application's crypto | **PASS** | 3, 0 failing |
 | `CBOM-11` | the negotiated crypto is NETWORK_OBSERVED at the listener | **PASS** | 3, 0 failing |
 | `CBOM-12` | a multi-hop path is HOP 1..N, never one collapsed dependency | **PASS** | 3, 0 failing |
-| `CBOM-13` | USES_HSM, USES_TPM, BACKED_BY, PROTECTED_BY and RUNS_ON carry evidence | **PASS** | 2, 0 failing |
-| `CBOM-14` | a vendor firmware advisory maps back to the assets that depend on it | **PASS** | 3, 0 failing |
+| `CBOM-13` | USES_HSM, USES_TPM, BACKED_BY, PROTECTED_BY and RUNS_ON carry evidence | **PASS** | 3, 0 failing |
+| `CBOM-14` | a vendor firmware advisory maps back to the assets that depend on it | **PASS** | 4, 0 failing |
 | `CBOM-15` | an algorithm reaches an image through the library it lives in | **PASS** | 3, 0 failing |
 | `CBOM-16` | existence in an image is not a load, and the Kubernetes path is walkable | **PASS** | 2, 0 failing |
 | `CBOM-17` | the deployment topology joins the hardware estate | **PASS** | 3, 0 failing |
-| `CBOM-18` | which business systems depend on RSA-2048 is a query, not a spreadsheet | **PASS** | 3, 0 failing |
-| `CBOM-19` | every dependency edge carries its record, and a collector where one exists | **PASS** | 3, 0 failing |
+| `CBOM-18` | which business systems depend on RSA-2048 is a query, not a spreadsheet | **PASS** | 4, 0 failing |
+| `CBOM-19` | every dependency edge carries its record, and a collector where one exists | **PASS** | 4, 0 failing |
 | `CBOM-20` | capability and usage are two sets and never one | **PASS** | 3, 0 failing |
 | `CBOM-21` | a disagreement about a dependency is the finding, with every source kept | **PASS** | 3, 0 failing |
 | `CBOM-22` | a dependency that moved is a change with evidence on both sides | **PASS** | 3, 0 failing |
-| `CBOM-23` | a dependency that stops being observed is superseded, not deleted | **PASS** | 3, 0 failing |
+| `CBOM-23` | a dependency that stops being observed is superseded, not deleted | **PASS** | 4, 0 failing |
 | `CBOM-24` | a count is reported against what was inspected, never against the bank | **PASS** | 3, 0 failing |
 | `CBOM-25` | the PQC blocker is a path through the graph, not a property of the algorithm | **PASS** | 3, 0 failing |
 | `CBOM-26` | the whole chain joins the Digital Twin's canonical estate graph | **PASS** | 3, 0 failing |
@@ -128,16 +159,16 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 
 *an application reaches its crypto by use, not by containment* (guide 173, the chain)
 
-- **PASS** `application-to-provider-is-evidenced` — Payments API → provider: ['libcrypto.so.3', 'OpenSSL 3.0.11']
+- **PASS** `application-to-provider-is-evidenced` — Payments API → provider: ['libcrypto.so.1.1', 'libcrypto.so.3', 'OpenSSL 3.0.11']
 - **PASS** `the-use-is-an-operation-not-an-edge-to-a-cipher` — operations ['OP-ENCRYPT-002', 'OP-SIGN-001', 'OP-STATIC-003']; no application USES_CRYPTO RSA-2048 edge
-- **PASS** `the-chain-starts-at-the-business-system` — Payments System: down 1 application → 3 release → 6 process → 2 provider → 3 operation → 10 algorithm → 2 key → 3 key_provider → 1 certificate → 2 endpoint; up nothing
+- **PASS** `the-chain-starts-at-the-business-system` — Payments System: down 1 application → 3 release → 6 process → 3 provider → 3 operation → 9 algorithm → 2 key → 3 key_provider → 1 certificate → 2 endpoint; up nothing
 
 ## `CBOM-02` — PASS
 
 *an SBOM becomes a CBOM through capability and evidence, never a preset edge* (guide 173, the chain)
 
-- **PASS** `provider-lists-its-capabilities-at-CAPABILITY` — 3 SUPPORTS edge(s) at ['CAPABILITY']
-- **PASS** `provider-implements-algorithms-at-an-evidenced-class` — classes ['OBSERVED']
+- **PASS** `provider-lists-its-capabilities-as-nodes` — 6 SUPPORTS edge(s) to 6 CRYPTO_CAPABILITY node(s) at CAPABILITY
+- **PASS** `each-capability-names-the-algorithm-it-implements` — 6 capabilities IMPLEMENT an ALGORITHM node
 - **PASS** `no-provider-USES-AES-edge-exists` — no provider USES_* edge; a provider implements, it does not use
 
 ## `CBOM-03` — PASS
@@ -164,6 +195,8 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 - **PASS** `provider-and-algorithm-are-different-kinds` — CRYPTO_PROVIDER vs ALGORITHM
 - **PASS** `the-provider-carries-a-family-and-a-version` — family OPENSSL, version 3.0.11
 - **PASS** `the-provider-is-reachable-from-the-application` — up from the provider: ['system', 'application', 'process']
+- **PASS** `an-advisory-against-the-provider-maps-to-assets` — OpenSSL 3.0.11 3.0.11 vs advisory 3.0.11: 1 process(es), 1 application(s), 1 business system(s), 3 operation(s) affected
+- **PASS** `an-advisory-for-another-version-is-a-mismatch-not-an-all-clear` — OpenSSL 3.0.11 3.0.11 vs advisory 3.0.9 — VERSION MISMATCH, the inventory disagrees: 1 process(es), 1 application(s), 1 business system(s), 3 operation(s) affected
 
 ## `CBOM-06` — PASS
 
@@ -195,7 +228,7 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 
 - **PASS** `the-four-states-are-distinct` — SUPPORTED / CONFIGURED / REFERENCED / ACTUALLY_USED
 - **PASS** `the-kms-in-this-estate-is-configured-not-used` — KMS-01: 2 answer(s), strongest CONFIGURED — CONFIGURED
-- **PASS** `an-HSM-backed-operation-is-the-only-ACTUALLY_USED-answer` — HSM-001: 3 answer(s), strongest ACTUALLY_USED — SUPPORTED, ACTUALLY_USED
+- **PASS** `an-HSM-backed-operation-is-the-only-ACTUALLY_USED-answer` — HSM-001: 4 answer(s), strongest ACTUALLY_USED — SUPPORTED, CONFIGURED, ACTUALLY_USED
 
 ## `CBOM-10` — PASS
 
@@ -225,7 +258,8 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 
 *USES_HSM, USES_TPM, BACKED_BY, PROTECTED_BY and RUNS_ON carry evidence* (guide 173, hardware)
 
-- **PASS** `every-hardware-relation-in-the-spec-is-present` — present ['BACKED_BY', 'PROTECTED_BY', 'RUNS_ON', 'USES_KMS', 'USES_TPM']
+- **PASS** `every-hardware-relation-in-the-spec-is-present` — present ['BACKED_BY', 'PROTECTED_BY', 'RUNS_ON', 'USES_HSM', 'USES_KMS', 'USES_TPM']
+- **PASS** `a-configured-use-and-an-observed-use-are-two-classes` — USES_HSM at CONFIGURED, BACKED_BY at RUNTIME_OBSERVED
 - **PASS** `each-carries-an-evidence-id` — every one of them has an evidence id
 
 ## `CBOM-14` — PASS
@@ -235,6 +269,7 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 - **PASS** `the-device-is-supplied-by-the-vendor` — LB-01 SUPPLIED_BY F5
 - **PASS** `the-device-names-its-firmware-version` — BIG-IP 17.1.1 as a node with a version
 - **PASS** `the-vulnerability-reaches-a-listener-and-an-application` — up from the firmware: ['endpoint']
+- **PASS** `the-advisory-maps-to-devices-applications-and-a-vendor` — CVE-2026-0001: 1 firmware record(s), 1 device(s), 1 application(s) behind them; BIG-IP 17.1.1 → LB-01 → Payments API
 
 ## `CBOM-15` — PASS
 
@@ -264,24 +299,26 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 *which business systems depend on RSA-2048 is a query, not a spreadsheet* (guide 173, queries)
 
 - **PASS** `the-system-is-named-through-an-evidenced-path` — 1 business system(s) depend on RSA-2048 through 1 application(s)
-- **PASS** `the-path-is-printed-with-its-classes` — Payments API → payments-api[1821] → OpenSSL 3.0.11 → RSA-2048
+- **PASS** `the-path-is-printed-with-its-classes` — Payments API → payments-api[1821] → OP-SIGN-001 → RSA-2048
 - **PASS** `the-strict-answer-excludes-static-only-paths` — strict answer: no application reaches RSA-2048
+- **PASS** `the-answer-is-bounded-by-what-was-inspected` — 1 business system(s) depend on RSA-2048 through 1 application(s), among 12 of 70 applications inspected
 
 ## `CBOM-19` — PASS
 
 *every dependency edge carries its record, and a collector where one exists* (guide 173, evidence)
 
-- **PASS** `no-dependency-edge-is-missing-a-required-field` — 58 of 58 complete
-- **PASS** `a-collector-is-named-where-a-record-exists` — 22 edge(s) name a collector: ['PROC-PROBE-01', 'TLS-SENSOR-04']
-- **PASS** `the-nine-fields-are-declared` — EDGE_FIELDS = ['source', 'target', 'relationship', 'basis', 'confidence', 'evidence_id', 'evidence_type', 'observed_at', 'first_seen', 'last_seen']
+- **PASS** `no-dependency-edge-is-missing-a-required-field` — 63 of 63 carry all six structural fields
+- **PASS** `the-fields-the-estate-did-not-supply-are-reported` — 11 of 63 carry all ten; short on observed_at 32/63, first_seen 18/63, last_seen 18/63
+- **PASS** `a-collector-is-named-where-a-record-exists` — 25 edge(s) name a collector: ['PROC-PROBE-01', 'TLS-SENSOR-04']
+- **PASS** `the-ten-fields-are-declared` — EDGE_FIELDS = ['source', 'target', 'relationship', 'basis', 'confidence', 'evidence_id', 'evidence_type', 'observed_at', 'first_seen', 'last_seen']
 
 ## `CBOM-20` — PASS
 
 *capability and usage are two sets and never one* (guide 173, evidence)
 
-- **PASS** `capability-is-what-the-provider-lists` — capability ['AES-256', 'RSA-2048', 'SHA-256']
+- **PASS** `capability-is-what-the-provider-lists` — capability ['AES-128', 'AES-192', 'AES-256', 'ECDSA-P256', 'RSA-2048', 'SHA-256']
 - **PASS** `usage-is-what-was-observed` — usage ['AES-256', 'DES-ECB', 'RSA-2048']
-- **PASS** `the-difference-is-reported-not-resolved` — listed and never used: ['SHA-256']
+- **PASS** `the-difference-is-reported-not-resolved` — listed and never used: ['AES-128', 'AES-192', 'ECDSA-P256', 'SHA-256']; used without being listed: ['DES-ECB']
 
 ## `CBOM-21` — PASS
 
@@ -303,9 +340,10 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 
 *a dependency that stops being observed is superseded, not deleted* (guide 173, temporal)
 
-- **PASS** `the-lifecycle-states-are-derived-per-edge` — counts {'ACTIVE': 14, 'CHANGED': 3, 'FIRST_SEEN': 1, 'UNKNOWN': 47}
-- **PASS** `the-old-edge-is-reported-not-silently-dropped` — 4 network change(s): 4 EDGE_SUPERSEDED
-- **PASS** `the-six-word-vocabulary-is-reachable` — vocabulary seen: ['ACTIVE', 'CHANGED', 'FIRST_SEEN', 'SUPERSEDED', 'UNKNOWN']
+- **PASS** `one-projection-names-four-states` — 8 dependency edge(s): FIRST_SEEN 1, ACTIVE 2, CHANGED 2, UNKNOWN 3
+- **PASS** `comparison-adds-superseded-and-removed` — 8 dependency edge(s): ACTIVE 1, CHANGED 2, SUPERSEDED 1, REMOVED 1, UNKNOWN 3
+- **PASS** `the-old-value-is-kept-beside-the-new-one` — SUPERSEDED OP-SIGN-001 USES_ALGORITHM: RSA-2048 → RSA-3072; REMOVED payments-api[1821] LOADS libcrypto.so.1.1: libcrypto.so.1.1
+- **PASS** `nothing-was-deleted-to-produce-that` — 8 row(s) kept across both projections; the six states are ['FIRST_SEEN', 'ACTIVE', 'CHANGED', 'SUPERSEDED', 'REMOVED', 'UNKNOWN']
 
 ## `CBOM-24` — PASS
 
@@ -327,7 +365,7 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 
 *the whole chain joins the Digital Twin's canonical estate graph* (guide 173, twin)
 
-- **PASS** `the-twin-reads-every-edge-of-this-projection` — 65 edge(s) into the twin, 65 in the BOM
+- **PASS** `the-twin-reads-every-edge-of-this-projection` — 73 edge(s) into the twin, 73 in the BOM
 - **PASS** `the-twin-names-the-system-and-the-application` — systems ['Payments System'], one of 1 applications
 - **PASS** `the-twin-carries-the-keys-and-the-tls` — keys ['HSM-001', 'KEY-REF-4401', 'KEY-REF-4402', 'KMS-01'], 2 TLS edge(s)
 
@@ -339,3 +377,7 @@ BUSINESS SYSTEM → APPLICATION → RELEASE → PROCESS / CONTAINER
 - the key record is a reference and its metadata: nothing here proves which key produced a signature, and nothing here would hold the key if it could
 - the KMS answer is the strongest single answer in the estate, not the strongest answer per application
 - coverage is arithmetic on what the collectors reported; it cannot see an application that was never scanned
+- a capability is the provider's own list, self-reported; it says what the build was compiled with and nothing about which of those paths a caller took
+- the lifecycle compares two projections: a dependency that moved between collections the bank never ran is not visible here
+- the advisory answers are keyed on the names the estate holds — a firmware version nobody recorded cannot match a CVE
+- the edge audit counts records, not truth: an edge can carry all ten fields and still be wrong, which is what the conflict and change queries are for

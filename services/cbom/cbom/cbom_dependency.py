@@ -79,7 +79,7 @@ LEVEL_KINDS: dict[str, tuple[str, ...]] = {
                 "SERVICE"),
     "provider": ("CRYPTO_PROVIDER", "CRYPTO_LIBRARY"),
     "operation": ("CRYPTO_OPERATION",),
-    "algorithm": ("ALGORITHM", "CRYPTO_ASSET", "CIPHER_SUITE"),
+    "algorithm": ("ALGORITHM", "CRYPTO_ASSET", "CIPHER_SUITE", "CRYPTO_CAPABILITY"),
     "key": ("KEY_REFERENCE",),
     "key_provider": ("HSM", "KMS", "TPM"),
     "certificate": ("CERTIFICATE", "CERTIFICATE_AUTHORITY", "PUBLIC_KEY"),
@@ -231,7 +231,9 @@ def provider(*, name: Any, family: Any, version: Any = None,
              library_row: Mapping[str, Any] | None = None,
              file_name: Any = None, vendor: Any = None,
              supports: Iterable[Mapping[str, Any]] = (),
+             capabilities: Iterable[Mapping[str, Any]] = (),
              process_row: Mapping[str, Any] | None = None,
+             provider_row: Mapping[str, Any] | None = None,
              basis: Any = "runtime-probe",
              evidence_ids: Iterable[Any] | None = None,
              **attributes: Any) -> dict[str, Any]:
@@ -239,10 +241,18 @@ def provider(*, name: Any, family: Any, version: Any = None,
 
     The provider is the node a vulnerability feed names — ``OpenSSL 3.0.11``,
     ``BoringSSL``, ``JCE``, ``.NET CNG``, ``PKCS#11``, ``Go crypto/tls``,
-    ``RustCrypto``, a vendor SDK. ``supports`` is ``SUPPORTS`` at ``CAPABILITY``, because a
-    provider's algorithm list is exactly what it says it can do. ``process_row`` is
-    ``LOADS``, because that is the strongest thing a runtime probe can say about a library:
-    this process has it mapped.
+    ``RustCrypto``, a vendor SDK.
+
+    Capabilities are **nodes** (:func:`capability`), not a list on the provider, because
+    ``SUPPORTS`` is a different statement from ``IMPLEMENTS``: a capability says *this
+    provider lists AES-256-GCM*, and the ``IMPLEMENTS`` edge off it says *and here is the
+    algorithm that means*. Five capabilities and one observed operation then reads as five
+    capability nodes and one usage, which is the arithmetic the review asks for.
+
+    ``supports`` keeps the shorter form — a provider pointing straight at an algorithm —
+    for an estate that has no capability rows yet. ``process_row`` is ``LOADS``, because
+    that is the strongest thing a runtime probe can say about a library: this process has
+    it mapped.
     """
     family_text = str(family or "").strip().upper().replace(" ", "_").replace("-", "_")
     if family_text not in PROVIDER_FAMILIES:
@@ -250,9 +260,15 @@ def provider(*, name: Any, family: Any, version: Any = None,
             "UNKNOWN_PROVIDER_FAMILY",
             f"{family or '(none)'} is not a crypto provider family; expected one of "
             f"{', '.join(PROVIDER_FAMILIES)}")
-    row = tb.asset("CRYPTO_PROVIDER", name, version=version, evidence_ids=evidence_ids,
-                   family=family_text, provider_file=file_name, vendor=vendor,
-                   library=library_row["name"] if library_row else None, **attributes)
+    row = provider_row if provider_row is not None else tb.asset(
+        "CRYPTO_PROVIDER", name, version=version, evidence_ids=evidence_ids,
+        family=family_text, provider_file=file_name, vendor=vendor,
+        library=library_row["name"] if library_row else None, **attributes)
+    if row["name"] != tb._norm(name):
+        raise tb.ClaimRefused(
+            "PROVIDER_ROW_MISMATCH",
+            f"the row given for {row['name']} was offered as {name}; a provider is one "
+            "identity, and a rename here would silently split its capabilities")
     assets: list[Mapping[str, Any]] = [row]
     claims: list[dict[str, Any]] = []
     if library_row is not None:
@@ -263,11 +279,43 @@ def provider(*, name: Any, family: Any, version: Any = None,
                                basis="capability-list", evidence_ids=evidence_ids))
         claims.append(tb.claim(name, "IMPLEMENTS", algorithm_row["name"], basis=basis,
                                evidence_ids=evidence_ids))
+    for capability_row in capabilities:
+        assets.append(capability_row)
+        claims.append(tb.claim(name, "SUPPORTS", capability_row["name"],
+                               basis="capability-list", evidence_ids=evidence_ids))
     if process_row is not None:
         assets.append(process_row)
         claims.append(tb.claim(process_row["name"], "LOADS", name, basis=basis,
                                evidence_ids=evidence_ids))
     return part(*assets, claims=claims)
+
+
+def capability(*, provider_row: Mapping[str, Any], algorithm_row: Mapping[str, Any],
+               key_size: Any = None, mode: Any = None, purpose: Any = None,
+               basis: Any = "capability-list",
+               evidence_ids: Iterable[Any] | None = None,
+               **attributes: Any) -> dict[str, Any]:
+    """``provider → SUPPORTS → capability → IMPLEMENTS → algorithm`` (cbom 2, 20).
+
+    The capability is the unit a datasheet actually states: *this provider can do AES-256
+    in GCM mode*, and separately *that AES-256 is this algorithm node*. Keeping the two
+    apart is what lets :func:`capability_vs_usage` subtract usage from capability and get
+    an answer rather than a guess.
+
+    The capability is named ``provider:algorithm`` so that a graph with two providers, or
+    one algorithm listed at two sizes, never has to guess which statement a name refers
+    to.
+    """
+    label = f"{provider_row['name']}:{algorithm_row['name']}"
+    row = tb.asset("CRYPTO_CAPABILITY", label, evidence_ids=evidence_ids,
+                   algorithm=algorithm_row["name"], key_size=key_size, mode=mode,
+                   purpose=purpose, provider=provider_row["name"], **attributes)
+    return part(provider_row, algorithm_row, row, claims=[
+        tb.claim(provider_row["name"], "SUPPORTS", label, basis=basis,
+                 evidence_ids=evidence_ids),
+        tb.claim(label, "IMPLEMENTS", algorithm_row["name"], basis=basis,
+                 evidence_ids=evidence_ids),
+    ])
 
 
 def _require_parameters(operation_text: str, facts: Mapping[str, Any]) -> None:
@@ -301,6 +349,8 @@ def runtime_operation(*, name: Any, process_row: Mapping[str, Any],
                       hash_name: Any = None, curve: Any = None, purpose: Any = None,
                       parameters: Mapping[str, Any] | None = None,
                       basis: Any = "runtime-observation",
+                      observed_at: Any = None, first_seen: Any = None,
+                      last_seen: Any = None,
                       evidence_ids: Iterable[Any] | None = None,
                       **extra: Any) -> dict[str, Any]:
     """``process → INVOKES → operation → algorithm / key / provider`` (cbom 4, 6).
@@ -333,11 +383,13 @@ def runtime_operation(*, name: Any, process_row: Mapping[str, Any],
     _require_parameters(operation_text, facts)
     row = tb.asset("CRYPTO_OPERATION", name, evidence_ids=evidence_ids, **facts)
     assets: list[Mapping[str, Any]] = [row, process_row, algorithm_row]
+    stamp = {"observed_at": observed_at, "first_seen": first_seen,
+             "last_seen": last_seen}
     claims = [
         tb.claim(process_row["name"], "INVOKES", name, basis=basis,
-                 evidence_ids=evidence_ids, operation=operation_text),
+                 evidence_ids=evidence_ids, operation=operation_text, **stamp),
         tb.claim(name, "USES_ALGORITHM", algorithm_row["name"], basis=basis,
-                 evidence_ids=evidence_ids, operation=operation_text),
+                 evidence_ids=evidence_ids, operation=operation_text, **stamp),
     ]
     if application_row is not None:
         assets.append(application_row)
@@ -615,8 +667,23 @@ def capability_vs_usage(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]
     """
     key = _resolve_one(bom, query)
     row = bom["by_key"][key]
-    capabilities = sorted({bom["by_key"][claim["to_key"]]["name"] for claim in bom["claims"]
-                           if claim["from_key"] == key and claim["relation"] == "SUPPORTS"})
+    # a capability node names a statement; the algorithms it implements are what the two
+    # sets can be compared on. Both are reported: nodes for a reader, algorithms for the
+    # arithmetic.
+    nodes: dict[str, set[str]] = {}
+    for claim in bom["claims"]:
+        if claim["from_key"] != key or claim["relation"] != "SUPPORTS":
+            continue
+        target = bom["by_key"][claim["to_key"]]
+        if target["kind"] == "CRYPTO_CAPABILITY":
+            implementations = {bom["by_key"][inner["to_key"]]["name"]
+                               for inner in bom["claims"]
+                               if inner["from_key"] == target["key"]
+                               and inner["relation"] == "IMPLEMENTS"}
+            nodes[target["name"]] = implementations or {target["name"]}
+        else:
+            nodes[target["name"]] = {target["name"]}
+    capabilities = sorted({name for names in nodes.values() for name in names})
     used: dict[str, set[str]] = {}
     for claim in bom["claims"]:
         if claim["relation"] != "USES_ALGORITHM":
@@ -641,6 +708,7 @@ def capability_vs_usage(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]
     return {
         "provider": row["name"],
         "capability": capabilities,
+        "capability_nodes": {name: sorted(names) for name, names in sorted(nodes.items())},
         "usage": {name: sorted(classes) for name, classes in sorted(used.items())},
         "capability_not_used": unused,
         "used_not_capable": unlisted,
@@ -753,12 +821,18 @@ def endpoint_hops(bom: Mapping[str, Any], *, query: Any, max_hops: int = 8) -> d
 
 
 def systems_depending_on(bom: Mapping[str, Any], *, algorithm: Any,
-                         include_static: bool = True) -> dict[str, Any]:
+                         include_static: bool = True,
+                         coverage: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """*Which business systems depend on RSA-2048?* — asked of the chain (cbom 18).
 
     A business system is named only when an evidenced edge path reaches it. With
     ``include_static=False`` the answer is the stricter one — which systems *ran* it —
     because a static hit is a dependency and not an execution.
+
+    ``coverage`` is the denominator from :func:`cbom.usage_evidence.coverage` or
+    :func:`cbom.nbom_graph.coverage`. Pass it and the answer stops being a total: *one
+    system depends on RSA-2048, among the twelve of seventy applications inspected* is a
+    different sentence from *the bank has one*.
     """
     target = _resolve_one(bom, algorithm)
     rows: list[dict[str, Any]] = []
@@ -773,13 +847,25 @@ def systems_depending_on(bom: Mapping[str, Any], *, algorithm: Any,
                      "systems": found["systems"], "path": found["path"],
                      "classes": found["classes"], "weakest": found["weakest"]})
     systems = sorted({name for row in rows for name in row["systems"]})
+    bounded = ""
+    quotable = True
+    if coverage:
+        inspected = coverage.get("systems_inspected", coverage.get("observed",
+                                                                  coverage.get("successful")))
+        total = coverage.get("systems_total", coverage.get("expected"))
+        quotable = bool(coverage.get("quotable_as_total", False))
+        bounded = (f", among {inspected} of {total} applications inspected"
+                   if total is not None else "")
     return {
         "algorithm": bom["by_key"][target]["name"],
         "applications": sorted(rows, key=lambda row: row["application"]),
         "systems": systems,
-        "statement": (f"{len(systems)} business system(s) depend on "
-                      f"{bom['by_key'][target]['name']} through {len(rows)} application(s)"
-                      if rows else f"no application reaches {bom['by_key'][target]['name']}"),
+        "coverage": dict(coverage) if coverage else None,
+        "quotable_as_total": quotable,
+        "statement": ((f"{len(systems)} business system(s) depend on "
+                       f"{bom['by_key'][target]['name']} through {len(rows)} application(s)"
+                       + bounded) if rows else
+                      f"no application reaches {bom['by_key'][target]['name']}" + bounded),
         "not_proven": ["that this is every system: the answer is bounded by the "
                        "applications that were inspected, and coverage says how many those "
                        "were"],
@@ -826,6 +912,178 @@ def _reach(bom: Mapping[str, Any], start: str, target: str, *,
             seen.add(step)
             queue.append((step, [*path, step]))
     return None
+
+
+# --------------------------------------------------------------------------- #
+# Impact: an advisory is a question about assets, not about a version string
+# --------------------------------------------------------------------------- #
+
+#: the kinds an advisory has to land on before it is actionable
+IMPACT_KINDS: tuple[str, ...] = ("PROCESS", "APPLICATION", "SERVICE", "BUSINESS_SYSTEM",
+                                 "NETWORK_ENDPOINT", "LOAD_BALANCER", "WAF", "API_GATEWAY",
+                                 "SERVICE_MESH", "DATABASE", "HOST", "VM", "PHYSICAL_SERVER",
+                                 "KUBERNETES_NODE", "HSM", "KMS", "TPM", "KEY_REFERENCE",
+                                 "CRYPTO_OPERATION", "FIRMWARE", "VENDOR_PRODUCT", "VENDOR")
+
+#: the kinds that count as the device an advisory is served against
+DEVICE_KINDS: tuple[str, ...] = ("LOAD_BALANCER", "WAF", "API_GATEWAY", "SERVICE_MESH",
+                                 "DATABASE", "FIREWALL", "PHYSICAL_SERVER", "HOST", "HSM",
+                                 "TPM")
+
+
+#: relations an impact walk follows *forward* from a node it has reached: a device owns
+#: its listener, a listener presents its certificate. An advisory that stops at the device
+#: names a box; one that crosses the surface names the applications behind it.
+SURFACE_RELATIONS: tuple[str, ...] = ("LISTENS_ON", "PRESENTS", "NEGOTIATES",
+                                      "USES_CERTIFICATE", "RUNS_FIRMWARE", "HAS_MODEL",
+                                      "SUPPLIED_BY", "ROUTES_TO")
+
+
+def _dependents(bom: Mapping[str, Any], key: str, *, max_depth: int = 6,
+                follow: Iterable[str] = ()) -> list[tuple[Mapping[str, Any], Mapping[str, Any], int]]:
+    """Everything that depends on this node, nearest first.
+
+    One direction only — the dependent side of each edge — because "what does this
+    advisory affect" is a question about who relies on the thing, not about everything
+    within six hops of it.
+    """
+    out: list[tuple[Mapping[str, Any], Mapping[str, Any], int]] = []
+    visited: set[str] = {key}
+    frontier: list[tuple[str, int]] = [(key, 0)]
+    while frontier:
+        current, depth = frontier.pop(0)
+        if depth >= max_depth:
+            continue
+        for claim in bom["claims"]:
+            if claim["relation"] not in CHAIN_RELATIONS:
+                continue
+            dependent, dependency = _sides(claim)
+            steps: list[str] = []
+            if dependency == current:
+                steps.append(dependent)
+            if claim["relation"] in follow and claim["from_key"] == current:
+                steps.append(claim["to_key"])
+            for step in steps:
+                if step in visited or step not in bom["by_key"]:
+                    continue
+                visited.add(step)
+                out.append((bom["by_key"][step], claim, depth + 1))
+                frontier.append((step, depth + 1))
+    return out
+
+
+def provider_impact(bom: Mapping[str, Any], *, query: Any,
+                    version: Any = None) -> dict[str, Any]:
+    """*This OpenSSL version is affected* → which processes, applications and systems (cbom 5).
+
+    A provider is only a useful node if an advisory against it maps to assets. The walk is
+    the dependent direction from the provider — the processes that load it, the
+    applications those processes run, the systems that own them — plus every operation
+    whose parameters name it, which is the difference between "the library is present" and
+    "this signing call used it".
+
+    ``version`` is what the advisory names. When the estate records something else the
+    result says so: an inventory that disagrees with an advisory is a gap in the inventory,
+    not an all-clear.
+    """
+    key = _resolve_one(bom, query)
+    row = bom["by_key"][key]
+    if row["kind"] not in ("CRYPTO_PROVIDER", "CRYPTO_LIBRARY"):
+        raise tb.ClaimRefused(
+            "NOT_A_PROVIDER",
+            f"{row['name']} ({row['kind']}) is not a crypto provider or library; an advisory "
+            "against an algorithm is a different question")
+    dependents = _dependents(bom, key)
+    by_kind: dict[str, list[str]] = {}
+    for node, _claim, _depth in dependents:
+        if node["kind"] in IMPACT_KINDS:
+            by_kind.setdefault(node["kind"], []).append(node["name"])
+    operations = sorted({asset["name"] for asset in bom["assets"]
+                         if asset["kind"] == "CRYPTO_OPERATION"
+                         and (asset["attributes"] or {}).get("provider") == row["name"]})
+    recorded = row.get("version")
+    matches = version is None or not recorded or str(recorded) == str(version)
+    affected = {kind: sorted(set(names)) for kind, names in sorted(by_kind.items())}
+    applications = affected.get("APPLICATION", [])
+    systems = affected.get("BUSINESS_SYSTEM", [])
+    return {
+        "query": str(query), "provider": row["name"], "recorded_version": recorded,
+        "advisory_version": str(version) if version is not None else None,
+        "version_matches": matches,
+        "affected": affected, "operations": operations,
+        "counts": {"processes": len(affected.get("PROCESS", [])),
+                   "applications": len(applications), "systems": len(systems),
+                   "operations": len(operations)},
+        "statement": (f"{row['name']}"
+                      + (f" {recorded}" if recorded else "")
+                      + (f" vs advisory {version}" if version is not None else "")
+                      + ("" if matches else " — VERSION MISMATCH, the inventory disagrees")
+                      + f": {len(affected.get('PROCESS', []))} process(es), "
+                        f"{len(applications)} application(s), {len(systems)} business "
+                        f"system(s), {len(operations)} operation(s) affected"),
+        "not_proven": ["that every affected asset was discovered: the answer is bounded by "
+                       "the applications that were inspected",
+                       "that the version the inventory records is the version running: a "
+                       "process map and an SBOM can disagree, and that disagreement is "
+                       "reported as a conflict rather than resolved here"],
+    }
+
+
+def advisory_impact(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]:
+    """*Vendor firmware advisory* → the devices, listeners and applications behind it (cbom 14).
+
+    A CVE against a vendor's firmware is a fact about a version. It becomes an operational
+    fact only when the graph can walk firmware → device → listener → application → business
+    system, and each hop is an edge somebody can re-read. An estate that never recorded the
+    firmware version is reported as unrecorded, not as unaffected.
+    """
+    key = _resolve_one(bom, query)
+    row = bom["by_key"][key]
+    if row["kind"] == "VULNERABILITY":
+        firmwares = [bom["by_key"][claim["from_key"]] for claim in bom["claims"]
+                     if claim["to_key"] == key and claim["relation"] == "HAS_VULNERABILITY"]
+    elif row["kind"] in ("FIRMWARE", "VENDOR_PRODUCT", "VENDOR"):
+        firmwares = [row]
+    else:
+        raise tb.ClaimRefused(
+            "NOT_AN_ADVISORY",
+            f"{row['name']} ({row['kind']}) is not a vulnerability, a firmware or a vendor "
+            "product; an advisory against a service is a different question")
+    findings: list[dict[str, Any]] = []
+    for firmware in firmwares:
+        dependents = _dependents(bom, firmware["key"], follow=SURFACE_RELATIONS)
+        levels: dict[str, list[str]] = {}
+        for node, _claim, _depth in dependents:
+            if node["kind"] in IMPACT_KINDS:
+                levels.setdefault(node["kind"], []).append(node["name"])
+        device_keys = {node["key"] for node, _claim, _depth in dependents
+                       if node["kind"] in DEVICE_KINDS}
+        devices = sorted({bom["by_key"][device_key]["name"] for device_key in device_keys})
+        # the vendor behind each affected device: the party a bank has to call
+        vendors = sorted({bom["by_key"][claim["to_key"]]["name"] for claim in bom["claims"]
+                          if claim["relation"] == "SUPPLIED_BY"
+                          and claim["from_key"] in device_keys})
+        findings.append({
+            "vulnerability": row["name"] if row["kind"] == "VULNERABILITY" else None,
+            "firmware": firmware["name"], "firmware_version": firmware.get("version"),
+            "devices": devices, "vendors": vendors,
+            "endpoints": sorted(set(levels.get("NETWORK_ENDPOINT", []))),
+            "applications": sorted(set(levels.get("APPLICATION", []))),
+            "systems": sorted(set(levels.get("BUSINESS_SYSTEM", [])))})
+    total = sum(len(finding["applications"]) for finding in findings)
+    return {
+        "query": str(query), "findings": findings, "count": len(findings),
+        "applications_affected": total,
+        "statement": (f"{row['name']}: {len(findings)} firmware record(s), "
+                      f"{sum(len(f['devices']) for f in findings)} device(s), "
+                      f"{total} application(s) behind them" if findings else
+                      f"{row['name']}: no firmware in the estate is affected"),
+        "not_proven": ["that a device is exploitable: this maps an advisory to the assets "
+                       "that depend on the affected firmware, and exploitability belongs to "
+                       "vulnerability management",
+                       "that the firmware record is current: a device with no firmware "
+                       "version recorded is a gap, and it is reported as one"],
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -934,11 +1192,125 @@ def _dependency_map(bom: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
     for claim in bom.get("claims") or []:
         if claim["relation"] not in ("USES_ALGORITHM", "USES_CRYPTO", "LOADS"):
             continue
-        rows[f"{claim['from']} {claim['relation']}"] = {
+        # a process loading two libraries is two dependencies, so a `LOADS` edge is keyed
+        # by its target; an operation has one algorithm, so that edge is keyed by its actor
+        name = (f"{claim['from']} {claim['relation']} {claim['to']}"
+                if claim["relation"] == "LOADS" else
+                f"{claim['from']} {claim['relation']}")
+        entry = {
             "value": claim["to"],
             "evidence_id": (claim.get("evidence_ids") or [None])[0],
-            "class": claim["confidence"]}
+            "evidence_ids": list(claim.get("evidence_ids") or []),
+            "class": claim["confidence"],
+            "edge": claim["id"],
+            "observed_at": claim.get("observed_at"),
+            "first_seen": claim.get("first_seen"),
+            "last_seen": claim.get("last_seen")}
+        previous = rows.get(name)
+        if previous is None:
+            rows[name] = entry
+            continue
+        # the same dependency described by two layers is one dependency, and the entry
+        # kept is the *strongest* statement about it — a static scan must not overwrite a
+        # runtime observation just because it was read later. Both evidence ids survive.
+        entry["evidence_ids"] = sorted(set(previous["evidence_ids"])
+                                       | set(entry["evidence_ids"]))
+        if tb.CONFIDENCE[entry["class"]] > tb.CONFIDENCE[previous["class"]]:
+            rows[name] = entry
+        else:
+            previous["evidence_ids"] = entry["evidence_ids"]
     return rows
+
+
+#: the six states a dependency edge can be in (cbom 23). ``REMOVED`` and ``SUPERSEDED``
+#: are states, not deletions: what the estate used to depend on is part of the answer.
+LIFECYCLE_STATES: tuple[str, ...] = ("FIRST_SEEN", "ACTIVE", "CHANGED", "SUPERSEDED",
+                                     "REMOVED", "UNKNOWN")
+
+
+def dependency_lifecycle(current: Mapping[str, Any], *,
+                         previous: Mapping[str, Any] | None = None,
+                         reference: Any = None) -> dict[str, Any]:
+    """Every dependency edge with a state, and nothing dropped for being old (cbom 23).
+
+    With one projection the state comes from the edge's own record: no timestamps is
+    ``UNKNOWN`` — which is not the same as active — one sighting is ``FIRST_SEEN``, a
+    ``last_seen`` before the reference is ``CHANGED``, anything else is ``ACTIVE``.
+
+    With two projections the vocabulary gains the two states only comparison produces. An
+    edge that now names a *different* target is ``SUPERSEDED``: the old row is kept beside
+    the new one, because "we stopped depending on libcrypto.so.1.1" is a finding and a
+    deletion is not. An edge pointing at the same target at a different class is
+    ``CHANGED``. An edge that is gone is ``REMOVED``, still carrying its last value and
+    evidence id.
+    """
+    after = _dependency_map(current)
+    rows: list[dict[str, Any]] = []
+    superseded: list[dict[str, Any]] = []
+    removed: list[dict[str, Any]] = []
+    if previous is None:
+        for name, entry in sorted(after.items()):
+            rows.append({"dependency": name, "state": _lifecycle_state(entry, reference),
+                         "value": entry["value"], "previous": None,
+                         "class": entry["class"], "evidence_id": entry["evidence_id"],
+                         "edge": entry["edge"]})
+    else:
+        before = _dependency_map(previous)
+        for name in sorted(set(before) | set(after)):
+            old, new = before.get(name), after.get(name)
+            if old is None and new is not None:
+                state = "FIRST_SEEN"
+            elif new is None and old is not None:
+                removed.append({"dependency": name, "previous": old["value"],
+                                "evidence_before": old["evidence_id"], "edge": old["edge"]})
+                rows.append({"dependency": name, "state": "REMOVED", "value": None,
+                             "previous": old["value"], "class": old["class"],
+                             "evidence_id": old["evidence_id"], "edge": old["edge"]})
+                continue
+            elif old["value"] != new["value"]:
+                state = "SUPERSEDED"
+                superseded.append({"dependency": name, "previous": old["value"],
+                                   "current": new["value"],
+                                   "evidence_before": old["evidence_id"],
+                                   "evidence_after": new["evidence_id"]})
+            elif old["class"] != new["class"]:
+                state = "CHANGED"
+            else:
+                state = _lifecycle_state(new, reference)
+            rows.append({"dependency": name, "state": state,
+                         "value": (new or old)["value"],
+                         "previous": old["value"] if old else None,
+                         "class": (new or old)["class"],
+                         "evidence_id": (new or old)["evidence_id"],
+                         "edge": (new or old)["edge"]})
+    counts = {state: sum(1 for row in rows if row["state"] == state)
+              for state in LIFECYCLE_STATES}
+    counts = {state: count for state, count in counts.items() if count}
+    return {
+        "states": {row["dependency"]: row["state"] for row in rows},
+        "rows": rows,
+        "counts": counts,
+        "superseded": superseded,
+        "removed": removed,
+        "reference": reference,
+        "statement": (f"{len(rows)} dependency edge(s): "
+                      + ", ".join(f"{state} {count}" for state, count in counts.items())
+                      if rows else "no dependency edge was recorded"),
+        "rule": ("SUPERSEDED and REMOVED are states, not deletions: an edge that stopped "
+                 "being observed is kept with its last value and the evidence that said so"),
+    }
+
+
+def _lifecycle_state(entry: Mapping[str, Any], reference: Any) -> str:
+    first = entry.get("first_seen")
+    last = entry.get("last_seen") or entry.get("observed_at")
+    if not first and not last:
+        return "UNKNOWN"
+    if first and last and first == last:
+        return "FIRST_SEEN"
+    if reference and last and str(last) < str(reference):
+        return "CHANGED"
+    return "ACTIVE"
 
 
 #: the state a KMS answer sits at, from the class of the evidence behind it. A datasheet
@@ -1147,23 +1519,53 @@ EDGE_FIELDS: tuple[str, ...] = ("source", "target", "relationship", "basis", "co
                                "last_seen")
 
 
+#: the six fields an edge cannot be read without. An edge missing one of these is a
+#: drawing, and it is listed rather than counted.
+REQUIRED_EDGE_FIELDS: tuple[str, ...] = ("source", "target", "relationship", "basis",
+                                         "confidence", "evidence_id")
+
+
 def evidence_audit(bom: Mapping[str, Any]) -> dict[str, Any]:
-    """Dependency edges, each with its record, and the count that lack one (cbom 19)."""
+    """Dependency edges against the ten fields the review names (cbom 19).
+
+    The honest report is two numbers, not one. **Structural** completeness — source,
+    target, relationship, basis, class, evidence id — is what makes an edge readable, and
+    every edge in a built projection has it by construction. **Full** completeness adds
+    ``evidence_type``, ``observed_at``, ``first_seen``, ``last_seen`` and the collector,
+    and an estate supplies those unevenly: a claim built from a configuration parse has a
+    basis but no observation time, and inventing one is the fabrication this module exists
+    to avoid.
+
+    So the audit counts per field and publishes the shortfall. "58 of 58 complete" over
+    four empty columns is not an audit, it is a slogan.
+    """
     rows = [edge_record(bom, claim) for claim in bom.get("claims") or []
             if claim["relation"] in CHAIN_RELATIONS]
-    incomplete = [row["id"] for row in rows
-                  if not row["relationship"] or not row["basis"]
-                  or not row["confidence"] or not row["evidence_id"]]
+    coverage = {field: sum(1 for row in rows if row.get(field) not in (None, "", []))
+                for field in EDGE_FIELDS}
+    structural = [row["id"] for row in rows
+                  if any(row.get(field) in (None, "", [])
+                         for field in REQUIRED_EDGE_FIELDS)]
+    fully = {row["id"] for row in rows
+             if all(row.get(field) not in (None, "", []) for field in EDGE_FIELDS)}
     collected = [row for row in rows if row["collector"]]
+    sparse = [f"{field} {coverage[field]}/{len(rows)}" for field in EDGE_FIELDS
+              if coverage[field] < len(rows)]
     return {
-        "edges": rows, "count": len(rows), "complete": len(rows) - len(incomplete),
-        "incomplete": incomplete, "with_collector": len(collected),
+        "edges": rows, "count": len(rows),
+        "structural": len(rows) - len(structural), "incomplete": structural,
+        "fully_recorded": len(fully),
+        "sparse_edges": sorted({row["id"] for row in rows} - fully),
+        "field_coverage": coverage, "missing_fields": sparse,
+        "with_collector": len(collected),
         "collectors": sorted({row["collector"] for row in collected}),
-        "statement": (f"{len(rows)} dependency edge(s): {len(rows) - len(incomplete)} carry "
-                      f"source, target, relation, basis, class and evidence id; "
-                      f"{len(collected)} name a collector"),
-        "rule": ("an edge without a basis, a class and an evidence id is a drawing; the "
-                 "collector is printed when a record exists and left null when it does not"),
+        "statement": (f"{len(rows)} dependency edge(s): {len(rows) - len(structural)} carry "
+                      f"all six structural fields, {len(fully)} carry all ten; "
+                      f"{len(collected)} name a collector"
+                      + (f"; short on {', '.join(sparse)}" if sparse else "")),
+        "rule": ("an edge without a basis, a class and an evidence id is a drawing; a field "
+                 "the estate did not supply is reported as a shortfall, never backfilled "
+                 "from a neighbour"),
     }
 
 

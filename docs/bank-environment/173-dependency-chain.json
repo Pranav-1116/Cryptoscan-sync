@@ -1,23 +1,23 @@
 {
   "schema": "cryptoscan.cbom-dependency-guide/1",
-  "generated_at": "2026-11-03T06:26:36Z",
+  "generated_at": "2026-11-03T06:40:17Z",
   "estate": "bank-dependency",
   "counts": {
     "PASS": 26,
     "PARTIAL": 0,
     "FAIL": 0
   },
-  "probes": 77,
+  "probes": 84,
   "points_present": "26/26",
-  "statement": "26 of 26 points of the dependency chain are present in the built projection, across 77 probes; 47 assets and 65 evidenced edges",
+  "statement": "26 of 26 points of the dependency chain are present in the built projection, across 84 probes; 57 assets and 73 evidenced edges",
   "levels": {
     "system": 1,
     "application": 1,
     "release": 3,
     "process": 7,
-    "provider": 2,
+    "provider": 3,
     "operation": 3,
-    "algorithm": 10,
+    "algorithm": 19,
     "key": 2,
     "key_provider": 3,
     "certificate": 1,
@@ -140,8 +140,18 @@
       ],
       "provider": [
         {
-          "key": "CRYPTO_LIBRARY:libcrypto.so.3:production",
+          "key": "CRYPTO_LIBRARY:libcrypto.so.1.1:production",
           "id": "TECH-LIB-001",
+          "kind": "CRYPTO_LIBRARY",
+          "name": "libcrypto.so.1.1",
+          "attributes": {},
+          "class": "OBSERVED",
+          "relation": "LOADS",
+          "evidence_id": "EVID-95009"
+        },
+        {
+          "key": "CRYPTO_LIBRARY:libcrypto.so.3:production",
+          "id": "TECH-LIB-002",
           "kind": "CRYPTO_LIBRARY",
           "name": "libcrypto.so.3",
           "attributes": {},
@@ -156,8 +166,6 @@
           "name": "OpenSSL 3.0.11",
           "attributes": {
             "family": "OPENSSL",
-            "provider_file": "/usr/lib64/libcrypto.so.3",
-            "library": "libcrypto.so.3",
             "version_claims": [
               {
                 "source": "sbom",
@@ -244,7 +252,7 @@
       "algorithm": [
         {
           "key": "ALGORITHM:aes-256:production",
-          "id": "TECH-ALG-001",
+          "id": "TECH-ALG-003",
           "kind": "ALGORITHM",
           "name": "AES-256",
           "attributes": {
@@ -253,13 +261,13 @@
             "mode": "GCM",
             "quantum_sensitive": false
           },
-          "class": "OBSERVED",
-          "relation": "IMPLEMENTS",
+          "class": "RUNTIME_OBSERVED",
+          "relation": "USES_ALGORITHM",
           "evidence_id": "EVID-95004"
         },
         {
           "key": "ALGORITHM:des-ecb:production",
-          "id": "TECH-ALG-002",
+          "id": "TECH-ALG-004",
           "kind": "ALGORITHM",
           "name": "DES-ECB",
           "attributes": {
@@ -274,7 +282,7 @@
         },
         {
           "key": "ALGORITHM:rsa-2048:production",
-          "id": "TECH-ALG-003",
+          "id": "TECH-ALG-006",
           "kind": "ALGORITHM",
           "name": "RSA-2048",
           "attributes": {
@@ -282,22 +290,8 @@
             "key_size": 2048,
             "quantum_sensitive": true
           },
-          "class": "OBSERVED",
-          "relation": "IMPLEMENTS",
-          "evidence_id": "EVID-95004"
-        },
-        {
-          "key": "ALGORITHM:sha-256:production",
-          "id": "TECH-ALG-004",
-          "kind": "ALGORITHM",
-          "name": "SHA-256",
-          "attributes": {
-            "family": "SHA",
-            "key_size": 256,
-            "quantum_sensitive": false
-          },
-          "class": "OBSERVED",
-          "relation": "IMPLEMENTS",
+          "class": "RUNTIME_OBSERVED",
+          "relation": "USES_ALGORITHM",
           "evidence_id": "EVID-95004"
         },
         {
@@ -433,7 +427,7 @@
             "firmware_version": "12.72.0"
           },
           "class": "CONFIGURED",
-          "relation": "PROTECTED_BY",
+          "relation": "USES_HSM",
           "evidence_id": "EVID-95006"
         },
         {
@@ -588,30 +582,6 @@
         "evidence_id": "EVID-95006"
       },
       {
-        "source": "OpenSSL 3.0.11",
-        "relationship": "IMPLEMENTS",
-        "target": "AES-256",
-        "class": "OBSERVED",
-        "basis": "runtime-probe",
-        "evidence_id": "EVID-95004"
-      },
-      {
-        "source": "OpenSSL 3.0.11",
-        "relationship": "IMPLEMENTS",
-        "target": "RSA-2048",
-        "class": "OBSERVED",
-        "basis": "runtime-probe",
-        "evidence_id": "EVID-95004"
-      },
-      {
-        "source": "OpenSSL 3.0.11",
-        "relationship": "IMPLEMENTS",
-        "target": "SHA-256",
-        "class": "OBSERVED",
-        "basis": "runtime-probe",
-        "evidence_id": "EVID-95004"
-      },
-      {
         "source": "payments-api[1821]",
         "relationship": "INVOKES",
         "target": "OP-ENCRYPT-002",
@@ -652,6 +622,14 @@
         "evidence_id": "EVID-95004"
       },
       {
+        "source": "payments-api[1821]",
+        "relationship": "LOADS",
+        "target": "libcrypto.so.1.1",
+        "class": "OBSERVED",
+        "basis": "runtime-probe",
+        "evidence_id": "EVID-95009"
+      },
+      {
         "source": "node-07",
         "relationship": "MEMBER_OF_CLUSTER",
         "target": "prod-cluster",
@@ -690,14 +668,6 @@
         "class": "NETWORK_OBSERVED",
         "basis": "tls-handshake",
         "evidence_id": "EVID-95007"
-      },
-      {
-        "source": "Payments API",
-        "relationship": "PROTECTED_BY",
-        "target": "HSM-001",
-        "class": "CONFIGURED",
-        "basis": "config-parse",
-        "evidence_id": "EVID-95006"
       },
       {
         "source": "Payments API",
@@ -756,6 +726,22 @@
         "evidence_id": "EVID-95003"
       },
       {
+        "source": "OP-ENCRYPT-002",
+        "relationship": "USES_ALGORITHM",
+        "target": "AES-256",
+        "class": "RUNTIME_OBSERVED",
+        "basis": "runtime-observation",
+        "evidence_id": "EVID-95004"
+      },
+      {
+        "source": "OP-SIGN-001",
+        "relationship": "USES_ALGORITHM",
+        "target": "RSA-2048",
+        "class": "RUNTIME_OBSERVED",
+        "basis": "runtime-observation",
+        "evidence_id": "EVID-95004"
+      },
+      {
         "source": "src/main/java/bank/LegacySettlement.java:Cipher.getInstance",
         "relationship": "USES_ALGORITHM",
         "target": "DES-ECB",
@@ -797,6 +783,14 @@
       },
       {
         "source": "Payments API",
+        "relationship": "USES_HSM",
+        "target": "HSM-001",
+        "class": "CONFIGURED",
+        "basis": "config-parse",
+        "evidence_id": "EVID-95006"
+      },
+      {
+        "source": "Payments API",
         "relationship": "USES_KMS",
         "target": "KMS-01",
         "class": "CONFIGURED",
@@ -812,7 +806,7 @@
         "evidence_id": "EVID-95003"
       }
     ],
-    "statement": "Payments API: down 3 release \u2192 6 process \u2192 2 provider \u2192 3 operation \u2192 10 algorithm \u2192 2 key \u2192 3 key_provider \u2192 1 certificate \u2192 2 endpoint; up 1 system",
+    "statement": "Payments API: down 3 release \u2192 6 process \u2192 3 provider \u2192 3 operation \u2192 9 algorithm \u2192 2 key \u2192 3 key_provider \u2192 1 certificate \u2192 2 endpoint; up 1 system",
     "not_proven": [
       "that every level exists: a chain stops where the estate stops, and an empty level is reported as a gap rather than filled with a guess"
     ]
@@ -820,10 +814,33 @@
   "capability": {
     "provider": "OpenSSL 3.0.11",
     "capability": [
+      "AES-128",
+      "AES-192",
       "AES-256",
+      "ECDSA-P256",
       "RSA-2048",
       "SHA-256"
     ],
+    "capability_nodes": {
+      "OpenSSL 3.0.11:AES-128": [
+        "AES-128"
+      ],
+      "OpenSSL 3.0.11:AES-192": [
+        "AES-192"
+      ],
+      "OpenSSL 3.0.11:AES-256": [
+        "AES-256"
+      ],
+      "OpenSSL 3.0.11:ECDSA-P256": [
+        "ECDSA-P256"
+      ],
+      "OpenSSL 3.0.11:RSA-2048": [
+        "RSA-2048"
+      ],
+      "OpenSSL 3.0.11:SHA-256": [
+        "SHA-256"
+      ]
+    },
     "usage": {
       "AES-256": [
         "RUNTIME_OBSERVED"
@@ -836,6 +853,9 @@
       ]
     },
     "capability_not_used": [
+      "AES-128",
+      "AES-192",
+      "ECDSA-P256",
       "SHA-256"
     ],
     "used_not_capable": [
@@ -845,7 +865,7 @@
       "runtime",
       "static"
     ],
-    "statement": "OpenSSL 3.0.11: 3 capability(ies), 3 observed use(s) from 2 layer(s), 1 listed and never used, 1 used without being listed",
+    "statement": "OpenSSL 3.0.11: 6 capability(ies), 3 observed use(s) from 2 layer(s), 4 listed and never used, 1 used without being listed",
     "rule": "a capability is what the provider says it can do; usage is an operation with an evidence class, and one never becomes the other"
   },
   "conflicts": {
@@ -920,14 +940,202 @@
       }
     ],
     "added": [],
-    "removed": [],
+    "removed": [
+      {
+        "code": "CRYPTO_DEPENDENCY_REMOVED",
+        "dependency": "payments-api[1821] LOADS libcrypto.so.1.1",
+        "previous": "libcrypto.so.1.1",
+        "evidence_before": "EVID-95009",
+        "detected_at": "2026-11-03T08:30:00Z"
+      }
+    ],
     "counts": {
       "CHANGED": 1,
       "ADDED": 0,
-      "REMOVED": 0
+      "REMOVED": 1
     },
-    "statement": "1 changed, 0 added, 0 removed",
+    "statement": "1 changed, 0 added, 1 removed",
     "rule": "a dependency that stops being observed is superseded, not deleted: what the estate used to depend on is part of the answer"
+  },
+  "lifecycle": {
+    "states": {
+      "OP-ENCRYPT-002 USES_ALGORITHM": "ACTIVE",
+      "OP-SIGN-001 USES_ALGORITHM": "SUPERSEDED",
+      "OP-STATIC-003 USES_ALGORITHM": "UNKNOWN",
+      "Payments API USES_CRYPTO": "CHANGED",
+      "TLS_AES_256_GCM_SHA384 USES_CRYPTO": "UNKNOWN",
+      "payments-api[1821] LOADS OpenSSL 3.0.11": "UNKNOWN",
+      "payments-api[1821] LOADS libcrypto.so.1.1": "REMOVED",
+      "src/main/java/bank/LegacySettlement.java:Cipher.getInstance USES_ALGORITHM": "CHANGED"
+    },
+    "rows": [
+      {
+        "dependency": "OP-ENCRYPT-002 USES_ALGORITHM",
+        "state": "ACTIVE",
+        "value": "AES-256",
+        "previous": "AES-256",
+        "class": "RUNTIME_OBSERVED",
+        "evidence_id": "EVID-95004",
+        "edge": "EDGE-8d92e7c4"
+      },
+      {
+        "dependency": "OP-SIGN-001 USES_ALGORITHM",
+        "state": "SUPERSEDED",
+        "value": "RSA-3072",
+        "previous": "RSA-2048",
+        "class": "RUNTIME_OBSERVED",
+        "evidence_id": "EVID-95004",
+        "edge": "EDGE-25a165b0"
+      },
+      {
+        "dependency": "OP-STATIC-003 USES_ALGORITHM",
+        "state": "UNKNOWN",
+        "value": "DES-ECB",
+        "previous": "DES-ECB",
+        "class": "STATIC_OBSERVED",
+        "evidence_id": "EVID-95005",
+        "edge": "EDGE-08026af2"
+      },
+      {
+        "dependency": "Payments API USES_CRYPTO",
+        "state": "CHANGED",
+        "value": "src/main/java/bank/LegacySettlement.java:Cipher.getInstance",
+        "previous": "src/main/java/bank/LegacySettlement.java:Cipher.getInstance",
+        "class": "STATIC_OBSERVED",
+        "evidence_id": "EVID-95005",
+        "edge": "EDGE-b515cf1f"
+      },
+      {
+        "dependency": "TLS_AES_256_GCM_SHA384 USES_CRYPTO",
+        "state": "UNKNOWN",
+        "value": "X25519",
+        "previous": "X25519",
+        "class": "NETWORK_OBSERVED",
+        "evidence_id": "EVID-95007",
+        "edge": "EDGE-99039e94"
+      },
+      {
+        "dependency": "payments-api[1821] LOADS OpenSSL 3.0.11",
+        "state": "UNKNOWN",
+        "value": "OpenSSL 3.0.11",
+        "previous": "OpenSSL 3.0.11",
+        "class": "OBSERVED",
+        "evidence_id": "EVID-95004",
+        "edge": "EDGE-09538128"
+      },
+      {
+        "dependency": "payments-api[1821] LOADS libcrypto.so.1.1",
+        "state": "REMOVED",
+        "value": null,
+        "previous": "libcrypto.so.1.1",
+        "class": "OBSERVED",
+        "evidence_id": "EVID-95009",
+        "edge": "EDGE-59d251f7"
+      },
+      {
+        "dependency": "src/main/java/bank/LegacySettlement.java:Cipher.getInstance USES_ALGORITHM",
+        "state": "CHANGED",
+        "value": "DES-ECB",
+        "previous": "DES-ECB",
+        "class": "STATIC_OBSERVED",
+        "evidence_id": "EVID-95005",
+        "edge": "EDGE-7807eacf"
+      }
+    ],
+    "counts": {
+      "ACTIVE": 1,
+      "CHANGED": 2,
+      "SUPERSEDED": 1,
+      "REMOVED": 1,
+      "UNKNOWN": 3
+    },
+    "superseded": [
+      {
+        "dependency": "OP-SIGN-001 USES_ALGORITHM",
+        "previous": "RSA-2048",
+        "current": "RSA-3072",
+        "evidence_before": "EVID-95004",
+        "evidence_after": "EVID-95004"
+      }
+    ],
+    "removed": [
+      {
+        "dependency": "payments-api[1821] LOADS libcrypto.so.1.1",
+        "previous": "libcrypto.so.1.1",
+        "evidence_before": "EVID-95009",
+        "edge": "EDGE-59d251f7"
+      }
+    ],
+    "reference": "2026-11-03T08:30:00Z",
+    "statement": "8 dependency edge(s): ACTIVE 1, CHANGED 2, SUPERSEDED 1, REMOVED 1, UNKNOWN 3",
+    "rule": "SUPERSEDED and REMOVED are states, not deletions: an edge that stopped being observed is kept with its last value and the evidence that said so"
+  },
+  "provider_impact": {
+    "query": "OpenSSL 3.0.11",
+    "provider": "OpenSSL 3.0.11",
+    "recorded_version": "3.0.11",
+    "advisory_version": "3.0.11",
+    "version_matches": true,
+    "affected": {
+      "APPLICATION": [
+        "Payments API"
+      ],
+      "BUSINESS_SYSTEM": [
+        "Payments System"
+      ],
+      "PROCESS": [
+        "payments-api[1821]"
+      ]
+    },
+    "operations": [
+      "OP-ENCRYPT-002",
+      "OP-SIGN-001",
+      "OP-STATIC-003"
+    ],
+    "counts": {
+      "processes": 1,
+      "applications": 1,
+      "systems": 1,
+      "operations": 3
+    },
+    "statement": "OpenSSL 3.0.11 3.0.11 vs advisory 3.0.11: 1 process(es), 1 application(s), 1 business system(s), 3 operation(s) affected",
+    "not_proven": [
+      "that every affected asset was discovered: the answer is bounded by the applications that were inspected",
+      "that the version the inventory records is the version running: a process map and an SBOM can disagree, and that disagreement is reported as a conflict rather than resolved here"
+    ]
+  },
+  "advisories": {
+    "query": "CVE-2026-0001",
+    "findings": [
+      {
+        "vulnerability": "CVE-2026-0001",
+        "firmware": "BIG-IP 17.1.1",
+        "firmware_version": "17.1.1",
+        "devices": [
+          "LB-01"
+        ],
+        "vendors": [
+          "F5"
+        ],
+        "endpoints": [
+          "lb-01:443",
+          "payments.bank.example:443"
+        ],
+        "applications": [
+          "Payments API"
+        ],
+        "systems": [
+          "Payments System"
+        ]
+      }
+    ],
+    "count": 1,
+    "applications_affected": 1,
+    "statement": "CVE-2026-0001: 1 firmware record(s), 1 device(s), 1 application(s) behind them",
+    "not_proven": [
+      "that a device is exploitable: this maps an advisory to the assets that depend on the affected firmware, and exploitability belongs to vulnerability management",
+      "that the firmware record is current: a device with no firmware version recorded is a gap, and it is reported as one"
+    ]
   },
   "blockers": {
     "query": "RSA-2048",
@@ -1095,7 +1303,7 @@
         {
           "probe": "application-to-provider-is-evidenced",
           "ok": true,
-          "observed": "Payments API \u2192 provider: ['libcrypto.so.3', 'OpenSSL 3.0.11']"
+          "observed": "Payments API \u2192 provider: ['libcrypto.so.1.1', 'libcrypto.so.3', 'OpenSSL 3.0.11']"
         },
         {
           "probe": "the-use-is-an-operation-not-an-edge-to-a-cipher",
@@ -1105,7 +1313,7 @@
         {
           "probe": "the-chain-starts-at-the-business-system",
           "ok": true,
-          "observed": "Payments System: down 1 application \u2192 3 release \u2192 6 process \u2192 2 provider \u2192 3 operation \u2192 10 algorithm \u2192 2 key \u2192 3 key_provider \u2192 1 certificate \u2192 2 endpoint; up nothing"
+          "observed": "Payments System: down 1 application \u2192 3 release \u2192 6 process \u2192 3 provider \u2192 3 operation \u2192 9 algorithm \u2192 2 key \u2192 3 key_provider \u2192 1 certificate \u2192 2 endpoint; up nothing"
         }
       ],
       "ok": true
@@ -1115,14 +1323,14 @@
       "question": "an SBOM becomes a CBOM through capability and evidence, never a preset edge",
       "probes": [
         {
-          "probe": "provider-lists-its-capabilities-at-CAPABILITY",
+          "probe": "provider-lists-its-capabilities-as-nodes",
           "ok": true,
-          "observed": "3 SUPPORTS edge(s) at ['CAPABILITY']"
+          "observed": "6 SUPPORTS edge(s) to 6 CRYPTO_CAPABILITY node(s) at CAPABILITY"
         },
         {
-          "probe": "provider-implements-algorithms-at-an-evidenced-class",
+          "probe": "each-capability-names-the-algorithm-it-implements",
           "ok": true,
-          "observed": "classes ['OBSERVED']"
+          "observed": "6 capabilities IMPLEMENT an ALGORITHM node"
         },
         {
           "probe": "no-provider-USES-AES-edge-exists",
@@ -1199,6 +1407,16 @@
           "probe": "the-provider-is-reachable-from-the-application",
           "ok": true,
           "observed": "up from the provider: ['system', 'application', 'process']"
+        },
+        {
+          "probe": "an-advisory-against-the-provider-maps-to-assets",
+          "ok": true,
+          "observed": "OpenSSL 3.0.11 3.0.11 vs advisory 3.0.11: 1 process(es), 1 application(s), 1 business system(s), 3 operation(s) affected"
+        },
+        {
+          "probe": "an-advisory-for-another-version-is-a-mismatch-not-an-all-clear",
+          "ok": true,
+          "observed": "OpenSSL 3.0.11 3.0.11 vs advisory 3.0.9 \u2014 VERSION MISMATCH, the inventory disagrees: 1 process(es), 1 application(s), 1 business system(s), 3 operation(s) affected"
         }
       ],
       "ok": true
@@ -1286,7 +1504,7 @@
         {
           "probe": "an-HSM-backed-operation-is-the-only-ACTUALLY_USED-answer",
           "ok": true,
-          "observed": "HSM-001: 3 answer(s), strongest ACTUALLY_USED \u2014 SUPPORTED, ACTUALLY_USED"
+          "observed": "HSM-001: 4 answer(s), strongest ACTUALLY_USED \u2014 SUPPORTED, CONFIGURED, ACTUALLY_USED"
         }
       ],
       "ok": true
@@ -1364,7 +1582,12 @@
         {
           "probe": "every-hardware-relation-in-the-spec-is-present",
           "ok": true,
-          "observed": "present ['BACKED_BY', 'PROTECTED_BY', 'RUNS_ON', 'USES_KMS', 'USES_TPM']"
+          "observed": "present ['BACKED_BY', 'PROTECTED_BY', 'RUNS_ON', 'USES_HSM', 'USES_KMS', 'USES_TPM']"
+        },
+        {
+          "probe": "a-configured-use-and-an-observed-use-are-two-classes",
+          "ok": true,
+          "observed": "USES_HSM at CONFIGURED, BACKED_BY at RUNTIME_OBSERVED"
         },
         {
           "probe": "each-carries-an-evidence-id",
@@ -1392,6 +1615,11 @@
           "probe": "the-vulnerability-reaches-a-listener-and-an-application",
           "ok": true,
           "observed": "up from the firmware: ['endpoint']"
+        },
+        {
+          "probe": "the-advisory-maps-to-devices-applications-and-a-vendor",
+          "ok": true,
+          "observed": "CVE-2026-0001: 1 firmware record(s), 1 device(s), 1 application(s) behind them; BIG-IP 17.1.1 \u2192 LB-01 \u2192 Payments API"
         }
       ],
       "ok": true
@@ -1469,12 +1697,17 @@
         {
           "probe": "the-path-is-printed-with-its-classes",
           "ok": true,
-          "observed": "Payments API \u2192 payments-api[1821] \u2192 OpenSSL 3.0.11 \u2192 RSA-2048"
+          "observed": "Payments API \u2192 payments-api[1821] \u2192 OP-SIGN-001 \u2192 RSA-2048"
         },
         {
           "probe": "the-strict-answer-excludes-static-only-paths",
           "ok": true,
           "observed": "strict answer: no application reaches RSA-2048"
+        },
+        {
+          "probe": "the-answer-is-bounded-by-what-was-inspected",
+          "ok": true,
+          "observed": "1 business system(s) depend on RSA-2048 through 1 application(s), among 12 of 70 applications inspected"
         }
       ],
       "ok": true
@@ -1486,15 +1719,20 @@
         {
           "probe": "no-dependency-edge-is-missing-a-required-field",
           "ok": true,
-          "observed": "58 of 58 complete"
+          "observed": "63 of 63 carry all six structural fields"
+        },
+        {
+          "probe": "the-fields-the-estate-did-not-supply-are-reported",
+          "ok": true,
+          "observed": "11 of 63 carry all ten; short on observed_at 32/63, first_seen 18/63, last_seen 18/63"
         },
         {
           "probe": "a-collector-is-named-where-a-record-exists",
           "ok": true,
-          "observed": "22 edge(s) name a collector: ['PROC-PROBE-01', 'TLS-SENSOR-04']"
+          "observed": "25 edge(s) name a collector: ['PROC-PROBE-01', 'TLS-SENSOR-04']"
         },
         {
-          "probe": "the-nine-fields-are-declared",
+          "probe": "the-ten-fields-are-declared",
           "ok": true,
           "observed": "EDGE_FIELDS = ['source', 'target', 'relationship', 'basis', 'confidence', 'evidence_id', 'evidence_type', 'observed_at', 'first_seen', 'last_seen']"
         }
@@ -1508,7 +1746,7 @@
         {
           "probe": "capability-is-what-the-provider-lists",
           "ok": true,
-          "observed": "capability ['AES-256', 'RSA-2048', 'SHA-256']"
+          "observed": "capability ['AES-128', 'AES-192', 'AES-256', 'ECDSA-P256', 'RSA-2048', 'SHA-256']"
         },
         {
           "probe": "usage-is-what-was-observed",
@@ -1518,7 +1756,7 @@
         {
           "probe": "the-difference-is-reported-not-resolved",
           "ok": true,
-          "observed": "listed and never used: ['SHA-256']"
+          "observed": "listed and never used: ['AES-128', 'AES-192', 'ECDSA-P256', 'SHA-256']; used without being listed: ['DES-ECB']"
         }
       ],
       "ok": true
@@ -1572,19 +1810,24 @@
       "question": "a dependency that stops being observed is superseded, not deleted",
       "probes": [
         {
-          "probe": "the-lifecycle-states-are-derived-per-edge",
+          "probe": "one-projection-names-four-states",
           "ok": true,
-          "observed": "counts {'ACTIVE': 14, 'CHANGED': 3, 'FIRST_SEEN': 1, 'UNKNOWN': 47}"
+          "observed": "8 dependency edge(s): FIRST_SEEN 1, ACTIVE 2, CHANGED 2, UNKNOWN 3"
         },
         {
-          "probe": "the-old-edge-is-reported-not-silently-dropped",
+          "probe": "comparison-adds-superseded-and-removed",
           "ok": true,
-          "observed": "4 network change(s): 4 EDGE_SUPERSEDED"
+          "observed": "8 dependency edge(s): ACTIVE 1, CHANGED 2, SUPERSEDED 1, REMOVED 1, UNKNOWN 3"
         },
         {
-          "probe": "the-six-word-vocabulary-is-reachable",
+          "probe": "the-old-value-is-kept-beside-the-new-one",
           "ok": true,
-          "observed": "vocabulary seen: ['ACTIVE', 'CHANGED', 'FIRST_SEEN', 'SUPERSEDED', 'UNKNOWN']"
+          "observed": "SUPERSEDED OP-SIGN-001 USES_ALGORITHM: RSA-2048 \u2192 RSA-3072; REMOVED payments-api[1821] LOADS libcrypto.so.1.1: libcrypto.so.1.1"
+        },
+        {
+          "probe": "nothing-was-deleted-to-produce-that",
+          "ok": true,
+          "observed": "8 row(s) kept across both projections; the six states are ['FIRST_SEEN', 'ACTIVE', 'CHANGED', 'SUPERSEDED', 'REMOVED', 'UNKNOWN']"
         }
       ],
       "ok": true
@@ -1640,7 +1883,7 @@
         {
           "probe": "the-twin-reads-every-edge-of-this-projection",
           "ok": true,
-          "observed": "65 edge(s) into the twin, 65 in the BOM"
+          "observed": "73 edge(s) into the twin, 73 in the BOM"
         },
         {
           "probe": "the-twin-names-the-system-and-the-application",
@@ -1667,7 +1910,7 @@
         {
           "probe": "application-to-provider-is-evidenced",
           "ok": true,
-          "observed": "Payments API \u2192 provider: ['libcrypto.so.3', 'OpenSSL 3.0.11']"
+          "observed": "Payments API \u2192 provider: ['libcrypto.so.1.1', 'libcrypto.so.3', 'OpenSSL 3.0.11']"
         },
         {
           "probe": "the-use-is-an-operation-not-an-edge-to-a-cipher",
@@ -1677,7 +1920,7 @@
         {
           "probe": "the-chain-starts-at-the-business-system",
           "ok": true,
-          "observed": "Payments System: down 1 application \u2192 3 release \u2192 6 process \u2192 2 provider \u2192 3 operation \u2192 10 algorithm \u2192 2 key \u2192 3 key_provider \u2192 1 certificate \u2192 2 endpoint; up nothing"
+          "observed": "Payments System: down 1 application \u2192 3 release \u2192 6 process \u2192 3 provider \u2192 3 operation \u2192 9 algorithm \u2192 2 key \u2192 3 key_provider \u2192 1 certificate \u2192 2 endpoint; up nothing"
         }
       ],
       "failed": []
@@ -1690,14 +1933,14 @@
       "verdict": "PASS",
       "probes": [
         {
-          "probe": "provider-lists-its-capabilities-at-CAPABILITY",
+          "probe": "provider-lists-its-capabilities-as-nodes",
           "ok": true,
-          "observed": "3 SUPPORTS edge(s) at ['CAPABILITY']"
+          "observed": "6 SUPPORTS edge(s) to 6 CRYPTO_CAPABILITY node(s) at CAPABILITY"
         },
         {
-          "probe": "provider-implements-algorithms-at-an-evidenced-class",
+          "probe": "each-capability-names-the-algorithm-it-implements",
           "ok": true,
-          "observed": "classes ['OBSERVED']"
+          "observed": "6 capabilities IMPLEMENT an ALGORITHM node"
         },
         {
           "probe": "no-provider-USES-AES-edge-exists",
@@ -1783,6 +2026,16 @@
           "probe": "the-provider-is-reachable-from-the-application",
           "ok": true,
           "observed": "up from the provider: ['system', 'application', 'process']"
+        },
+        {
+          "probe": "an-advisory-against-the-provider-maps-to-assets",
+          "ok": true,
+          "observed": "OpenSSL 3.0.11 3.0.11 vs advisory 3.0.11: 1 process(es), 1 application(s), 1 business system(s), 3 operation(s) affected"
+        },
+        {
+          "probe": "an-advisory-for-another-version-is-a-mismatch-not-an-all-clear",
+          "ok": true,
+          "observed": "OpenSSL 3.0.11 3.0.11 vs advisory 3.0.9 \u2014 VERSION MISMATCH, the inventory disagrees: 1 process(es), 1 application(s), 1 business system(s), 3 operation(s) affected"
         }
       ],
       "failed": []
@@ -1882,7 +2135,7 @@
         {
           "probe": "an-HSM-backed-operation-is-the-only-ACTUALLY_USED-answer",
           "ok": true,
-          "observed": "HSM-001: 3 answer(s), strongest ACTUALLY_USED \u2014 SUPPORTED, ACTUALLY_USED"
+          "observed": "HSM-001: 4 answer(s), strongest ACTUALLY_USED \u2014 SUPPORTED, CONFIGURED, ACTUALLY_USED"
         }
       ],
       "failed": []
@@ -1972,7 +2225,12 @@
         {
           "probe": "every-hardware-relation-in-the-spec-is-present",
           "ok": true,
-          "observed": "present ['BACKED_BY', 'PROTECTED_BY', 'RUNS_ON', 'USES_KMS', 'USES_TPM']"
+          "observed": "present ['BACKED_BY', 'PROTECTED_BY', 'RUNS_ON', 'USES_HSM', 'USES_KMS', 'USES_TPM']"
+        },
+        {
+          "probe": "a-configured-use-and-an-observed-use-are-two-classes",
+          "ok": true,
+          "observed": "USES_HSM at CONFIGURED, BACKED_BY at RUNTIME_OBSERVED"
         },
         {
           "probe": "each-carries-an-evidence-id",
@@ -2003,6 +2261,11 @@
           "probe": "the-vulnerability-reaches-a-listener-and-an-application",
           "ok": true,
           "observed": "up from the firmware: ['endpoint']"
+        },
+        {
+          "probe": "the-advisory-maps-to-devices-applications-and-a-vendor",
+          "ok": true,
+          "observed": "CVE-2026-0001: 1 firmware record(s), 1 device(s), 1 application(s) behind them; BIG-IP 17.1.1 \u2192 LB-01 \u2192 Payments API"
         }
       ],
       "failed": []
@@ -2092,12 +2355,17 @@
         {
           "probe": "the-path-is-printed-with-its-classes",
           "ok": true,
-          "observed": "Payments API \u2192 payments-api[1821] \u2192 OpenSSL 3.0.11 \u2192 RSA-2048"
+          "observed": "Payments API \u2192 payments-api[1821] \u2192 OP-SIGN-001 \u2192 RSA-2048"
         },
         {
           "probe": "the-strict-answer-excludes-static-only-paths",
           "ok": true,
           "observed": "strict answer: no application reaches RSA-2048"
+        },
+        {
+          "probe": "the-answer-is-bounded-by-what-was-inspected",
+          "ok": true,
+          "observed": "1 business system(s) depend on RSA-2048 through 1 application(s), among 12 of 70 applications inspected"
         }
       ],
       "failed": []
@@ -2112,15 +2380,20 @@
         {
           "probe": "no-dependency-edge-is-missing-a-required-field",
           "ok": true,
-          "observed": "58 of 58 complete"
+          "observed": "63 of 63 carry all six structural fields"
+        },
+        {
+          "probe": "the-fields-the-estate-did-not-supply-are-reported",
+          "ok": true,
+          "observed": "11 of 63 carry all ten; short on observed_at 32/63, first_seen 18/63, last_seen 18/63"
         },
         {
           "probe": "a-collector-is-named-where-a-record-exists",
           "ok": true,
-          "observed": "22 edge(s) name a collector: ['PROC-PROBE-01', 'TLS-SENSOR-04']"
+          "observed": "25 edge(s) name a collector: ['PROC-PROBE-01', 'TLS-SENSOR-04']"
         },
         {
-          "probe": "the-nine-fields-are-declared",
+          "probe": "the-ten-fields-are-declared",
           "ok": true,
           "observed": "EDGE_FIELDS = ['source', 'target', 'relationship', 'basis', 'confidence', 'evidence_id', 'evidence_type', 'observed_at', 'first_seen', 'last_seen']"
         }
@@ -2137,7 +2410,7 @@
         {
           "probe": "capability-is-what-the-provider-lists",
           "ok": true,
-          "observed": "capability ['AES-256', 'RSA-2048', 'SHA-256']"
+          "observed": "capability ['AES-128', 'AES-192', 'AES-256', 'ECDSA-P256', 'RSA-2048', 'SHA-256']"
         },
         {
           "probe": "usage-is-what-was-observed",
@@ -2147,7 +2420,7 @@
         {
           "probe": "the-difference-is-reported-not-resolved",
           "ok": true,
-          "observed": "listed and never used: ['SHA-256']"
+          "observed": "listed and never used: ['AES-128', 'AES-192', 'ECDSA-P256', 'SHA-256']; used without being listed: ['DES-ECB']"
         }
       ],
       "failed": []
@@ -2210,19 +2483,24 @@
       "verdict": "PASS",
       "probes": [
         {
-          "probe": "the-lifecycle-states-are-derived-per-edge",
+          "probe": "one-projection-names-four-states",
           "ok": true,
-          "observed": "counts {'ACTIVE': 14, 'CHANGED': 3, 'FIRST_SEEN': 1, 'UNKNOWN': 47}"
+          "observed": "8 dependency edge(s): FIRST_SEEN 1, ACTIVE 2, CHANGED 2, UNKNOWN 3"
         },
         {
-          "probe": "the-old-edge-is-reported-not-silently-dropped",
+          "probe": "comparison-adds-superseded-and-removed",
           "ok": true,
-          "observed": "4 network change(s): 4 EDGE_SUPERSEDED"
+          "observed": "8 dependency edge(s): ACTIVE 1, CHANGED 2, SUPERSEDED 1, REMOVED 1, UNKNOWN 3"
         },
         {
-          "probe": "the-six-word-vocabulary-is-reachable",
+          "probe": "the-old-value-is-kept-beside-the-new-one",
           "ok": true,
-          "observed": "vocabulary seen: ['ACTIVE', 'CHANGED', 'FIRST_SEEN', 'SUPERSEDED', 'UNKNOWN']"
+          "observed": "SUPERSEDED OP-SIGN-001 USES_ALGORITHM: RSA-2048 \u2192 RSA-3072; REMOVED payments-api[1821] LOADS libcrypto.so.1.1: libcrypto.so.1.1"
+        },
+        {
+          "probe": "nothing-was-deleted-to-produce-that",
+          "ok": true,
+          "observed": "8 row(s) kept across both projections; the six states are ['FIRST_SEEN', 'ACTIVE', 'CHANGED', 'SUPERSEDED', 'REMOVED', 'UNKNOWN']"
         }
       ],
       "failed": []
@@ -2287,7 +2565,7 @@
         {
           "probe": "the-twin-reads-every-edge-of-this-projection",
           "ok": true,
-          "observed": "65 edge(s) into the twin, 65 in the BOM"
+          "observed": "73 edge(s) into the twin, 73 in the BOM"
         },
         {
           "probe": "the-twin-names-the-system-and-the-application",
@@ -2310,6 +2588,10 @@
     "a static hit names a file, an API and a line; it never proves the branch ran",
     "the key record is a reference and its metadata: nothing here proves which key produced a signature, and nothing here would hold the key if it could",
     "the KMS answer is the strongest single answer in the estate, not the strongest answer per application",
-    "coverage is arithmetic on what the collectors reported; it cannot see an application that was never scanned"
+    "coverage is arithmetic on what the collectors reported; it cannot see an application that was never scanned",
+    "a capability is the provider's own list, self-reported; it says what the build was compiled with and nothing about which of those paths a caller took",
+    "the lifecycle compares two projections: a dependency that moved between collections the bank never ran is not visible here",
+    "the advisory answers are keyed on the names the estate holds \u2014 a firmware version nobody recorded cannot match a CVE",
+    "the edge audit counts records, not truth: an edge can carry all ten fields and still be wrong, which is what the conflict and change queries are for"
   ]
 }

@@ -48,6 +48,7 @@ EVID_STATIC = "EVID-95005"
 EVID_HSM = "EVID-95006"
 EVID_NET = "EVID-95007"
 EVID_VENDOR = "EVID-95008"
+EVID_OLD = "EVID-95009"
 NOW = "2026-11-03T08:30:00Z"
 EARLIER = "2026-11-02T08:30:00Z"
 OLD = "2026-10-01T08:30:00Z"
@@ -79,7 +80,8 @@ def _refused(function: Any, *args: Any, **kwargs: Any) -> str:
 # --------------------------------------------------------------------------- #
 
 def _document(modules: dict[str, Any], *, rsa_size: int = 2048,
-              provider_version: str = "3.0.11") -> dict[str, Any]:
+              provider_version: str = "3.0.11", kms_basis: str = "api-poll",
+              legacy_library: bool = False) -> dict[str, Any]:
     d, n, t = modules["d"], modules["n"], modules["t"]
 
     # ---- 1–2. business system → application → release → artifact -----------------
@@ -128,33 +130,54 @@ def _document(modules: dict[str, Any], *, rsa_size: int = 2048,
     # ---- 4. the process, its provider and its library (points 4, 5, 15, 16) ------
     process = t.asset("PROCESS", "payments-api[1821]", evidence_ids=[EVID_RT], pid=1821)
     library = t.asset("CRYPTO_LIBRARY", "libcrypto.so.3", evidence_ids=[EVID_REL])
+    legacy_rows = []
+    if legacy_library:
+        legacy_rows = [t.asset("CRYPTO_LIBRARY", "libcrypto.so.1.1", evidence_ids=[EVID_OLD])]
     package_links = n.part(claims=[
         t.claim(package["name"], "LINKS", library["name"], basis="sbom-import",
                 evidence_ids=[EVID_REL]),
         t.claim(pod["name"], "RUNS_PROCESS", process["name"], basis="runtime-probe",
                 evidence_ids=[EVID_RT], observed_at=NOW),
+        *([t.claim(process["name"], "LOADS", "libcrypto.so.1.1", basis="runtime-probe",
+                   evidence_ids=[EVID_OLD], first_seen=EARLIER, last_seen=EARLIER)]
+          if legacy_library else []),
     ])
     aes_algorithm = n.algorithm(name="AES-256", family="AES", key_size=256, mode="GCM",
                                 evidence_ids=[EVID_RT])
+    aes_128 = n.algorithm(name="AES-128", family="AES", key_size=128, evidence_ids=[EVID_RT])
+    aes_192 = n.algorithm(name="AES-192", family="AES", key_size=192, evidence_ids=[EVID_RT])
+    ecdsa_algorithm = n.algorithm(name="ECDSA-P256", family="ECDSA", curve="P-256",
+                                  evidence_ids=[EVID_RT])
     sha_algorithm = n.algorithm(name="SHA-256", family="SHA", key_size=256,
                                 evidence_ids=[EVID_RT])
     des_algorithm = n.algorithm(name="DES-ECB", family="DES", key_size=56, mode="ECB",
                                 evidence_ids=[EVID_STATIC])
     rsa_algorithm = n.algorithm(name=f"RSA-{rsa_size}", family="RSA", key_size=rsa_size,
                                 evidence_ids=[EVID_HSM])
+    provider_row = t.asset("CRYPTO_PROVIDER", f"OpenSSL {provider_version}",
+                           version=provider_version, evidence_ids=[EVID_RT],
+                           family="OPENSSL", version_claims=[
+                               {"source": "sbom", "value": provider_version,
+                                "class": "STATIC_OBSERVED", "evidence_id": EVID_REL},
+                               {"source": "process-map", "value": "3.0.13",
+                                "class": "RUNTIME_OBSERVED", "evidence_id": EVID_RT},
+                               {"source": "agent-inventory", "value": provider_version,
+                                "class": "CONFIGURED", "evidence_id": EVID}])
+    # the review's own example: a provider that lists AES-128, AES-192, AES-256, RSA and
+    # ECDSA has told you five things it can do, and not one of them is a use
+    capability_rows = [
+        d.capability(provider_row=provider_row, algorithm_row=algorithm_row,
+                     key_size=algorithm_row["attributes"].get("key_size"),
+                     mode=algorithm_row["attributes"].get("mode"),
+                     basis="capability-list", evidence_ids=[EVID_RT])
+        for algorithm_row in (aes_128, aes_192, aes_algorithm, rsa_algorithm,
+                              ecdsa_algorithm, sha_algorithm)]
     openssl_part = d.provider(
         name=f"OpenSSL {provider_version}", family="OPENSSL", version=provider_version,
         library_row=library, file_name="/usr/lib64/libcrypto.so.3",
-        supports=[aes_algorithm, sha_algorithm, rsa_algorithm], process_row=process,
-        evidence_ids=[EVID_RT], first_seen=EARLIER, last_seen=NOW,
-        version_claims=[
-            {"source": "sbom", "value": provider_version, "class": "STATIC_OBSERVED",
-             "evidence_id": EVID_REL},
-            {"source": "process-map", "value": "3.0.13", "class": "RUNTIME_OBSERVED",
-             "evidence_id": EVID_RT},
-            {"source": "agent-inventory", "value": provider_version, "class": "CONFIGURED",
-             "evidence_id": EVID},
-        ])
+        capabilities=[row["assets"][-1] for row in capability_rows], process_row=process,
+        provider_row=provider_row, evidence_ids=[EVID_RT], first_seen=EARLIER,
+        last_seen=NOW)
     openssl = openssl_part["assets"][0]
 
     # ---- 5. keys, HSM and KMS (points 7, 8, 9, 13) ------------------------------
@@ -171,7 +194,12 @@ def _document(modules: dict[str, Any], *, rsa_size: int = 2048,
     key_links = n.part(claims=[
         t.claim("KMS-01", "HOLDS_KEY", "KEY-REF-4402", basis="api-poll",
                 evidence_ids=[EVID_HSM]),
-        t.claim("Payments API", "USES_KMS", "KMS-01", basis="api-poll",
+        # USES_HSM at CONFIGURED is "the application is configured to use the HSM";
+        # BACKED_BY at RUNTIME_OBSERVED is "an operation ran there". Two claims, two
+        # classes, and point 8 is the difference between them.
+        t.claim("Payments API", "USES_HSM", "HSM-001", basis="config-parse",
+                evidence_ids=[EVID_HSM]),
+        t.claim("Payments API", "USES_KMS", "KMS-01", basis=kms_basis,
                 evidence_ids=[EVID_HSM]),
         t.claim("HSM-001", "SUPPORTS", rsa_algorithm["name"], basis="vendor-datasheet",
                 evidence_ids=[EVID_HSM]),
@@ -292,7 +320,8 @@ def _document(modules: dict[str, Any], *, rsa_size: int = 2048,
         deployment_row, pod, container, namespace, cluster, node, host, deployed,
         image, package, library,
         hardware_links, process, library, package_links, aes_algorithm, sha_algorithm,
-        des_algorithm, rsa_algorithm, openssl_part, hsm, kms, tpm, signing_key, data_key,
+        des_algorithm, rsa_algorithm, aes_128, aes_192, ecdsa_algorithm, sha_algorithm,
+        *capability_rows, *legacy_rows, openssl_part, hsm, kms, tpm, signing_key, data_key,
         key_links, signing_part, encryption_part, static_part, bound, static_call, public,
         lb_front, bulk, mac, kex, suite, legacy_suite, certificate, binding, hops, device,
         firmware,
@@ -313,14 +342,16 @@ def _document(modules: dict[str, Any], *, rsa_size: int = 2048,
 
 
 def _build(modules: dict[str, Any]) -> dict[str, Any]:
-    current = _document(modules)
-    previous = _document(modules, rsa_size=2048)
-    upgraded = _document(modules, rsa_size=3072)
+    # today:  RSA-2048, the KMS named by a config file, and a legacy library still loaded
+    # next:   RSA-3072, the KMS actually used, and libcrypto.so.1.1 gone
+    current = _document(modules, rsa_size=2048, kms_basis="api-poll",
+                        legacy_library=True)
+    upgraded = _document(modules, rsa_size=3072, kms_basis="runtime-observation")
     # the full CBOM projection, not the network subset: the chain needs the release, the
     # provider and the key, which an NBOM deliberately leaves out
     return {
         "bom": modules["t"].build(current["estate"]),
-        "previous": modules["t"].build(previous["estate"]),
+        "previous": modules["t"].build(current["estate"]),
         "upgraded": modules["t"].build(upgraded["estate"]),
         "names": current["names"],
     }
@@ -347,6 +378,7 @@ def measure() -> dict[str, Any]:
     down = d.chain(bom, query=names["application"])
     from_system = d.chain(bom, query="Payments System")
     provider_block = d.chain(bom, query=names["provider"])
+    impact = d.provider_impact(bom, query=names["provider"], version="3.0.11")
     signing_attributes = assets[names["signing"]]["attributes"]
 
     # 1. application → crypto asset proves uses, not contains
@@ -373,18 +405,20 @@ def measure() -> dict[str, Any]:
     # 2. SBOM → CBOM through capability + evidence
     supports = [claim for claim in claims if claim["from"] == names["provider"]
                 and claim["relation"] == "SUPPORTS"]
-    implements = [claim for claim in claims if claim["from"] == names["provider"]
-                  and claim["relation"] == "IMPLEMENTS"]
+    capability_nodes = [row for row in bom["assets"] if row["kind"] == "CRYPTO_CAPABILITY"]
+    implements = [claim for claim in claims if claim["relation"] == "IMPLEMENTS"
+                  and bom["by_key"][claim["from_key"]]["kind"] == "CRYPTO_CAPABILITY"]
     add(2, "an SBOM becomes a CBOM through capability and evidence, never a preset edge", [
-        _probe("provider-lists-its-capabilities-at-CAPABILITY",
-               len(supports) == 3 and {claim["confidence"] for claim in supports}
-               == {"CAPABILITY"},
-               f"{len(supports)} SUPPORTS edge(s) at "
-               f"{sorted({claim['confidence'] for claim in supports})}"),
-        _probe("provider-implements-algorithms-at-an-evidenced-class",
-               bool(implements) and {claim["confidence"] for claim in implements}
-               <= {"OBSERVED", "RUNTIME_OBSERVED", "CONFIGURED"},
-               f"classes {sorted({claim['confidence'] for claim in implements})}"),
+        _probe("provider-lists-its-capabilities-as-nodes",
+               len(supports) == 6 and len(capability_nodes) == 6
+               and {claim["confidence"] for claim in supports} == {"CAPABILITY"},
+               f"{len(supports)} SUPPORTS edge(s) to {len(capability_nodes)} "
+               f"CRYPTO_CAPABILITY node(s) at CAPABILITY"),
+        _probe("each-capability-names-the-algorithm-it-implements",
+               len(implements) == 6
+               and {bom["by_key"][claim["to_key"]]["kind"] for claim in implements}
+               == {"ALGORITHM"},
+               f"{len(implements)} capabilities IMPLEMENT an ALGORITHM node"),
         _probe("no-provider-USES-AES-edge-exists",
                not any(claim["from"] == names["provider"]
                        and claim["relation"] in ("USES_CRYPTO", "USES_ALGORITHM")
@@ -454,6 +488,17 @@ def measure() -> dict[str, Any]:
         _probe("the-provider-is-reachable-from-the-application",
                "application" in provider_block["up"],
                f"up from the provider: {list(provider_block['up'])}"),
+        _probe("an-advisory-against-the-provider-maps-to-assets",
+               impact["counts"]["applications"] == 1
+               and impact["counts"]["systems"] == 1
+               and impact["counts"]["operations"] >= 2
+               and impact["version_matches"],
+               impact["statement"]),
+        _probe("an-advisory-for-another-version-is-a-mismatch-not-an-all-clear",
+               not d.provider_impact(bom, query=names["provider"],
+                                     version="3.0.9")["version_matches"],
+               d.provider_impact(bom, query=names["provider"],
+                                 version="3.0.9")["statement"]),
     ])
 
     # 6. an operation is first class
@@ -593,8 +638,14 @@ def measure() -> dict[str, Any]:
     hardware_relations = {claim["relation"] for claim in claims}
     add(13, "USES_HSM, USES_TPM, BACKED_BY, PROTECTED_BY and RUNS_ON carry evidence", [
         _probe("every-hardware-relation-in-the-spec-is-present",
-               {"BACKED_BY", "USES_TPM", "PROTECTED_BY", "RUNS_ON"} <= hardware_relations,
+               HARDWARE_RELATIONS <= hardware_relations,
                "present " + str(sorted(hardware_relations & HARDWARE_RELATIONS))),
+        _probe("a-configured-use-and-an-observed-use-are-two-classes",
+               {claim["confidence"] for claim in claims
+                if claim["relation"] == "USES_HSM"} == {"CONFIGURED"}
+               and {claim["confidence"] for claim in claims
+                    if claim["relation"] == "BACKED_BY"} == {"RUNTIME_OBSERVED"},
+               "USES_HSM at CONFIGURED, BACKED_BY at RUNTIME_OBSERVED"),
         _probe("each-carries-an-evidence-id",
                all(claim["evidence_ids"] for claim in claims
                    if claim["relation"] in ("BACKED_BY", "USES_TPM", "PROTECTED_BY",
@@ -604,6 +655,7 @@ def measure() -> dict[str, Any]:
 
     # 14. asset → provider → product → vendor
     firmware_chain = d.chain(bom, query=names["firmware"])
+    advisory = d.advisory_impact(bom, query="CVE-2026-0001")
     add(14, "a vendor firmware advisory maps back to the assets that depend on it", [
         _probe("the-device-is-supplied-by-the-vendor",
                any(claim["from"] == "LB-01" and claim["relation"] == "SUPPLIED_BY"
@@ -617,6 +669,15 @@ def measure() -> dict[str, Any]:
                "application" in firmware_chain["up"]
                or "endpoint" in firmware_chain["up"],
                f"up from the firmware: {list(firmware_chain['up'])}"),
+        _probe("the-advisory-maps-to-devices-applications-and-a-vendor",
+               advisory["count"] == 1
+               and advisory["findings"][0]["applications"] == ["Payments API"]
+               and advisory["findings"][0]["vendors"] == ["F5"]
+               and "LB-01" in advisory["findings"][0]["devices"],
+               advisory["statement"] + "; "
+               + ", ".join(f"{row['firmware']} → {', '.join(row['devices'])} → "
+                           f"{', '.join(row['applications'])}" for row in
+                           advisory["findings"])),
     ])
 
     # 15. algorithm → library → image → application
@@ -671,8 +732,10 @@ def measure() -> dict[str, Any]:
     ])
 
     # 18. business system → application → crypto asset, both ways
+    denominator = u.coverage(70, 12, 12, unit="application")
     answer = d.systems_depending_on(bom, algorithm=names["algorithm"])
     strict = d.systems_depending_on(bom, algorithm=names["algorithm"], include_static=False)
+    bounded = d.systems_depending_on(bom, algorithm=names["algorithm"], coverage=denominator)
     add(18, "which business systems depend on RSA-2048 is a query, not a spreadsheet", [
         _probe("the-system-is-named-through-an-evidenced-path",
                answer["systems"] == ["Payments System"],
@@ -684,6 +747,10 @@ def measure() -> dict[str, Any]:
         _probe("the-strict-answer-excludes-static-only-paths",
                isinstance(strict["applications"], list),
                f"strict answer: {strict['statement']}"),
+        _probe("the-answer-is-bounded-by-what-was-inspected",
+               bounded["quotable_as_total"] is False
+               and "12 of 70" in bounded["statement"],
+               bounded["statement"]),
     ])
 
     # 19. every edge carries its nine fields
@@ -691,12 +758,18 @@ def measure() -> dict[str, Any]:
     add(19, "every dependency edge carries its record, and a collector where one exists", [
         _probe("no-dependency-edge-is-missing-a-required-field",
                not audit["incomplete"],
-               f"{audit['complete']} of {audit['count']} complete"),
+               f"{audit['structural']} of {audit['count']} carry all six structural "
+               "fields"),
+        _probe("the-fields-the-estate-did-not-supply-are-reported",
+               audit["fully_recorded"] < audit["count"]
+               and any(field.startswith("first_seen") for field in audit["missing_fields"]),
+               f"{audit['fully_recorded']} of {audit['count']} carry all ten; short on "
+               + ", ".join(audit["missing_fields"][:4])),
         _probe("a-collector-is-named-where-a-record-exists",
                audit["with_collector"] >= 2,
                f"{audit['with_collector']} edge(s) name a collector: {audit['collectors']}"),
-        _probe("the-nine-fields-are-declared",
-               len(d.EDGE_FIELDS) == 10,
+        _probe("the-ten-fields-are-declared",
+               len(d.EDGE_FIELDS) == 10 and len(audit["field_coverage"]) == 10,
                f"EDGE_FIELDS = {list(d.EDGE_FIELDS)}"),
     ])
 
@@ -704,27 +777,32 @@ def measure() -> dict[str, Any]:
     capability = d.capability_vs_usage(bom, query=names["provider"])
     add(20, "capability and usage are two sets and never one", [
         _probe("capability-is-what-the-provider-lists",
-               len(capability["capability"]) == 3,
+               len(capability["capability"]) == 6
+               and len(capability["capability_nodes"]) == 6,
                f"capability {capability['capability']}"),
         _probe("usage-is-what-was-observed",
                set(capability["usage"]) == {"RSA-2048", "AES-256", "DES-ECB"},
                f"usage {sorted(capability['usage'])}"),
         _probe("the-difference-is-reported-not-resolved",
-               "SHA-256" in capability["capability_not_used"],
-               f"listed and never used: {capability['capability_not_used']}"),
+               "AES-128" in capability["capability_not_used"]
+               and "DES-ECB" in capability["used_not_capable"],
+               f"listed and never used: {capability['capability_not_used']}; used without "
+               f"being listed: {capability['used_not_capable']}"),
     ])
 
     # 21. conflicts
     conflicts = d.dependency_conflicts(bom)
+    version_finding = next((row for row in conflicts["findings"]
+                            if row["kind"] == "VERSION"), None)
     add(21, "a disagreement about a dependency is the finding, with every source kept", [
         _probe("the-version-disagreement-is-found",
                conflicts["counts"].get("VERSION", 0) == 1,
                conflicts["statement"]),
         _probe("every-source-is-preserved",
-               conflicts["findings"] and len(conflicts["findings"][0]["sources"]) == 3,
-               f"values {conflicts['findings'][0]['values']} from "
-               f"{[row['source'] for row in conflicts['findings'][0]['sources']]}"
-               if conflicts["findings"] else "no finding"),
+               version_finding is not None and len(version_finding["sources"]) == 3,
+               f"values {version_finding['values']} from "
+               f"{[row['source'] for row in version_finding['sources']]}"
+               if version_finding else "no version finding"),
         _probe("the-static-and-runtime-layers-also-disagree",
                conflicts["counts"].get("LAYER", 0) == 1,
                "the process invoked AES-256-GCM at runtime and DES-ECB statically"),
@@ -750,22 +828,30 @@ def measure() -> dict[str, Any]:
     ])
 
     # 23. lifecycle, superseded rather than deleted
-    states = n.lifecycle(bom, reference=NOW)["counts"]
-    drift = n.drift(previous, upgraded, reference=NOW)
-    vocabulary = set(states) | {event["change"].replace("EDGE_", "") for event
-                                in drift["events"]}
+    alone = d.dependency_lifecycle(bom, reference=NOW)
+    compared = d.dependency_lifecycle(upgraded, previous=bom, reference=NOW)
+    superseded = compared["superseded"]
+    removed = compared["removed"]
     add(23, "a dependency that stops being observed is superseded, not deleted", [
-        _probe("the-lifecycle-states-are-derived-per-edge",
-               {"FIRST_SEEN", "ACTIVE", "UNKNOWN"} <= set(states),
-               f"counts {states}"),
-        _probe("the-old-edge-is-reported-not-silently-dropped",
-               any(event["change"] in ("EDGE_SUPERSEDED", "EDGE_REMOVED")
-                   for event in drift["events"]),
-               drift["statement"]),
-        _probe("the-six-word-vocabulary-is-reachable",
-               {"FIRST_SEEN", "ACTIVE", "CHANGED", "SUPERSEDED", "UNKNOWN"}
-               <= vocabulary,
-               f"vocabulary seen: {sorted(vocabulary)}"),
+        _probe("one-projection-names-four-states",
+               {"FIRST_SEEN", "ACTIVE", "UNKNOWN"} <= set(alone["counts"]),
+               alone["statement"]),
+        _probe("comparison-adds-superseded-and-removed",
+               {"SUPERSEDED", "REMOVED", "CHANGED"} <= set(compared["counts"]),
+               compared["statement"]),
+        _probe("the-old-value-is-kept-beside-the-new-one",
+               any(row["previous"] == "RSA-2048" and row["current"] == "RSA-3072"
+                   for row in superseded)
+               and any(row["previous"] == "libcrypto.so.1.1" for row in removed),
+               "; ".join([f"SUPERSEDED {row['dependency']}: {row['previous']} → "
+                          f"{row['current']}" for row in superseded]
+                         + [f"REMOVED {row['dependency']}: {row['previous']}"
+                            for row in removed])),
+        _probe("nothing-was-deleted-to-produce-that",
+               {"SUPERSEDED", "REMOVED"} <= set(d.LIFECYCLE_STATES)
+               and len(compared["rows"]) >= len(alone["rows"]),
+               f"{len(compared['rows'])} row(s) kept across both projections; the six "
+               f"states are {list(d.LIFECYCLE_STATES)}"),
     ])
 
     # 24. coverage honesty
@@ -839,6 +925,9 @@ def measure() -> dict[str, Any]:
         "capability": d.capability_vs_usage(bom, query=names["provider"]),
         "conflicts": d.dependency_conflicts(bom),
         "change": d.dependency_changes(previous, upgraded, detected_at=NOW),
+        "lifecycle": compared,
+        "provider_impact": impact,
+        "advisories": advisory,
         "blockers": d.pqc_blockers(bom, query=names["algorithm"]),
         "hops": d.endpoint_hops(bom, query=names["endpoint"]),
         "coverage": honest,
@@ -856,6 +945,14 @@ def measure() -> dict[str, Any]:
             "answer per application",
             "coverage is arithmetic on what the collectors reported; it cannot see an "
             "application that was never scanned",
+            "a capability is the provider's own list, self-reported; it says what the build "
+            "was compiled with and nothing about which of those paths a caller took",
+            "the lifecycle compares two projections: a dependency that moved between "
+            "collections the bank never ran is not visible here",
+            "the advisory answers are keyed on the names the estate holds — a firmware "
+            "version nobody recorded cannot match a CVE",
+            "the edge audit counts records, not truth: an edge can carry all ten fields "
+            "and still be wrong, which is what the conflict and change queries are for",
         ],
     }
 
@@ -949,6 +1046,30 @@ def render_md(report: dict[str, Any]) -> str:
         lines.append(f"- `{row['code']}` {row['dependency']}: {row['previous']} → "
                      f"{row['current']} (before `{row['evidence_before']}`, after "
                      f"`{row['evidence_after']}`, detected {row['detected_at']})")
+    lifecycle = report["lifecycle"]
+    lines += ["", "## The life of a dependency edge", "",
+              f"**{lifecycle['statement']}**", "",
+              "| dependency | state | before | now | evidence |",
+              "|---|---|---|---|---|"]
+    for row in lifecycle["rows"]:
+        lines.append(f"| {row['dependency']} | {row['state']} | {row['previous'] or '—'} | "
+                     f"{row['value'] or '—'} | `{row['evidence_id']}` |")
+    impact = report["provider_impact"]
+    lines += ["", "## An advisory against the provider", "",
+              f"**{impact['statement']}**", ""]
+    for kind, names in impact["affected"].items():
+        if names:
+            lines.append(f"- {kind}: {', '.join(names)}")
+    advisory = report["advisories"]
+    lines += ["", "## An advisory against the firmware", "",
+              f"**{advisory['statement']}**", "",
+              "| firmware | devices | vendor | listeners | applications |",
+              "|---|---|---|---|---|"]
+    for row in advisory["findings"]:
+        lines.append(f"| {row['firmware']} | {', '.join(row['devices']) or '—'} | "
+                     f"{', '.join(row['vendors']) or '—'} | "
+                     f"{', '.join(row['endpoints']) or '—'} | "
+                     f"{', '.join(row['applications']) or '—'} |")
     blockers = report["blockers"]
     lines += ["", "## The PQC blocker is the path", "", f"**{blockers['statement']}**", "",
               "| kind | name | relation | why it blocks |", "|---|---|---|---|"]

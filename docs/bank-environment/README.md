@@ -585,7 +585,7 @@
 > passed off as one.
 
 > [The dependency chain, all twenty-six points](173-dependency-chain.md)
-> (**26 pass · 0 partial · 0 fail**, 77 probes) builds the *software* half of the chain the
+> (**26 pass · 0 partial · 0 fail**, 84 probes) builds the *software* half of the chain the
 > review draws — business system → application → release → process → crypto provider →
 > operation → algorithm → key metadata → HSM/KMS → certificate/network → hardware → vendor
 > — and walks the whole thing, because **a CBOM that says "AES-256, confidence HIGH" has
@@ -597,8 +597,8 @@
 > actually done: `SIGN / RSA / 2048 / PSS / SHA-256`. **An operation is refused without its
 > parameters** — `BLOCK_CIPHER_WITHOUT_MODE`, `SIGNATURE_WITHOUT_SIZE` — because AES without
 > a mode and RSA without a size are names, not migrations. **Capability and usage are
-> returned as two sets and never merged** (`capability_vs_usage`: three capabilities, three
-> observed uses, one listed and never used); **a static hit is `STATIC_OBSERVED`** — a file,
+> returned as two sets and never merged** (`capability_vs_usage`: six capabilities, three
+> observed uses, four listed and never used, one used without being listed); **a static hit is `STATIC_OBSERVED`** — a file,
 > an API and a line 214, deliberately absent from `PROVEN`, so a code hit is never blast
 > radius; **a key is a reference**, and `private_key` is refused by name. **`HSM SUPPORTS
 > RSA` and `APPLICATION USES HSM FOR RSA` are two edges at two classes**, and a KMS answer
@@ -611,8 +611,20 @@
 > is the path**: `RSA-2048` yields ten blockers — the certificate, two listeners, the load
 > balancer, its firmware, its product, the HSM and the key — because the algorithm is the
 > thing being migrated and the path is why it is hard. Coverage is a denominator
-> (`12 of 70`), the twin reads the same graph (68 edges, no second store), and two relations
-> were added to keep the walk typed: `SOURCE DECLARES CRYPTO_ASSET` and `POD RUNS_CONTAINER`.
+> (`12 of 70`) — and it is returned beside `quotable_as_total: false`, so "12 of 70" cannot
+> be quoted as "the bank has 12". The twin reads the same graph (73 edges, no second store),
+> and two relations were added to keep the walk typed: `SOURCE DECLARES CRYPTO_ASSET` and
+> `POD RUNS_CONTAINER`. Four more surfaces close the gaps the first pass left open: a
+> **`CRYPTO_CAPABILITY` is a node** (`provider SUPPORTS capability IMPLEMENTS algorithm`), so
+> the SBOM join goes through the algorithm and never through `OpenSSL USES AES-256`; an edge
+> has a **life** (`FIRST_SEEN`/`ACTIVE`/`CHANGED`/`SUPERSEDED`/`REMOVED`/`UNKNOWN`) and a
+> superseded row is kept beside the new one, with the stronger evidence class winning when
+> two collectors describe the same dependency; an advisory names **assets** —
+> `provider_impact('OpenSSL 3.0.11', version='3.0.9')` answers *version mismatch, inventory
+> disagrees* rather than an all-clear, and `advisory_impact('CVE-2026-0001')` walks firmware →
+> device → listener → application → business system; and the evidence audit is **per field**,
+> not a single "58 of 58 complete": 63 of 63 edges carry the six structural fields, while only
+> 11 carry all ten, and the shortfall is published as `observed_at 32/63`, `first_seen 18/63`.
 
 > [The review, point by point](172-nbom-depth.md)
 > (**6 pass · 0 partial · 0 fail**, 51 probes) reads the twenty-two points off the *built*

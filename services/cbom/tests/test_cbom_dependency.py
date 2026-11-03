@@ -371,3 +371,189 @@ def test_which_systems_depend_on_an_algorithm_is_a_walk():
     block = dep.systems_depending_on(bom, algorithm="RSA-2048")
     assert block["systems"] == ["Payments System"]
     assert block["applications"][0]["path"][0] == "Payments API"
+
+
+# --------------------------------------------------------------------------- #
+# Capability nodes, impact walks, lifecycle
+# --------------------------------------------------------------------------- #
+
+def capability_document() -> dict:
+    application = application_row()
+    process = process_row()
+    library = tb.asset("CRYPTO_LIBRARY", "libcrypto.so.3", evidence_ids=[EVID])
+    algorithm = rsa()
+    aes = aes_algorithm()
+    provider_row = tb.asset("CRYPTO_PROVIDER", "OpenSSL 3.0.11", version="3.0.11",
+                            evidence_ids=[EVID_RT], family="OPENSSL")
+    capabilities = [dep.capability(provider_row=provider_row, algorithm_row=row,
+                                   key_size=row["attributes"].get("key_size"),
+                                   evidence_ids=[EVID_RT])
+                    for row in (algorithm, aes)]
+    openssl = dep.provider(name="OpenSSL 3.0.11", family="OPENSSL", version="3.0.11",
+                           process_row=process, provider_row=provider_row,
+                           library_row=library,
+                           capabilities=[row["assets"][-1] for row in capabilities],
+                           evidence_ids=[EVID_RT])
+    signing = dep.runtime_operation(
+        name="OP-SIGN-001", process_row=process, application_row=application,
+        operation="SIGN", algorithm_row=algorithm, provider_row=provider_row,
+        key_size=2048, padding="PSS", hash_name="SHA-256", evidence_ids=[EVID_RT],
+        observed_at=NOW, first_seen=EARLIER, last_seen=NOW)
+    return n.estate(application, process, library, algorithm, aes, provider_row,
+                    *capabilities, openssl, signing, estate_id="capability-estate")
+
+
+def capability_estate() -> dict:
+    return tb.build(capability_document())
+
+
+def test_a_capability_is_a_node_between_the_provider_and_the_algorithm():
+    bom = capability_estate()
+    assert bom["counts"].get("CRYPTO_CAPABILITY") == 2
+    implements = [claim for claim in bom["claims"] if claim["relation"] == "IMPLEMENTS"]
+    assert implements
+    assert {bom["by_key"][claim["from_key"]]["kind"] for claim in implements} \
+        == {"CRYPTO_CAPABILITY"}
+
+
+def test_capability_and_usage_compare_on_algorithms_not_on_labels():
+    bom = capability_estate()
+    block = dep.capability_vs_usage(bom, query="OpenSSL 3.0.11")
+    assert block["capability"] == ["AES-256", "RSA-2048"]
+    assert set(block["usage"]) == {"RSA-2048"}
+    assert block["capability_not_used"] == ["AES-256"]
+    assert len(block["capability_nodes"]) == 2
+
+
+def test_a_provider_row_of_another_name_is_refused():
+    with pytest.raises(tb.ClaimRefused) as excinfo:
+        dep.provider(name="OpenSSL 3.0.11", family="OPENSSL",
+                     provider_row=tb.asset("CRYPTO_PROVIDER", "BoringSSL",
+                                           evidence_ids=[EVID]),
+                     evidence_ids=[EVID])
+    assert excinfo.value.code == "PROVIDER_ROW_MISMATCH"
+
+
+def test_a_provider_advisory_maps_to_the_operations_that_name_it():
+    bom = capability_estate()
+    block = dep.provider_impact(bom, query="OpenSSL 3.0.11", version="3.0.11")
+    assert block["version_matches"] is True
+    assert block["counts"]["operations"] == 1
+    assert block["counts"]["applications"] == 1
+
+
+def test_an_advisory_for_another_version_is_a_mismatch_not_an_all_clear():
+    bom = capability_estate()
+    block = dep.provider_impact(bom, query="OpenSSL 3.0.11", version="3.0.9")
+    assert block["version_matches"] is False
+    assert "MISMATCH" in block["statement"]
+
+
+def test_an_advisory_against_an_algorithm_is_refused():
+    bom = capability_estate()
+    with pytest.raises(tb.ClaimRefused) as excinfo:
+        dep.provider_impact(bom, query="RSA-2048")
+    assert excinfo.value.code == "NOT_A_PROVIDER"
+
+
+def firmware_estate() -> dict:
+    vendor = tb.asset("VENDOR", "F5", evidence_ids=[EVID])
+    product = tb.asset("VENDOR_PRODUCT", "BIG-IP i5800", evidence_ids=[EVID])
+    firmware = tb.asset("FIRMWARE", "BIG-IP 17.1.1", evidence_ids=[EVID], version="17.1.1")
+    device = tb.asset("LOAD_BALANCER", "LB-01", evidence_ids=[EVID])
+    endpoint = n.endpoint(host="10.10.0.30", port=443, name="lb-01:443", evidence_ids=[EVID])
+    application = application_row()
+    vulnerability = tb.asset("VULNERABILITY", "CVE-2026-0001", evidence_ids=[EVID])
+    return tb.build(n.estate(
+        vendor, product, firmware, device, endpoint, application, vulnerability,
+        dep.vendor_chain(device_row=device, vendor_row=vendor, firmware_row=firmware,
+                         product_row=product, evidence_ids=[EVID]),
+        n.part(claims=[
+            tb.claim("LB-01", "LISTENS_ON", "lb-01:443", basis="load-balancer-config",
+                     evidence_ids=[EVID]),
+            tb.claim("lb-01:443", "ROUTES_TO", "Payments API", basis="load-balancer-config",
+                     evidence_ids=[EVID]),
+            tb.claim("BIG-IP 17.1.1", "HAS_VULNERABILITY", "CVE-2026-0001",
+                     basis="vendor-portal", evidence_ids=[EVID]),
+        ]),
+        estate_id="firmware-estate"))
+
+
+def test_a_firmware_advisory_walks_to_the_application_behind_the_device():
+    bom = firmware_estate()
+    block = dep.advisory_impact(bom, query="CVE-2026-0001")
+    finding = block["findings"][0]
+    assert finding["firmware"] == "BIG-IP 17.1.1"
+    assert "LB-01" in finding["devices"]
+    assert finding["vendors"] == ["F5"]
+    assert finding["applications"] == ["Payments API"]
+
+
+def test_an_advisory_against_a_service_is_refused():
+    bom = firmware_estate()
+    with pytest.raises(tb.ClaimRefused) as excinfo:
+        dep.advisory_impact(bom, query="Payments API")
+    assert excinfo.value.code == "NOT_AN_ADVISORY"
+
+
+def test_the_lifecycle_has_six_states_and_deletes_nothing():
+    assert dep.LIFECYCLE_STATES == ("FIRST_SEEN", "ACTIVE", "CHANGED", "SUPERSEDED",
+                                    "REMOVED", "UNKNOWN")
+    bom = capability_estate()
+    block = dep.dependency_lifecycle(bom, reference=NOW)
+    assert set(block["counts"]) <= set(dep.LIFECYCLE_STATES)
+    assert block["superseded"] == [] and block["removed"] == []
+
+
+def test_a_replaced_dependency_is_superseded_and_the_old_row_is_kept():
+    old = capability_estate()
+    assert old["by_key"]["ALGORITHM:rsa-2048:production"]
+    block_new = dep.dependency_lifecycle(old, previous=old, reference=NOW)
+    assert block_new["counts"].get("SUPERSEDED", 0) == 0
+    upgraded = _upgraded(old)
+    block = dep.dependency_lifecycle(upgraded, previous=old, reference=NOW)
+    assert block["counts"].get("SUPERSEDED", 0) == 1
+    assert block["superseded"][0]["previous"] == "RSA-2048"
+    assert block["superseded"][0]["current"] == "RSA-3072"
+    assert block["superseded"][0]["evidence_before"]
+
+
+def _upgraded(bom: dict) -> dict:
+    estate = capability_document()
+    estate["assets"] = [row for row in estate["assets"] if row["name"] != "RSA-2048"]
+    estate["assets"].append(rsa(3072))
+    for claim in estate["claims"]:
+        if claim.get("to") == "RSA-2048":
+            claim["to"] = "RSA-3072"
+    return tb.build(estate)
+
+
+def test_a_class_that_moved_without_the_target_moving_is_CHANGED():
+    old = capability_estate()
+    estate = capability_document()
+    for claim in estate["claims"]:
+        if claim["relation"] == "USES_ALGORITHM" and claim["confidence"] == "RUNTIME_OBSERVED":
+            claim["confidence"] = "CONFIGURED"
+    moved = tb.build(estate)
+    block = dep.dependency_lifecycle(moved, previous=old, reference=NOW)
+    assert "CHANGED" in block["counts"]
+
+
+def test_the_evidence_audit_publishes_the_fields_the_estate_did_not_supply():
+    bom = capability_estate()
+    audit = dep.evidence_audit(bom)
+    assert audit["incomplete"] == []
+    assert audit["fully_recorded"] < audit["count"] or not audit["missing_fields"]
+    assert set(audit["field_coverage"]) == set(dep.EDGE_FIELDS)
+    assert sum(1 for value in audit["field_coverage"].values()
+               if value < audit["count"]) == len(audit["missing_fields"])
+
+
+def test_the_answer_to_which_systems_depend_carries_its_denominator():
+    bom = capability_estate()
+    block = dep.systems_depending_on(bom, algorithm="RSA-2048",
+                                     coverage={"systems_total": 70,
+                                               "systems_inspected": 12,
+                                               "quotable_as_total": False})
+    assert "12 of 70" in block["statement"]
+    assert block["quotable_as_total"] is False
