@@ -337,6 +337,28 @@ class CbomTlsStateResponse(BaseModel):
     statement: str
 
 
+class CbomSshRequest(BaseModel):
+    sessions: list[dict] = Field(default_factory=list, description=(
+        "SSH sessions: host, port, banner, evidence_id, observed_at, source, "
+        "host_key_fingerprint, negotiated {kex, host_key, cipher_client_to_server, "
+        "cipher_server_to_client, mac_client_to_server, mac_server_to_client}, and "
+        "optionally server_supported"))
+
+
+class CbomSshResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    sessions: list[dict]
+    hosts: list[str]
+    refused: list[dict]
+    deprecated: dict
+    asymmetric_directions: list[str]
+    statement: str
+    not_proven: list[str]
+    facts: list[dict]
+    quantum_vulnerable: list[str]
+    summary: dict
+
+
 class CbomTopologyRequest(BaseModel):
     claims: list[dict] = Field(default_factory=list, description=(
         "relationships: kind (one of the nine), from, to, evidence_id, observed_at, "
@@ -662,6 +684,30 @@ def cbom_tls_state(body: CbomTlsStateRequest,
             checks["disabled"] = ts.disabled(result, endpoint=body.endpoint,
                                              version=body.version)
     return {**result, "checks": checks, "summary": ts.summary(result)}
+
+
+@router.post("/ssh", response_model=CbomSshResponse)
+def cbom_ssh(body: CbomSshRequest,
+             user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """SSH: four negotiations, two of them per direction.
+
+    Review item 13. Key exchange, host key, cipher and MAC are separate answers, and
+    cipher and MAC are negotiated **per direction** — a host that uses
+    `chacha20-poly1305` one way and `aes128-cbc` the other has one weak direction. The
+    two SSH traps are handled explicitly: `ssh-rsa` is the SHA-1 signature algorithm
+    (`rsa-sha2-256` is the modern one), and the server's offer is kept apart from what
+    was used, because the client's preference decides.
+    """
+    from cbom import ssh_crypto as sc
+
+    body_estate = sc.estate(body.sessions)
+    algorithms = sc.to_algorithms(body_estate) if body_estate["sessions"] else None
+    return {
+        **body_estate,
+        "facts": (algorithms or {}).get("facts", []),
+        "quantum_vulnerable": (algorithms or {}).get("quantum_vulnerable", []),
+        "summary": sc.summary(body_estate),
+    }
 
 
 @router.post("/topology", response_model=CbomTopologyResponse)

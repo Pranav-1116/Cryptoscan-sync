@@ -555,6 +555,26 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [SSH negotiates four things, two of them per direction](161-ssh-crypto-depth.md)
+> (**5 pass · 0 partial · 0 fail**, 25 probes) closes NBOM review item 13. SSH is not a
+> cipher suite: `cbom.ssh_crypto` records **key exchange, host key, cipher and MAC**, and
+> cipher and MAC **per direction** — a host that encrypts toward the client with
+> `chacha20-poly1305` and toward the server with `aes128-cbc` has one weak direction, and
+> the session says so (`asymmetric`, and the statement names the weaker direction). An
+> AEAD cipher negotiates no separate MAC. The two SSH-specific traps are modelled rather
+> than flattened: **`ssh-rsa` is the SHA-1 signature algorithm** — `rsa-sha2-256` is the
+> modern one, and the two look identical if you only read the key type — and the
+> **server's offer is kept apart from what was used**, because SSH takes the first
+> algorithm on the *client's* list that the server also offers (the same
+> SUPPORTED/NEGOTIATED distinction guide 154 keeps for TLS). A hand-maintained
+> deprecation table with a reason per entry (`diffie-hellman-group1-sha1` → 1024-bit
+> group with SHA-1, `hmac-md5` → MD5 MAC, `3des-cbc` → 64-bit blocks) separates `BROKEN`
+> from `DEPRECATED`, and an unknown algorithm is `ACCEPTABLE` rather than guessed. The
+> estate names every deprecated algorithm *and the hosts that use it*, and a session with
+> no evidence id is refused instead of counted. `to_algorithms()` emits
+> `KEY_EXCHANGE`/`SIGNATURE`/`BULK`/`MAC` facts, and quantum exposure is named without a
+> migration verdict. `POST /cbom/ssh` exposes it, typed, behind the reader roles.
+
 > [Network topology as relationships that carry their own evidence](160-evidence-backed-topology.md)
 > (**5 pass · 0 partial · 0 fail**, 25 probes) closes NBOM review item 12, which is a
 > warning more than a feature request: *every relationship needs `evidence_id`,

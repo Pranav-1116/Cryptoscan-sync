@@ -932,3 +932,38 @@ def test_topology_corrects_an_overclaimed_confidence(client):
     assert body["overclaimed"]
     assert body["audit"]["counts"] == {"CONFIDENCE_OVERCLAIMED": 1}
     assert body["audit"]["clean"] is False
+
+
+def test_ssh_keeps_the_four_negotiations_and_both_directions(client):
+    body = _post(client, "/ssh", {"sessions": [{
+        "host": "jump.bank.example", "port": 22, "evidence_id": "SSH-1",
+        "observed_at": "2026-11-01T00:00:00Z", "source": "ssh-probe",
+        "negotiated": {"kex": "curve25519-sha256", "host_key": "ssh-ed25519",
+                       "cipher_client_to_server": "chacha20-poly1305@openssh.com",
+                       "cipher_server_to_client": "aes128-cbc"}}]}).json()
+    session = body["sessions"][0]
+    assert session["kex"]["algorithm"] == "curve25519-sha256"
+    assert session["directions"]["SERVER_TO_CLIENT"]["cipher"]["algorithm"] == "aes128-cbc"
+    assert session["asymmetric"] is True
+    assert body["asymmetric_directions"] == ["jump.bank.example"]
+    assert "aes128-cbc" in body["deprecated"]
+
+
+def test_ssh_reports_ssh_rsa_as_deprecated_but_rsa_sha2_as_fine(client):
+    body = _post(client, "/ssh", {"sessions": [
+        {"host": "legacy.bank.example", "evidence_id": "SSH-2",
+         "negotiated": {"kex": "diffie-hellman-group14-sha256",
+                        "host_key": "ssh-rsa", "cipher": "3des-cbc"}},
+        {"host": "modern.bank.example", "evidence_id": "SSH-3",
+         "negotiated": {"kex": "curve25519-sha256", "host_key": "rsa-sha2-256",
+                        "cipher": "aes256-gcm@openssh.com"}}]}).json()
+    assert body["deprecated"]["ssh-rsa"] == ["legacy.bank.example"]
+    assert "rsa-sha2-256" not in body["deprecated"]
+    assert "ssh-rsa" in body["quantum_vulnerable"]
+    assert body["summary"]["sessions"] == 2
+
+
+def test_ssh_refuses_a_session_with_no_evidence(client):
+    body = _post(client, "/ssh", {"sessions": [{"host": "x"}]}).json()
+    assert body["sessions"] == []
+    assert "no evidence id" in body["refused"][0]["reason"]

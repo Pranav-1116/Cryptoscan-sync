@@ -1,0 +1,756 @@
+{
+  "schema": "cryptoscan.cbom-ssh-guide/1",
+  "generated_at": "2026-11-03T01:12:12.874436+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 25,
+  "dimensions": [
+    "KEX",
+    "HOST_KEY",
+    "CIPHER",
+    "MAC"
+  ],
+  "directions": [
+    "CLIENT_TO_SERVER",
+    "SERVER_TO_CLIENT"
+  ],
+  "deprecated": [
+    "3des-cbc",
+    "aes128-cbc",
+    "aes192-cbc",
+    "aes256-cbc",
+    "arcfour",
+    "arcfour128",
+    "arcfour256",
+    "des-cbc",
+    "diffie-hellman-group1-sha1",
+    "diffie-hellman-group14-sha1",
+    "hmac-md5",
+    "hmac-md5-96",
+    "hmac-sha1-96",
+    "none",
+    "rijndael-cbc@lysator.liu.se",
+    "ssh-dss",
+    "ssh-rsa"
+  ],
+  "estate": {
+    "schema": "cryptoscan.cbom-ssh/1",
+    "sessions": [
+      {
+        "host": "jump.bank.example",
+        "port": 22,
+        "banner": "SSH-2.0-OpenSSH_9.6",
+        "kex": {
+          "algorithm": "curve25519-sha256",
+          "dimension": "KEX",
+          "rating": "ACCEPTABLE",
+          "reason": null,
+          "key_bits": null,
+          "aead": false,
+          "quantum_vulnerable": "X25519 key agreement",
+          "quantum_note": "X25519 key agreement"
+        },
+        "host_key": {
+          "algorithm": "ssh-ed25519",
+          "dimension": "HOST_KEY",
+          "rating": "ACCEPTABLE",
+          "reason": null,
+          "key_bits": null,
+          "aead": false,
+          "quantum_vulnerable": "Ed25519 host key",
+          "quantum_note": "Ed25519 host key"
+        },
+        "directions": {
+          "CLIENT_TO_SERVER": {
+            "cipher": {
+              "algorithm": "chacha20-poly1305@openssh.com",
+              "dimension": "CIPHER",
+              "rating": "ACCEPTABLE",
+              "reason": null,
+              "key_bits": 256,
+              "aead": true,
+              "quantum_vulnerable": null,
+              "quantum_note": null
+            },
+            "mac": null,
+            "evidence": "NEGOTIATED"
+          },
+          "SERVER_TO_CLIENT": {
+            "cipher": {
+              "algorithm": "chacha20-poly1305@openssh.com",
+              "dimension": "CIPHER",
+              "rating": "ACCEPTABLE",
+              "reason": null,
+              "key_bits": 256,
+              "aead": true,
+              "quantum_vulnerable": null,
+              "quantum_note": null
+            },
+            "mac": null,
+            "evidence": "NEGOTIATED"
+          }
+        },
+        "asymmetric": false,
+        "host_key_fingerprint": "SHA256:abc",
+        "server_supported": {
+          "kex": [],
+          "host_key": [],
+          "cipher": [],
+          "mac": []
+        },
+        "client_preference": {},
+        "evidence_ids": [
+          "SSH-1"
+        ],
+        "source": "ssh-probe",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "state": "NEGOTIATED",
+        "private_material": "NOT_STORED",
+        "problems": [],
+        "statement": "jump.bank.example:22 negotiated curve25519-sha256 \u00b7 ssh-ed25519 \u00b7 chacha20-poly1305@openssh.com (c\u2192s) \u00b7 chacha20-poly1305@openssh.com (s\u2192c); no deprecated algorithm in this session"
+      },
+      {
+        "host": "legacy.bank.example",
+        "port": 22,
+        "banner": null,
+        "kex": {
+          "algorithm": "diffie-hellman-group1-sha1",
+          "dimension": "KEX",
+          "rating": "BROKEN",
+          "reason": "1024-bit Oakley group 2 with SHA-1",
+          "key_bits": null,
+          "aead": false,
+          "quantum_vulnerable": null,
+          "quantum_note": null
+        },
+        "host_key": {
+          "algorithm": "ssh-rsa",
+          "dimension": "HOST_KEY",
+          "rating": "DEPRECATED",
+          "reason": "SHA-1 signatures; rsa-sha2-256/512 supersede it",
+          "key_bits": null,
+          "aead": false,
+          "quantum_vulnerable": "RSA host key",
+          "quantum_note": "RSA host key"
+        },
+        "directions": {
+          "CLIENT_TO_SERVER": {
+            "cipher": {
+              "algorithm": "3des-cbc",
+              "dimension": "CIPHER",
+              "rating": "BROKEN",
+              "reason": "64-bit block cipher with a sweet32 birthday bound",
+              "key_bits": 168,
+              "aead": false,
+              "quantum_vulnerable": null,
+              "quantum_note": null
+            },
+            "mac": {
+              "algorithm": "hmac-md5",
+              "dimension": "MAC",
+              "rating": "BROKEN",
+              "reason": "MD5 MAC",
+              "key_bits": null,
+              "aead": false,
+              "quantum_vulnerable": null,
+              "quantum_note": null
+            },
+            "evidence": "NEGOTIATED"
+          },
+          "SERVER_TO_CLIENT": {
+            "cipher": null,
+            "mac": null,
+            "evidence": "UNKNOWN"
+          }
+        },
+        "asymmetric": false,
+        "host_key_fingerprint": null,
+        "server_supported": {
+          "kex": [],
+          "host_key": [],
+          "cipher": [],
+          "mac": []
+        },
+        "client_preference": {},
+        "evidence_ids": [
+          "SSH-2"
+        ],
+        "source": "ssh-probe",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "state": "NEGOTIATED",
+        "private_material": "NOT_STORED",
+        "problems": [
+          {
+            "dimension": "KEX",
+            "algorithm": "diffie-hellman-group1-sha1",
+            "rating": "BROKEN",
+            "detail": "1024-bit Oakley group 2 with SHA-1"
+          },
+          {
+            "dimension": "HOST_KEY",
+            "algorithm": "ssh-rsa",
+            "rating": "DEPRECATED",
+            "detail": "SHA-1 signatures; rsa-sha2-256/512 supersede it"
+          },
+          {
+            "dimension": "CIPHER",
+            "direction": "CLIENT_TO_SERVER",
+            "algorithm": "3des-cbc",
+            "rating": "BROKEN",
+            "detail": "64-bit block cipher with a sweet32 birthday bound"
+          },
+          {
+            "dimension": "MAC",
+            "direction": "CLIENT_TO_SERVER",
+            "algorithm": "hmac-md5",
+            "rating": "BROKEN",
+            "detail": "MD5 MAC"
+          }
+        ],
+        "statement": "legacy.bank.example:22 negotiated diffie-hellman-group1-sha1 \u00b7 ssh-rsa \u00b7 3des-cbc (c\u2192s) \u00b7 unknown cipher (s\u2192c); 4 deprecated algorithm(s)"
+      },
+      {
+        "host": "payments.bank.example",
+        "port": 22,
+        "banner": null,
+        "kex": {
+          "algorithm": "ecdh-sha2-nistp256",
+          "dimension": "KEX",
+          "rating": "ACCEPTABLE",
+          "reason": null,
+          "key_bits": null,
+          "aead": false,
+          "quantum_vulnerable": "ECDH P-256",
+          "quantum_note": "ECDH P-256"
+        },
+        "host_key": {
+          "algorithm": "rsa-sha2-256",
+          "dimension": "HOST_KEY",
+          "rating": "ACCEPTABLE",
+          "reason": null,
+          "key_bits": null,
+          "aead": false,
+          "quantum_vulnerable": "RSA host key",
+          "quantum_note": "RSA host key"
+        },
+        "directions": {
+          "CLIENT_TO_SERVER": {
+            "cipher": {
+              "algorithm": "aes256-gcm@openssh.com",
+              "dimension": "CIPHER",
+              "rating": "ACCEPTABLE",
+              "reason": null,
+              "key_bits": 256,
+              "aead": true,
+              "quantum_vulnerable": null,
+              "quantum_note": null
+            },
+            "mac": null,
+            "evidence": "NEGOTIATED"
+          },
+          "SERVER_TO_CLIENT": {
+            "cipher": {
+              "algorithm": "aes128-cbc",
+              "dimension": "CIPHER",
+              "rating": "DEPRECATED",
+              "reason": "CBC mode with no authenticated encryption",
+              "key_bits": 128,
+              "aead": false,
+              "quantum_vulnerable": null,
+              "quantum_note": null
+            },
+            "mac": {
+              "algorithm": "hmac-sha1-96",
+              "dimension": "MAC",
+              "rating": "DEPRECATED",
+              "reason": "truncated SHA-1 MAC",
+              "key_bits": null,
+              "aead": false,
+              "quantum_vulnerable": null,
+              "quantum_note": null
+            },
+            "evidence": "NEGOTIATED"
+          }
+        },
+        "asymmetric": true,
+        "host_key_fingerprint": null,
+        "server_supported": {
+          "kex": [],
+          "host_key": [],
+          "cipher": [],
+          "mac": []
+        },
+        "client_preference": {},
+        "evidence_ids": [
+          "SSH-3"
+        ],
+        "source": "ssh-probe",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "state": "NEGOTIATED",
+        "private_material": "NOT_STORED",
+        "problems": [
+          {
+            "dimension": "CIPHER",
+            "direction": "SERVER_TO_CLIENT",
+            "algorithm": "aes128-cbc",
+            "rating": "DEPRECATED",
+            "detail": "CBC mode with no authenticated encryption"
+          },
+          {
+            "dimension": "MAC",
+            "direction": "SERVER_TO_CLIENT",
+            "algorithm": "hmac-sha1-96",
+            "rating": "DEPRECATED",
+            "detail": "truncated SHA-1 MAC"
+          }
+        ],
+        "statement": "payments.bank.example:22 negotiated ecdh-sha2-nistp256 \u00b7 rsa-sha2-256 \u00b7 aes256-gcm@openssh.com (c\u2192s) \u00b7 aes128-cbc (s\u2192c); the two directions use different ciphers, so the weaker one decides; 2 deprecated algorithm(s)"
+      }
+    ],
+    "hosts": [
+      "jump.bank.example",
+      "legacy.bank.example",
+      "payments.bank.example"
+    ],
+    "refused": [],
+    "deprecated": {
+      "diffie-hellman-group1-sha1": [
+        "legacy.bank.example"
+      ],
+      "ssh-rsa": [
+        "legacy.bank.example"
+      ],
+      "3des-cbc": [
+        "legacy.bank.example"
+      ],
+      "hmac-md5": [
+        "legacy.bank.example"
+      ],
+      "aes128-cbc": [
+        "payments.bank.example"
+      ],
+      "hmac-sha1-96": [
+        "payments.bank.example"
+      ]
+    },
+    "asymmetric_directions": [
+      "payments.bank.example"
+    ],
+    "statement": "3 SSH session(s) across 3 host(s); 6 deprecated algorithm(s) in use: 3des-cbc, aes128-cbc, diffie-hellman-group1-sha1, hmac-md5, hmac-sha1-96, ssh-rsa; 1 host(s) negotiate different ciphers per direction",
+    "not_proven": [
+      "that the algorithm used is the only one the server accepts: one session is one negotiation, and the server's full offer is a different question",
+      "that a client chose the strongest algorithm it supports: SSH takes the first client preference the server also offers, so a weak client choice can be used against a strong server",
+      "that a key is trustworthy: the host key is identified by its fingerprint and trusted by the client's known_hosts, neither of which this model reads",
+      "that a session was not tunnelled: an SSH connection can forward ports, and the cryptography of what it forwards is somebody else's negotiation"
+    ]
+  },
+  "facts": {
+    "schema": "cryptoscan.cbom-ssh/1",
+    "facts": [
+      {
+        "algorithm": "chacha20-poly1305@openssh.com",
+        "role": "BULK",
+        "dimension": "CIPHER",
+        "parameters": {
+          "key_size": 256
+        },
+        "aead": true,
+        "quantum_vulnerable": false,
+        "host": "jump.bank.example",
+        "evidence_ids": [
+          "SSH-1"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "SSH"
+      },
+      {
+        "algorithm": "curve25519-sha256",
+        "role": "KEY_EXCHANGE",
+        "dimension": "KEX",
+        "parameters": {},
+        "aead": false,
+        "quantum_vulnerable": true,
+        "host": "jump.bank.example",
+        "evidence_ids": [
+          "SSH-1"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "SSH"
+      },
+      {
+        "algorithm": "ssh-ed25519",
+        "role": "SIGNATURE",
+        "dimension": "HOST_KEY",
+        "parameters": {},
+        "aead": false,
+        "quantum_vulnerable": true,
+        "host": "jump.bank.example",
+        "evidence_ids": [
+          "SSH-1"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "SSH"
+      },
+      {
+        "algorithm": "3des-cbc",
+        "role": "BULK",
+        "dimension": "CIPHER",
+        "parameters": {
+          "key_size": 168
+        },
+        "aead": false,
+        "quantum_vulnerable": false,
+        "host": "legacy.bank.example",
+        "evidence_ids": [
+          "SSH-2"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "SSH"
+      },
+      {
+        "algorithm": "diffie-hellman-group1-sha1",
+        "role": "KEY_EXCHANGE",
+        "dimension": "KEX",
+        "parameters": {},
+        "aead": false,
+        "quantum_vulnerable": false,
+        "host": "legacy.bank.example",
+        "evidence_ids": [
+          "SSH-2"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "SSH"
+      },
+      {
+        "algorithm": "hmac-md5",
+        "role": "MAC",
+        "dimension": "MAC",
+        "parameters": {},
+        "aead": false,
+        "quantum_vulnerable": false,
+        "host": "legacy.bank.example",
+        "evidence_ids": [
+          "SSH-2"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "SSH"
+      },
+      {
+        "algorithm": "ssh-rsa",
+        "role": "SIGNATURE",
+        "dimension": "HOST_KEY",
+        "parameters": {},
+        "aead": false,
+        "quantum_vulnerable": true,
+        "host": "legacy.bank.example",
+        "evidence_ids": [
+          "SSH-2"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "SSH"
+      },
+      {
+        "algorithm": "aes128-cbc",
+        "role": "BULK",
+        "dimension": "CIPHER",
+        "parameters": {
+          "key_size": 128
+        },
+        "aead": false,
+        "quantum_vulnerable": false,
+        "host": "payments.bank.example",
+        "evidence_ids": [
+          "SSH-3"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "SSH"
+      },
+      {
+        "algorithm": "aes256-gcm@openssh.com",
+        "role": "BULK",
+        "dimension": "CIPHER",
+        "parameters": {
+          "key_size": 256
+        },
+        "aead": true,
+        "quantum_vulnerable": false,
+        "host": "payments.bank.example",
+        "evidence_ids": [
+          "SSH-3"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "SSH"
+      },
+      {
+        "algorithm": "ecdh-sha2-nistp256",
+        "role": "KEY_EXCHANGE",
+        "dimension": "KEX",
+        "parameters": {},
+        "aead": false,
+        "quantum_vulnerable": true,
+        "host": "payments.bank.example",
+        "evidence_ids": [
+          "SSH-3"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "SSH"
+      },
+      {
+        "algorithm": "hmac-sha1-96",
+        "role": "MAC",
+        "dimension": "MAC",
+        "parameters": {},
+        "aead": false,
+        "quantum_vulnerable": false,
+        "host": "payments.bank.example",
+        "evidence_ids": [
+          "SSH-3"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "SSH"
+      },
+      {
+        "algorithm": "rsa-sha2-256",
+        "role": "SIGNATURE",
+        "dimension": "HOST_KEY",
+        "parameters": {},
+        "aead": false,
+        "quantum_vulnerable": true,
+        "host": "payments.bank.example",
+        "evidence_ids": [
+          "SSH-3"
+        ],
+        "class": "NETWORK_OBSERVED",
+        "protocol": "SSH"
+      }
+    ],
+    "endpoints": 3,
+    "quantum_vulnerable": [
+      "curve25519-sha256",
+      "ecdh-sha2-nistp256",
+      "rsa-sha2-256",
+      "ssh-ed25519",
+      "ssh-rsa"
+    ],
+    "statement": "12 distinct SSH algorithm fact(s) across 3 host(s)"
+  },
+  "summary": {
+    "schema": "cryptoscan.cbom-ssh/1",
+    "sessions": 3,
+    "hosts": 3,
+    "asymmetric_directions": [
+      "payments.bank.example"
+    ],
+    "deprecated": {
+      "diffie-hellman-group1-sha1": [
+        "legacy.bank.example"
+      ],
+      "ssh-rsa": [
+        "legacy.bank.example"
+      ],
+      "3des-cbc": [
+        "legacy.bank.example"
+      ],
+      "hmac-md5": [
+        "legacy.bank.example"
+      ],
+      "aes128-cbc": [
+        "payments.bank.example"
+      ],
+      "hmac-sha1-96": [
+        "payments.bank.example"
+      ]
+    },
+    "refused": 0,
+    "statement": "3 SSH session(s) across 3 host(s); 6 deprecated algorithm(s) in use: 3des-cbc, aes128-cbc, diffie-hellman-group1-sha1, hmac-md5, hmac-sha1-96, ssh-rsa; 1 host(s) negotiate different ciphers per direction",
+    "not_proven": [
+      "that the algorithm used is the only one the server accepts: one session is one negotiation, and the server's full offer is a different question",
+      "that a client chose the strongest algorithm it supports: SSH takes the first client preference the server also offers, so a weak client choice can be used against a strong server",
+      "that a key is trustworthy: the host key is identified by its fingerprint and trusted by the client's known_hosts, neither of which this model reads",
+      "that a session was not tunnelled: an SSH connection can forward ports, and the cryptography of what it forwards is somebody else's negotiation"
+    ]
+  },
+  "rows": [
+    {
+      "id": "four_negotiations",
+      "question": "does one SSH session become four answers, per direction?",
+      "phase": "review 13",
+      "probes": [
+        {
+          "probe": "a-session-is-four-negotiations-not-one-cipher",
+          "ok": true,
+          "observed": "jump.bank.example:22 negotiated curve25519-sha256 \u00b7 ssh-ed25519 \u00b7 chacha20-poly1305@openssh.com (c\u2192s) \u00b7 chacha20-poly1305@openssh.com (s\u2192c); no deprecated algorithm in this session"
+        },
+        {
+          "probe": "both-directions-are-recorded-with-their-own-algorithms",
+          "ok": true,
+          "observed": "c\u2192s and s\u2192c, separately"
+        },
+        {
+          "probe": "an-asymmetric-session-names-the-weak-direction",
+          "ok": true,
+          "observed": "aes256-gcm one way, aes128-cbc the other"
+        },
+        {
+          "probe": "an-aead-cipher-does-not-negotiate-a-separate-mac",
+          "ok": true,
+          "observed": "poly1305 authenticates; a CBC cipher still needs its MAC"
+        },
+        {
+          "probe": "the-host-key-fingerprint-travels-and-the-key-never-does",
+          "ok": true,
+          "observed": "NOT_STORED"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "ssh_specific",
+      "question": "are the two SSH-specific traps handled rather than flattened?",
+      "phase": "review 13",
+      "probes": [
+        {
+          "probe": "ssh-rsa-is-sha1-and-not-the-same-as-rsa-sha2",
+          "ok": true,
+          "observed": "the same key type, two different signature algorithms"
+        },
+        {
+          "probe": "the-server-s-offer-is-kept-apart-from-what-was-used",
+          "ok": true,
+          "observed": "SUPPORTED and NEGOTIATED are different answers"
+        },
+        {
+          "probe": "an-unknown-algorithm-is-not-called-broken",
+          "ok": true,
+          "observed": "a name this table does not know is not a verdict"
+        },
+        {
+          "probe": "a-dimension-outside-the-four-is-refused",
+          "ok": true,
+          "observed": "compression is not a cryptographic negotiation"
+        },
+        {
+          "probe": "a-session-with-no-evidence-is-refused",
+          "ok": true,
+          "observed": "an SSH claim without a session record is a claim"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_estate",
+      "question": "does the SSH estate turn into findings with hosts attached?",
+      "phase": "review 13",
+      "probes": [
+        {
+          "probe": "the-estate-names-every-deprecated-algorithm-and-who-uses-it",
+          "ok": true,
+          "observed": "3 SSH session(s) across 3 host(s); 6 deprecated algorithm(s) in use: 3des-cbc, aes128-cbc, diffie-hellman-group1-sha1, hmac-md5, hmac-sha1-96, ssh-rsa; 1 host(s) negotiate different ciphers per direction"
+        },
+        {
+          "probe": "hosts-with-an-asymmetric-session-are-listed",
+          "ok": true,
+          "observed": "payments.bank.example"
+        },
+        {
+          "probe": "a-session-is-never-summarised-as-one-algorithm",
+          "ok": true,
+          "observed": "four answers per session, not one"
+        },
+        {
+          "probe": "a-refused-session-is-listed-not-dropped",
+          "ok": true,
+          "observed": "two refusals, both visible"
+        },
+        {
+          "probe": "the-estate-states-what-one-session-cannot-prove",
+          "ok": true,
+          "observed": "4 stated limit(s)"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "facts",
+      "question": "does SSH feed the CBOM without a second vocabulary?",
+      "phase": "review 13 / 16 boundary",
+      "probes": [
+        {
+          "probe": "facts-use-the-roles-the-rest-of-the-platform-uses",
+          "ok": true,
+          "observed": "BULK, KEY_EXCHANGE, MAC, SIGNATURE"
+        },
+        {
+          "probe": "every-fact-is-marked-as-an-ssh-network-observation",
+          "ok": true,
+          "observed": "12 fact(s), each cited"
+        },
+        {
+          "probe": "quantum-exposure-is-named-without-a-migration-verdict",
+          "ok": true,
+          "observed": "curve25519-sha256, ecdh-sha2-nistp256, rsa-sha2-256, ssh-ed25519, ssh-rsa"
+        },
+        {
+          "probe": "a-symmetric-cipher-is-not-called-quantum-vulnerable",
+          "ok": true,
+          "observed": "AES needs a bigger key at most, not a new primitive"
+        },
+        {
+          "probe": "a-document-that-is-not-an-ssh-estate-is-refused",
+          "ok": true,
+          "observed": "a foreign document is rejected, not converted"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "shape",
+      "question": "does the report refuse to say more than the session shows?",
+      "phase": "review 13",
+      "probes": [
+        {
+          "probe": "the-banner-is-recorded-and-never-judged",
+          "ok": true,
+          "observed": "a version string is not a cryptographic property"
+        },
+        {
+          "probe": "an-empty-algorithm-name-is-refused",
+          "ok": true,
+          "observed": "no name, no algorithm"
+        },
+        {
+          "probe": "a-non-object-session-is-refused",
+          "ok": true,
+          "observed": "a string is not a session"
+        },
+        {
+          "probe": "the-deprecation-and-quantum-tables-are-explainable",
+          "ok": true,
+          "observed": "17 deprecated entries, each with a reason"
+        },
+        {
+          "probe": "nothing-in-the-report-calls-anything-an-attack",
+          "ok": true,
+          "observed": "a weak SSH algorithm is a configuration fact"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "one session is one negotiation. The server's full offer is a different question, and a modern algorithm in use today can be the client's preference rather than the server's policy",
+    "SSH takes the first algorithm on the client's list that the server also offers, so a weak client can choose a weak algorithm against a strong server. Both lists matter and this model records both when they are given",
+    "a host key is trusted by the client's known_hosts, which this model does not read. A fingerprint identifies a key; it does not vouch for it",
+    "the deprecation table is a hand-maintained list with a reason per entry, not a compliance mapping. An operator can disagree with one row without distrusting the rest",
+    "compression, port forwarding and agent forwarding are not negotiated cryptography in the sense this model measures, and none is judged here",
+    "a version banner is recorded and never scored: OpenSSH 7.4 is not a weak algorithm, it is a version that may support weak ones"
+  ]
+}
