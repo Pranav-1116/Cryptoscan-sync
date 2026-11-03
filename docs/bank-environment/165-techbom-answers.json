@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.cbom-techbom-answers-guide/1",
-  "generated_at": "2026-11-03T01:36:52.210845+00:00",
+  "generated_at": "2026-11-03T01:43:15.501174+00:00",
   "counts": {
     "PASS": 7,
     "PARTIAL": 0,
@@ -2520,11 +2520,12 @@
         "counts": {
           "ALGORITHM": 1,
           "API_GATEWAY": 1,
-          "APPLICATION": 1,
+          "APPLICATION": 2,
           "CERTIFICATE": 1,
           "CERTIFICATE_AUTHORITY": 1,
           "CONTAINER": 1,
-          "CRYPTO_ASSET": 1,
+          "CRYPTO_ASSET": 2,
+          "CRYPTO_LIBRARY": 1,
           "DATABASE": 1,
           "DEPLOYMENT": 1,
           "FIRMWARE": 1,
@@ -2534,6 +2535,7 @@
           "KEY_REFERENCE": 1,
           "LOAD_BALANCER": 1,
           "NETWORK_ENDPOINT": 1,
+          "PACKAGE": 1,
           "PHYSICAL_SERVER": 1,
           "POD": 1,
           "PROCESS": 1,
@@ -2541,8 +2543,14 @@
           "SERVICE": 1,
           "SERVICE_MESH": 1,
           "TPM": 1,
+          "VENDOR": 1,
+          "VENDOR_PRODUCT": 1,
           "VM": 1,
           "WAF": 1
+        },
+        "by_confidence": {
+          "DECLARED": 6,
+          "PROVEN": 25
         },
         "declared_only": {
           "APPLICATION": 1,
@@ -2555,11 +2563,19 @@
         "proven_assets": 25,
         "declared_only_assets": 6,
         "systems": [],
-        "quantum_sensitive": [],
-        "vendors": [],
-        "legacy_assets": [],
-        "statement": "Payments (CRITICAL): 1 application, 1 service, 1 container, 1 pod, 1 process, 1 crypto asset, 1 database, 1 network endpoint, 1 WAF, 1 load balancer, 1 API gateway, 1 service mesh, 1 certificate, 1 certificate authority, 1 HSM, 1 key reference, 1 firmware, 1 host, 1 VM, 1 physical server, 1 TPM across 25 kind(s); 6 more asset(s) declared but not proven",
+        "quantum_sensitive": [
+          "RSA-2048"
+        ],
+        "vendors": [
+          "HSM-9000",
+          "Vendor X"
+        ],
+        "legacy_assets": [
+          "TECH-APP-002"
+        ],
+        "statement": "Payments (CRITICAL): 2 applications, 1 service, 1 container, 1 pod, 1 process, 1 package, 1 crypto library, 2 crypto assets, 1 database, 1 network endpoint, 1 WAF, 1 load balancer, 1 API gateway, 1 service mesh, 1 certificate, 1 certificate authority, 1 HSM, 1 key reference, 1 firmware, 1 vendor product, 1 vendor, 1 host, 1 VM, 1 physical server, 1 TPM across 29 kind(s); 25 proven by observation or configuration, 6 declared only",
         "not_proven": [
+          "that a declared asset is deployed as described: it is on the system because an import or a registration says so, and the count says which",
           "that this is the system's whole technology estate: only assets the graph connects to the system are counted, and an unconnected asset belongs to no system here",
           "that the owner's criticality is current: it is an attribute of the system row, not a measured property"
         ]
@@ -3067,7 +3083,7 @@
         {
           "probe": "a-business-system-roll-up-counts-technology-by-kind",
           "ok": true,
-          "observed": "Payments (CRITICAL): 1 application, 1 service, 1 container, 1 pod, 1 process, 1 crypto asset, 1 database, 1 network endpoint, 1 WAF, 1 load balancer, 1 API gateway, 1 service mesh, 1 certificate, 1 certificate authority, 1 HSM, 1 key reference, 1 firmware, 1 host, 1 VM, 1 physical server, 1 TPM across 25 kind(s); 6 more asset(s) declared but not proven"
+          "observed": "Payments (CRITICAL): 2 applications, 1 service, 1 container, 1 pod, 1 process, 1 package, 1 crypto library, 2 crypto assets, 1 database, 1 network endpoint, 1 WAF, 1 load balancer, 1 API gateway, 1 service mesh, 1 certificate, 1 certificate authority, 1 HSM, 1 key reference, 1 firmware, 1 vendor product, 1 vendor, 1 host, 1 VM, 1 physical server, 1 TPM across 29 kind(s); 25 proven by observation or configuration, 6 declared only"
         },
         {
           "probe": "the-roll-up-carries-the-criticality-and-the-owner",
@@ -3075,9 +3091,9 @@
           "observed": "Payments \u00b7 CRITICAL \u00b7 Payments Platform"
         },
         {
-          "probe": "a-declared-hop-makes-everything-above-it-declared",
+          "probe": "a-declared-hop-is-counted-and-labelled-rather-than-hidden-or-flattened",
           "ok": true,
-          "observed": "Payments Batch arrives by CMDB import: counted separately, not folded in"
+          "observed": "Payments Batch arrives by CMDB import: in the count, out of the proven number, and named in the split"
         },
         {
           "probe": "a-roll-up-refuses-something-that-is-not-a-business-system",

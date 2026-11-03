@@ -93,19 +93,23 @@ def clean_bom():
 def test_a_rollup_counts_the_technology_a_system_actually_holds(clean_bom):
     profile = q.rollup(clean_bom, system="Payments")["systems"][0]
     assert profile["criticality"] == "CRITICAL"
-    assert profile["counts"]["APPLICATION"] == 1
+    assert profile["counts"]["APPLICATION"] == 2  # Payments API proven, Batch declared
     assert profile["counts"]["CERTIFICATE"] == 1
     assert profile["counts"]["HSM"] == 1
     assert profile["proven_assets"] >= 8
-    assert "1 application" in profile["statement"]
+    assert profile["by_confidence"]["PROVEN"] == profile["proven_assets"]
+    assert "2 applications" in profile["statement"]
     assert "certificates" not in profile["statement"].split(":")[-1].split(";")[0]
 
 
-def test_a_rollup_keeps_the_declared_remainder_out_of_the_count(clean_bom):
+def test_a_rollup_counts_the_declared_assets_and_says_which_they_are(clean_bom):
     profile = q.rollup(clean_bom, system="Payments")["systems"][0]
-    # Payments Batch is connected by a CMDB import, so it is declared, not counted
+    # Payments Batch is connected by a CMDB import: it is in the system, and the profile
+    # says the containment is declared rather than proven
+    assert profile["counts"]["APPLICATION"] == 2
     assert profile["declared_only"]["APPLICATION"] == 1
-    assert "declared but not proven" in profile["statement"]
+    assert profile["by_confidence"]["DECLARED"] == profile["declared_only_assets"]
+    assert "declared only" in profile["statement"]
 
 
 def test_taint_propagates_so_a_declared_hop_makes_everything_above_it_declared():
@@ -119,9 +123,10 @@ def test_taint_propagates_so_a_declared_hop_makes_everything_above_it_declared()
                          basis="sbom-import")],
     }
     profile = q.rollup(t.build(data), system="Payments")["systems"][0]
-    assert profile["counts"] == {}
-    assert profile["declared_only"]["APPLICATION"] == 1
-    assert profile["declared_only"]["CRYPTO_ASSET"] == 1
+    assert profile["counts"] == {"APPLICATION": 1, "CRYPTO_ASSET": 1}
+    assert profile["declared_only"] == {"APPLICATION": 1, "CRYPTO_ASSET": 1}
+    assert profile["proven_assets"] == 0
+    assert "0 proven" in profile["statement"]
 
 
 def test_a_rollup_refuses_something_that_is_not_a_business_system(clean_bom):

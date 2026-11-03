@@ -201,7 +201,7 @@ def row_rollup(modules: dict[str, Any]) -> dict[str, Any]:
     profile = q.rollup(bom, system="Payments")["systems"][0]
     probes = [
         _probe("a-business-system-roll-up-counts-technology-by-kind",
-               profile["counts"]["APPLICATION"] == 1
+               profile["counts"]["APPLICATION"] == 2
                and profile["counts"]["CERTIFICATE"] == 1
                and profile["counts"]["HSM"] == 1
                and profile["counts"]["NETWORK_ENDPOINT"] == 1,
@@ -210,10 +210,13 @@ def row_rollup(modules: dict[str, Any]) -> dict[str, Any]:
                profile["criticality"] == "CRITICAL"
                and profile["owner"] == "Payments Platform",
                "Payments · CRITICAL · Payments Platform"),
-        _probe("a-declared-hop-makes-everything-above-it-declared",
+        _probe("a-declared-hop-is-counted-and-labelled-rather-than-hidden-or-flattened",
                profile["declared_only"]["APPLICATION"] == 1
-               and "declared but not proven" in profile["statement"],
-               "Payments Batch arrives by CMDB import: counted separately, not folded in"),
+               and profile["counts"]["APPLICATION"] == 2
+               and profile["by_confidence"]["DECLARED"] == profile["declared_only_assets"]
+               and "declared only" in profile["statement"],
+               "Payments Batch arrives by CMDB import: in the count, out of the proven "
+               "number, and named in the split"),
         _probe("a-roll-up-refuses-something-that-is-not-a-business-system",
                _raises(lambda: q.rollup(bom, system="Payments API"),
                        "not a business system"),

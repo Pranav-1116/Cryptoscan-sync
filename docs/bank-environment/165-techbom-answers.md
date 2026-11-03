@@ -1,6 +1,6 @@
 # The questions a TechBOM has to answer
 
-`cryptoscan.cbom-techbom-answers-guide/1` · generated 2026-11-03T01:36:52.210845+00:00 · **7 pass · 0 partial · 0 fail** · 35 probes
+`cryptoscan.cbom-techbom-answers-guide/1` · generated 2026-11-03T01:43:15.501174+00:00 · **7 pass · 0 partial · 0 fail** · 35 probes
 
 Guide 164 built the graph and its guard rails. This guide asks the graph the
 questions an estate actually asks, and holds each answer to the same rules:
@@ -16,18 +16,18 @@ context     live event → CORRELATED_PATTERN with the estate behind it
 promotion   IMPORTED → OBSERVED on new evidence, with the old class kept
 ```
 
-**Payments (CRITICAL): 1 application, 1 service, 1 container, 1 pod, 1 process, 1 crypto asset, 1 database, 1 network endpoint, 1 WAF, 1 load balancer, 1 API gateway, 1 service mesh, 1 certificate, 1 certificate authority, 1 HSM, 1 key reference, 1 firmware, 1 host, 1 VM, 1 physical server, 1 TPM across 25 kind(s); 6 more asset(s) declared but not proven**
+**Payments (CRITICAL): 2 applications, 1 service, 1 container, 1 pod, 1 process, 1 package, 1 crypto library, 2 crypto assets, 1 database, 1 network endpoint, 1 WAF, 1 load balancer, 1 API gateway, 1 service mesh, 1 certificate, 1 certificate authority, 1 HSM, 1 key reference, 1 firmware, 1 vendor product, 1 vendor, 1 host, 1 VM, 1 physical server, 1 TPM across 29 kind(s); 25 proven by observation or configuration, 6 declared only**
 
 | kind | proven | declared only |
 |---|---|---|
 | `ALGORITHM` | 1 | 0 |
 | `API_GATEWAY` | 1 | 0 |
-| `APPLICATION` | 1 | 1 |
+| `APPLICATION` | 2 | 1 |
 | `CERTIFICATE` | 1 | 0 |
 | `CERTIFICATE_AUTHORITY` | 1 | 0 |
 | `CONTAINER` | 1 | 0 |
-| `CRYPTO_ASSET` | 1 | 1 |
-| `CRYPTO_LIBRARY` | 0 | 1 |
+| `CRYPTO_ASSET` | 2 | 1 |
+| `CRYPTO_LIBRARY` | 1 | 1 |
 | `DATABASE` | 1 | 0 |
 | `DEPLOYMENT` | 1 | 0 |
 | `FIRMWARE` | 1 | 0 |
@@ -37,7 +37,7 @@ promotion   IMPORTED → OBSERVED on new evidence, with the old class kept
 | `KEY_REFERENCE` | 1 | 0 |
 | `LOAD_BALANCER` | 1 | 0 |
 | `NETWORK_ENDPOINT` | 1 | 0 |
-| `PACKAGE` | 0 | 1 |
+| `PACKAGE` | 1 | 1 |
 | `PHYSICAL_SERVER` | 1 | 0 |
 | `POD` | 1 | 0 |
 | `PROCESS` | 1 | 0 |
@@ -45,8 +45,8 @@ promotion   IMPORTED → OBSERVED on new evidence, with the old class kept
 | `SERVICE` | 1 | 0 |
 | `SERVICE_MESH` | 1 | 0 |
 | `TPM` | 1 | 0 |
-| `VENDOR` | 0 | 1 |
-| `VENDOR_PRODUCT` | 0 | 1 |
+| `VENDOR` | 1 | 1 |
+| `VENDOR_PRODUCT` | 1 | 1 |
 | `VM` | 1 | 0 |
 | `WAF` | 1 | 0 |
 
@@ -94,9 +94,9 @@ Fixture: 36 technology asset(s) across 34 kind(s) and 38 evidenced relationship(
 
 *does a business system know the technology it actually holds?* (review tc / 7 and 8)
 
-- **PASS** `a-business-system-roll-up-counts-technology-by-kind` — Payments (CRITICAL): 1 application, 1 service, 1 container, 1 pod, 1 process, 1 crypto asset, 1 database, 1 network endpoint, 1 WAF, 1 load balancer, 1 API gateway, 1 service mesh, 1 certificate, 1 certificate authority, 1 HSM, 1 key reference, 1 firmware, 1 host, 1 VM, 1 physical server, 1 TPM across 25 kind(s); 6 more asset(s) declared but not proven
+- **PASS** `a-business-system-roll-up-counts-technology-by-kind` — Payments (CRITICAL): 2 applications, 1 service, 1 container, 1 pod, 1 process, 1 package, 1 crypto library, 2 crypto assets, 1 database, 1 network endpoint, 1 WAF, 1 load balancer, 1 API gateway, 1 service mesh, 1 certificate, 1 certificate authority, 1 HSM, 1 key reference, 1 firmware, 1 vendor product, 1 vendor, 1 host, 1 VM, 1 physical server, 1 TPM across 29 kind(s); 25 proven by observation or configuration, 6 declared only
 - **PASS** `the-roll-up-carries-the-criticality-and-the-owner` — Payments · CRITICAL · Payments Platform
-- **PASS** `a-declared-hop-makes-everything-above-it-declared` — Payments Batch arrives by CMDB import: counted separately, not folded in
+- **PASS** `a-declared-hop-is-counted-and-labelled-rather-than-hidden-or-flattened` — Payments Batch arrives by CMDB import: in the count, out of the proven number, and named in the split
 - **PASS** `a-roll-up-refuses-something-that-is-not-a-business-system` — a scan target is not a business system
 - **PASS** `the-portfolio-roll-up-lists-every-system-with-its-size` — 1 business system(s): Payments (25)
 

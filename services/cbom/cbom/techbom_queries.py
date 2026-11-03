@@ -210,20 +210,30 @@ def _profile(bom: Mapping[str, Any], key: str) -> dict[str, Any]:
     row = assets[key]
     proven, declared = _walk(bom, [key], direction="forward")
     proven.discard(key)
-    counts: dict[str, int] = {}
-    for member in proven:
-        kind = assets[member]["kind"]
-        counts[kind] = counts.get(kind, 0) + 1
-    declared_counts: dict[str, int] = {}
-    for member in declared:
-        kind = assets[member]["kind"]
-        declared_counts[kind] = declared_counts.get(kind, 0) + 1
-    sensitive = sorted(assets[member]["name"] for member in proven
+    declared.discard(key)
+    members = proven | declared
+
+    def tally(group: set[str]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for member in group:
+            kind = assets[member]["kind"]
+            counts[kind] = counts.get(kind, 0) + 1
+        return dict(sorted(counts.items()))
+
+    counts = tally(members)
+    declared_counts = tally(declared)
+    by_confidence: dict[str, int] = {}
+    for member in members:
+        # the class of a member is the weakest class on the path that reached it, which
+        # `_walk` has already decided: provenance travels with the containment
+        cls = "PROVEN" if member in proven else "DECLARED"
+        by_confidence[cls] = by_confidence.get(cls, 0) + 1
+    sensitive = sorted(assets[member]["name"] for member in members
                        if assets[member]["kind"] == "CRYPTO_ASSET"
                        and _quantum_sensitive(assets[member]["name"]))
-    legacy = sorted(assets[member]["id"] for member in proven
+    legacy = sorted(assets[member]["id"] for member in members
                     if str(assets[member]["status"]).upper() in LEGACY_STATUSES)
-    vendors = sorted(assets[member]["name"] for member in proven
+    vendors = sorted(assets[member]["name"] for member in members
                      if assets[member]["kind"] in ("VENDOR", "VENDOR_PRODUCT"))
     headline = ", ".join(f"{count} {_label(kind, count)}"
                          for kind in IMPACT_KINDS if (count := counts.get(kind)))
@@ -232,20 +242,26 @@ def _profile(bom: Mapping[str, Any], key: str) -> dict[str, Any]:
         "name": row["name"],
         "criticality": str(row["attributes"].get("criticality") or "UNSTATED").upper(),
         "owner": row["owner"],
-        "counts": dict(sorted(counts.items())),
-        "declared_only": dict(sorted(declared_counts.items())),
+        # the answer to "what does this system hold": everything the graph reaches
+        "counts": counts,
+        # the same answer with its provenance kept, because an owner asking "is this
+        # proven?" must not have to guess
+        "by_confidence": dict(sorted(by_confidence.items())),
+        "declared_only": declared_counts,
         "proven_assets": len(proven),
         "declared_only_assets": len(declared),
-        "systems": [],  # a profile is one system; nesting is a portfolio question
+        "systems": [],
         "quantum_sensitive": sensitive,
         "vendors": vendors,
         "legacy_assets": legacy,
         "statement": (
             f"{row['name']} ({row['attributes'].get('criticality') or 'UNSTATED'}): "
-            f"{headline or 'no assets proven'} across {len(counts)} kind(s)"
-            + (f"; {len(declared)} more asset(s) declared but not proven"
-               if declared else "")),
+            f"{headline or 'no assets'} across {len(counts)} kind(s); "
+            f"{len(proven)} proven by observation or configuration, "
+            f"{len(declared)} declared only"),
         "not_proven": [
+            "that a declared asset is deployed as described: it is on the system because "
+            "an import or a registration says so, and the count says which",
             "that this is the system's whole technology estate: only assets the graph "
             "connects to the system are counted, and an unconnected asset belongs to no "
             "system here",

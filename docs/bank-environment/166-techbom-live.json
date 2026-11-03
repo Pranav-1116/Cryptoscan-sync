@@ -1,0 +1,2387 @@
+{
+  "schema": "cryptoscan.cbom-techbom-live-guide/1",
+  "generated_at": "2026-11-03T01:48:54.000043+00:00",
+  "counts": {
+    "PASS": 6,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 29,
+  "estate": {
+    "schema": "cryptoscan.techbom-estate/1",
+    "estate_id": "estate:production",
+    "environment": "PRODUCTION",
+    "expected": {
+      "BUSINESS_SYSTEM": 3,
+      "HSM": 2,
+      "CERTIFICATE": 2,
+      "PACKAGE": 40
+    },
+    "gaps": [
+      {
+        "kind": "HSM",
+        "reason": "1 HSM collector unavailable (vendor API offline)"
+      },
+      {
+        "kind": "PACKAGE",
+        "reason": "the batch application's manifest was not collected"
+      }
+    ],
+    "assets": [
+      {
+        "kind": "BUSINESS_SYSTEM",
+        "name": "Payments",
+        "version": "2026.11.02",
+        "owner": "Payments Platform",
+        "location": "prod",
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "system:SYS-1"
+        ],
+        "attributes": {
+          "criticality": "CRITICAL",
+          "supplier": "Payments Platform"
+        }
+      },
+      {
+        "kind": "BUSINESS_SYSTEM",
+        "name": "Cards",
+        "version": "2026.10.14",
+        "owner": "Cards Platform",
+        "location": "prod",
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "system:SYS-2"
+        ],
+        "attributes": {
+          "criticality": "HIGH"
+        }
+      },
+      {
+        "kind": "BUSINESS_SYSTEM",
+        "name": "Payments Batch",
+        "version": "2026.09.01",
+        "owner": "Payments Platform",
+        "location": "prod",
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "system:SYS-3"
+        ],
+        "attributes": {
+          "criticality": "HIGH"
+        }
+      },
+      {
+        "kind": "CRYPTO_ASSET",
+        "name": "AES-256",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "crypto:CA-1",
+          "EV-CBOM-1"
+        ],
+        "attributes": {
+          "evidence_type": "STATIC_OBSERVED",
+          "purpose": "encryption",
+          "mode": "GCM",
+          "file_path": "/etc/payments/tls.conf",
+          "confidence": "MEDIUM"
+        }
+      },
+      {
+        "kind": "CRYPTO_LIBRARY",
+        "name": "OpenSSL 3.0.13",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "crypto:CA-1",
+          "EV-CBOM-1"
+        ],
+        "attributes": {}
+      },
+      {
+        "kind": "HOST",
+        "name": "db-01",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "crypto:CA-1",
+          "EV-CBOM-1"
+        ],
+        "attributes": {}
+      },
+      {
+        "kind": "CRYPTO_ASSET",
+        "name": "RSA-2048",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "crypto:CA-2",
+          "EV-CBOM-2"
+        ],
+        "attributes": {
+          "evidence_type": "STATIC_OBSERVED",
+          "purpose": "signature",
+          "confidence": "MEDIUM"
+        }
+      },
+      {
+        "kind": "CRYPTO_ASSET",
+        "name": "3DES-168",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "crypto:CA-3",
+          "EV-CBOM-3"
+        ],
+        "attributes": {
+          "evidence_type": "STATIC_OBSERVED",
+          "confidence": "LOW"
+        }
+      },
+      {
+        "kind": "HOST",
+        "name": "cards-01",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "crypto:CA-3",
+          "EV-CBOM-3"
+        ],
+        "attributes": {}
+      },
+      {
+        "kind": "HSM",
+        "name": "HSM-01",
+        "version": "8.4",
+        "owner": null,
+        "location": "SYS-1",
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "hardware:HSM-01",
+          "EV-HBOM-1"
+        ],
+        "attributes": {
+          "model": "HSM-9000",
+          "manufacturer": "Vendor X",
+          "serial_reference": "SN-4471",
+          "supports": [
+            "RSA-2048",
+            "AES-256"
+          ]
+        }
+      },
+      {
+        "kind": "FIRMWARE",
+        "name": "HSM-01 firmware 8.4",
+        "version": "8.4",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "hardware:HSM-01",
+          "EV-HBOM-1"
+        ],
+        "attributes": {
+          "supports": [
+            "RSA-2048",
+            "AES-256"
+          ]
+        }
+      },
+      {
+        "kind": "VENDOR",
+        "name": "Vendor X",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "hardware:HSM-01",
+          "EV-HBOM-1"
+        ],
+        "attributes": {}
+      },
+      {
+        "kind": "TPM",
+        "name": "SRV-12",
+        "version": "2.1",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "hardware:SRV-12"
+        ],
+        "attributes": {
+          "model": "R760",
+          "manufacturer": "Dell"
+        }
+      },
+      {
+        "kind": "FIRMWARE",
+        "name": "SRV-12 firmware 2.1",
+        "version": "2.1",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "hardware:SRV-12"
+        ],
+        "attributes": {}
+      },
+      {
+        "kind": "VENDOR",
+        "name": "Dell",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "hardware:SRV-12"
+        ],
+        "attributes": {}
+      },
+      {
+        "kind": "VENDOR_PRODUCT",
+        "name": "Vendor X HSM-9000",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "vendor:vendor x"
+        ],
+        "attributes": {
+          "lifecycle": "supported"
+        }
+      },
+      {
+        "kind": "CERTIFICATE",
+        "name": "CN=payments.bank.example",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "cert:abababababababababababababababababababababababababababababababab"
+        ],
+        "attributes": {
+          "fingerprint_sha256": "abababababababababababababababababababababababababababababababab",
+          "subject": "CN=payments.bank.example"
+        }
+      },
+      {
+        "kind": "CERTIFICATE",
+        "name": "CN=cards.bank.example",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "cert:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+        ],
+        "attributes": {
+          "fingerprint_sha256": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "subject": "CN=cards.bank.example"
+        }
+      },
+      {
+        "kind": "CRYPTO_LIBRARY",
+        "name": "library/OpenSSL",
+        "version": "3.0.13",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "software:library/OpenSSL",
+          "scan:SCAN-9281"
+        ],
+        "attributes": {
+          "package": "OpenSSL",
+          "origin": "CODE_AND_MANIFEST",
+          "algorithms": [
+            "AES-256-GCM",
+            "RSA-2048"
+          ]
+        }
+      },
+      {
+        "kind": "PACKAGE",
+        "name": "pkg:npm/left-pad@1.0",
+        "version": "1.0",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "evidence_ids": [
+          "software:pkg:npm/left-pad@1.0",
+          "package.json",
+          "scan:SCAN-9281"
+        ],
+        "attributes": {
+          "package": "left-pad",
+          "origin": "MANIFEST_DECLARED",
+          "declared_in": "package.json"
+        }
+      }
+    ],
+    "claims": [
+      {
+        "from": "CRYPTO_LIBRARY:openssl 3.0.13:production",
+        "relation": "PROVIDES_ALGORITHM",
+        "to": "CRYPTO_ASSET:aes-256:production",
+        "basis": "cmdb-import",
+        "evidence_ids": [
+          "crypto:CA-1",
+          "EV-CBOM-1"
+        ],
+        "note": "the library row the asset was found through"
+      },
+      {
+        "from": "CRYPTO_ASSET:aes-256:production",
+        "relation": "FOUND_ON",
+        "to": "HOST:db-01:production",
+        "basis": "cmdb-import",
+        "evidence_ids": [
+          "crypto:CA-1",
+          "EV-CBOM-1"
+        ],
+        "note": null
+      },
+      {
+        "from": "CRYPTO_LIBRARY:openssl 3.0.13:production",
+        "relation": "PROVIDES_ALGORITHM",
+        "to": "CRYPTO_ASSET:rsa-2048:production",
+        "basis": "cmdb-import",
+        "evidence_ids": [
+          "crypto:CA-2",
+          "EV-CBOM-2"
+        ],
+        "note": "the library row the asset was found through"
+      },
+      {
+        "from": "CRYPTO_ASSET:rsa-2048:production",
+        "relation": "FOUND_ON",
+        "to": "HOST:db-01:production",
+        "basis": "cmdb-import",
+        "evidence_ids": [
+          "crypto:CA-2",
+          "EV-CBOM-2"
+        ],
+        "note": null
+      },
+      {
+        "from": "CRYPTO_ASSET:3des-168:production",
+        "relation": "FOUND_ON",
+        "to": "HOST:cards-01:production",
+        "basis": "cmdb-import",
+        "evidence_ids": [
+          "crypto:CA-3",
+          "EV-CBOM-3"
+        ],
+        "note": null
+      },
+      {
+        "from": "BUSINESS_SYSTEM:payments:production",
+        "relation": "OWNS",
+        "to": "CRYPTO_ASSET:aes-256:production",
+        "basis": "operator-registration",
+        "evidence_ids": [
+          "system-asset:SA-1"
+        ],
+        "note": "a registered link between a system and an asset, not a measurement"
+      },
+      {
+        "from": "BUSINESS_SYSTEM:payments:production",
+        "relation": "OWNS",
+        "to": "CRYPTO_ASSET:rsa-2048:production",
+        "basis": "operator-registration",
+        "evidence_ids": [
+          "system-asset:SA-2"
+        ],
+        "note": "a registered link between a system and an asset, not a measurement"
+      },
+      {
+        "from": "BUSINESS_SYSTEM:cards:production",
+        "relation": "OWNS",
+        "to": "CRYPTO_ASSET:3des-168:production",
+        "basis": "operator-registration",
+        "evidence_ids": [
+          "system-asset:SA-3"
+        ],
+        "note": "a registered link between a system and an asset, not a measurement"
+      },
+      {
+        "from": "BUSINESS_SYSTEM:payments:production",
+        "relation": "OWNS",
+        "to": "HSM:hsm-01:production",
+        "basis": "operator-registration",
+        "evidence_ids": [
+          "hardware:HSM-01"
+        ],
+        "note": "the hardware row names this system as its owner"
+      },
+      {
+        "from": "HSM:hsm-01:production",
+        "relation": "RUNS_FIRMWARE",
+        "to": "FIRMWARE:hsm-01 firmware 8.4:production",
+        "basis": "cmdb-import",
+        "evidence_ids": [
+          "hardware:HSM-01",
+          "EV-HBOM-1"
+        ],
+        "note": null
+      },
+      {
+        "from": "HSM:hsm-01:production",
+        "relation": "SUPPLIED_BY",
+        "to": "VENDOR:vendor x:production",
+        "basis": "vendor-datasheet",
+        "evidence_ids": [
+          "hardware:HSM-01",
+          "EV-HBOM-1"
+        ],
+        "note": "the manufacturer field is a vendor declaration, not a delivery record"
+      },
+      {
+        "from": "TPM:srv-12:production",
+        "relation": "RUNS_FIRMWARE",
+        "to": "FIRMWARE:srv-12 firmware 2.1:production",
+        "basis": "cmdb-import",
+        "evidence_ids": [
+          "hardware:SRV-12"
+        ],
+        "note": null
+      },
+      {
+        "from": "TPM:srv-12:production",
+        "relation": "SUPPLIED_BY",
+        "to": "VENDOR:dell:production",
+        "basis": "vendor-datasheet",
+        "evidence_ids": [
+          "hardware:SRV-12"
+        ],
+        "note": "the manufacturer field is a vendor declaration, not a delivery record"
+      },
+      {
+        "from": "VENDOR_PRODUCT:vendor x hsm-9000:production",
+        "relation": "SUPPLIED_BY",
+        "to": "VENDOR:vendor x:production",
+        "basis": "vendor-datasheet",
+        "evidence_ids": [
+          "vendor:vendor x"
+        ],
+        "note": null
+      },
+      {
+        "from": "PACKAGE:pkg:npm/left-pad@1.0:production",
+        "relation": "DEPENDS_ON",
+        "to": "CRYPTO_LIBRARY:library/openssl:production",
+        "basis": "scan-manifest",
+        "evidence_ids": [
+          "scan:SCAN-9281",
+          "edge:pkg:npm/left-pad@1.0->library/OpenSSL"
+        ],
+        "note": "software edge of type depends_on"
+      },
+      {
+        "from": "BUSINESS_SYSTEM:payments:production",
+        "relation": "DEPENDS_ON",
+        "to": "BUSINESS_SYSTEM:cards:production",
+        "basis": "agent-inventory",
+        "evidence_ids": [
+          "EV-DEP-1",
+          "dependency:SYS-1 \u2192 SYS-2"
+        ],
+        "source_system": "discovered",
+        "note": "observed traffic between them"
+      },
+      {
+        "from": "BUSINESS_SYSTEM:payments batch:production",
+        "relation": "DEPENDS_ON",
+        "to": "BUSINESS_SYSTEM:payments:production",
+        "basis": "operator-registration",
+        "evidence_ids": [
+          "EV-DEP-2",
+          "dependency:SYS-3 \u2192 SYS-1"
+        ],
+        "source_system": "manual",
+        "note": null
+      }
+    ],
+    "source": {
+      "kind": "INVENTORY",
+      "scan_id": "SCAN-9281",
+      "note": "read from the stored inventory: every asset and edge here is the residue of a collection that already happened, so none of it is OBSERVED on this read"
+    }
+  },
+  "skipped": [
+    {
+      "kind": "CRYPTO_ASSET",
+      "subject": "ECDSA-256",
+      "reason": "its source_basis 'unstated-instrument' is not one this model can classify, so it cannot be placed with a confidence"
+    },
+    {
+      "kind": "REGISTRATION",
+      "subject": "SYS-99 \u2192 CA-1",
+      "reason": "the registration names a system or an asset this inventory does not hold, and an edge to an undeclared node is refused"
+    },
+    {
+      "kind": "PHYSICAL_SERVER",
+      "subject": "unknown-appliance",
+      "reason": "a hardware row with neither asset_id nor id cannot be referenced by an edge, so it is skipped rather than given an invented identity"
+    },
+    {
+      "kind": "PACKAGE",
+      "subject": "pkg/npm/mystery",
+      "reason": "its origin (none) does not say whether the code imports it or only a manifest declares it, so its class cannot be set"
+    },
+    {
+      "kind": "DEPENDENCY",
+      "subject": "pkg/npm/mystery \u2192 library/OpenSSL",
+      "reason": "one end of the edge is not an asset in this estate, and an edge to an undeclared node is refused rather than invented"
+    },
+    {
+      "kind": "DEPENDENCY",
+      "subject": "pkg:npm/gone@2.0 \u2192 library/OpenSSL",
+      "reason": "one end of the edge is not an asset in this estate, and an edge to an undeclared node is refused rather than invented"
+    },
+    {
+      "kind": "DEPENDENCY",
+      "subject": "SYS-2 \u2192 SYS-1",
+      "reason": "its provenance column says (empty), which is not one of manual, discovered or imported: the edge cannot be given a class"
+    },
+    {
+      "kind": "DEPENDENCY",
+      "subject": "SYS-3 \u2192 SYS-404",
+      "reason": "the dependency row names a system this inventory does not hold; an edge to an undeclared system is refused rather than invented"
+    }
+  ],
+  "statement": "20 asset(s) and 17 claim(s) read from the inventory; 8 row(s) skipped with a reason; every class here is IMPORTED, CONFIGURED or VENDOR_DECLARED, because a stored row is not an observation",
+  "bom": {
+    "schema": "cryptoscan.techbom/1",
+    "projection": true,
+    "source_of_truth": "CANONICAL_ESTATE",
+    "derived_from": "estate:production",
+    "environment": "PRODUCTION",
+    "assets": [
+      {
+        "kind": "CERTIFICATE",
+        "name": "CN=cards.bank.example",
+        "key": "CERTIFICATE:cn=cards.bank.example:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "cert:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+        ],
+        "attributes": {
+          "fingerprint_sha256": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "subject": "CN=cards.bank.example"
+        },
+        "id": "TECH-CERT-001",
+        "digest": "ff724d6429"
+      },
+      {
+        "kind": "CERTIFICATE",
+        "name": "CN=payments.bank.example",
+        "key": "CERTIFICATE:cn=payments.bank.example:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "cert:abababababababababababababababababababababababababababababababab"
+        ],
+        "attributes": {
+          "fingerprint_sha256": "abababababababababababababababababababababababababababababababab",
+          "subject": "CN=payments.bank.example"
+        },
+        "id": "TECH-CERT-002",
+        "digest": "760232c466"
+      },
+      {
+        "kind": "CRYPTO_ASSET",
+        "name": "3DES-168",
+        "key": "CRYPTO_ASSET:3des-168:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "crypto:CA-3",
+          "EV-CBOM-3"
+        ],
+        "attributes": {
+          "evidence_type": "STATIC_OBSERVED",
+          "confidence": "LOW"
+        },
+        "id": "TECH-CRY-001",
+        "digest": "f7e270193d"
+      },
+      {
+        "kind": "CRYPTO_ASSET",
+        "name": "AES-256",
+        "key": "CRYPTO_ASSET:aes-256:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "crypto:CA-1",
+          "EV-CBOM-1"
+        ],
+        "attributes": {
+          "evidence_type": "STATIC_OBSERVED",
+          "purpose": "encryption",
+          "mode": "GCM",
+          "file_path": "/etc/payments/tls.conf",
+          "confidence": "MEDIUM"
+        },
+        "id": "TECH-CRY-002",
+        "digest": "1aaf563ede"
+      },
+      {
+        "kind": "CRYPTO_ASSET",
+        "name": "RSA-2048",
+        "key": "CRYPTO_ASSET:rsa-2048:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "crypto:CA-2",
+          "EV-CBOM-2"
+        ],
+        "attributes": {
+          "evidence_type": "STATIC_OBSERVED",
+          "purpose": "signature",
+          "confidence": "MEDIUM"
+        },
+        "id": "TECH-CRY-003",
+        "digest": "df4ca3468d"
+      },
+      {
+        "kind": "FIRMWARE",
+        "name": "HSM-01 firmware 8.4",
+        "key": "FIRMWARE:hsm-01 firmware 8.4:production",
+        "environment": "PRODUCTION",
+        "version": "8.4",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "hardware:HSM-01",
+          "EV-HBOM-1"
+        ],
+        "attributes": {
+          "supports": [
+            "RSA-2048",
+            "AES-256"
+          ]
+        },
+        "id": "TECH-FW-001",
+        "digest": "6ca6b95111"
+      },
+      {
+        "kind": "FIRMWARE",
+        "name": "SRV-12 firmware 2.1",
+        "key": "FIRMWARE:srv-12 firmware 2.1:production",
+        "environment": "PRODUCTION",
+        "version": "2.1",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "hardware:SRV-12"
+        ],
+        "attributes": {},
+        "id": "TECH-FW-002",
+        "digest": "5b269801db"
+      },
+      {
+        "kind": "HOST",
+        "name": "cards-01",
+        "key": "HOST:cards-01:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "crypto:CA-3",
+          "EV-CBOM-3"
+        ],
+        "attributes": {},
+        "id": "TECH-HOST-001",
+        "digest": "a46445680a"
+      },
+      {
+        "kind": "HOST",
+        "name": "db-01",
+        "key": "HOST:db-01:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "crypto:CA-1",
+          "EV-CBOM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-HOST-002",
+        "digest": "a47724b198"
+      },
+      {
+        "kind": "HSM",
+        "name": "HSM-01",
+        "key": "HSM:hsm-01:production",
+        "environment": "PRODUCTION",
+        "version": "8.4",
+        "owner": null,
+        "location": "SYS-1",
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "hardware:HSM-01",
+          "EV-HBOM-1"
+        ],
+        "attributes": {
+          "model": "HSM-9000",
+          "manufacturer": "Vendor X",
+          "serial_reference": "SN-4471",
+          "supports": [
+            "RSA-2048",
+            "AES-256"
+          ]
+        },
+        "id": "TECH-HSM-001",
+        "digest": "cb2eadf464"
+      },
+      {
+        "kind": "CRYPTO_LIBRARY",
+        "name": "library/OpenSSL",
+        "key": "CRYPTO_LIBRARY:library/openssl:production",
+        "environment": "PRODUCTION",
+        "version": "3.0.13",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "software:library/OpenSSL",
+          "scan:SCAN-9281"
+        ],
+        "attributes": {
+          "package": "OpenSSL",
+          "origin": "CODE_AND_MANIFEST",
+          "algorithms": [
+            "AES-256-GCM",
+            "RSA-2048"
+          ]
+        },
+        "id": "TECH-LIB-001",
+        "digest": "d9e28b4718"
+      },
+      {
+        "kind": "CRYPTO_LIBRARY",
+        "name": "OpenSSL 3.0.13",
+        "key": "CRYPTO_LIBRARY:openssl 3.0.13:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "crypto:CA-1",
+          "EV-CBOM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-LIB-002",
+        "digest": "84ae269bd6"
+      },
+      {
+        "kind": "PACKAGE",
+        "name": "pkg:npm/left-pad@1.0",
+        "key": "PACKAGE:pkg:npm/left-pad@1.0:production",
+        "environment": "PRODUCTION",
+        "version": "1.0",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "software:pkg:npm/left-pad@1.0",
+          "package.json",
+          "scan:SCAN-9281"
+        ],
+        "attributes": {
+          "package": "left-pad",
+          "origin": "MANIFEST_DECLARED",
+          "declared_in": "package.json"
+        },
+        "id": "TECH-PKG-001",
+        "digest": "86bddbc027"
+      },
+      {
+        "kind": "VENDOR_PRODUCT",
+        "name": "Vendor X HSM-9000",
+        "key": "VENDOR_PRODUCT:vendor x hsm-9000:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "vendor:vendor x"
+        ],
+        "attributes": {
+          "lifecycle": "supported"
+        },
+        "id": "TECH-PROD-001",
+        "digest": "e1f94cd24d"
+      },
+      {
+        "kind": "BUSINESS_SYSTEM",
+        "name": "Cards",
+        "key": "BUSINESS_SYSTEM:cards:production",
+        "environment": "PRODUCTION",
+        "version": "2026.10.14",
+        "owner": "Cards Platform",
+        "location": "prod",
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "system:SYS-2"
+        ],
+        "attributes": {
+          "criticality": "HIGH"
+        },
+        "id": "TECH-SYS-001",
+        "digest": "d58fed9523"
+      },
+      {
+        "kind": "BUSINESS_SYSTEM",
+        "name": "Payments Batch",
+        "key": "BUSINESS_SYSTEM:payments batch:production",
+        "environment": "PRODUCTION",
+        "version": "2026.09.01",
+        "owner": "Payments Platform",
+        "location": "prod",
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "system:SYS-3"
+        ],
+        "attributes": {
+          "criticality": "HIGH"
+        },
+        "id": "TECH-SYS-002",
+        "digest": "e57b93ec84"
+      },
+      {
+        "kind": "BUSINESS_SYSTEM",
+        "name": "Payments",
+        "key": "BUSINESS_SYSTEM:payments:production",
+        "environment": "PRODUCTION",
+        "version": "2026.11.02",
+        "owner": "Payments Platform",
+        "location": "prod",
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "system:SYS-1"
+        ],
+        "attributes": {
+          "criticality": "CRITICAL",
+          "supplier": "Payments Platform"
+        },
+        "id": "TECH-SYS-003",
+        "digest": "a8b927fcef"
+      },
+      {
+        "kind": "TPM",
+        "name": "SRV-12",
+        "key": "TPM:srv-12:production",
+        "environment": "PRODUCTION",
+        "version": "2.1",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "hardware:SRV-12"
+        ],
+        "attributes": {
+          "model": "R760",
+          "manufacturer": "Dell"
+        },
+        "id": "TECH-TPM-001",
+        "digest": "3c8e8121be"
+      },
+      {
+        "kind": "VENDOR",
+        "name": "Dell",
+        "key": "VENDOR:dell:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "hardware:SRV-12"
+        ],
+        "attributes": {},
+        "id": "TECH-VENDOR-001",
+        "digest": "93fbf7a526"
+      },
+      {
+        "kind": "VENDOR",
+        "name": "Vendor X",
+        "key": "VENDOR:vendor x:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "hardware:HSM-01",
+          "EV-HBOM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-VENDOR-002",
+        "digest": "ee91fe03fb"
+      }
+    ],
+    "by_key": {
+      "BUSINESS_SYSTEM:payments:production": {
+        "kind": "BUSINESS_SYSTEM",
+        "name": "Payments",
+        "key": "BUSINESS_SYSTEM:payments:production",
+        "environment": "PRODUCTION",
+        "version": "2026.11.02",
+        "owner": "Payments Platform",
+        "location": "prod",
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "system:SYS-1"
+        ],
+        "attributes": {
+          "criticality": "CRITICAL",
+          "supplier": "Payments Platform"
+        },
+        "id": "TECH-SYS-003",
+        "digest": "a8b927fcef"
+      },
+      "BUSINESS_SYSTEM:cards:production": {
+        "kind": "BUSINESS_SYSTEM",
+        "name": "Cards",
+        "key": "BUSINESS_SYSTEM:cards:production",
+        "environment": "PRODUCTION",
+        "version": "2026.10.14",
+        "owner": "Cards Platform",
+        "location": "prod",
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "system:SYS-2"
+        ],
+        "attributes": {
+          "criticality": "HIGH"
+        },
+        "id": "TECH-SYS-001",
+        "digest": "d58fed9523"
+      },
+      "BUSINESS_SYSTEM:payments batch:production": {
+        "kind": "BUSINESS_SYSTEM",
+        "name": "Payments Batch",
+        "key": "BUSINESS_SYSTEM:payments batch:production",
+        "environment": "PRODUCTION",
+        "version": "2026.09.01",
+        "owner": "Payments Platform",
+        "location": "prod",
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "system:SYS-3"
+        ],
+        "attributes": {
+          "criticality": "HIGH"
+        },
+        "id": "TECH-SYS-002",
+        "digest": "e57b93ec84"
+      },
+      "CRYPTO_ASSET:aes-256:production": {
+        "kind": "CRYPTO_ASSET",
+        "name": "AES-256",
+        "key": "CRYPTO_ASSET:aes-256:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "crypto:CA-1",
+          "EV-CBOM-1"
+        ],
+        "attributes": {
+          "evidence_type": "STATIC_OBSERVED",
+          "purpose": "encryption",
+          "mode": "GCM",
+          "file_path": "/etc/payments/tls.conf",
+          "confidence": "MEDIUM"
+        },
+        "id": "TECH-CRY-002",
+        "digest": "1aaf563ede"
+      },
+      "CRYPTO_LIBRARY:openssl 3.0.13:production": {
+        "kind": "CRYPTO_LIBRARY",
+        "name": "OpenSSL 3.0.13",
+        "key": "CRYPTO_LIBRARY:openssl 3.0.13:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "crypto:CA-1",
+          "EV-CBOM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-LIB-002",
+        "digest": "84ae269bd6"
+      },
+      "HOST:db-01:production": {
+        "kind": "HOST",
+        "name": "db-01",
+        "key": "HOST:db-01:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "crypto:CA-1",
+          "EV-CBOM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-HOST-002",
+        "digest": "a47724b198"
+      },
+      "CRYPTO_ASSET:rsa-2048:production": {
+        "kind": "CRYPTO_ASSET",
+        "name": "RSA-2048",
+        "key": "CRYPTO_ASSET:rsa-2048:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "crypto:CA-2",
+          "EV-CBOM-2"
+        ],
+        "attributes": {
+          "evidence_type": "STATIC_OBSERVED",
+          "purpose": "signature",
+          "confidence": "MEDIUM"
+        },
+        "id": "TECH-CRY-003",
+        "digest": "df4ca3468d"
+      },
+      "CRYPTO_ASSET:3des-168:production": {
+        "kind": "CRYPTO_ASSET",
+        "name": "3DES-168",
+        "key": "CRYPTO_ASSET:3des-168:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "crypto:CA-3",
+          "EV-CBOM-3"
+        ],
+        "attributes": {
+          "evidence_type": "STATIC_OBSERVED",
+          "confidence": "LOW"
+        },
+        "id": "TECH-CRY-001",
+        "digest": "f7e270193d"
+      },
+      "HOST:cards-01:production": {
+        "kind": "HOST",
+        "name": "cards-01",
+        "key": "HOST:cards-01:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "crypto:CA-3",
+          "EV-CBOM-3"
+        ],
+        "attributes": {},
+        "id": "TECH-HOST-001",
+        "digest": "a46445680a"
+      },
+      "HSM:hsm-01:production": {
+        "kind": "HSM",
+        "name": "HSM-01",
+        "key": "HSM:hsm-01:production",
+        "environment": "PRODUCTION",
+        "version": "8.4",
+        "owner": null,
+        "location": "SYS-1",
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "hardware:HSM-01",
+          "EV-HBOM-1"
+        ],
+        "attributes": {
+          "model": "HSM-9000",
+          "manufacturer": "Vendor X",
+          "serial_reference": "SN-4471",
+          "supports": [
+            "RSA-2048",
+            "AES-256"
+          ]
+        },
+        "id": "TECH-HSM-001",
+        "digest": "cb2eadf464"
+      },
+      "FIRMWARE:hsm-01 firmware 8.4:production": {
+        "kind": "FIRMWARE",
+        "name": "HSM-01 firmware 8.4",
+        "key": "FIRMWARE:hsm-01 firmware 8.4:production",
+        "environment": "PRODUCTION",
+        "version": "8.4",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "hardware:HSM-01",
+          "EV-HBOM-1"
+        ],
+        "attributes": {
+          "supports": [
+            "RSA-2048",
+            "AES-256"
+          ]
+        },
+        "id": "TECH-FW-001",
+        "digest": "6ca6b95111"
+      },
+      "VENDOR:vendor x:production": {
+        "kind": "VENDOR",
+        "name": "Vendor X",
+        "key": "VENDOR:vendor x:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "hardware:HSM-01",
+          "EV-HBOM-1"
+        ],
+        "attributes": {},
+        "id": "TECH-VENDOR-002",
+        "digest": "ee91fe03fb"
+      },
+      "TPM:srv-12:production": {
+        "kind": "TPM",
+        "name": "SRV-12",
+        "key": "TPM:srv-12:production",
+        "environment": "PRODUCTION",
+        "version": "2.1",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "hardware:SRV-12"
+        ],
+        "attributes": {
+          "model": "R760",
+          "manufacturer": "Dell"
+        },
+        "id": "TECH-TPM-001",
+        "digest": "3c8e8121be"
+      },
+      "FIRMWARE:srv-12 firmware 2.1:production": {
+        "kind": "FIRMWARE",
+        "name": "SRV-12 firmware 2.1",
+        "key": "FIRMWARE:srv-12 firmware 2.1:production",
+        "environment": "PRODUCTION",
+        "version": "2.1",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "hardware:SRV-12"
+        ],
+        "attributes": {},
+        "id": "TECH-FW-002",
+        "digest": "5b269801db"
+      },
+      "VENDOR:dell:production": {
+        "kind": "VENDOR",
+        "name": "Dell",
+        "key": "VENDOR:dell:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "hardware:SRV-12"
+        ],
+        "attributes": {},
+        "id": "TECH-VENDOR-001",
+        "digest": "93fbf7a526"
+      },
+      "VENDOR_PRODUCT:vendor x hsm-9000:production": {
+        "kind": "VENDOR_PRODUCT",
+        "name": "Vendor X HSM-9000",
+        "key": "VENDOR_PRODUCT:vendor x hsm-9000:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "vendor:vendor x"
+        ],
+        "attributes": {
+          "lifecycle": "supported"
+        },
+        "id": "TECH-PROD-001",
+        "digest": "e1f94cd24d"
+      },
+      "CERTIFICATE:cn=payments.bank.example:production": {
+        "kind": "CERTIFICATE",
+        "name": "CN=payments.bank.example",
+        "key": "CERTIFICATE:cn=payments.bank.example:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "cert:abababababababababababababababababababababababababababababababab"
+        ],
+        "attributes": {
+          "fingerprint_sha256": "abababababababababababababababababababababababababababababababab",
+          "subject": "CN=payments.bank.example"
+        },
+        "id": "TECH-CERT-002",
+        "digest": "760232c466"
+      },
+      "CERTIFICATE:cn=cards.bank.example:production": {
+        "kind": "CERTIFICATE",
+        "name": "CN=cards.bank.example",
+        "key": "CERTIFICATE:cn=cards.bank.example:production",
+        "environment": "PRODUCTION",
+        "version": null,
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "cert:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+        ],
+        "attributes": {
+          "fingerprint_sha256": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "subject": "CN=cards.bank.example"
+        },
+        "id": "TECH-CERT-001",
+        "digest": "ff724d6429"
+      },
+      "CRYPTO_LIBRARY:library/openssl:production": {
+        "kind": "CRYPTO_LIBRARY",
+        "name": "library/OpenSSL",
+        "key": "CRYPTO_LIBRARY:library/openssl:production",
+        "environment": "PRODUCTION",
+        "version": "3.0.13",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "software:library/OpenSSL",
+          "scan:SCAN-9281"
+        ],
+        "attributes": {
+          "package": "OpenSSL",
+          "origin": "CODE_AND_MANIFEST",
+          "algorithms": [
+            "AES-256-GCM",
+            "RSA-2048"
+          ]
+        },
+        "id": "TECH-LIB-001",
+        "digest": "d9e28b4718"
+      },
+      "PACKAGE:pkg:npm/left-pad@1.0:production": {
+        "kind": "PACKAGE",
+        "name": "pkg:npm/left-pad@1.0",
+        "key": "PACKAGE:pkg:npm/left-pad@1.0:production",
+        "environment": "PRODUCTION",
+        "version": "1.0",
+        "owner": null,
+        "location": null,
+        "status": "ACTIVE",
+        "first_seen": null,
+        "last_seen": null,
+        "source": null,
+        "evidence_ids": [
+          "software:pkg:npm/left-pad@1.0",
+          "package.json",
+          "scan:SCAN-9281"
+        ],
+        "attributes": {
+          "package": "left-pad",
+          "origin": "MANIFEST_DECLARED",
+          "declared_in": "package.json"
+        },
+        "id": "TECH-PKG-001",
+        "digest": "86bddbc027"
+      }
+    },
+    "claims": [
+      {
+        "from": "BUSINESS_SYSTEM:payments:production",
+        "relation": "DEPENDS_ON",
+        "to": "BUSINESS_SYSTEM:cards:production",
+        "basis": "agent-inventory",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "EV-DEP-1",
+          "dependency:SYS-1 \u2192 SYS-2"
+        ],
+        "source_system": "discovered",
+        "rule": null,
+        "note": "observed traffic between them",
+        "chain": "SOFTWARE",
+        "from_key": "BUSINESS_SYSTEM:payments:production",
+        "to_key": "BUSINESS_SYSTEM:cards:production",
+        "from_id": "TECH-SYS-003",
+        "to_id": "TECH-SYS-001",
+        "id": "EDGE-0b0dd431"
+      },
+      {
+        "from": "CRYPTO_LIBRARY:openssl 3.0.13:production",
+        "relation": "PROVIDES_ALGORITHM",
+        "to": "CRYPTO_ASSET:rsa-2048:production",
+        "basis": "cmdb-import",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "crypto:CA-2",
+          "EV-CBOM-2"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": "the library row the asset was found through",
+        "chain": "SOFTWARE",
+        "from_key": "CRYPTO_LIBRARY:openssl 3.0.13:production",
+        "to_key": "CRYPTO_ASSET:rsa-2048:production",
+        "from_id": "TECH-LIB-002",
+        "to_id": "TECH-CRY-003",
+        "id": "EDGE-0e789631"
+      },
+      {
+        "from": "TPM:srv-12:production",
+        "relation": "RUNS_FIRMWARE",
+        "to": "FIRMWARE:srv-12 firmware 2.1:production",
+        "basis": "cmdb-import",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "hardware:SRV-12"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "HARDWARE",
+        "from_key": "TPM:srv-12:production",
+        "to_key": "FIRMWARE:srv-12 firmware 2.1:production",
+        "from_id": "TECH-TPM-001",
+        "to_id": "TECH-FW-002",
+        "id": "EDGE-1b771681"
+      },
+      {
+        "from": "TPM:srv-12:production",
+        "relation": "SUPPLIED_BY",
+        "to": "VENDOR:dell:production",
+        "basis": "vendor-datasheet",
+        "confidence": "VENDOR_DECLARED",
+        "evidence_ids": [
+          "hardware:SRV-12"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": "the manufacturer field is a vendor declaration, not a delivery record",
+        "chain": "VENDOR",
+        "from_key": "TPM:srv-12:production",
+        "to_key": "VENDOR:dell:production",
+        "from_id": "TECH-TPM-001",
+        "to_id": "TECH-VENDOR-001",
+        "id": "EDGE-2846f751"
+      },
+      {
+        "from": "CRYPTO_ASSET:rsa-2048:production",
+        "relation": "FOUND_ON",
+        "to": "HOST:db-01:production",
+        "basis": "cmdb-import",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "crypto:CA-2",
+          "EV-CBOM-2"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "HARDWARE",
+        "from_key": "CRYPTO_ASSET:rsa-2048:production",
+        "to_key": "HOST:db-01:production",
+        "from_id": "TECH-CRY-003",
+        "to_id": "TECH-HOST-002",
+        "id": "EDGE-2f0bf148"
+      },
+      {
+        "from": "CRYPTO_ASSET:aes-256:production",
+        "relation": "FOUND_ON",
+        "to": "HOST:db-01:production",
+        "basis": "cmdb-import",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "crypto:CA-1",
+          "EV-CBOM-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "HARDWARE",
+        "from_key": "CRYPTO_ASSET:aes-256:production",
+        "to_key": "HOST:db-01:production",
+        "from_id": "TECH-CRY-002",
+        "to_id": "TECH-HOST-002",
+        "id": "EDGE-3f74df2a"
+      },
+      {
+        "from": "VENDOR_PRODUCT:vendor x hsm-9000:production",
+        "relation": "SUPPLIED_BY",
+        "to": "VENDOR:vendor x:production",
+        "basis": "vendor-datasheet",
+        "confidence": "VENDOR_DECLARED",
+        "evidence_ids": [
+          "vendor:vendor x"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "VENDOR",
+        "from_key": "VENDOR_PRODUCT:vendor x hsm-9000:production",
+        "to_key": "VENDOR:vendor x:production",
+        "from_id": "TECH-PROD-001",
+        "to_id": "TECH-VENDOR-002",
+        "id": "EDGE-421106c1"
+      },
+      {
+        "from": "BUSINESS_SYSTEM:payments:production",
+        "relation": "OWNS",
+        "to": "CRYPTO_ASSET:aes-256:production",
+        "basis": "operator-registration",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "system-asset:SA-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": "a registered link between a system and an asset, not a measurement",
+        "chain": "SOFTWARE",
+        "from_key": "BUSINESS_SYSTEM:payments:production",
+        "to_key": "CRYPTO_ASSET:aes-256:production",
+        "from_id": "TECH-SYS-003",
+        "to_id": "TECH-CRY-002",
+        "id": "EDGE-5be10947"
+      },
+      {
+        "from": "BUSINESS_SYSTEM:cards:production",
+        "relation": "OWNS",
+        "to": "CRYPTO_ASSET:3des-168:production",
+        "basis": "operator-registration",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "system-asset:SA-3"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": "a registered link between a system and an asset, not a measurement",
+        "chain": "SOFTWARE",
+        "from_key": "BUSINESS_SYSTEM:cards:production",
+        "to_key": "CRYPTO_ASSET:3des-168:production",
+        "from_id": "TECH-SYS-001",
+        "to_id": "TECH-CRY-001",
+        "id": "EDGE-6eeaeae8"
+      },
+      {
+        "from": "PACKAGE:pkg:npm/left-pad@1.0:production",
+        "relation": "DEPENDS_ON",
+        "to": "CRYPTO_LIBRARY:library/openssl:production",
+        "basis": "scan-manifest",
+        "confidence": "CONFIGURED",
+        "evidence_ids": [
+          "scan:SCAN-9281",
+          "edge:pkg:npm/left-pad@1.0->library/OpenSSL"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": "software edge of type depends_on",
+        "chain": "SOFTWARE",
+        "from_key": "PACKAGE:pkg:npm/left-pad@1.0:production",
+        "to_key": "CRYPTO_LIBRARY:library/openssl:production",
+        "from_id": "TECH-PKG-001",
+        "to_id": "TECH-LIB-001",
+        "id": "EDGE-79ebbc2f"
+      },
+      {
+        "from": "BUSINESS_SYSTEM:payments batch:production",
+        "relation": "DEPENDS_ON",
+        "to": "BUSINESS_SYSTEM:payments:production",
+        "basis": "operator-registration",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "EV-DEP-2",
+          "dependency:SYS-3 \u2192 SYS-1"
+        ],
+        "source_system": "manual",
+        "rule": null,
+        "note": null,
+        "chain": "SOFTWARE",
+        "from_key": "BUSINESS_SYSTEM:payments batch:production",
+        "to_key": "BUSINESS_SYSTEM:payments:production",
+        "from_id": "TECH-SYS-002",
+        "to_id": "TECH-SYS-003",
+        "id": "EDGE-8455d636"
+      },
+      {
+        "from": "HSM:hsm-01:production",
+        "relation": "SUPPLIED_BY",
+        "to": "VENDOR:vendor x:production",
+        "basis": "vendor-datasheet",
+        "confidence": "VENDOR_DECLARED",
+        "evidence_ids": [
+          "hardware:HSM-01",
+          "EV-HBOM-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": "the manufacturer field is a vendor declaration, not a delivery record",
+        "chain": "VENDOR",
+        "from_key": "HSM:hsm-01:production",
+        "to_key": "VENDOR:vendor x:production",
+        "from_id": "TECH-HSM-001",
+        "to_id": "TECH-VENDOR-002",
+        "id": "EDGE-84c7fc3f"
+      },
+      {
+        "from": "BUSINESS_SYSTEM:payments:production",
+        "relation": "OWNS",
+        "to": "CRYPTO_ASSET:rsa-2048:production",
+        "basis": "operator-registration",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "system-asset:SA-2"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": "a registered link between a system and an asset, not a measurement",
+        "chain": "SOFTWARE",
+        "from_key": "BUSINESS_SYSTEM:payments:production",
+        "to_key": "CRYPTO_ASSET:rsa-2048:production",
+        "from_id": "TECH-SYS-003",
+        "to_id": "TECH-CRY-003",
+        "id": "EDGE-97e23cf6"
+      },
+      {
+        "from": "CRYPTO_LIBRARY:openssl 3.0.13:production",
+        "relation": "PROVIDES_ALGORITHM",
+        "to": "CRYPTO_ASSET:aes-256:production",
+        "basis": "cmdb-import",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "crypto:CA-1",
+          "EV-CBOM-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": "the library row the asset was found through",
+        "chain": "SOFTWARE",
+        "from_key": "CRYPTO_LIBRARY:openssl 3.0.13:production",
+        "to_key": "CRYPTO_ASSET:aes-256:production",
+        "from_id": "TECH-LIB-002",
+        "to_id": "TECH-CRY-002",
+        "id": "EDGE-a2f3f962"
+      },
+      {
+        "from": "CRYPTO_ASSET:3des-168:production",
+        "relation": "FOUND_ON",
+        "to": "HOST:cards-01:production",
+        "basis": "cmdb-import",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "crypto:CA-3",
+          "EV-CBOM-3"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "HARDWARE",
+        "from_key": "CRYPTO_ASSET:3des-168:production",
+        "to_key": "HOST:cards-01:production",
+        "from_id": "TECH-CRY-001",
+        "to_id": "TECH-HOST-001",
+        "id": "EDGE-abfa1310"
+      },
+      {
+        "from": "HSM:hsm-01:production",
+        "relation": "RUNS_FIRMWARE",
+        "to": "FIRMWARE:hsm-01 firmware 8.4:production",
+        "basis": "cmdb-import",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "hardware:HSM-01",
+          "EV-HBOM-1"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": null,
+        "chain": "HARDWARE",
+        "from_key": "HSM:hsm-01:production",
+        "to_key": "FIRMWARE:hsm-01 firmware 8.4:production",
+        "from_id": "TECH-HSM-001",
+        "to_id": "TECH-FW-001",
+        "id": "EDGE-ceb60b66"
+      },
+      {
+        "from": "BUSINESS_SYSTEM:payments:production",
+        "relation": "OWNS",
+        "to": "HSM:hsm-01:production",
+        "basis": "operator-registration",
+        "confidence": "IMPORTED",
+        "evidence_ids": [
+          "hardware:HSM-01"
+        ],
+        "source_system": null,
+        "rule": null,
+        "note": "the hardware row names this system as its owner",
+        "chain": "SOFTWARE",
+        "from_key": "BUSINESS_SYSTEM:payments:production",
+        "to_key": "HSM:hsm-01:production",
+        "from_id": "TECH-SYS-003",
+        "to_id": "TECH-HSM-001",
+        "id": "EDGE-ec6f398d"
+      }
+    ],
+    "refusals": [],
+    "counts": {
+      "BUSINESS_SYSTEM": 3,
+      "CERTIFICATE": 2,
+      "CRYPTO_ASSET": 3,
+      "CRYPTO_LIBRARY": 2,
+      "FIRMWARE": 2,
+      "HOST": 2,
+      "HSM": 1,
+      "PACKAGE": 1,
+      "TPM": 1,
+      "VENDOR": 2,
+      "VENDOR_PRODUCT": 1
+    },
+    "claim_counts": {
+      "HARDWARE": 5,
+      "SOFTWARE": 9,
+      "VENDOR": 3
+    },
+    "unproven_edges": [
+      "EDGE-a2f3f962",
+      "EDGE-3f74df2a",
+      "EDGE-0e789631",
+      "EDGE-2f0bf148",
+      "EDGE-abfa1310",
+      "EDGE-5be10947",
+      "EDGE-97e23cf6",
+      "EDGE-6eeaeae8",
+      "EDGE-ec6f398d",
+      "EDGE-ceb60b66",
+      "EDGE-84c7fc3f",
+      "EDGE-1b771681",
+      "EDGE-2846f751",
+      "EDGE-421106c1",
+      "EDGE-8455d636"
+    ],
+    "completeness": {
+      "rows": [
+        {
+          "kind": "BUSINESS_SYSTEM",
+          "observed": 3,
+          "expected": 3,
+          "coverage": 1.0,
+          "verdict": "COMPLETE"
+        },
+        {
+          "kind": "CERTIFICATE",
+          "observed": 2,
+          "expected": 2,
+          "coverage": 1.0,
+          "verdict": "COMPLETE"
+        },
+        {
+          "kind": "CRYPTO_ASSET",
+          "observed": 3,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "CRYPTO_LIBRARY",
+          "observed": 2,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "FIRMWARE",
+          "observed": 2,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "HOST",
+          "observed": 2,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "HSM",
+          "observed": 1,
+          "expected": 2,
+          "coverage": 0.5,
+          "verdict": "PARTIAL"
+        },
+        {
+          "kind": "PACKAGE",
+          "observed": 1,
+          "expected": 40,
+          "coverage": 0.025,
+          "verdict": "PARTIAL"
+        },
+        {
+          "kind": "TPM",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "VENDOR",
+          "observed": 2,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        },
+        {
+          "kind": "VENDOR_PRODUCT",
+          "observed": 1,
+          "expected": null,
+          "coverage": null,
+          "verdict": "UNMEASURED"
+        }
+      ],
+      "overall": "PARTIAL",
+      "gaps": [
+        {
+          "kind": "HSM",
+          "reason": "1 HSM collector unavailable (vendor API offline)"
+        },
+        {
+          "kind": "PACKAGE",
+          "reason": "the batch application's manifest was not collected"
+        }
+      ],
+      "unmeasured": [
+        "CRYPTO_ASSET",
+        "CRYPTO_LIBRARY",
+        "FIRMWARE",
+        "HOST",
+        "TPM",
+        "VENDOR",
+        "VENDOR_PRODUCT"
+      ],
+      "statement": "PARTIAL: 2 kind(s) complete, 2 short, 2 stated gap(s), 7 unmeasured",
+      "rationale": "an overall verdict of COMPLETE means every kind with an expected number met it; a kind with no expected number is UNMEASURED and never counts as complete"
+    },
+    "statement": "20 technology asset(s) across 11 kind(s) and 17 evidenced relationship(s); 15 edge(s) not proven; 0 claim(s) refused",
+    "not_proven": [
+      "that a relationship exists because two assets exist: an edge is only in this document when something said so, and the basis is printed beside it",
+      "that a declared edge is deployed: IMPORTED and VENDOR_DECLARED are kept as they are and are not counted as proven paths in a blast radius",
+      "what is inside a running process: a certificate on an endpoint is not the application's crypto library, and the model never joins them",
+      "that the estate is complete: the completeness block states the denominator and the reason for every gap, and an unmeasured layer is UNMEASURED, not zero",
+      "that ids are permanent: `id` is readable and renumbers when the estate changes, so anything durable must key on `key`"
+    ]
+  },
+  "summary": {
+    "schema": "cryptoscan.techbom/1",
+    "assets": 20,
+    "relationships": 17,
+    "by_kind": {
+      "BUSINESS_SYSTEM": 3,
+      "CERTIFICATE": 2,
+      "CRYPTO_ASSET": 3,
+      "CRYPTO_LIBRARY": 2,
+      "FIRMWARE": 2,
+      "HOST": 2,
+      "HSM": 1,
+      "PACKAGE": 1,
+      "TPM": 1,
+      "VENDOR": 2,
+      "VENDOR_PRODUCT": 1
+    },
+    "by_chain": {
+      "HARDWARE": 5,
+      "SOFTWARE": 9,
+      "VENDOR": 3
+    },
+    "by_confidence": {
+      "CONFIGURED": 2,
+      "IMPORTED": 12,
+      "VENDOR_DECLARED": 3
+    },
+    "refusals": 0,
+    "unproven_edges": 15,
+    "completeness": "PARTIAL",
+    "statement": "20 technology asset(s) across 11 kind(s) and 17 evidenced relationship(s); 15 edge(s) not proven; 0 claim(s) refused",
+    "not_proven": [
+      "that a relationship exists because two assets exist: an edge is only in this document when something said so, and the basis is printed beside it",
+      "that a declared edge is deployed: IMPORTED and VENDOR_DECLARED are kept as they are and are not counted as proven paths in a blast radius",
+      "what is inside a running process: a certificate on an endpoint is not the application's crypto library, and the model never joins them",
+      "that the estate is complete: the completeness block states the denominator and the reason for every gap, and an unmeasured layer is UNMEASURED, not zero",
+      "that ids are permanent: `id` is readable and renumbers when the estate changes, so anything durable must key on `key`"
+    ]
+  },
+  "rollup": {
+    "schema": "cryptoscan.techbom/1",
+    "systems": [
+      {
+        "system": "TECH-SYS-001",
+        "name": "Cards",
+        "criticality": "HIGH",
+        "owner": "Cards Platform",
+        "counts": {
+          "CRYPTO_ASSET": 1,
+          "HOST": 1
+        },
+        "by_confidence": {
+          "DECLARED": 2
+        },
+        "declared_only": {
+          "CRYPTO_ASSET": 1,
+          "HOST": 1
+        },
+        "proven_assets": 0,
+        "declared_only_assets": 2,
+        "systems": [],
+        "quantum_sensitive": [
+          "3DES-168"
+        ],
+        "vendors": [],
+        "legacy_assets": [],
+        "statement": "Cards (HIGH): 1 crypto asset, 1 host across 2 kind(s); 0 proven by observation or configuration, 2 declared only",
+        "not_proven": [
+          "that a declared asset is deployed as described: it is on the system because an import or a registration says so, and the count says which",
+          "that this is the system's whole technology estate: only assets the graph connects to the system are counted, and an unconnected asset belongs to no system here",
+          "that the owner's criticality is current: it is an attribute of the system row, not a measured property"
+        ]
+      },
+      {
+        "system": "TECH-SYS-002",
+        "name": "Payments Batch",
+        "criticality": "HIGH",
+        "owner": "Payments Platform",
+        "counts": {
+          "BUSINESS_SYSTEM": 2,
+          "CRYPTO_ASSET": 3,
+          "FIRMWARE": 1,
+          "HOST": 2,
+          "HSM": 1,
+          "VENDOR": 1
+        },
+        "by_confidence": {
+          "DECLARED": 10
+        },
+        "declared_only": {
+          "BUSINESS_SYSTEM": 2,
+          "CRYPTO_ASSET": 3,
+          "FIRMWARE": 1,
+          "HOST": 2,
+          "HSM": 1,
+          "VENDOR": 1
+        },
+        "proven_assets": 0,
+        "declared_only_assets": 10,
+        "systems": [],
+        "quantum_sensitive": [
+          "3DES-168",
+          "RSA-2048"
+        ],
+        "vendors": [
+          "Vendor X"
+        ],
+        "legacy_assets": [],
+        "statement": "Payments Batch (HIGH): 2 business systems, 3 crypto assets, 1 HSM, 1 firmware, 1 vendor, 2 hosts across 6 kind(s); 0 proven by observation or configuration, 10 declared only",
+        "not_proven": [
+          "that a declared asset is deployed as described: it is on the system because an import or a registration says so, and the count says which",
+          "that this is the system's whole technology estate: only assets the graph connects to the system are counted, and an unconnected asset belongs to no system here",
+          "that the owner's criticality is current: it is an attribute of the system row, not a measured property"
+        ]
+      },
+      {
+        "system": "TECH-SYS-003",
+        "name": "Payments",
+        "criticality": "CRITICAL",
+        "owner": "Payments Platform",
+        "counts": {
+          "BUSINESS_SYSTEM": 1,
+          "CRYPTO_ASSET": 3,
+          "FIRMWARE": 1,
+          "HOST": 2,
+          "HSM": 1,
+          "VENDOR": 1
+        },
+        "by_confidence": {
+          "DECLARED": 8,
+          "PROVEN": 1
+        },
+        "declared_only": {
+          "CRYPTO_ASSET": 3,
+          "FIRMWARE": 1,
+          "HOST": 2,
+          "HSM": 1,
+          "VENDOR": 1
+        },
+        "proven_assets": 1,
+        "declared_only_assets": 8,
+        "systems": [],
+        "quantum_sensitive": [
+          "3DES-168",
+          "RSA-2048"
+        ],
+        "vendors": [
+          "Vendor X"
+        ],
+        "legacy_assets": [],
+        "statement": "Payments (CRITICAL): 1 business system, 3 crypto assets, 1 HSM, 1 firmware, 1 vendor, 2 hosts across 6 kind(s); 1 proven by observation or configuration, 8 declared only",
+        "not_proven": [
+          "that a declared asset is deployed as described: it is on the system because an import or a registration says so, and the count says which",
+          "that this is the system's whole technology estate: only assets the graph connects to the system are counted, and an unconnected asset belongs to no system here",
+          "that the owner's criticality is current: it is an attribute of the system row, not a measured property"
+        ]
+      }
+    ],
+    "statement": "3 business system(s): Cards (0), Payments Batch (0), Payments (1)",
+    "not_proven": [
+      "that a system with no assets is empty: it is unconnected, which the graph cannot tell apart from uncollected"
+    ]
+  },
+  "impact": {
+    "schema": "cryptoscan.techbom/1",
+    "query": "RSA-2048",
+    "seeds": [
+      "TECH-CRY-003",
+      "TECH-FW-001",
+      "TECH-HSM-001",
+      "TECH-LIB-001"
+    ],
+    "counts": {
+      "PACKAGE": 1
+    },
+    "systems": [],
+    "primary_system": null,
+    "critical_systems": [],
+    "legacy_assets": [],
+    "vendors": [],
+    "network_paths": 0,
+    "quantum_sensitive": [],
+    "declared_only": [
+      "TECH-LIB-002",
+      "TECH-SYS-002",
+      "TECH-SYS-003"
+    ],
+    "migration_sites": [],
+    "pqc_blockers": [
+      {
+        "code": "FIRMWARE_UPGRADE_REQUIRED",
+        "asset": "TECH-FW-001",
+        "kind": "FIRMWARE",
+        "name": "HSM-01 firmware 8.4",
+        "detail": "firmware 8.4 does not list ML-KEM-768",
+        "who_acts": "the firmware in place does not support a required algorithm"
+      },
+      {
+        "code": "HSM_PQC_UNSUPPORTED",
+        "asset": "TECH-HSM-001",
+        "kind": "HSM",
+        "name": "HSM-01",
+        "detail": "does not list ML-KEM-768",
+        "who_acts": "the HSM's firmware does not list a required algorithm"
+      }
+    ],
+    "blocker_counts": {
+      "FIRMWARE_UPGRADE_REQUIRED": 1,
+      "HSM_PQC_UNSUPPORTED": 1
+    },
+    "statement": "RSA-2048: 1 package; 2 blocker(s)",
+    "not_proven": [
+      "that a roll-up is the system: it counts the assets the graph proves belong to that system, and an asset nobody connected to a system is in no system",
+      "that a request path is the only path: the graph holds the routes a source asserted, and an unrecorded route is missing rather than absent",
+      "that an impact is a breakage: reachability is exposure, and whether a named application stops working is its owner's assessment",
+      "that a blocker is the only blocker: the model names what it can see on the path, and a vendor's roadmap is not on the path",
+      "that a timeline's absence is stability: a change that both layers missed is not a change the timeline can report",
+      "that the count is the impact: it is what the graph proves depends on this technology, and an owner's business impact assessment sits above it"
+    ]
+  },
+  "rows": [
+    {
+      "id": "shape",
+      "question": "does the real inventory become a graph the model accepts?",
+      "phase": "review tc / 3 and 6",
+      "probes": [
+        {
+          "probe": "the-inventory-becomes-an-estate-the-builder-accepts",
+          "ok": true,
+          "observed": "20 asset(s) and 17 claim(s) read from the inventory; 8 row(s) skipped with a reason; every class here is IMPORTED, CONFIGURED or VENDOR_DECLARED, because a stored row is not an observation"
+        },
+        {
+          "probe": "systems-registrations-and-assets-all-arrive",
+          "ok": true,
+          "observed": "20 asset(s) across 11 kind(s)"
+        },
+        {
+          "probe": "every-asset-and-claim-carries-an-evidence-reference",
+          "ok": true,
+          "observed": "the row id, the scan id or the evidence link it came from"
+        },
+        {
+          "probe": "a-registration-links-the-system-to-what-it-holds",
+          "ok": true,
+          "observed": "three registered assets and the HSM row's owner"
+        },
+        {
+          "probe": "the-scan-that-produced-the-software-rows-is-named",
+          "ok": true,
+          "observed": "scan SCAN-9281 is the evidence behind the package rows"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "classes",
+      "question": "does a stored row keep the class its provenance supports?",
+      "phase": "review tc / 5, 22",
+      "probes": [
+        {
+          "probe": "nothing-read-back-from-the-database-is-observed",
+          "ok": true,
+          "observed": "CONFIGURED, IMPORTED, VENDOR_DECLARED"
+        },
+        {
+          "probe": "a-discovered-dependency-is-configured",
+          "ok": true,
+          "observed": "SystemDependency.source = discovered"
+        },
+        {
+          "probe": "a-manual-registration-is-imported-not-trusted",
+          "ok": true,
+          "observed": "a person registering an edge is a claim, and it stays IMPORTED"
+        },
+        {
+          "probe": "a-vendor-row-is-vendor-declared",
+          "ok": true,
+          "observed": "a manufacturer field is a declaration, not a delivery record"
+        },
+        {
+          "probe": "the-adapter-states-the-class-ceiling-in-words",
+          "ok": true,
+          "observed": "every class here is IMPORTED, CONFIGURED or VENDOR_DECLARED, because a stored row is not an observation"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "refusals",
+      "question": "are the rows that cannot be placed refused, with the reason?",
+      "phase": "review tc / 22",
+      "probes": [
+        {
+          "probe": "a-dependency-row-with-no-provenance-is-refused-by-name",
+          "ok": true,
+          "observed": "an edge nobody vouched for is not drawn"
+        },
+        {
+          "probe": "a-dependency-naming-an-unknown-system-is-refused",
+          "ok": true,
+          "observed": "SYS-404 does not exist, so the edge would be invented"
+        },
+        {
+          "probe": "a-registration-naming-an-unknown-system-is-refused",
+          "ok": true,
+          "observed": "SA-4 points at SYS-99, which the inventory does not hold"
+        },
+        {
+          "probe": "an-unclassifiable-source-basis-refuses-the-asset",
+          "ok": true,
+          "observed": "a source_basis this model does not know is not a class"
+        },
+        {
+          "probe": "a-software-row-with-an-unstated-origin-is-refused",
+          "ok": true,
+          "observed": "8 row(s) skipped, each with the reason"
+        },
+        {
+          "probe": "a-hardware-row-with-no-identity-is-refused-rather-than-named",
+          "ok": true,
+          "observed": "a hardware row with neither asset_id nor id cannot be referenced by an edge, so it is skipped rather than given an invented identity"
+        },
+        {
+          "probe": "nothing-was-dropped-silently",
+          "ok": true,
+          "observed": "8 refusal(s), all reported"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "certificate",
+      "question": "does a certificate stay a certificate?",
+      "phase": "review tc / 9, 13",
+      "probes": [
+        {
+          "probe": "a-certificate-row-becomes-a-certificate-and-stops",
+          "ok": true,
+          "observed": "the stored shape carries a fingerprint and a subject, not a key"
+        },
+        {
+          "probe": "the-certificate-keeps-its-fingerprint-as-evidence",
+          "ok": true,
+          "observed": "cert:abab\u2026 is the evidence id"
+        },
+        {
+          "probe": "the-adapter-says-why-the-key-layer-is-missing",
+          "ok": true,
+          "observed": "a certificate is not the application's cryptography"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "answers",
+      "question": "do the guide-165 answers work on a live inventory?",
+      "phase": "review tc / 8, 19, 20",
+      "probes": [
+        {
+          "probe": "a-roll-up-works-on-live-rows-and-splits_the_classes",
+          "ok": true,
+          "observed": "Payments (CRITICAL): 1 business system, 3 crypto assets, 1 HSM, 1 firmware, 1 vendor, 2 hosts across 6 kind(s); 1 proven"
+        },
+        {
+          "probe": "an-hsm-that-does-not-list-a-required-algorithm-is-a-blocker",
+          "ok": true,
+          "observed": "FIRMWARE_UPGRADE_REQUIRED, HSM_PQC_UNSUPPORTED"
+        },
+        {
+          "probe": "a-blocker-names-the-device-and-who-acts",
+          "ok": true,
+          "observed": "2 blocker(s), each with an owner of the work"
+        },
+        {
+          "probe": "completeness-uses-the-denominator-the-caller-supplied",
+          "ok": true,
+          "observed": "PARTIAL: 2 kind(s) complete, 2 short, 2 stated gap(s), 7 unmeasured"
+        },
+        {
+          "probe": "impact-still-refuses-to-call-exposure-breakage",
+          "ok": true,
+          "observed": "the owner's assessment sits above the graph"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "empty",
+      "question": "does an uncollected estate stay empty and say so?",
+      "phase": "review tc / 16",
+      "probes": [
+        {
+          "probe": "an-empty-inventory-is-an-empty-estate-not-an-error",
+          "ok": true,
+          "observed": "0 asset(s) and 0 claim(s) read from the inventory; every class here is IMPORTED, CONFIGURED or VENDOR_DECLARED, because a stored row is not an observation"
+        },
+        {
+          "probe": "an-empty-estate-is-unmeasured-rather-than-complete",
+          "ok": true,
+          "observed": "UNMEASURED: 0 kind(s) complete, 0 short, 0 stated gap(s), 0 unmeasured"
+        },
+        {
+          "probe": "a-roll-up-over-nothing-says-there-is-no-system",
+          "ok": true,
+          "observed": "no business system in this TechBOM"
+        },
+        {
+          "probe": "a-none-inventory-is-treated-as-empty-rather-than-a-crash",
+          "ok": true,
+          "observed": "a missing inventory reads as nothing collected"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the inventory is a fixture shaped like `_gather_inventory`, not a bank's database: the shapes are real, the rows are not",
+    "a stored row records what a collector saw when it ran; the estate may have changed since, and nothing here re-probes",
+    "the class ceiling is a property of the store, not of the collector: a future collector that hands over its own evidence can say OBSERVED itself",
+    "a certificate row carries a fingerprint and a subject, so the key and algorithm layers stay empty until something reads them",
+    "completeness is only as honest as the denominator, which this adapter receives rather than derives"
+  ]
+}

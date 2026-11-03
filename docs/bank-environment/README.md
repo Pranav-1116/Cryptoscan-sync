@@ -555,6 +555,30 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [The stored inventory becomes a TechBOM](166-techbom-live.md)
+> (**6 pass · 0 partial · 0 fail**, 29 probes) is the adapter from the inventory the
+> platform already gathers (`_gather_inventory`) into the guide-164 estate document, so a
+> bank's real rows can be read as a graph instead of a fixture. **Nothing read back from
+> the database is `OBSERVED`** — that class belongs to a capture, a probe or a trace, and
+> the store cannot claim it on a collector's behalf — so every edge lands as `IMPORTED`,
+> `CONFIGURED` or `VENDOR_DECLARED` and the adapter states that ceiling in words.
+> `System`/`SystemAsset` rows and manual dependencies are `IMPORTED`
+> (`operator-registration`), a discovered dependency is `CONFIGURED` (`agent-inventory`),
+> a code import is `CONFIGURED` (`code-analysis`) while a manifest-only package stays
+> `IMPORTED` (`sbom-import`), hardware is `cmdb-import` and a vendor field is
+> `VENDOR_DECLARED`. **What it refuses is the point**: a dependency row whose provenance
+> column is empty, a registration or dependency naming a system the inventory does not
+> hold, a `source_basis` this model cannot classify, a software row that does not say
+> whether code imports it or only a manifest declares it, and a hardware row with neither
+> `asset_id` nor `id` — each skipped **by name with the reason** under `estate.skipped`
+> and counted in the statement, never dropped silently. A certificate row stays a
+> `CERTIFICATE` and stops there, because a fingerprint and a subject are not the key and
+> the algorithm layers. The guide-165 answers run on the live graph unchanged:
+> `GET /technology-bom/graph` returns the built graph, its refusals and its coverage, plus
+> a roll-up (`?system=`) or an impact answer (`?query=`) computed on real rows — with the
+> inventory gaps supplied by the caller, since completeness is only as honest as its
+> denominator.
+
 > [The questions a TechBOM has to answer](165-techbom-answers.md)
 > (**7 pass · 0 partial · 0 fail**, 35 probes) turns the guide-164 graph into the answers
 > an estate actually asks for, and holds each answer to the graph's rules. **Roll-up**: a

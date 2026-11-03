@@ -257,6 +257,90 @@ def technology_bom_live(
     }
 
 
+class TechnologyBomGraphResponse(BaseModel):
+    source: str
+    live: bool
+    scan_in_progress: bool
+    asset_count: int
+    relationship_count: int
+    refusals: list[dict]
+    summary: dict
+    statement: str
+    not_proven: list[str]
+    estate: dict
+    bom: dict
+    rollup: dict | None = None
+    impact: dict | None = None
+
+
+@router.get("/graph", response_model=TechnologyBomGraphResponse)
+def technology_bom_graph(
+    limit: int = Query(2000, ge=1, le=5000),
+    system: str | None = Query(None, description="Roll up one business system"),
+    query: str | None = Query(None, description="Measure impact for a technology"),
+    required_algorithms: str | None = Query(
+        None, description="Comma-separated algorithms a migration requires"),
+    deadline: str | None = Query(None, description="Migration deadline (ISO date)"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """The live TechBOM graph: assets, evidenced relationships, coverage and answers.
+
+    `cbom.techbom_estate` reads the same inventory `GET /technology-bom` materializes and
+    turns it into an estate the graph model accepts. The class of every edge comes from the
+    row's own provenance, and **nothing read back from the database is `OBSERVED`** — that
+    class belongs to a capture, a probe or a trace, and the store cannot claim it on a
+    collector's behalf. Rows whose provenance cannot be classified are refused by name and
+    listed under `estate.skipped`, not quietly dropped.
+
+    With `system=` or `query=` the response also carries the roll-up or the impact answer,
+    computed on the live graph rather than on a fixture.
+    """
+    from cbom import techbom as tb
+    from cbom import techbom_estate as te
+    from cbom import techbom_queries as tq
+
+    inv = _gather_inventory(db, limit=limit)
+    body = te.from_inventory(
+        inv, environment=_environment_of(db),
+        expected=None, gaps=[{"kind": "INVENTORY",
+                              "reason": "coverage denominators come from the authorisation "
+                                        "and scan plan; this route receives none"}])
+    bom = tb.build(body["estate"])
+    answer: dict[str, Any] = {
+        "source": "technology_bom_graph",
+        "live": True,
+        "scan_in_progress": _scan_in_progress(db),
+        "asset_count": len(bom["assets"]),
+        "relationship_count": len(bom["claims"]),
+        "refusals": bom["refusals"],
+        "summary": tb.summary(bom),
+        "statement": body["statement"],
+        "not_proven": [*body["not_proven"], *bom["not_proven"]],
+        "estate": {
+            "estate_id": body["estate"]["estate_id"],
+            "environment": body["estate"]["environment"],
+            "assets": len(bom["assets"]),
+            "claims": len(bom["claims"]),
+            "skipped": body["skipped"],
+            "source": body["estate"]["source"],
+        },
+        "bom": bom,
+    }
+    try:
+        if system:
+            answer["rollup"] = tq.rollup(bom, system=system)
+        if query:
+            answer["impact"] = tq.impact(
+                bom, query=query,
+                required_algorithms=[part.strip() for part in
+                                     (required_algorithms or "").split(",") if part.strip()],
+                deadline=deadline)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return answer
+
+
 @router.post("/snapshot")
 def technology_bom_snapshot(
     user: str = Depends(get_current_user),

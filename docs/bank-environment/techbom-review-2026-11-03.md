@@ -1,6 +1,9 @@
 # TechBOM review, 2026-11-03 — as received, and what this round does with it
 
-Guide 165 (`docs/bank-environment/165-techbom-answers.md`, `cbom.techbom_queries`) closes
+Guide 166 (`docs/bank-environment/166-techbom-live.md`, `cbom.techbom_estate`) closes the
+last gap between the guides and the platform: the stored inventory becomes the estate
+document, with row-level provenance deciding each class and unplaceable rows refused by
+name. Guide 165 (`docs/bank-environment/165-techbom-answers.md`, `cbom.techbom_queries`) closes
 the questions the first pass left open: roll-up, request paths, impact vocabulary, the
 timeline, threat context and claim promotion. This is the TechBOM review as it arrived, kept as the record of the argument rather than a
 summary of the answer. Guide 164 (`docs/bank-environment/164-techbom.md`,
@@ -37,18 +40,18 @@ edge carries a basis, a confidence class and an evidence id.
 | # | Point | Where it lives now |
 |---|---|---|
 | 1 | TechBOM is not concatenation | guide 164 — a graph of typed assets and claims; the layers are inputs, not sections |
-| 2 | SBOM/CBOM/HBOM/vendor are layers of one estate | already built: `cbom.technology_bom` (materializer), `routers/techbom.py` |
-| 3 | The work is correlation, not more scanners | `cbom.techbom.build` — seven chains over the assets the collectors already produce |
+| 2 | SBOM/CBOM/HBOM/vendor are layers of one estate | already built: `cbom.technology_bom` (materializer), `routers/techbom.py`; **guide 166** `cbom.techbom_estate.from_inventory` reads that same inventory into the graph, so the layers arrive as one estate rather than four documents |
+| 3 | The work is correlation, not more scanners | `cbom.techbom.build` — seven chains over the assets the collectors already produce; **guide 166** is the proof it needs no new collector: it consumes `System`, `SystemAsset`, `CryptoAsset`, `HardwareAsset`, `Vendor`, `Certificate` and `SystemDependency` rows unchanged |
 | 4 | Explicit relationship set (`SYSTEM→…→CRYPTO_ASSET`, network path, HSM, vendor) | guide 164, 26 relations in `RELATIONS`, each bounded by allowed kinds |
 | 5 | No relationships from co-occurrence; OBSERVED/CONFIGURED/IMPORTED/VENDOR_DECLARED/INFERRED/UNKNOWN | `BASES` + `NOT_A_BASIS`; a proximity basis is refused by name (`CO_OCCURRENCE_NOT_EVIDENCE`) |
-| 6 | Stable asset ids and an asset model | `asset()` with `key` (content-addressed, durable) and `id` (`TECH-APP-001`, readable, renumbers) |
+| 6 | Stable asset ids and an asset model | `asset()` with `key` (content-addressed, durable) and `id` (`TECH-APP-001`, readable, renumbers); **guide 166** refuses to invent an id for a hardware row that has neither `asset_id` nor `id`, and skips it by name instead |
 | 7 | System/application hierarchy; Payments is a business system, not a scan target | `BUSINESS_SYSTEM --CONTAINS--> APPLICATION`; a system is an asset with an owner, never a scan |
 | 8 | Bridge from business to technical estate | hierarchy plus per-kind counts; **guide 165** `rollup()` — a system's technology by kind, criticality, proven vs declared |
 | 9 | TechBOM → CBOM with separate evidence types | `USES_CRYPTO` + `CRYPTO_EVIDENCE_BASIS`: RUNTIME_OBSERVED, STATIC_OBSERVED and CERTIFICATE_OBSERVED may not evidence each other |
 | 10 | TechBOM → HBOM depth (container → host → VM → physical → TPM; HSM → firmware → capability) | `SCHEDULED_ON`/`HOSTED_ON`/`RUNS_ON`/`CARRIES`, `RUNS_FIRMWARE`/`SUPPORTS` |
 | 11 | TechBOM → NBOM as a path, not a list | **guide 165** `path()` — WAF and service mesh added to the chain, each hop carrying TLS version, cipher, certificate, SNI, ALPN and mTLS |
 | 12 | TechBOM → VBOM and vendor firmware impact | `HAS_MODEL`/`SUPPLIED_BY`/`RUNS_FIRMWARE`; **guide 165** `impact()` names firmware and HSM sites as typed blockers |
-| 13 | Certificate graph to issuer and key custodian | `PRESENTS`/`CONTAINS_KEY`/`USES_ALGORITHM`/`ISSUED_BY`/`KEY_HELD_BY` |
+| 13 | Certificate graph to issuer and key custodian | `PRESENTS`/`CONTAINS_KEY`/`USES_ALGORITHM`/`ISSUED_BY`/`KEY_HELD_BY`; **guide 166** shows the gap honestly on live rows: a stored certificate carries a fingerprint and a subject, so the graph stops at `CERTIFICATE` and says why rather than synthesising a key |
 | 14 | Runtime deployment identity | `SOURCE→BUILD→ARTIFACT→SBOM→IMAGE→DEPLOYMENT→POD→PROCESS→LOADS` |
 | 15 | Time: snapshots and typed change events | `diff()` plus **guide 165** `timeline()` — N snapshots in the review's nine categories, with "one snapshot is a state" stated |
 | 16 | Completeness with a denominator and a reason | `completeness()` — per-kind observed/expected/coverage, UNMEASURED when there is no denominator |
@@ -57,7 +60,7 @@ edge carries a basis, a confidence class and an evidence id.
 | 19 | Blast radius | `blast_radius()` and **guide 165** `impact()` — applications, systems, certificates, HSMs, vendors, network paths, critical and legacy, blockers |
 | 20 | TechBOM powers PQC migration | **guide 165** `impact()` — blockers typed by who acts (HSM capability, firmware upgrade, certificate lifecycle, unknown legacy application), requirement-driven |
 | 21 | TechBOM powers threat intelligence | **guide 165** `threat_context()` + `POST /cbom/techbom/context` — event → CORRELATED_PATTERN with system, technology, change and evidence, or a 422 |
-| 22 | Security blockers: relationship poisoning | the basis ceiling is enforced in `claim()`; IMPORTED and VENDOR_DECLARED never become proven paths; **guide 165** `verify()` promotes only on new evidence, keeping the old class in history |
+| 22 | Security blockers: relationship poisoning | the basis ceiling is enforced in `claim()`; IMPORTED and VENDOR_DECLARED never become proven paths; **guide 165** `verify()` promotes only on new evidence, keeping the old class in history; **guide 166** makes it a store-level rule — nothing read back through the database is `OBSERVED`, and a row whose provenance cannot be classified is refused by name (`TYPE_MISMATCH`, empty provenance, unknown `source_basis`) rather than defaulted to a class |
 
 ## Scope decisions taken here
 

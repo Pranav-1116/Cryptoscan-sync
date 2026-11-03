@@ -528,3 +528,45 @@ async def test_runtime_verify_endpoint(app_db):
     body = r.json()
     assert body["runtime_verify"] is not None
     assert body["runtime_verify"]["observed"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_graph_reads_the_live_inventory_without_claiming_an_observation(app_db):
+    transport = ASGITransport(app=app_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/v1/technology-bom/graph")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["live"] is True and body["source"] == "technology_bom_graph"
+    assert body["asset_count"] >= 7
+    kinds = set(body["bom"]["counts"])
+    assert {"BUSINESS_SYSTEM", "CRYPTO_ASSET", "HSM", "CERTIFICATE"} <= kinds
+    classes = {row["confidence"] for row in body["bom"]["claims"]}
+    assert "OBSERVED" not in classes
+    assert body["estate"]["source"]["kind"] == "INVENTORY"
+
+
+@pytest.mark.asyncio
+async def test_graph_answers_a_rollup_and_an_impact_query(app_db):
+    transport = ASGITransport(app=app_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        rolled = await client.get("/api/v1/technology-bom/graph",
+                                  params={"system": "payment-api"})
+        impact = await client.get("/api/v1/technology-bom/graph",
+                                  params={"query": "RSA", "required_algorithms": "ML-KEM-768"})
+    assert rolled.status_code == 200
+    profile = rolled.json()["rollup"]["systems"][0]
+    assert profile["name"] == "payment-api"
+    assert "proven by observation or configuration" in profile["statement"]
+    assert impact.status_code == 200
+    assert "RSA" in impact.json()["impact"]["statement"]
+
+
+@pytest.mark.asyncio
+async def test_graph_refuses_an_unknown_system_by_name(app_db):
+    transport = ASGITransport(app=app_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/v1/technology-bom/graph",
+                                params={"system": "no-such-system"})
+    assert resp.status_code == 422
+    assert "not a business system" in resp.json()["detail"]
