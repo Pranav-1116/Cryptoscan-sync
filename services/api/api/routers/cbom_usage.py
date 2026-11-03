@@ -337,6 +337,31 @@ class CbomTlsStateResponse(BaseModel):
     statement: str
 
 
+class CbomTopologyRequest(BaseModel):
+    claims: list[dict] = Field(default_factory=list, description=(
+        "relationships: kind (one of the nine), from, to, evidence_id, observed_at, "
+        "source, and optionally evidence_class. confidence is derived, never supplied. "
+        "RE_ENCRYPTS also needs two handshakes; PASSTHROUGH needs a session_id"))
+    nodes: list[dict] = Field(default_factory=list, description=(
+        "declared nodes: name and role, so an edge cannot name a device nobody knows"))
+
+
+class CbomTopologyResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    nodes: list[str]
+    declared_nodes: list[str]
+    edges: list[dict]
+    refused: list[dict]
+    counts: dict
+    kinds_unused: list[str]
+    confidence: dict
+    overclaimed: list[dict]
+    undeclared_nodes: list[str]
+    statement: str
+    audit: dict
+    summary: dict
+
+
 class CbomCertificateChainRequest(BaseModel):
     certificates: list[dict] = Field(default_factory=list, description=(
         "certificate records: certificate_ref (or serial + fingerprint), subject, "
@@ -637,6 +662,24 @@ def cbom_tls_state(body: CbomTlsStateRequest,
             checks["disabled"] = ts.disabled(result, endpoint=body.endpoint,
                                              version=body.version)
     return {**result, "checks": checks, "summary": ts.summary(result)}
+
+
+@router.post("/topology", response_model=CbomTopologyResponse)
+def cbom_topology(body: CbomTopologyRequest,
+                  user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Relationships, each carrying its own evidence — or not drawn at all.
+
+    Review item 12: a topology without provenance is fiction. An edge missing an
+    evidence id, an observation time or a source is **not written** and comes back in
+    ``refused`` with the reason; ``confidence`` is derived from the evidence class, so a
+    caller may under-claim but never over-claim. ``RE_ENCRYPTS`` needs two handshakes in
+    one path and ``PASSTHROUGH`` needs the same session id on both hops, because those
+    are the two claims a single probe cannot support.
+    """
+    from cbom import topology as tp
+
+    graph = tp.build(body.claims, nodes=body.nodes)
+    return {**graph, "audit": tp.audit(graph), "summary": tp.summary(graph)}
 
 
 @router.post("/certificate-chain", response_model=CbomCertificateChainResponse)

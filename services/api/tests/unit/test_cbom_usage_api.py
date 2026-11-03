@@ -895,3 +895,40 @@ def test_certificate_chain_refuses_a_certificate_it_cannot_name(client):
         "certificates": [{"subject": "CN=x", "evidence_id": "E-1"}]}).json()
     assert body["certificates"] == {}
     assert "needs a reference" in body["refused"][0]["reason"]
+
+
+def test_topology_writes_only_evidenced_relationships(client):
+    claims = [
+        {"kind": "CONNECTS_TO", "from": "Internet", "to": "External LB",
+         "evidence_id": "NET-1", "observed_at": "2026-11-01T00:00:00Z",
+         "source": "network-probe", "evidence_class": "NETWORK_OBSERVED"},
+        {"kind": "CONNECTS_TO", "from": "External LB", "to": "Internal LB"},
+        {"kind": "RE_ENCRYPTS", "from": "External LB", "to": "Internal LB",
+         "evidence_id": "NET-2", "observed_at": "2026-11-01T00:00:00Z",
+         "source": "network-probe"},
+    ]
+    body = _post(client, "/topology", {
+        "claims": claims,
+        "nodes": [{"name": "Internet", "role": "UNKNOWN"},
+                  {"name": "External LB", "role": "LOAD_BALANCER"},
+                  {"name": "Internal LB", "role": "LOAD_BALANCER"}]}).json()
+    assert len(body["edges"]) == 1
+    assert body["edges"][0]["confidence"] == "OBSERVED"
+    assert len(body["refused"]) == 2
+    assert "two handshakes in one path" in body["refused"][1]["reason"]
+    assert body["audit"]["clean"] is True
+    assert body["counts"] == {"CONNECTS_TO": 1}
+
+
+def test_topology_corrects_an_overclaimed_confidence(client):
+    body = _post(client, "/topology", {
+        "claims": [{"kind": "PROTECTED_BY", "from": "WAF-1", "to": "app",
+                    "evidence_id": "CMDB-7", "observed_at": "2026-10-01T00:00:00Z",
+                    "source": "cmdb", "evidence_class": "DECLARED",
+                    "confidence": "OBSERVED"}],
+        "nodes": [{"name": "WAF-1", "role": "WAF"}, {"name": "app", "role": "APPLICATION"}]
+    }).json()
+    assert body["edges"][0]["confidence"] == "DECLARED"
+    assert body["overclaimed"]
+    assert body["audit"]["counts"] == {"CONFIDENCE_OVERCLAIMED": 1}
+    assert body["audit"]["clean"] is False

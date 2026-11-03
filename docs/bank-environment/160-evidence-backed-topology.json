@@ -1,0 +1,638 @@
+{
+  "schema": "cryptoscan.cbom-topology-guide/1",
+  "generated_at": "2026-11-03T01:08:21.122283+00:00",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 25,
+  "kinds": [
+    "CONNECTS_TO",
+    "ROUTES_TO",
+    "TERMINATES_TLS",
+    "RE_ENCRYPTS",
+    "PASSTHROUGH",
+    "PROTECTED_BY",
+    "USES_CERTIFICATE",
+    "USES_HSM",
+    "USES_KMS"
+  ],
+  "confidences": [
+    "OBSERVED",
+    "ASSEMBLED",
+    "DECLARED"
+  ],
+  "required_fields": [
+    "evidence_id",
+    "observed_at",
+    "source",
+    "confidence"
+  ],
+  "claims": {
+    "schema": "cryptoscan.cbom-topology/1",
+    "claims": [
+      {
+        "from": "Internet",
+        "to": "External LB",
+        "evidence_id": "NET-1",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "evidence_class": "NETWORK_OBSERVED",
+        "kind": "CONNECTS_TO",
+        "detail": "Internet opened a connection to External LB"
+      },
+      {
+        "from": "Internet",
+        "to": "External LB",
+        "evidence_id": "NET-1",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "evidence_class": "NETWORK_OBSERVED",
+        "kind": "TERMINATES_TLS",
+        "detail": "External LB terminated TLS 1.3 TLS_AES_256_GCM_SHA384"
+      },
+      {
+        "from": "External LB",
+        "to": "Internal LB",
+        "evidence_id": "NET-2",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "evidence_class": "NETWORK_OBSERVED",
+        "kind": "CONNECTS_TO",
+        "detail": "External LB opened a connection to Internal LB"
+      },
+      {
+        "from": "External LB",
+        "to": "Internal LB",
+        "evidence_id": "NET-2",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "evidence_class": "NETWORK_OBSERVED",
+        "kind": "TERMINATES_TLS",
+        "detail": "Internal LB terminated TLS 1.2 ECDHE-RSA-AES256-GCM-SHA384"
+      },
+      {
+        "from": "Internal LB",
+        "to": "payments.bank.example:8443",
+        "evidence_id": "NET-3",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "evidence_class": "NETWORK_OBSERVED",
+        "kind": "CONNECTS_TO",
+        "detail": "Internal LB opened a connection to payments.bank.example:8443"
+      },
+      {
+        "from": "Internal LB",
+        "to": "payments.bank.example:8443",
+        "evidence_id": "NET-3",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "evidence_class": "NETWORK_OBSERVED",
+        "kind": "TERMINATES_TLS",
+        "detail": "payments.bank.example:8443 terminated TLS 1.3 ECDHE-RSA-AES256-GCM-SHA384"
+      },
+      {
+        "from": "10.20.1.10",
+        "to": "External LB",
+        "evidence_id": "NET-4",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "evidence_class": "NETWORK_OBSERVED",
+        "kind": "CONNECTS_TO",
+        "detail": "10.20.1.10 opened a connection to External LB"
+      },
+      {
+        "from": "10.20.1.10",
+        "to": "External LB",
+        "evidence_id": "NET-4",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "evidence_class": "NETWORK_OBSERVED",
+        "kind": "TERMINATES_TLS",
+        "detail": "External LB terminated TLS 1.3 TLS_AES_256_GCM_SHA384"
+      },
+      {
+        "kind": "USES_CERTIFICATE",
+        "from": "External LB",
+        "to": "CERT-9281",
+        "evidence_id": "CERT-E1",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "evidence_class": "NETWORK_OBSERVED",
+        "detail": "External LB presented CERT-9281"
+      },
+      {
+        "kind": "USES_CERTIFICATE",
+        "from": "Internal LB",
+        "to": "CERT-9282",
+        "evidence_id": "CERT-E2",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "evidence_class": "NETWORK_OBSERVED",
+        "detail": "Internal LB presented CERT-9282"
+      },
+      {
+        "kind": "USES_HSM",
+        "from": "Internal LB",
+        "to": "HSM-1",
+        "evidence_id": "HSM-E1",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "kms-inventory",
+        "evidence_class": "DECLARED",
+        "detail": "Internal LB uses HSM-1"
+      },
+      {
+        "kind": "USES_KMS",
+        "from": "payments.bank.example:8443",
+        "to": "KMS-1",
+        "evidence_id": "KMS-E1",
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "kms-inventory",
+        "evidence_class": "DECLARED",
+        "detail": "payments.bank.example:8443 uses KMS-1"
+      }
+    ],
+    "statement": "12 relationship(s) derived from 4 hop(s), 2 certificate presentation(s) and key bindings"
+  },
+  "topology": {
+    "schema": "cryptoscan.cbom-topology/1",
+    "nodes": [
+      "10.20.1.10",
+      "CERT-9281",
+      "CERT-9282",
+      "External LB",
+      "HSM-1",
+      "Internal LB",
+      "Internet",
+      "KMS-1",
+      "WAF-1",
+      "payments.bank.example:8443"
+    ],
+    "declared_nodes": [
+      "10.20.1.10",
+      "CERT-9281",
+      "CERT-9282",
+      "External LB",
+      "HSM-1",
+      "Internal LB",
+      "Internet",
+      "KMS-1",
+      "WAF-1",
+      "payments.bank.example:8443"
+    ],
+    "edges": [
+      {
+        "from": "Internet",
+        "to": "External LB",
+        "kind": "CONNECTS_TO",
+        "evidence_id": "NET-1",
+        "evidence_ids": [
+          "NET-1"
+        ],
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "confidence": "OBSERVED",
+        "detail": "Internet opened a connection to External LB",
+        "claim_confidence": null,
+        "overclaimed": false
+      },
+      {
+        "from": "Internet",
+        "to": "External LB",
+        "kind": "TERMINATES_TLS",
+        "evidence_id": "NET-1",
+        "evidence_ids": [
+          "NET-1"
+        ],
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "confidence": "OBSERVED",
+        "detail": "External LB terminated TLS 1.3 TLS_AES_256_GCM_SHA384",
+        "claim_confidence": null,
+        "overclaimed": false
+      },
+      {
+        "from": "External LB",
+        "to": "Internal LB",
+        "kind": "CONNECTS_TO",
+        "evidence_id": "NET-2",
+        "evidence_ids": [
+          "NET-2"
+        ],
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "confidence": "OBSERVED",
+        "detail": "External LB opened a connection to Internal LB",
+        "claim_confidence": null,
+        "overclaimed": false
+      },
+      {
+        "from": "External LB",
+        "to": "Internal LB",
+        "kind": "TERMINATES_TLS",
+        "evidence_id": "NET-2",
+        "evidence_ids": [
+          "NET-2"
+        ],
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "confidence": "OBSERVED",
+        "detail": "Internal LB terminated TLS 1.2 ECDHE-RSA-AES256-GCM-SHA384",
+        "claim_confidence": null,
+        "overclaimed": false
+      },
+      {
+        "from": "Internal LB",
+        "to": "payments.bank.example:8443",
+        "kind": "CONNECTS_TO",
+        "evidence_id": "NET-3",
+        "evidence_ids": [
+          "NET-3"
+        ],
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "confidence": "OBSERVED",
+        "detail": "Internal LB opened a connection to payments.bank.example:8443",
+        "claim_confidence": null,
+        "overclaimed": false
+      },
+      {
+        "from": "Internal LB",
+        "to": "payments.bank.example:8443",
+        "kind": "TERMINATES_TLS",
+        "evidence_id": "NET-3",
+        "evidence_ids": [
+          "NET-3"
+        ],
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "confidence": "OBSERVED",
+        "detail": "payments.bank.example:8443 terminated TLS 1.3 ECDHE-RSA-AES256-GCM-SHA384",
+        "claim_confidence": null,
+        "overclaimed": false
+      },
+      {
+        "from": "10.20.1.10",
+        "to": "External LB",
+        "kind": "CONNECTS_TO",
+        "evidence_id": "NET-4",
+        "evidence_ids": [
+          "NET-4"
+        ],
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "confidence": "OBSERVED",
+        "detail": "10.20.1.10 opened a connection to External LB",
+        "claim_confidence": null,
+        "overclaimed": false
+      },
+      {
+        "from": "10.20.1.10",
+        "to": "External LB",
+        "kind": "TERMINATES_TLS",
+        "evidence_id": "NET-4",
+        "evidence_ids": [
+          "NET-4"
+        ],
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "confidence": "OBSERVED",
+        "detail": "External LB terminated TLS 1.3 TLS_AES_256_GCM_SHA384",
+        "claim_confidence": null,
+        "overclaimed": false
+      },
+      {
+        "from": "External LB",
+        "to": "CERT-9281",
+        "kind": "USES_CERTIFICATE",
+        "evidence_id": "CERT-E1",
+        "evidence_ids": [
+          "CERT-E1"
+        ],
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "confidence": "OBSERVED",
+        "detail": "External LB presented CERT-9281",
+        "claim_confidence": null,
+        "overclaimed": false
+      },
+      {
+        "from": "Internal LB",
+        "to": "CERT-9282",
+        "kind": "USES_CERTIFICATE",
+        "evidence_id": "CERT-E2",
+        "evidence_ids": [
+          "CERT-E2"
+        ],
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "network-probe",
+        "confidence": "OBSERVED",
+        "detail": "Internal LB presented CERT-9282",
+        "claim_confidence": null,
+        "overclaimed": false
+      },
+      {
+        "from": "Internal LB",
+        "to": "HSM-1",
+        "kind": "USES_HSM",
+        "evidence_id": "HSM-E1",
+        "evidence_ids": [
+          "HSM-E1"
+        ],
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "kms-inventory",
+        "confidence": "DECLARED",
+        "detail": "Internal LB uses HSM-1",
+        "claim_confidence": null,
+        "overclaimed": false
+      },
+      {
+        "from": "payments.bank.example:8443",
+        "to": "KMS-1",
+        "kind": "USES_KMS",
+        "evidence_id": "KMS-E1",
+        "evidence_ids": [
+          "KMS-E1"
+        ],
+        "observed_at": "2026-11-01T00:00:00Z",
+        "source": "kms-inventory",
+        "confidence": "DECLARED",
+        "detail": "payments.bank.example:8443 uses KMS-1",
+        "claim_confidence": null,
+        "overclaimed": false
+      },
+      {
+        "from": "payments.bank.example:8443",
+        "to": "WAF-1",
+        "kind": "PROTECTED_BY",
+        "evidence_id": "CMDB-7",
+        "evidence_ids": [
+          "CMDB-7"
+        ],
+        "observed_at": "2026-10-01T00:00:00Z",
+        "source": "cmdb",
+        "confidence": "DECLARED",
+        "detail": "payments.bank.example:8443 protected_by WAF-1",
+        "claim_confidence": null,
+        "overclaimed": false
+      },
+      {
+        "from": "External LB",
+        "to": "Internal LB",
+        "kind": "ROUTES_TO",
+        "evidence_id": "CMDB-8",
+        "evidence_ids": [
+          "CMDB-8"
+        ],
+        "observed_at": "2026-10-01T00:00:00Z",
+        "source": "cmdb",
+        "confidence": "DECLARED",
+        "detail": "External LB routes_to Internal LB",
+        "claim_confidence": null,
+        "overclaimed": false
+      }
+    ],
+    "refused": [],
+    "counts": {
+      "CONNECTS_TO": 4,
+      "PROTECTED_BY": 1,
+      "ROUTES_TO": 1,
+      "TERMINATES_TLS": 4,
+      "USES_CERTIFICATE": 2,
+      "USES_HSM": 1,
+      "USES_KMS": 1
+    },
+    "kinds_unused": [
+      "RE_ENCRYPTS",
+      "PASSTHROUGH"
+    ],
+    "undeclared_nodes": [],
+    "confidence": {
+      "OBSERVED": 10,
+      "ASSEMBLED": 0,
+      "DECLARED": 4
+    },
+    "overclaimed": [],
+    "statement": "14 relationship(s) across 7 kind(s) and 10 node(s)"
+  },
+  "audit": {
+    "schema": "cryptoscan.cbom-topology/1",
+    "findings": [],
+    "counts": {},
+    "clean": true,
+    "statement": "the topology is internally honest: every edge carries provenance and no claim outruns its evidence"
+  },
+  "summary": {
+    "schema": "cryptoscan.cbom-topology/1",
+    "nodes": 10,
+    "relationships": 14,
+    "counts": {
+      "CONNECTS_TO": 4,
+      "PROTECTED_BY": 1,
+      "ROUTES_TO": 1,
+      "TERMINATES_TLS": 4,
+      "USES_CERTIFICATE": 2,
+      "USES_HSM": 1,
+      "USES_KMS": 1
+    },
+    "unused_kinds": [
+      "RE_ENCRYPTS",
+      "PASSTHROUGH"
+    ],
+    "confidence": {
+      "OBSERVED": 10,
+      "ASSEMBLED": 0,
+      "DECLARED": 4
+    },
+    "refused": 0,
+    "observed_share": 0.71,
+    "statement": "14 relationship(s) across 7 kind(s) and 10 node(s)",
+    "not_proven": [
+      "that a relationship is complete: the topology contains what was collected, and a device nobody probed is absent rather than disconnected",
+      "that a `CONNECTS_TO` edge is a permitted flow: reachability observed by a scanner is not an approved firewall rule, and no policy is consulted here",
+      "that `PASSTHROUGH` is decryption-free: it says the same session continued on both hops in one collector's view, which is stronger than a guess and weaker than a packet capture",
+      "that a `PROTECTED_BY` edge protects anything: a WAF in front of an application is a position in a path, not a guarantee about what it inspects"
+    ]
+  },
+  "rows": [
+    {
+      "id": "the_vocabulary",
+      "question": "is every relationship one of the nine, with its provenance?",
+      "phase": "review 12",
+      "probes": [
+        {
+          "probe": "the-nine-kinds-are-the-whole-vocabulary",
+          "ok": true,
+          "observed": "CONNECTS_TO, ROUTES_TO, TERMINATES_TLS, RE_ENCRYPTS, PASSTHROUGH, PROTECTED_BY, USES_CERTIFICATE, USES_HSM, USES_KMS"
+        },
+        {
+          "probe": "a-kind-outside-the-vocabulary-is-refused",
+          "ok": true,
+          "observed": "MAGIC is not a relationship"
+        },
+        {
+          "probe": "every-written-edge-carries-the-four-required-fields",
+          "ok": true,
+          "observed": "14 edge(s), each with evidence, time, source and confidence"
+        },
+        {
+          "probe": "the-kinds-present-and-absent-are-both-named",
+          "ok": true,
+          "observed": "used ['CONNECTS_TO', 'PROTECTED_BY', 'ROUTES_TO', 'TERMINATES_TLS', 'USES_CERTIFICATE', 'USES_HSM', 'USES_KMS']; unused 2"
+        },
+        {
+          "probe": "the-topology-states-what-an-edge-does-not-mean",
+          "ok": true,
+          "observed": "4 stated limit(s)"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "confidence",
+      "question": "who decides how strongly an edge is asserted?",
+      "phase": "review 12",
+      "probes": [
+        {
+          "probe": "confidence-is-derived-from-the-evidence-class",
+          "ok": true,
+          "observed": "10 observed, 4 declared"
+        },
+        {
+          "probe": "a-handshake-behind-an-edge-makes-it-observed",
+          "ok": true,
+          "observed": "network observations stay observed"
+        },
+        {
+          "probe": "an-inventory-binding-is-declared-not-observed",
+          "ok": true,
+          "observed": "four declared edges, four declared confidences"
+        },
+        {
+          "probe": "a-claim-that-calls-itself-observed-is-corrected-and-flagged",
+          "ok": true,
+          "observed": "the caller may under-claim, never over-claim"
+        },
+        {
+          "probe": "an-edge-with-no-evidence-is-not-drawn",
+          "ok": true,
+          "observed": "an uncited relationship is fiction"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_two_gates",
+      "question": "which claims need more than one observation, and is that enforced?",
+      "phase": "review 12",
+      "probes": [
+        {
+          "probe": "re-encryption-without-two-handshakes-is-refused",
+          "ok": true,
+          "observed": "re-encryption needs two handshakes in one path \u2014 a decrypt and a new encrypt \u2014 and one hop cannot show both"
+        },
+        {
+          "probe": "re-encryption-with-a-decrypt-and-a-new-encrypt-is-written",
+          "ok": true,
+          "observed": "two handshakes, one path"
+        },
+        {
+          "probe": "passthrough-without-a-session-identifier-is-refused",
+          "ok": true,
+          "observed": "a scanner sees two handshakes and cannot tell the difference"
+        },
+        {
+          "probe": "passthrough-with-the-same-session-on-both-hops-is-written",
+          "ok": true,
+          "observed": "TLS-SESS-9 continued"
+        },
+        {
+          "probe": "neither-gate-is-satisfied-by-the-chain-guide-s-assembled-evidence",
+          "ok": true,
+          "observed": "the estate contains no re-encryption claim, so none is drawn"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "the_audit",
+      "question": "can the topology be read back and found honest?",
+      "phase": "review 12",
+      "probes": [
+        {
+          "probe": "an-honest-topology-audits-clean-and-says-so",
+          "ok": true,
+          "observed": "the topology is internally honest: every edge carries provenance and no claim outruns its evidence"
+        },
+        {
+          "probe": "a-terminating-device-s-tls-read-as-the-application-s-is-a-finding",
+          "ok": true,
+          "observed": "a load balancer's TLS 1.3 never becomes the application's property"
+        },
+        {
+          "probe": "a-node-that-appears-only-because-an-edge-names-it-is-flagged",
+          "ok": true,
+          "observed": "an unnamed node is a hole in the inventory"
+        },
+        {
+          "probe": "the-audit-refuses-a-document-that-is-not-a-topology",
+          "ok": true,
+          "observed": "a foreign document is rejected, not audited"
+        },
+        {
+          "probe": "the-summary-reports-the-observed-share-and-the-unused-kinds",
+          "ok": true,
+          "observed": "observed share 0.71"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "from_observations",
+      "question": "does the topology come from evidence rather than from wishes?",
+      "phase": "review 12",
+      "probes": [
+        {
+          "probe": "hops-and-certificates-become-claims-with-their-own-evidence",
+          "ok": true,
+          "observed": "12 relationship(s) derived from 4 hop(s), 2 certificate presentation(s) and key bindings"
+        },
+        {
+          "probe": "an-observation-that-saw-nothing-derives-no-claim",
+          "ok": true,
+          "observed": "a hop with no evidence id produces nothing"
+        },
+        {
+          "probe": "a-certificate-presentation-becomes-a-use-edge",
+          "ok": true,
+          "observed": "two presentations, two edges"
+        },
+        {
+          "probe": "an-hsm-and-a-kms-binding-are-two-kinds-not-one",
+          "ok": true,
+          "observed": "HSM-1 and KMS-1 are different questions"
+        },
+        {
+          "probe": "a-claim-with-one-end-missing-is-refused",
+          "ok": true,
+          "observed": "half an edge is not an edge"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the topology contains what was collected. A device nobody probed is absent, and absence is not the same as disconnected",
+    "`CONNECTS_TO` is reachability observed by an authorized scanner, not an approved flow: no firewall policy, no proxy configuration and no ACL is read here",
+    "`PASSTHROUGH` rests on the same session identifier appearing on both hops in one collector's view. It is stronger than a guess and weaker than a packet capture, and it says nothing about what the device inspects",
+    "`PROTECTED_BY` is a position in a path. A WAF that sits in front of an application may inspect nothing, and this model cannot tell",
+    "confidence describes the evidence, not the certainty of the network's behaviour: an `OBSERVED` edge was observed once, and a once-observed path can be decommissioned the same afternoon",
+    "the nine kinds are fixed. A relationship that does not fit them is refused rather than given a new name, so the vocabulary cannot drift into one kind per collector"
+  ]
+}

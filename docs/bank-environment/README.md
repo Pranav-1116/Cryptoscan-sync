@@ -555,6 +555,25 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [Network topology as relationships that carry their own evidence](160-evidence-backed-topology.md)
+> (**5 pass · 0 partial · 0 fail**, 25 probes) closes NBOM review item 12, which is a
+> warning more than a feature request: *every relationship needs `evidence_id`,
+> `observed_at`, `source`, `confidence` — otherwise the topology is fiction*.
+> `cbom.topology` accepts exactly the review's nine kinds and nothing else, refuses any
+> claim missing an evidence id, an observation time or a source (listing the missing
+> fields), and **derives** `confidence` from the evidence class instead of trusting the
+> caller — so a CMDB mapping labelled `OBSERVED` is corrected to `DECLARED` and counted
+> under `overclaimed`. The two claims that are almost always wrong get gates:
+> `RE_ENCRYPTS` needs **two handshakes in one path** (a decrypt and a new encrypt) and
+> `PASSTHROUGH` needs the **same session identifier on both hops**, because one probe
+> cannot tell passthrough from termination. `from_hops()` turns observed hops,
+> certificate presentations and HSM/KMS bindings into claims that already carry their
+> provenance, and `audit()` reads the finished graph back looking for the four ways it
+> can still mislead: an edge with no provenance, a terminating device's TLS read as the
+> application's property, a node that exists only because an edge named it, and a
+> confidence that outran its evidence. `POST /cbom/topology` exposes it, typed, behind
+> the reader roles.
+
 > [Endpoint → certificate → key → signature → issuer → trust chain](159-certificate-trust-chain.md)
 > (**5 pass · 0 partial · 0 fail**, 29 probes) closes NBOM review item 9. The certificate
 > was already a record; the missing piece was the **chain**. `cbom.certificate_chain`
