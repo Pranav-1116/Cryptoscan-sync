@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import os
 import sys
+from contextlib import nullcontext
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -64,6 +66,24 @@ def test_binding_is_a_no_op_on_sqlite():
     engine = _sqlite_engine()
     with engine.connect() as connection:
         bind_connection(connection, "tenant-alpha")  # must not raise
+
+
+def test_production_boot_refuses_superuser_or_incomplete_tenant_rls(monkeypatch):
+    from db.connection import session as db_session
+    from db import rls
+
+    engine = SimpleNamespace(connect=lambda: nullcontext(object()))
+    base = {"supported": True, "binds_this_role": True, "tenant_tables": 2,
+            "tables_with_rls_enabled": 2, "tables_with_rls_forced": 2, "policies": 2}
+    for change in ({"binds_this_role": False, "superuser": True},
+                   {"binds_this_role": False, "bypassrls": True},
+                   {"tables_with_rls_forced": 1}, {"tables_with_rls_enabled": 1},
+                   {"policies": 1}, {"tenant_tables": 0}):
+        monkeypatch.setattr(rls, "enforcement", lambda _connection, value={**base, **change}: value)
+        with pytest.raises(RuntimeError, match="non-superuser, NOBYPASSRLS"):
+            db_session._assert_production_rls(engine)
+    monkeypatch.setattr(rls, "enforcement", lambda _connection: base)
+    db_session._assert_production_rls(engine)
 
 
 # ----------------------------------------------------------------- PostgreSQL ---

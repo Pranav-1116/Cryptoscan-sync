@@ -21,8 +21,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 from shared_models import enterprise_scenarios as es
 
 REPO_ROOT = Path(__file__).resolve().parents[3]

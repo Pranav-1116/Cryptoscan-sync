@@ -36,6 +36,32 @@ def test_pgdump_backend_invokes_pg_dump_and_pg_restore():
     assert out["tool"] == "pg_restore"
 
 
+def test_pgdump_cannot_claim_wal_replay_or_start_destructive_restore():
+    runner = FakeRunner("postgres")
+    backend = bj.PgDumpBackend(runner=runner)
+    key = bk.generate_encryption_key()
+    saved = bk.create_backup(backend=backend, database_id="proddb", encryption_key=key,
+                             signing_secret="test-only-signing", wal_tail=b"test-only-wal")
+    assert len(runner.commands) == 1  # capture only
+    with pytest.raises(bk.BackupError, match="point-in-time restore is unavailable"):
+        bk.restore_backup(backend=backend, database_id="proddb", ciphertext=saved["ciphertext"],
+                          manifest=saved["manifest"], encryption_key=key,
+                          signing_secret="test-only-signing", target_point_in_time="2026-09-07T12:00:00Z")
+    assert len(runner.commands) == 1, "no pg_restore may run before PITR refusal"
+    with pytest.raises(bk.BackupError, match="cannot replay WAL"):
+        backend.replay_wal("proddb", b"test-only-wal", "2026-09-07T12:00:00Z")
+
+
+def test_neo4j_backup_refuses_stale_or_missing_output(tmp_path):
+    stale = tmp_path / "neo4j"
+    stale.write_bytes(b"test-only-stale-backup")
+    backend = bj.Neo4jBackend(runner=FakeRunner("neo4j"), backup_dir=tmp_path)
+    with pytest.raises(bk.BackupError, match="produced no named backup artifact"):
+        backend.dump("neo4j")
+    assert stale.read_bytes() == b"test-only-stale-backup"
+    assert not list(tmp_path.glob("cryptoscan-backup-*"))
+
+
 def test_unsafe_db_name_rejected():
     be = bj.PgDumpBackend(runner=FakeRunner("x"))
     with pytest.raises(bk.BackupError):
@@ -61,6 +87,7 @@ def test_scheduled_backup_cycle_persists_and_restores_from_storage():
     r1 = bj.run_backup_job(backend=be, storage=storage, config=cfg,
                            encryption_key=key, signing_secret="s", now=now)
     assert r1["ok"] and len(storage.list_manifests()) == 1
+    assert storage.list_manifests()[0]["has_wal_tail"] is False
     assert cfg.sequence == 1 and cfg.last_run_at == now
 
     # not due yet (1h later, interval 24h) -> skipped

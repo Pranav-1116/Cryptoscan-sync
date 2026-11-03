@@ -234,7 +234,7 @@ def collect_runtime(
         },
         location=proc_base,
     )
-    host_evidence = package.evidence_for(host_ref, "RUNTIME_OBSERVED", {
+    package.evidence_for(host_ref, "RUNTIME_OBSERVED", {
         "evidence_kind": "HOST_PROCESS_INVENTORY",
         "hostname": host_name,
         "processes_scanned": inventory.get("total_processes_scanned"),

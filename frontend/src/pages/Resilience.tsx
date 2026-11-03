@@ -1,9 +1,9 @@
 /* Resilience, compliance & air-gap console (features 21, 22, 25, 26, 27).
-   All actions call the LIVE backend (/api/v1/resilience/*). No demo data:
-   panels render zeros/empty until real operations run. Deterministic and live. */
+   Actions use the bank API. Backup and retention views show retained records,
+   never generated sample results; a successful response is not a restore drill. */
 import React, { useEffect, useState } from "react";
 import {
-  apiComplianceReport, apiRetentionPlan, apiBackupCreate, apiBackupRestore,
+  apiComplianceReport, apiRetentionPlan, apiBackupCreate,
   apiAuditAttestation, apiAirgapStatus, apiAirgapImportFeed, apiOtDecode,
   apiBackupRunScheduled, apiBackupList, apiAirgapBuildBundle, apiOtIngestPcap,
   apiBackupConfigSet, apiBackupSweep,
@@ -41,7 +41,7 @@ export default function Resilience() {
     <div className="page" style={{ padding: 24 }}>
       <h1 style={{ fontSize: 22, margin: 0 }}>{t("resilience.title")}</h1>
       <p style={{ color: "var(--faint)", fontSize: 13, marginTop: 6 }}>
-        signed reports · encrypted backups &amp; PITR · hash-chain attestation · air-gap feeds · passive OT decode
+        signed reports · encrypted logical backups · hash-chain attestation · air-gap feeds · passive OT decode
       </p>
       <div style={{ display: "flex", gap: 8, margin: "16px 0", flexWrap: "wrap" }}>
         {TABS.map((x) => (
@@ -66,7 +66,7 @@ function ReportPanel() {
   const { t } = useI18n();
   const [fw, setFw] = useState("PCI_DSS_4");
   const [org, setOrg] = useState("CryptoScan Tenant");
-  const [evidenceText, setEvidenceText] = useState('{\n  "tls": [{"id":"tls-1","title":"TLS 1.3 enforced","status":"PASS"}],\n  "audit": [{"id":"au-1","title":"Chained audit","status":"PASS"}]\n}');
+  const [evidenceText, setEvidenceText] = useState("{}");
   const [res, setRes] = useState<any>(null);
   const [err, setErr] = useState<string>();
   const [busy, setBusy] = useState(false);
@@ -111,7 +111,10 @@ function ReportPanel() {
       <label style={{ fontSize: 12, color: "var(--faint)" }}>Organization</label>
       <input className="input" value={org} onChange={(e) => setOrg(e.target.value)}
         style={{ display: "block", margin: "6px 0 12px", minWidth: 320 }} />
-      <label style={{ fontSize: 12, color: "var(--faint)" }}>Evidence by tag (JSON)</label>
+      <label style={{ fontSize: 12, color: "var(--faint)" }}>Operator-supplied evidence by tag (JSON; not independently verified)</label>
+      <p style={{ fontSize: 12, color: "var(--faint)" }}>
+        Production refuses manual positive assertions. Use retained, independently reviewable evidence for compliance decisions.
+      </p>
       <textarea className="input" value={evidenceText} onChange={(e) => setEvidenceText(e.target.value)}
         rows={6} style={{ display: "block", width: "100%", fontFamily: "var(--mono)", fontSize: 12, margin: "6px 0 12px" }} />
       <div style={{ display: "flex", gap: 8 }}>
@@ -144,9 +147,8 @@ function ReportPanel() {
 
 function BackupPanel() {
   const { t } = useI18n();
-  const [db, setDb] = useState("proddb");
+  const [db, setDb] = useState("");
   const [created, setCreated] = useState<any>(null);
-  const [restored, setRestored] = useState<any>(null);
   const [retention, setRetention] = useState<any>(null);
   const [sched, setSched] = useState<any>(null);
   const [stored, setStored] = useState<any[]>([]);
@@ -155,32 +157,30 @@ function BackupPanel() {
 
   const create = async () => {
     setErr(undefined);
-    const out = await apiBackupCreate(db, "postgres", 1);
+    if (!db.trim()) return setErr("enter an approved PostgreSQL database name first");
+    const out = await apiBackupCreate(db.trim(), "postgres", 1);
     if (!out.ok) return setErr(out.error);
     setCreated(out.data);
-  };
-  const restore = async () => {
-    if (!created) return setErr("create a backup first");
-    setErr(undefined);
-    const out = await apiBackupRestore(db, created.ciphertext_b64, created.manifest);
-    if (!out.ok) return setErr(out.error);
-    setRestored(out.data);
+    const listed = await apiBackupList();
+    if (listed.ok) setStored(listed.data?.backups ?? []);
   };
   const plan = async () => {
-    const backups = [
-      { backup_id: "daily-stale", created_at: "2026-08-01T00:00:00+00:00" },
-      { backup_id: "daily-fresh", created_at: new Date().toISOString() },
-    ];
+    setErr(undefined);
+    const listed = await apiBackupList();
+    if (!listed.ok) return setErr(listed.error);
+    const backups = listed.data?.backups ?? [];
+    setStored(backups);
+    if (!backups.length) return setErr("no retained backups exist to evaluate");
     const out = await apiRetentionPlan(backups);
     if (!out.ok) return setErr(out.error);
     setRetention(out.data);
   };
   const runScheduled = async () => {
     setErr(undefined);
+    if (!db.trim()) return setErr("enter an approved PostgreSQL database name first");
     const out = await apiBackupRunScheduled([
-      { database_id: "proddb", engine: "postgres", interval_hours: 24 },
-      { database_id: "graphdb", engine: "neo4j", interval_hours: 24 },
-    ]);
+      { database_id: db.trim(), engine: "postgres", interval_hours: 24 },
+    ], false);
     if (!out.ok) return setErr(out.error);
     setSched(out.data);
     const l = await apiBackupList();
@@ -188,27 +188,26 @@ function BackupPanel() {
   };
   const persistAndSweep = async () => {
     setErr(undefined);
-    const dbs = [
-      { database_id: "proddb", engine: "postgres", interval_hours: 24 },
-      { database_id: "graphdb", engine: "neo4j", interval_hours: 24 },
-    ];
+    if (!db.trim()) return setErr("enter an approved PostgreSQL database name first");
+    const dbs = [{ database_id: db.trim(), engine: "postgres", interval_hours: 24 }];
     const cfg = await apiBackupConfigSet(dbs);
     if (!cfg.ok) return setErr(cfg.error);
     setPersisted(cfg.data);
-    const out = await apiBackupSweep(true);
+    const out = await apiBackupSweep(false);
     if (!out.ok) return setErr(out.error);
     setSched(out.data);
     const l = await apiBackupList();
     if (l.ok) setStored(l.data?.backups ?? []);
-  };;
+  };
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <div className="card" style={{ padding: 18 }}>
-        <h3 style={{ marginTop: 0 }}>Scheduled encrypted backups (Postgres + Neo4j) with retention</h3>
+        <h3 style={{ marginTop: 0 }}>PostgreSQL logical backups</h3>
         <p style={{ fontSize: 12, color: "var(--faint)" }}>
-          Runs due backups via the injected dump runner (pg_dump / neo4j-admin in production),
-          encrypts (Fernet), signs a manifest, persists artifacts, then applies GFS retention/purge.
+          Uses the configured pg_dump backend, encrypts the captured archive and retains its signed manifest.
+          Failed attempts are listed below. These actions do not run retention/purge or prove a restore;
+          PostgreSQL PITR requires a separate physical backup and WAL archive workflow.
         </p>
         <button className="btn sm primary" onClick={runScheduled}
           style={{ background: "var(--grad)", color: "var(--text)", border: "none" }}>run scheduled backup cycle</button>
@@ -217,10 +216,17 @@ function BackupPanel() {
         </button>
         <Err e={err} />
         {persisted && <div style={{ marginTop: 6, fontSize: 12 }}>
-          <Badge ok>persisted schedule for {persisted.configured} databases (runs on worker tick)</Badge>
+          <Badge>persisted {persisted.configured} database schedule(s); worker execution not verified here</Badge>
         </div>}
         {sched && <div style={{ marginTop: 10, fontSize: 12 }}>
-          <Badge ok>ran {sched.ran} · skipped {sched.skipped} · stored {sched.stored_backups}</Badge>
+          <Badge ok={Array.isArray(sched.results) && sched.results.length > 0 && !sched.results.some((row: any) => row.ok === false)}>
+            attempted {sched.ran} · skipped {sched.skipped} · retained {sched.stored_backups}
+            {sched.results?.some((row: any) => row.ok === false) ? " · failures reported" : ""}
+          </Badge>
+          {sched.results?.filter((row: any) => row.ok === false).map((row: any, index: number) =>
+            <div key={`${row.database_id}-${index}`} role="alert" style={{ color: "var(--red)", marginTop: 6 }}>
+              {row.database_id}: {row.error || "backup failed"}
+            </div>)}
           {sched.retention && <div style={{ marginTop: 4, color: "var(--faint)" }}>
             retention: kept {sched.retention.kept} · purged {sched.retention.purged} · deleted {sched.retention.deleted_keys?.length ?? 0}
           </div>}
@@ -240,20 +246,24 @@ function BackupPanel() {
       </div>
       <div className="card" style={{ padding: 18 }}>
         <h3 style={{ marginTop: 0 }}>{t("resilience.backup")}</h3>
-        <input className="input" value={db} onChange={(e) => setDb(e.target.value)} style={{ marginRight: 8, minWidth: 220 }} />
-        <button className="btn sm" onClick={create}>{t("resilience.createBackup")}</button>
-        <button className="btn sm" onClick={restore} style={{ marginLeft: 8 }} disabled={!created}>{t("resilience.restore")}</button>
+        <label style={{ fontSize: 12, color: "var(--faint)" }} htmlFor="backup-database">Approved PostgreSQL database name</label>
+        <input id="backup-database" className="input" value={db} onChange={(e) => setDb(e.target.value)}
+          placeholder="Enter the configured database name" style={{ display: "block", margin: "8px 0", minWidth: 220 }} />
+        <button className="btn sm" onClick={create} disabled={!db.trim()}>{t("resilience.createBackup")}</button>
+        <p style={{ fontSize: 12, color: "var(--faint)" }}>
+          Restore is not available from this console: it changes a database and requires a separately approved,
+          isolated recovery target and a verified bank runbook. A created logical backup is not a PITR drill.
+        </p>
         <Err e={err} />
         {created && <div style={{ marginTop: 10, fontSize: 12 }}>
           <Badge ok>created {created.manifest?.backup_id} · {created.manifest?.engine} · {created.manifest?.size_bytes}B · HMAC signed</Badge>
         </div>}
-        {restored && <div style={{ marginTop: 8, fontSize: 12 }}>
-          <Badge ok={restored.restored}>restored={String(restored.restored)} · PIT wal_applied={String(restored.wal_applied)}</Badge>
-        </div>}
       </div>
       <div className="card" style={{ padding: 18 }}>
         <h3 style={{ marginTop: 0 }}>{t("resilience.retention")}</h3>
-        <button className="btn sm" onClick={plan}>run sample GFS retention plan</button>
+        <button className="btn sm" onClick={plan}>plan retention for stored backups</button>
+        <span style={{ marginLeft: 8, fontSize: 12, color: "var(--faint)" }}>Preview only — no backup is deleted.</span>
+        <Err e={err} />
         {retention && <div style={{ marginTop: 10, fontSize: 12 }}>
           <Badge ok>kept {retention.kept} · purged {retention.purged}</Badge>
           <ul style={{ marginTop: 8 }}>

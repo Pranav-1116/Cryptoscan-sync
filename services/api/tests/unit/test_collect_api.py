@@ -6,7 +6,6 @@ BOM depth, plus the refusals that keep an empty input from reading as an empty e
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest

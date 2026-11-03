@@ -117,7 +117,7 @@ export function useLive<T>(path: string | null, fallback: T): LiveState<T> {
     error: readPath === path ? error : undefined, reload };
 }
 
-/* Small inline status line used by live-wired pages. */
+/* One successful GET means a response was read, not that collection is running. */
 export function LiveStatus({ loading, error }: { loading?: boolean; error?: string }) {
   if (loading) return <span className="dim" style={{ fontSize: 12 }}>● loading live data…</span>;
   if (error)
@@ -128,7 +128,7 @@ export function LiveStatus({ loading, error }: { loading?: boolean; error?: stri
     );
   return (
     <span className="badge" style={{ background: "color-mix(in srgb, var(--green) 12%, transparent)", color: "var(--green)", fontSize: 11 }}>
-      <span className="dot" /> LIVE
+      <span className="dot" /> API READ OK
     </span>
   );
 }

@@ -25,8 +25,8 @@ from api.security.signing_backend import (
     signer_status,
 )
 
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding, rsa
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 
 @pytest.fixture(scope="module")

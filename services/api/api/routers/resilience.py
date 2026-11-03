@@ -2,16 +2,19 @@
 backup + restore + retention (22), audit hash-chain attestation (25), air-gapped
 mode + signed feed bundles (26), and passive OT protocol decode (27).
 
-Everything is deterministic (no AI). Signing keys are read from settings/env
-(vault references in production); if absent, an ephemeral key is generated per
-process so the endpoint remains demonstrable without leaking a default secret.
+Everything is deterministic (no AI). Signing/encryption keys are resolved
+from settings or a configured master; ephemeral fallbacks are development-only.
+Production refuses backup operations without durable storage and stable keys.
 """
 
 from __future__ import annotations
 
 import base64
 import datetime as dt
+import logging
 import os
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from cryptography.fernet import Fernet
@@ -25,6 +28,11 @@ from db.repositories.user_repository import UserRepository
 from db.repositories.settings_repository import SettingsRepository
 
 router = APIRouter(prefix="/resilience", tags=["resilience"])
+logger = logging.getLogger(__name__)
+
+
+def _production() -> bool:
+    return (os.environ.get("ENVIRONMENT") or os.environ.get("CRYPTOSCAN_ENV") or "development").strip().lower() == "production"
 
 
 def _signing_secret(db: Session | None = None) -> str:
@@ -34,7 +42,9 @@ def _signing_secret(db: Session | None = None) -> str:
     try:
         repo = SettingsRepository(db) if db is not None else None
         return keys.signing_secret(settings_repo=repo)
-    except Exception:
+    except Exception as exc:
+        if _production():
+            raise HTTPException(503, "stable governance signing key unavailable") from exc
         return _ephemeral.secret
 
 
@@ -44,7 +54,9 @@ def _fernet_key(db: Session | None = None) -> bytes:
     try:
         repo = SettingsRepository(db) if db is not None else None
         return keys.backup_fernet_key(settings_repo=repo)
-    except Exception:
+    except Exception as exc:
+        if _production():
+            raise HTTPException(503, "stable backup encryption key unavailable") from exc
         env = os.environ.get("BACKUP_ENCRYPTION_KEY")
         if env:
             return env.encode()
@@ -89,6 +101,8 @@ def compliance_report(body: ReportRequest,
     if body.framework not in compliance_pdf.FRAMEWORKS:
         raise HTTPException(400, f"unknown framework {body.framework!r}; "
                                  f"choose from {sorted(compliance_pdf.FRAMEWORKS)}")
+    if _production() and any(body.evidence.values()):
+        raise HTTPException(422, "production report cannot certify caller-supplied evidence assertions")
     mapping = compliance_pdf.map_evidence(body.framework, body.evidence)
     now = dt.datetime.now(dt.timezone.utc).isoformat()
     canonical = compliance_pdf.canonical_summary(body.framework, mapping, org=body.org, generated_at=now)
@@ -133,8 +147,8 @@ class BackupCreateOut(BaseModel):
 
 class BackupCreateRequest(BaseModel):
     database_id: str
-    engine: str = "reference"
-    dump_b64: str = Field("", description="raw pg_dump/neo4j-admin output (b64)")
+    engine: str = "postgres"
+    dump_b64: str = Field("", description="development-only offline dump capture (base64)")
     wal_tail_b64: str | None = None
     sequence: int = 1
 
@@ -145,6 +159,8 @@ def _real_backend(engine: str):
     (reported honestly) when the binary isn't installed."""
     from governance import backup_jobs as bj
 
+    if engine not in {"postgres", "neo4j"}:
+        raise HTTPException(422, "backup engine must be postgres or neo4j")
     runner = bj.subprocess_runner()
     if engine == "neo4j":
         return bj.Neo4jBackend(
@@ -164,17 +180,24 @@ def _real_backend(engine: str):
 @router.post("/backup/create", response_model=BackupCreateOut)
 def backup_create(body: BackupCreateRequest, db: Session = Depends(get_db_session),
                   user: str = Depends(require_roles("admin", "superadmin"))):
-    """Create a REAL encrypted, signed backup via pg_dump/neo4j-admin and persist
-    it to the configured backup store. A raw dump may be supplied (b64) for
-    explicit/offline capture; otherwise the live database tool is invoked."""
+    """Capture a live dump with pg_dump/neo4j-admin and persist encrypted bytes.
+
+    Explicit offline dump capture is development-only, never a production
+    substitute for an observed database operation."""
     from governance import backup as bk
     from governance import backup_jobs as bj
 
+    if body.engine not in {"postgres", "neo4j"}:
+        raise HTTPException(422, "backup engine must be postgres or neo4j")
+    if body.dump_b64 and _production():
+        raise HTTPException(403, "production backups require a live database dump")
+    if body.wal_tail_b64 and _production():
+        raise HTTPException(403, "a caller-supplied WAL fragment is not a production PITR archive")
     if body.dump_b64:
         raw = base64.b64decode(body.dump_b64)
-        backend = bj._DumpCaptureBackend(body.engine or "postgres", raw)
+        backend = bj._DumpCaptureBackend(body.engine, raw)
     else:
-        backend = _real_backend(body.engine or "postgres")
+        backend = _real_backend(body.engine)
     wal = base64.b64decode(body.wal_tail_b64) if body.wal_tail_b64 else None
     try:
         res = bk.create_backup(backend=backend, database_id=body.database_id,
@@ -218,6 +241,9 @@ def backup_restore(body: BackupRestoreRequest, db: Session = Depends(get_db_sess
     from governance import backup as bk
     from governance import backup_jobs as bj
 
+    approved_target = os.environ.get("CRYPTOSCAN_RESTORE_TARGET_DB", "").strip()
+    if _production() and (not approved_target or body.database_id != approved_target):
+        raise HTTPException(403, "production restore needs an explicitly designated recovery database")
     storage = _backup_storage()
     try:
         if body.storage_key:
@@ -231,6 +257,8 @@ def backup_restore(body: BackupRestoreRequest, db: Session = Depends(get_db_sess
                 raise HTTPException(400, "provide storage_key or ciphertext_b64+manifest")
             ciphertext = base64.b64decode(body.ciphertext_b64)
             manifest = body.manifest
+        if _production() and manifest.get("database_id") == body.database_id:
+            raise HTTPException(403, "production restore cannot overwrite the source database")
         engine = manifest.get("engine", "postgres")
         backend = _real_backend(engine)
         out = bk.restore_backup(backend=backend, database_id=body.database_id,
@@ -317,9 +345,8 @@ def backup_run_scheduled(body: BackupRunRequest, db: Session = Depends(get_db_se
     (pg_dump/neo4j-admin), persist encrypted artifacts to the on-disk store,
     then apply retention. A missing tool / unreachable DB is reported honestly.
 
-    In the reference surface the command runner is a deterministic stub that
-    returns synthetic dumps (no real DB server required); production injects a
-    subprocess runner wrapping pg_dump / neo4j-admin."""
+    The endpoint selects subprocess-backed pg_dump / neo4j-admin. An unavailable
+    tool is reported as a failed backup, never as a synthetic dump."""
     from governance import backup_jobs as bj
 
     storage = _backup_storage()
@@ -347,24 +374,39 @@ def backup_run_scheduled(body: BackupRunRequest, db: Session = Depends(get_db_se
             "stored_backups": len(storage.list_manifests())}
 
 
-_BACKUP_STORE = None
-
-
 def _backup_storage():
-    """Persistent on-disk backup store (survives restarts). Path configurable
-    via BACKUP_STORAGE_DIR; defaults to a data volume directory."""
-    global _BACKUP_STORE
-    if _BACKUP_STORE is None:
-        from governance.backup_jobs import DiskBackupStorage
-        root = os.environ.get("BACKUP_STORAGE_DIR", "/var/lib/cryptoscan/backups")
+    """Use an explicitly provisioned backup directory in production.
+
+    A writable directory is not itself independent backup qualification, but a
+    failed mount must never turn a database backup into a temporary-directory
+    success. Development retains its visibly temporary fallback only when the
+    default path was not explicitly selected by an operator.
+    """
+    from governance.backup_jobs import DiskBackupStorage
+
+    configured = os.environ.get("BACKUP_STORAGE_DIR", "").strip()
+    root = Path(configured or "/var/lib/cryptoscan/backups")
+    if _production():
+        if not configured or not root.is_absolute() or root.is_symlink() or not root.is_dir():
+            raise HTTPException(503, "production backup directory is not provisioned")
         try:
-            _BACKUP_STORE = DiskBackupStorage(root)
-        except Exception:
-            # fall back to a writable temp volume if the default path isn't usable
-            import tempfile
-            from governance.backup_jobs import DiskBackupStorage as _D
-            _BACKUP_STORE = _D(os.path.join(tempfile.gettempdir(), "cryptoscan-backups"))
-    return _BACKUP_STORE
+            with tempfile.TemporaryFile(dir=root) as probe:
+                probe.write(b"cryptoscan-backup-store-probe")
+                probe.flush()
+                os.fsync(probe.fileno())
+                probe.seek(0)
+                if probe.read() != b"cryptoscan-backup-store-probe":
+                    raise OSError("backup probe readback disagreed with the write")
+            return DiskBackupStorage(root)
+        except OSError as exc:
+            raise HTTPException(503, "production backup directory failed exact-byte readback") from exc
+    try:
+        return DiskBackupStorage(root)
+    except OSError as exc:
+        if configured:
+            raise HTTPException(503, "configured backup directory is unavailable") from exc
+        logger.warning("development backup directory unavailable; using ephemeral temporary storage", exc_info=True)
+        return DiskBackupStorage(Path(tempfile.gettempdir()) / "cryptoscan-backups")
 
 
 @router.get("/backup/list", response_model=BackupListOut)

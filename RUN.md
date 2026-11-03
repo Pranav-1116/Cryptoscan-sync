@@ -9,12 +9,40 @@ Policy is never decided by AI. Fail/pass comes from YAML in `services/policy/rul
 Provision PostgreSQL, Redis, the API, worker, and existing console on loopback:
 
 ```bash
-# Privately supply LOCAL_DB_PASS, LOCAL_SECRET_KEY, LOCAL_WEBHOOK_SECRET and
-# LOCAL_ADMIN_PASS from an operator-controlled secret store before first startup.
-# Keep them available for restarts; the launcher neither records nor prints them.
+# Privately supply absolute LOCAL_DB_PASS_FILE and LOCAL_APP_PASS_FILE (0600),
+# distinct LOCAL_SECRET_KEY and LOCAL_WEBHOOK_SECRET (32+ characters each), and optional
+# LOCAL_ADMIN_PASS from an operator-controlled secret store before startup.
+# Keep them available for restarts; there are no built-in secret defaults.
+# Existing data volumes require LOCAL_REUSE_VOLUME=1 after inspection;
+# running named containers require LOCAL_REUSE_RUNNING=1 after inspection.
 bash scripts/run_local_stack.sh up
 bash scripts/run_local_stack.sh status
+bash scripts/run_local_stack.sh tools  # running vs unconfigured backend tools
+bash scripts/run_local_stack.sh monitoring-up  # optional real Prometheus, loopback :55909
+# With LOCAL_GRAFANA_ADMIN_PASSWORD_FILE in a protected directory:
+bash scripts/run_local_stack.sh grafana-up    # optional Grafana, loopback :55910
+# With LOCAL_NEO4J_AUTH_FILE=... (protected file containing neo4j/<password>):
+bash scripts/run_local_stack.sh graph-up      # staged Neo4j, loopback Bolt :55912
+bash scripts/run_local_stack.sh gateway-up    # local NGINX HTTP gateway, loopback :55920
+# To wire a running API/worker to that graph, use the same protected core/S3
+# variables as `up`, set LOCAL_NEO4J_AUTH_FILE, then run `reload` after jobs
+# are idle. The graph remains empty until real retained relationships project.
 ```
+
+`down` stops only launcher-owned core processes/containers; staged MinIO,
+Neo4j, Prometheus, Grafana and the local NGINX process remain running. It never
+purges their data. Inspect them individually before any shutdown or deletion.
+
+The core launcher starts PostgreSQL, Redis, API, worker, and console, not all
+13 engines in the requested bank architecture. Optional local MinIO evidence
+requires `SBOM_S3_ENDPOINT`, `SBOM_S3_BUCKET`, and separate **non-root** access/
+secret credential-file paths. The launcher requires a probed S3 bucket by
+default; `LOCAL_EVIDENCE_REQUIRED=0` explicitly opts into core-only local
+startup without a verified S3 evidence store. The local machine has limited free memory and
+heavy swap use: Neo4j, OpenSearch, Kafka, Grafana and monitoring must be staged,
+not silently launched as a memory-exhausting bundle. `tools` distinguishes
+running services from unconfigured or unverified integrations. Existing volumes
+or named processes are never silently removed/reused by `up`.
 
 Open `http://127.0.0.1:3003`. There is **no preset administrator password** in
 this launcher. Bootstrap requires an empty users table; public registration alone
@@ -97,16 +125,41 @@ Neo4j must not bind-mount `infra/neo4j/init` onto `/import` (the image `chown`s 
 
 Use a dedicated host. Do **not** run the production overlay on a laptop that already owns `:80`.
 
+Provision bank-owned PostgreSQL, its separate non-superuser runtime role, and a
+bank-operated TLS Redis with an ACL identity and trusted CA. Keep actual secrets
+in the bank's secret manager, not Git or an image. The reference Compose requires
+`CRYPTOSCAN_APP_DATABASE_URL` distinct from the PostgreSQL migration superuser.
+It also requires `BACKUP_STORAGE_HOST_PATH` to name an existing, bank-managed
+persistent directory writable by the API container's uid 10001. The production
+backup endpoints refuse missing/unwritable mounts and unavailable stable keys
+instead of writing to `/tmp` or using a process-ephemeral encryption key.
+Production restore is disabled until `CRYPTOSCAN_RESTORE_TARGET_DB` designates
+an isolated database different from the signed source; the console offers no
+one-click restore. Test a real backup and a reviewed restore before treating
+this mount as protected recovery. `pg_dump` plus a supplied WAL fragment is
+**not** PostgreSQL PITR; that requires a separate physical backup/WAL archive.
+
 ```bash
-cp .env.production.example .env
-python3 scripts/hash_admin_password.py    # ADMIN_PASSWORD_HASH
-openssl rand -hex 32                      # SECRET_KEY
-openssl rand -hex 24                      # GITHUB_WEBHOOK_SECRET
-# set POSTGRES_PASSWORD, NEO4J_PASSWORD, CORS_ORIGINS
+# Bank DBA creates the runtime login first; supply private deployment variables.
+bash scripts/deploy_prod.sh --migrate-only
+# Bank DBA grants table/sequence permissions and verifies RLS on the runtime role.
 bash scripts/deploy_prod.sh -d
 ```
 
-Details: `docs/admin-guide/production.md`.
+Details: [bank-owned PostgreSQL runtime role](docs/runbooks/onprem-postgres-runtime-role.md)
+and `docs/admin-guide/production.md`. Neither sequence alone is site qualification.
+
+For a separately provisioned, TLS-enabled, **bank-owned** versioned MinIO/S3
+bucket, add `docker-compose.s3.yml` after `docker-compose.prod.yml` in the
+operator's Compose invocation. Configure the six `SBOM_S3_*` host-path/endpoint
+variables in `.env.production.example` with a restricted artifact identity,
+never the object-store root identity; supply a trusted bank CA. The overlay
+mounts credential files read-only into only the API and worker. Both processes
+must address the same bucket. The loopback-only MinIO used for local tests is
+not reachable from the Compose network as `127.0.0.1` and must not be passed off
+as the production endpoint. A configured backup path and retention period satisfy
+only configuration checks: actual independent backup, Object Lock and restore
+are separate operator controls, not proven by S3 versioning or this overlay.
 
 The API refuses production startup with demo secrets, SQLite, wildcard CORS or
 an unusable required realtime journal. Provision a named non-default Redis ACL

@@ -37,7 +37,7 @@ def get_driver(*, force: bool = False):
     if not settings.enabled:
         return None
     try:
-        driver = create_driver(settings.uri, settings.NEO4J_USER, settings.NEO4J_PASSWORD)
+        driver = create_driver(settings.uri, *settings.auth)
         driver.verify_connectivity()
         _driver = driver
         _failed = False

@@ -212,7 +212,7 @@ class Pkcs11Signer:
     def sign(self, data: bytes) -> bytes:
         try:
             import pkcs11  # type: ignore[import-not-found]
-            from pkcs11 import Attribute, KeyType, Mechanism, ObjectClass
+            from pkcs11 import KeyType, Mechanism, ObjectClass
             from pkcs11.util.rsa import encode_rsa_public_key  # noqa: F401
         except ImportError as exc:
             raise SignerRefused(

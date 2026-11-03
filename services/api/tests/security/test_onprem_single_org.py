@@ -31,7 +31,7 @@ from api.dependencies import get_db_session
 from api.main import create_app
 from api.security.session_manager import SessionManager
 from db.connection.session import Base, configure_session
-from db.models.tenant import Tenant, TenantMembership
+from db.models.tenant import TenantMembership
 from db.repositories.tenant_repository import TenantRepository
 from db.repositories.user_repository import UserRepository
 
@@ -126,7 +126,7 @@ def test_switching_the_setting_off_restores_the_403(onprem, monkeypatch):
 
 
 def test_a_suspended_organisation_stays_suspended(onprem, monkeypatch):
-    client, session = onprem["session"], onprem["session"]
+    session = onprem["session"]
     repo = TenantRepository(session)
     tenant = repo.create(name="Bank On-Prem", slug="bank-onprem")
     repo.set_status(tenant.id, "SUSPENDED", actor="test", reason="compliance hold")

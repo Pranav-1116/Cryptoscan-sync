@@ -94,11 +94,17 @@ jobs:
           python -m pytest -q -m live tests/unit/test_migration_chain_postgres.py \
             --junitxml="$RUNNER_TEMP/db-migration-pg${{ matrix.postgres }}.xml"
           python ../../scripts/check_junit.py "$RUNNER_TEMP/db-migration-pg${{ matrix.postgres }}.xml"
-      - name: Keep migration proof report
+      - name: Prove non-superuser runtime RLS on disposable PostgreSQL
+        env:
+          CRYPTOSCAN_CI_DISPOSABLE_DB: "1"
+        run: python scripts/check_runtime_rls_pg.py --output "$RUNNER_TEMP/rls-runtime-pg${{ matrix.postgres }}.json"
+      - name: Keep migration and runtime-role proof
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: db-migration-pg${{ matrix.postgres }}-junit
-          path: ${{ runner.temp }}/db-migration-pg${{ matrix.postgres }}.xml
+          name: db-migration-pg${{ matrix.postgres }}-proof
+          path: |
+            ${{ runner.temp }}/db-migration-pg${{ matrix.postgres }}.xml
+            ${{ runner.temp }}/rls-runtime-pg${{ matrix.postgres }}.json
           if-no-files-found: error
           retention-days: 7

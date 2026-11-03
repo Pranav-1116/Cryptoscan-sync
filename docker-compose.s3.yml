@@ -1,0 +1,39 @@
+# Optional bank-owned S3/MinIO artifact backend for the API and worker.
+# Use AFTER the production overlay, with a TLS endpoint reachable on the
+# Compose network. The running loopback-only local MinIO is not that endpoint.
+# Credential paths belong to the bank's secret manager; never use the MinIO
+# root user for these workloads. S3 versioning is not independent backup/WORM.
+services:
+  api:
+    environment: &sbom-s3-env
+      SBOM_S3_ENDPOINT: ${SBOM_S3_ENDPOINT:?set a bank-owned HTTPS object-store endpoint}
+      SBOM_S3_BUCKET: ${SBOM_S3_BUCKET:?set the versioned artifact bucket}
+      SBOM_S3_REGION: ${SBOM_S3_REGION:-us-east-1}
+      SBOM_S3_ACCESS_KEY_FILE: /run/secrets/sbom-s3-access
+      SBOM_S3_SECRET_KEY_FILE: /run/secrets/sbom-s3-secret
+      SBOM_S3_CA_BUNDLE: /run/secrets/sbom-s3-ca.pem
+      SBOM_STORAGE_BACKUP_DIR: ${SBOM_STORAGE_BACKUP_DIR:?declare a separately operated backup target}
+      SBOM_RETENTION_DAYS: ${SBOM_RETENTION_DAYS:?declare an approved retention period}
+    volumes: &sbom-s3-mounts
+      - type: bind
+        source: ${SBOM_S3_ACCESS_KEY_HOST_PATH:?set a protected S3 access identity file}
+        target: /run/secrets/sbom-s3-access
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SBOM_S3_SECRET_KEY_HOST_PATH:?set a protected S3 secret file}
+        target: /run/secrets/sbom-s3-secret
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${SBOM_S3_CA_HOST_PATH:?set the bank S3 CA bundle path}
+        target: /run/secrets/sbom-s3-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false
+
+  worker:
+    environment: *sbom-s3-env
+    volumes: *sbom-s3-mounts

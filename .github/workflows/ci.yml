@@ -171,7 +171,8 @@ jobs:
       ADMIN_PASSWORD_HASH: ci-only-placeholder-hash
       GITHUB_WEBHOOK_SECRET: ci-only-webhook-secret-0123456789abcdef
       METRICS_TOKEN: ci-only-metrics-token-0123456789abcdef
-      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      ALERTMANAGER_WEBHOOK_TOKEN: ci-only-alertmanager-token-0123456789abcdef
+      DATABASE_URL: postgresql://ci_runtime:ci@localhost:5432/ci
       REDIS_URL: rediss://ci_acl_user:ci-only-redis-acl-password@localhost:6379/0
       CORS_ORIGINS: https://cryptoscan.example.invalid
       TRUSTED_HOSTS: '["cryptoscan.example.invalid"]'

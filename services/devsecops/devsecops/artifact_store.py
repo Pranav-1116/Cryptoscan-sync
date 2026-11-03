@@ -12,9 +12,10 @@ sides already depend on, and the API router keeps only HTTP concerns (validation
 status codes, response shape). Heavy imports stay inside the functions, matching
 the rest of this package, so importing it costs nothing.
 
-Idempotency: pass ``artifact_id`` and the artifact is rewritten under that id
-instead of a fresh one. A retried job therefore replaces its own artifact; it
-never multiplies it.
+Idempotency: pass ``artifact_id`` to address the same artifact. Disk storage
+rewrites that id; the optional versioned S3 store accepts only identical bytes
+at an existing key. A rescanned or re-encrypted retry with different bytes
+must fail instead of overwriting retained evidence, even under the same id.
 
 Tenancy: an artifact belongs to the tenant that asked for it. Its objects are
 written under that tenant's own prefix and sealed with that tenant's own key
@@ -542,6 +543,35 @@ def storage_status(environment: str | None = None) -> dict[str, Any]:
     from devsecops.sbom_evidence import storage_policy
 
     env = _storage_environment(environment)
+    if os.environ.get("SBOM_S3_ENDPOINT", "").strip():
+        from devsecops.s3_artifact_store import from_environment
+
+        try:
+            remote = from_environment(env)
+            if remote is None:
+                raise StorageRefused("Bank S3 endpoint is not configured")
+            remote.probe()
+        except StorageRefused as exc:
+            return {"environment": env, "root": "bank S3/MinIO", "configured": True,
+                    "writable": False, "durable": False, "integrity_verified": False,
+                    "backup": False, "retention_days": None, "verdict": "REFUSE",
+                    "mode": "S3_UNAVAILABLE", "reasons": [str(exc)], "error": str(exc),
+                    "topology": {"verdict": "NOT_VERIFIED"}}
+        backup = str(os.environ.get("SBOM_STORAGE_BACKUP_DIR") or "").strip() or None
+        retention_raw = str(os.environ.get("SBOM_RETENTION_DAYS") or "").strip()
+        retention = int(retention_raw) if retention_raw.isdigit() and int(retention_raw) > 0 else None
+        policy = storage_policy(environment=env, configured_store=f"s3://{remote.bucket}",
+                                writable=True, durable=True, backup=backup,
+                                retention_days=retention, integrity_verified=True)
+        return {"environment": env, "root": f"s3://{remote.bucket}", "configured": True,
+                "writable": True, "durable": True, "integrity_verified": True,
+                "backup": bool(backup), "backup_target_configured": bool(backup),
+                "backup_verified": False, "retention_enforced": False,
+                "site_qualified": False, "retention_days": retention,
+                "verdict": policy["verdict"], "mode": "BANK_S3_VERSIONED",
+                "reasons": policy["reasons"], "error": None,
+                "topology": storage_topology(environment=env),
+                "limitation": "S3 versioning and a readback probe do not qualify backup or object-lock retention"}
     configured = str(os.environ.get("SBOM_STORAGE_DIR") or "").strip()
     root = Path(configured or DEFAULT_SBOM_ROOT)
     writable, integrity, error = _store_probe(root)
@@ -686,10 +716,10 @@ def mirror_objects(objects: dict[str, bytes], *, primary: Any) -> dict[str, Any]
 
 
 def artifact_storage(environment: str | None = None):
-    """Persistent on-disk SBOM artifact store (survives restarts).
+    """Persistent disk or explicitly configured S3 SBOM artifact store.
 
-    Shared by the API and the worker: both read ``SBOM_STORAGE_DIR``, so a job
-    scanned by a worker is downloadable from the API's endpoints unchanged.
+    Shared by the API and worker: both must select the same configured backend
+    and credentials, so an artifact written by one remains readable by the other.
 
     **A temporary fallback is a production refusal.** Outside dev/test/CI, an
     unwritable or unconfigured store raises :class:`StorageRefused` naming what
@@ -703,6 +733,15 @@ def artifact_storage(environment: str | None = None):
     from governance.backup_jobs import DiskBackupStorage
 
     status = storage_status(environment)
+    if os.environ.get("SBOM_S3_ENDPOINT", "").strip():
+        if status["verdict"] == "REFUSE":
+            raise StorageRefused("refusing bank S3 artifact storage: " + "; ".join(status["reasons"]))
+        from devsecops.s3_artifact_store import from_environment
+
+        remote = from_environment(_storage_environment(environment))
+        if remote is None:
+            raise StorageRefused("bank S3 artifact storage became unconfigured")
+        return remote
     if status["verdict"] == "REFUSE":
         raise StorageRefused(
             "refusing to store SBOM evidence in "

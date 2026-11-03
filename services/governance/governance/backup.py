@@ -1,4 +1,7 @@
-"""Automated encrypted backup, point-in-time restore, and retention/purge.
+"""Encrypted logical backup, verified restore, and retention/purge.
+
+PostgreSQL point-in-time recovery needs a separately operated physical-base-
+backup and WAL archive workflow. A pg_dump artifact is never PITR evidence.
 
 Deterministic (no AI). Backups are produced by a pluggable backend (Postgres
 pg_dump-style or Neo4j neo4j-admin-style; tests inject a fake). The platform
@@ -67,8 +70,8 @@ def create_backup(
 ) -> dict[str, Any]:
     """Dump, encrypt (Fernet/AES), and produce a signed manifest.
 
-    ``wal_tail`` simulates the write-ahead-log tail needed for PITR; it is
-    bundled with the base dump inside the tar and recorded in the manifest.
+    ``wal_tail`` is caller-provided bytes, not an actual WAL-archive capture.
+    A logical pg_dump plus this fragment cannot satisfy PostgreSQL PITR.
     """
     ref = now or dt.datetime.now(dt.timezone.utc)
     ts = ref.isoformat()
@@ -124,8 +127,11 @@ def restore_backup(
     signing_secret: str,
     target_point_in_time: str | None = None,
 ) -> dict[str, Any]:
-    """Verify signature + integrity, decrypt, replay (base + optional WAL to a
-    PIT), then restore through the backend. Fail-closed on any mismatch."""
+    """Verify integrity and decrypt before restoring through the backend.
+
+    A requested PIT is refused before touching the target unless the backend
+    explicitly supports replay and the archive actually carries WAL bytes.
+    """
     sig = manifest.get("signature")
     body = {k: v for k, v in manifest.items() if k != "signature"}
     canonical = json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
@@ -149,14 +155,15 @@ def restore_backup(
         raise BackupError("dump payload hash mismatch after decrypt")
 
     pit = target_point_in_time or manifest.get("point_in_time")
+    replay = getattr(backend, "replay_wal", None)
+    if target_point_in_time and (not wal or not callable(replay)
+                                 or getattr(backend, "supports_pitr", True) is False):
+        raise BackupError("point-in-time restore is unavailable: no supported WAL replay backend")
     result = backend.restore(database_id, dump)
     applied_wal = False
-    if wal and target_point_in_time:
-        # PITR: backend replays WAL up to the requested point when supported
-        replay = getattr(backend, "replay_wal", None)
-        if callable(replay):
-            result = replay(database_id, wal, target_point_in_time)
-            applied_wal = True
+    if target_point_in_time:
+        result = replay(database_id, wal, target_point_in_time)
+        applied_wal = True
     return {"restored": True, "database_id": database_id, "engine": manifest.get("engine"),
             "point_in_time": pit, "wal_applied": applied_wal,
             "size_bytes": len(dump), "backend_result": result}

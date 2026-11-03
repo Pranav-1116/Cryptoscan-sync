@@ -27,6 +27,16 @@ def test_framework_mapping_rolls_up_worst_status():
     assert 0 <= m["compliance_pct"] <= 100
 
 
+def test_missing_or_unknown_evidence_status_never_defaults_to_pass():
+    mapping = compliance_pdf.map_evidence("NIST_SP_800_53", {
+        "tls": [{"id": "operator-assertion-without-status"}, {"id": "unknown", "status": "APPROVED"}],
+    })
+    sc8 = next(row for row in mapping["control_rows"] if row["control"] == "SC-8")
+    assert sc8["status"] == "NO_EVIDENCE"
+    assert mapping["counts"]["PASS"] == 0
+    assert mapping["compliance_pct"] == 0
+
+
 def test_all_frameworks_have_controls():
     for fw in ("NIST_SP_800_53", "PCI_DSS_4", "DORA", "UAE_PDPL"):
         m = compliance_pdf.map_evidence(fw, {})

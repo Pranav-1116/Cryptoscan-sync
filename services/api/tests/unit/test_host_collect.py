@@ -13,8 +13,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import pytest
-
 from api import host_collect
 from shared_models.estate_graph import build_graph
 

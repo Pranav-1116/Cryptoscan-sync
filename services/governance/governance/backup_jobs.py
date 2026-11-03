@@ -104,6 +104,7 @@ class PgDumpBackend:
     user input."""
 
     name = "postgres"
+    supports_pitr = False  # pg_dump/pg_restore cannot replay PostgreSQL WAL archives
 
     def __init__(self, *, runner: CommandRunner, host: str = "localhost",
                  port: int = 5432, user: str = "postgres", pg_bin: str = ""):
@@ -140,11 +141,10 @@ class PgDumpBackend:
         return {"tool": "pg_restore", "database_id": database_id, "bytes": len(payload)}
 
     def replay_wal(self, database_id: str, wal: bytes, pit: str) -> dict[str, Any]:
-        # Point-in-time recovery for Postgres is archive recovery; here we record
-        # the recovery target so an operator/DBA applies the WAL archive.
         _validate_db_name(database_id)
-        return {"tool": "pg_wal_pitr", "database_id": database_id,
-                "recovery_target_time": pit, "wal_bytes": len(wal)}
+        raise bk.BackupError(
+            "pg_dump/pg_restore cannot replay WAL; use a bank-operated physical-base-backup "
+            "and WAL-archive recovery workflow for point-in-time restore")
 
 
 class Neo4jBackend:
@@ -169,31 +169,39 @@ class Neo4jBackend:
 
     def dump(self, database_id: str) -> bytes:
         _validate_db_name(database_id)
-        # neo4j-admin writes a backup into a directory; we point it at a temp
-        # dir, run it, then tar the produced artifact so the rest of the
-        # pipeline (encrypt/sign/store) treats it as an opaque byte stream.
-        if self.backup_dir is not None:
-            target = Path(self.backup_dir); target.mkdir(parents=True, exist_ok=True)
-            argv = [self._bin("neo4j-admin"), "database", "backup",
-                    "--from", f"{self.host}:{self.port}",
-                    "--to", str(target), "--include-path-labels", database_id, database_id]
-        else:
-            # test runner that returns bytes directly on stdout
-            argv = [self._bin("neo4j-admin"), "database", "backup",
-                    "--from", f"{self.host}:{self.port}", database_id]
-        self.calls.append(argv)
-        res = self._run(argv)
-        if res.returncode != 0:
-            raise bk.BackupError(f"neo4j-admin backup failed (rc={res.returncode}): {res.stderr.decode('utf-8','replace')[:300]}")
         if self.backup_dir is not None:
             import io
             import tarfile
-            buf = io.BytesIO()
-            artifact = target / database_id
-            with tarfile.open(fileobj=buf, mode="w") as tf:
-                if artifact.exists():
+            import tempfile
+
+            self.backup_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix="cryptoscan-backup-", dir=self.backup_dir) as staging:
+                target = Path(staging)
+                argv = [self._bin("neo4j-admin"), "database", "backup",
+                        "--from", f"{self.host}:{self.port}",
+                        "--to", str(target), "--include-path-labels", database_id, database_id]
+                self.calls.append(argv)
+                res = self._run(argv)
+                if res.returncode != 0:
+                    raise bk.BackupError(
+                        f"neo4j-admin backup failed (rc={res.returncode}): "
+                        f"{res.stderr.decode('utf-8', 'replace')[:300]}")
+                artifact = target / database_id
+                if not artifact.exists():
+                    raise bk.BackupError("neo4j-admin returned success but produced no named backup artifact")
+                buf = io.BytesIO()
+                with tarfile.open(fileobj=buf, mode="w") as tf:
                     tf.add(artifact, arcname=database_id)
-            return buf.getvalue()
+                return buf.getvalue()
+        # Deterministic command-runner tests can return bytes on stdout instead.
+        argv = [self._bin("neo4j-admin"), "database", "backup",
+                "--from", f"{self.host}:{self.port}", database_id]
+        self.calls.append(argv)
+        res = self._run(argv)
+        if res.returncode != 0:
+            raise bk.BackupError(
+                f"neo4j-admin backup failed (rc={res.returncode}): "
+                f"{res.stderr.decode('utf-8', 'replace')[:300]}")
         return res.stdout
 
     def restore(self, database_id: str, payload: bytes) -> dict[str, Any]:
@@ -228,7 +236,9 @@ class _DumpCaptureBackend:
         self._dump = dump_bytes
 
     def dump(self, database_id: str) -> bytes:
-        return self._dump or f"CAPTURED-DUMP:{database_id}".encode()
+        if not self._dump:
+            raise bk.BackupError("caller-supplied dump is empty; no backup was captured")
+        return self._dump
 
     def restore(self, database_id: str, payload: bytes) -> dict[str, Any]:
         # bytes-only capture cannot itself restore; signal honestly
@@ -330,13 +340,12 @@ class BackupConfig:
 
 def run_backup_job(*, backend: Any, storage: InMemoryBackupStorage,
                    config: BackupConfig, encryption_key: bytes, signing_secret: str,
-                   now: dt.datetime | None = None, include_wal: bool = True) -> dict[str, Any]:
-    """Full cycle: dump → encrypt+sign → persist ciphertext & manifest."""
+                   now: dt.datetime | None = None) -> dict[str, Any]:
+    """Full logical dump cycle; no simulated WAL tail is attached."""
     ref = (now or dt.datetime.now(dt.timezone.utc)).astimezone(dt.timezone.utc)
-    wal = b"" if include_wal else None
     res = bk.create_backup(backend=backend, database_id=config.database_id,
                            encryption_key=encryption_key, signing_secret=signing_secret,
-                           now=ref, sequence=config.sequence + 1, wal_tail=wal)
+                           now=ref, sequence=config.sequence + 1)
     man = res["manifest"]
     key = f"{config.engine}/{config.database_id}/{man['backup_id']}"
     storage.put(key, res["ciphertext"])

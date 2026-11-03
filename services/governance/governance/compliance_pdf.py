@@ -108,7 +108,9 @@ def map_evidence(framework: str, evidence_tags: dict[str, list[dict]]) -> dict[s
         if not items:
             status = "NO_EVIDENCE"
         else:
-            status = max((i.get("status", "PASS") for i in items), key=lambda s: order.get(s, 1))
+            status = max((str(i.get("status") or "NO_EVIDENCE").upper()
+                          if str(i.get("status") or "").upper() in order else "NO_EVIDENCE"
+                          for i in items), key=lambda s: order[s])
         counts[status] += 1
         rows.append({"control": cid, "title": title, "status": status,
                      "evidence": items})

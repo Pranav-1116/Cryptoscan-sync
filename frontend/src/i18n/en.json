@@ -122,7 +122,7 @@
   "resilience.evidenceByTag": "Evidence by tag (JSON)",
   "resilience.previewMapping": "preview mapping",
   "resilience.generatePdf": "Generate signed PDF",
-  "resilience.backup": "Encrypted backup & restore",
+  "resilience.backup": "Encrypted backups",
   "resilience.createBackup": "Create backup",
   "resilience.restore": "Verify & restore",
   "resilience.retention": "Retention / purge plan",

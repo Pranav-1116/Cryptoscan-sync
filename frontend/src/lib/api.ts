@@ -2507,12 +2507,8 @@ export const apiComplianceReport = (framework: string, org: string, evidence: Re
 export const apiRetentionPlan = (backups: any[], policy?: Record<string, number>) =>
   _rsPost<any>("/api/v1/resilience/backup/retention-plan", { backups, policy });
 
-export const apiBackupCreate = (databaseId: string, engine = "reference", sequence = 1) =>
+export const apiBackupCreate = (databaseId: string, engine = "postgres", sequence = 1) =>
   _rsPost<any>("/api/v1/resilience/backup/create", { database_id: databaseId, engine, sequence });
-
-export const apiBackupRestore = (databaseId: string, ciphertextB64: string, manifest: any, pit?: string) =>
-  _rsPost<any>("/api/v1/resilience/backup/restore",
-    { database_id: databaseId, ciphertext_b64: ciphertextB64, manifest, ...(pit ? { target_point_in_time: pit } : {}) });
 
 export const apiAuditAttestation = () =>
   _rsGet<any>("/api/v1/resilience/audit/attestation");

@@ -2,7 +2,6 @@
 
 import json
 import os
-from types import SimpleNamespace
 import pytest
 from inventory import linux_traffic_drill as core
 from shared.shared_models.tests.test_linux_traffic_control import authorization
@@ -79,6 +78,17 @@ def test_parent_context_refuses_before_namespace_launch(monkeypatch):
     monkeypatch.setattr(core.os, "getuid", lambda: 1001)
     monkeypatch.setattr(core.os, "geteuid", lambda: 1001)
     value = authorization()
+    actual_read = core.Path.read_text
+
+    def zero_caps(path, *args, **kwargs):
+        if str(path) == "/proc/self/status":
+            return "\n".join(f"{label}\t0000000000000000" for label in
+                             ("CapInh:", "CapPrm:", "CapEff:", "CapAmb:"))
+        return actual_read(path, *args, **kwargs)
+
+    # Make the context branch independent of the test runner's capabilities;
+    # the separate cap-bearing-parent refusal remains enforced by the code.
+    monkeypatch.setattr(core.Path, "read_text", zero_caps)
     with pytest.raises(ValueError, match="CONTEXT_MISMATCH"):
         core.run_drill(value, digest(value))
 

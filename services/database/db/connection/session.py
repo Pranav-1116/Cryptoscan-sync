@@ -94,6 +94,7 @@ def init_db(engine=None) -> None:
     _wait_for_database(engine)
     if _is_production():
         _assert_migrations_current(engine)
+        _assert_production_rls(engine)
         managed_by = "alembic"
     else:
         from db.connection.schema_ensure import ensure_schema_extensions
@@ -142,6 +143,30 @@ def _assert_migrations_current(engine) -> None:
         raise RuntimeError(
             "Production database migrations are not at the repository head; "
             "run alembic upgrade head before starting API or worker processes"
+        )
+
+
+def _assert_production_rls(engine) -> None:
+    """Refuse a runtime connection that can bypass the tenant policies."""
+    from db.rls import enforcement
+
+    with engine.connect() as connection:
+        report = enforcement(connection)
+    tables = int(report.get("tenant_tables") or 0)
+    if (report.get("supported") is not True or report.get("binds_this_role") is not True
+            or tables < 1 or int(report.get("tables_with_rls_enabled") or 0) < tables
+            or int(report.get("tables_with_rls_forced") or 0) < tables
+            or int(report.get("policies") or 0) < tables):
+        logger.error("production_database_rls_unavailable", extra={
+            "role": report.get("role"), "superuser": report.get("superuser"),
+            "bypassrls": report.get("bypassrls"), "tenant_tables": tables,
+            "enabled": report.get("tables_with_rls_enabled"),
+            "forced": report.get("tables_with_rls_forced"),
+        })
+        raise RuntimeError(
+            "Production runtime database role must be non-superuser, NOBYPASSRLS, "
+            "and bound by enabled and forced tenant RLS on every tenant table; "
+            "provision a separate bank-owned app role after migrations"
         )
 
 

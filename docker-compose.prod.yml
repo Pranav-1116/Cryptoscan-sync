@@ -107,16 +107,27 @@ services:
       # Platform self-observability: W3C trace-context + Prometheus on every
       # request; set OTEL_EXPORTER_OTLP_ENDPOINT for OTLP/JSON export too.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
-      REDIS_URL: redis://redis:6379/0
+      # The migration account is a PostgreSQL superuser. Runtime services must
+      # use a separately provisioned, non-superuser NOBYPASSRLS bank-owned role.
+      DATABASE_URL: ${CRYPTOSCAN_APP_DATABASE_URL:?set a non-superuser bank app DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:?set bank-owned rediss URL with ACL identity}
+      REDIS_CA_CERTS: /run/secrets/redis-ca.pem
       WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
       CRYPTOSCAN_SOURCE_ROOTS: /app:/tmp/cryptoscan-workspaces
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:?set NEO4J_PASSWORD}
       CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
       CRYPTOSCAN_TELECOM_REGISTRY: /var/lib/cryptoscan/telecom/telecom_registry.json
+      BACKUP_STORAGE_DIR: /var/lib/cryptoscan/backups
+      CRYPTOSCAN_RESTORE_TARGET_DB: ${CRYPTOSCAN_RESTORE_TARGET_DB:-}
     volumes:
       - telecom_data:/var/lib/cryptoscan/telecom
       - ${TELECOM_REGISTRY_HOST_PATH:-./config/telecom_registry.json}:/var/lib/cryptoscan/telecom/telecom_registry.json:ro
+      - ${REDIS_CA_HOST_PATH:?set bank-owned Redis CA path}:/run/secrets/redis-ca.pem:ro
+      - type: bind
+        source: ${BACKUP_STORAGE_HOST_PATH:?set an existing bank-managed backup directory}
+        target: /var/lib/cryptoscan/backups
+        bind:
+          create_host_path: false
     command:
       - uvicorn
       - api.main:app
@@ -147,6 +158,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    volumes:
+      - ${REDIS_CA_HOST_PATH:?set bank-owned Redis CA path}:/run/secrets/redis-ca.pem:ro
     environment:
       ENVIRONMENT: production
       # Fail closed until an operator provisions the separate parser runtime.
@@ -158,8 +171,11 @@ services:
       CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S: ${CRYPTOSCAN_STATIC_SCAN_TIMEOUT_S:-600}
       LOG_LEVEL: INFO
       ALLOW_SQLITE: "false"
-      DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
-      REDIS_URL: redis://redis:6379/0
+      # The migration account is a PostgreSQL superuser. Runtime services must
+      # use a separately provisioned, non-superuser NOBYPASSRLS bank-owned role.
+      DATABASE_URL: ${CRYPTOSCAN_APP_DATABASE_URL:?set a non-superuser bank app DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:?set bank-owned rediss URL with ACL identity}
+      REDIS_CA_CERTS: /run/secrets/redis-ca.pem
       STREAM_SECRET: ${STREAM_SECRET:?set STREAM_SECRET}
       WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
       CRYPTOSCAN_SOURCE_ROOTS: /app:/tmp/cryptoscan-workspaces
@@ -174,13 +190,31 @@ services:
     tmpfs:
       - /tmp/cryptoscan-workspaces:rw,size=1024m,mode=1777
 
+  estate-daemon:
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: ${CRYPTOSCAN_APP_DATABASE_URL:?set a non-superuser bank app DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:?set bank-owned rediss URL with ACL identity}
+      REDIS_CA_CERTS: /run/secrets/redis-ca.pem
+    volumes:
+      - ${REDIS_CA_HOST_PATH:?set bank-owned Redis CA path}:/run/secrets/redis-ca.pem:ro
+    logging: *json-log
+    mem_limit: 256m
+    security_opt: !override
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
   notifications:
     depends_on:
       migrate:
         condition: service_completed_successfully
     environment:
       ENVIRONMENT: production
-      DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
+      DATABASE_URL: ${CRYPTOSCAN_APP_DATABASE_URL:?set a non-superuser bank app DATABASE_URL}
     logging: *json-log
     mem_limit: 256m
     security_opt: !override
@@ -193,12 +227,17 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
+      ENVIRONMENT: production
+      DATABASE_URL: ${CRYPTOSCAN_APP_DATABASE_URL:?set a non-superuser bank app DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:?set bank-owned rediss URL with ACL identity}
+      REDIS_CA_CERTS: /run/secrets/redis-ca.pem
       STREAM_SECRET: ${STREAM_SECRET:?set STREAM_SECRET}
       CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
       CRYPTOSCAN_TELECOM_REGISTRY: /var/lib/cryptoscan/telecom/telecom_registry.json
     volumes:
       - telecom_data:/var/lib/cryptoscan/telecom
       - ${TELECOM_REGISTRY_HOST_PATH:-./config/telecom_registry.json}:/var/lib/cryptoscan/telecom/telecom_registry.json:ro
+      - ${REDIS_CA_HOST_PATH:?set bank-owned Redis CA path}:/run/secrets/redis-ca.pem:ro
     logging: *json-log
     mem_limit: 512m
     security_opt: !override

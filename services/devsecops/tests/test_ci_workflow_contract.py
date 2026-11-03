@@ -241,7 +241,29 @@ def test_migration_lane_runs_alembic_tests_not_only_create_all():
     assert "test_migration_chain_postgres.py" in commands
     assert "scripts/check_junit.py" in commands
     assert "scripts/check_junit.py --allow-skips" not in commands
+    rls = next(step for step in postgres["steps"] if "scripts/check_runtime_rls_pg.py" in step.get("run", ""))
+    assert rls["env"]["CRYPTOSCAN_CI_DISPOSABLE_DB"] == "1"
+    assert "rls-runtime-pg${{ matrix.postgres }}.json" in rls["run"]
+    assert any("rls-runtime-pg${{ matrix.postgres }}.json" in str(step.get("with", {}).get("path", ""))
+               and step.get("if") == "always()" for step in postgres["steps"])
     assert "continue-on-error" not in json.dumps(jobs)
+
+
+def test_ci_rls_probe_refuses_any_non_disposable_target(tmp_path):
+    import os
+    import subprocess
+    import sys
+
+    output = tmp_path / "not-a-real-rls-receipt.json"
+    script = ROOT / "scripts/check_runtime_rls_pg.py"
+    for marker, url in (("0", "postgresql://cryptoscan:unused@127.0.0.1:5432/cs_ci_parity"),
+                        ("1", "postgresql://cryptoscan:unused@127.0.0.1:5432/customer")):
+        env = {**os.environ, "CRYPTOSCAN_CI_DISPOSABLE_DB": marker,
+               "CRYPTOSCAN_TEST_DATABASE_URL": url}
+        result = subprocess.run([sys.executable, str(script), "--output", str(output)],
+                                cwd=ROOT, env=env, capture_output=True, text=True, timeout=15)
+        assert result.returncode != 0 and "Refused" in result.stderr
+        assert not output.exists()
 
 
 def test_image_lane_covers_standard_dockerfiles_with_correct_contexts_and_no_push():
@@ -319,6 +341,46 @@ def test_production_guard_ci_fixtures_match_current_runtime_contract(expect_reje
         assert "SECRET_KEY" in output
     else:
         assert "production configuration is valid" in output
+
+
+def test_production_compose_refuses_migration_superuser_and_plaintext_redis(monkeypatch):
+    compose = _script("check_prod_compose")
+    migrator = "postgresql://cryptoscan:compose-check-only@postgres:5432/cryptoscan"
+    monkeypatch.setitem(compose.PLACEHOLDERS, "CRYPTOSCAN_APP_DATABASE_URL", migrator)
+    with pytest.raises(RuntimeError, match="runtime database identity"):
+        compose.check()
+    monkeypatch.setitem(compose.PLACEHOLDERS, "CRYPTOSCAN_APP_DATABASE_URL",
+                        "postgresql://ci_runtime:compose-check-only@postgres:5432/cryptoscan")
+    monkeypatch.setitem(compose.PLACEHOLDERS, "REDIS_URL", "redis://redis:6379/0")
+    with pytest.raises(RuntimeError, match="TLS Redis"):
+        compose.check()
+
+
+def test_production_s3_overlay_refuses_divergent_worker_and_writable_secret_mount(monkeypatch):
+    compose = _script("check_prod_compose")
+    render = compose.render
+
+    def divergent(*overlays, **kwargs):
+        services = render(*overlays, **kwargs)
+        if "docker-compose.s3.yml" in overlays:
+            services["worker"]["environment"]["SBOM_S3_BUCKET"] = "other-bank-bucket"
+        return services
+
+    monkeypatch.setattr(compose, "render", divergent)
+    with pytest.raises(RuntimeError, match="artifact backends differ"):
+        compose.check()
+
+    def writable(*overlays, **kwargs):
+        services = render(*overlays, **kwargs)
+        if "docker-compose.s3.yml" in overlays:
+            for mount in services["api"]["volumes"]:
+                if mount.get("target") == "/run/secrets/sbom-s3-secret":
+                    mount["read_only"] = False
+        return services
+
+    monkeypatch.setattr(compose, "render", writable)
+    with pytest.raises(RuntimeError, match="read-only SBOM_S3_SECRET_KEY_FILE"):
+        compose.check()
 
 
 def test_frontend_ci_uses_frozen_installs_and_coverage_without_unapproved_audit():

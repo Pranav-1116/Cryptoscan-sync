@@ -184,6 +184,12 @@ describe("useLive private read scope", () => {
     await act(async () => pending.resolve([]));
   });
 
+  it("labels a successful GET as an API read, not live collection", () => {
+    render(<LiveStatus />);
+    expect(screen.getByText(/API READ OK/)).toBeInTheDocument();
+    expect(screen.queryByText(/^LIVE$/)).toBeNull();
+  });
+
   it("shows the safe refusal reason rather than falsely calling it an outage", () => {
     render(<LiveStatus error="Access refused (HTTP 403)" />);
     expect(screen.getByText(/Access refused/)).toBeInTheDocument();
