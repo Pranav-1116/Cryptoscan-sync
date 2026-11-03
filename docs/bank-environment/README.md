@@ -555,6 +555,37 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [Hardware is a view of the estate](167-hbom.md)
+> (**16 pass · 0 partial · 0 fail**, 72 probes) answers the HBOM review
+> (`hbom-review-2026-11-03.md`) by putting hardware into the **same graph** as the rest of
+> the estate instead of building a fourth database beside it: one identity per device, one
+> set of evidenced edges, five views reading them. **A server is a tree, not a row** — CPU,
+> memory, motherboard, BIOS, firmware, TPM, NIC, storage, RAID controller, GPU, PCI
+> devices, crypto accelerator and HSM are typed nodes joined by `HAS_COMPONENT` /
+> `RUNS_BIOS` / `RUNS_FIRMWARE`, each device carrying the review's nineteen fields and
+> listing the ones the collector did **not** supply in `unknown_fields` (a gap in the
+> collector is a fact about the estate, and hiding it is how a BOM becomes fiction). **An
+> HSM has depth**: vendor, product, model, firmware release, HA mode, cluster, peer
+> members, partitions, capabilities with key types, sizes and operations, certificates and
+> the applications wired to it. **Capability is not use**, and the model says so with four
+> relations rather than prose: `HSM SUPPORTS RSA-2048` is `VENDOR_DECLARED` because a
+> datasheet said it, `HSM PERFORMS RSA-SIGN` needs `CONFIGURED` or better and a datasheet
+> claiming it is refused (`CLAIM_WEAKER_THAN_RELATION_REQUIRES`), `Payments API USES_CRYPTO
+> RSA-2048` is a claim about the application, and `RSA-2048 PROTECTED_BY HSM-001` is a
+> claim about custody. **Identity is evidence**: `ASSET-HW-928182` comes from manufacturer,
+> model and serial, hostnames/IPs/MACs are refused as anchors and reported as ignored, so a
+> re-addressed machine is the same machine and the change is `NETWORK_INTERFACE_CHANGED` in
+> a drift feed that speaks the review's twelve change types and carries the cryptography
+> behind every event. **Firmware is first-class** (release date, `SUPPORTED`/`EOL`/`EOS`,
+> advisories, and the devices that run it), **coverage reconciles** (expected 200 = collected
+> 120 + unavailable 50 + permission denied 20 + unknown 10, or it is refused), and **key
+> material never arrives** (`KEY_MATERIAL_REFUSED`; what a collector hands over is a
+> reference). The review's own question — *1 HSM, 3 applications, 2 business systems, 7
+> cryptographic assets, 2 network paths* — is answered from the graph:
+> `HSM-001: 2 application(s), 2 business system(s), 4 cryptographic asset(s), 5 network
+> path(s) affected`. `GET /technology-bom/hardware` serves the stored rows through the same
+> adapter, and `GET /technology-bom/graph` the live graph.
+
 > [The stored inventory becomes a TechBOM](166-techbom-live.md)
 > (**6 pass · 0 partial · 0 fail**, 29 probes) is the adapter from the inventory the
 > platform already gathers (`_gather_inventory`) into the guide-164 estate document, so a

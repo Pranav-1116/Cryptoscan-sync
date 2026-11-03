@@ -1,0 +1,1177 @@
+{
+  "schema": "cryptoscan.cbom-hbom-guide/1",
+  "generated_at": "2026-11-03T02:03:11.966030+00:00",
+  "counts": {
+    "PASS": 16,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 72,
+  "statement": "26 hardware asset(s) across 22 kind(s) and 35 relationship(s) touching them out of 48 in the estate; 2 device root(s); 244 declared field(s) the collectors did not supply; 1 firmware release(s) tracked",
+  "summary": {
+    "schema": "cryptoscan.hbom/1",
+    "assets": 26,
+    "by_kind": {
+      "BIOS": 1,
+      "CPU": 1,
+      "CRYPTO_ACCELERATOR": 1,
+      "CRYPTO_CAPABILITY": 3,
+      "FIREWALL": 1,
+      "FIRMWARE": 1,
+      "GPU": 1,
+      "HSM": 2,
+      "HSM_CLUSTER": 1,
+      "HSM_PARTITION": 2,
+      "MEMORY": 1,
+      "MOTHERBOARD": 1,
+      "NETWORK_SEGMENT": 1,
+      "NIC": 1,
+      "PCI_DEVICE": 1,
+      "PHYSICAL_SERVER": 1,
+      "RAID_CONTROLLER": 1,
+      "STORAGE": 1,
+      "TPM": 1,
+      "VENDOR": 1,
+      "VENDOR_PRODUCT": 1,
+      "VULNERABILITY": 1
+    },
+    "identities_provisional": 0,
+    "field_gaps": 244,
+    "component_roots": 2,
+    "firmware_actionable": [
+      "PaymentHSM firmware 8.4.2"
+    ],
+    "refusals": 2,
+    "coverage": "PARTIAL",
+    "statement": "26 hardware asset(s) across 22 kind(s) and 35 relationship(s) touching them out of 48 in the estate; 2 device root(s); 244 declared field(s) the collectors did not supply; 1 firmware release(s) tracked",
+    "not_proven": [
+      "that the tree is complete: a component nobody inventoried is absent, and the field gaps count what the collectors admitted they did not see",
+      "that a capability is a use: SUPPORTS is the device's own list, and an application's USES_CRYPTO is a claim about the application",
+      "that a device is where the network says it is: an address is an observation and never an identity",
+      "that a firmware status is current: EOL is what the vendor said at the time the release was recorded"
+    ]
+  },
+  "counts_by_kind": {
+    "BIOS": 1,
+    "CPU": 1,
+    "CRYPTO_ACCELERATOR": 1,
+    "CRYPTO_CAPABILITY": 3,
+    "FIREWALL": 1,
+    "FIRMWARE": 1,
+    "GPU": 1,
+    "HSM": 2,
+    "HSM_CLUSTER": 1,
+    "HSM_PARTITION": 2,
+    "MEMORY": 1,
+    "MOTHERBOARD": 1,
+    "NETWORK_SEGMENT": 1,
+    "NIC": 1,
+    "PCI_DEVICE": 1,
+    "PHYSICAL_SERVER": 1,
+    "RAID_CONTROLLER": 1,
+    "STORAGE": 1,
+    "TPM": 1,
+    "VENDOR": 1,
+    "VENDOR_PRODUCT": 1,
+    "VULNERABILITY": 1
+  },
+  "views": {
+    "ALGORITHM": 3,
+    "API_GATEWAY": 1,
+    "APPLICATION": 3,
+    "BIOS": 1,
+    "BUSINESS_SYSTEM": 2,
+    "CPU": 1,
+    "CRYPTO_ACCELERATOR": 1,
+    "CRYPTO_ASSET": 2,
+    "CRYPTO_CAPABILITY": 3,
+    "CRYPTO_LIBRARY": 1,
+    "FIREWALL": 1,
+    "FIRMWARE": 1,
+    "GPU": 1,
+    "HSM": 2,
+    "HSM_CLUSTER": 1,
+    "HSM_PARTITION": 2,
+    "LOAD_BALANCER": 1,
+    "MEMORY": 1,
+    "MOTHERBOARD": 1,
+    "NETWORK_ENDPOINT": 1,
+    "NETWORK_SEGMENT": 1,
+    "NIC": 1,
+    "PCI_DEVICE": 1,
+    "PHYSICAL_SERVER": 1,
+    "PROCESS": 1,
+    "RAID_CONTROLLER": 1,
+    "STORAGE": 1,
+    "TPM": 1,
+    "VENDOR": 1,
+    "VENDOR_PRODUCT": 1,
+    "VULNERABILITY": 1,
+    "WAF": 1
+  },
+  "fields": {
+    "asset_id": {
+      "declared": 20,
+      "missing": 0
+    },
+    "asset_type": {
+      "declared": 20,
+      "missing": 0
+    },
+    "bios_version": {
+      "declared": 0,
+      "missing": 20
+    },
+    "datacenter": {
+      "declared": 3,
+      "missing": 17
+    },
+    "environment": {
+      "declared": 20,
+      "missing": 0
+    },
+    "evidence_id": {
+      "declared": 20,
+      "missing": 0
+    },
+    "firmware_version": {
+      "declared": 6,
+      "missing": 14
+    },
+    "first_seen": {
+      "declared": 0,
+      "missing": 20
+    },
+    "hardware_revision": {
+      "declared": 0,
+      "missing": 20
+    },
+    "last_seen": {
+      "declared": 0,
+      "missing": 20
+    },
+    "location": {
+      "declared": 2,
+      "missing": 18
+    },
+    "manufacturer": {
+      "declared": 5,
+      "missing": 15
+    },
+    "model": {
+      "declared": 13,
+      "missing": 7
+    },
+    "owner": {
+      "declared": 1,
+      "missing": 19
+    },
+    "part_number": {
+      "declared": 1,
+      "missing": 19
+    },
+    "rack": {
+      "declared": 1,
+      "missing": 19
+    },
+    "serial_number": {
+      "declared": 2,
+      "missing": 18
+    },
+    "slot": {
+      "declared": 2,
+      "missing": 18
+    },
+    "status": {
+      "declared": 20,
+      "missing": 0
+    }
+  },
+  "firmware": [
+    {
+      "firmware": "PaymentHSM firmware 8.4.2",
+      "version": "8.4.2",
+      "status": "EOL",
+      "release_date": "2025-04-01",
+      "vulnerabilities": [
+        "CVE-2026-1111"
+      ],
+      "devices": [
+        "HSM-001"
+      ],
+      "actionable": true
+    }
+  ],
+  "radius": {
+    "schema": "cryptoscan.hbom/1",
+    "query": "HSM-001",
+    "seed": "HSM-001",
+    "impacts": {
+      "ALGORITHM": [
+        "ML-KEM-768"
+      ],
+      "API_GATEWAY": [
+        "payments-gw"
+      ],
+      "APPLICATION": [
+        "Card Authorization",
+        "Payments API"
+      ],
+      "BUSINESS_SYSTEM": [
+        "Card Services",
+        "Payments"
+      ],
+      "CRYPTO_ASSET": [
+        "RSA-2048"
+      ],
+      "CRYPTO_CAPABILITY": [
+        "HSM-001 AES-256-GCM ENCRYPT",
+        "HSM-001 ML-KEM-768 ENCAPSULATE",
+        "HSM-001 RSA-2048 SIGN/VERIFY"
+      ],
+      "CRYPTO_LIBRARY": [
+        "OpenSSL 3.0.13"
+      ],
+      "FIREWALL": [
+        "ASSET-HW-946725"
+      ],
+      "FIRMWARE": [
+        "PaymentHSM firmware 8.4.2"
+      ],
+      "HSM": [
+        "HSM-002"
+      ],
+      "HSM_CLUSTER": [
+        "HSM-CLUSTER-A"
+      ],
+      "HSM_PARTITION": [
+        "HSM-001-P1",
+        "HSM-001-P2"
+      ],
+      "LOAD_BALANCER": [
+        "payments-lb"
+      ],
+      "NETWORK_ENDPOINT": [
+        "payments.example.bank:443"
+      ],
+      "PROCESS": [
+        "payments-api"
+      ],
+      "WAF": [
+        "edge-waf"
+      ]
+    },
+    "applications": [
+      "Card Authorization",
+      "Payments API"
+    ],
+    "systems": [
+      "Card Services",
+      "Payments"
+    ],
+    "crypto_assets": [
+      "HSM-001 AES-256-GCM ENCRYPT",
+      "HSM-001 ML-KEM-768 ENCAPSULATE",
+      "HSM-001 RSA-2048 SIGN/VERIFY",
+      "RSA-2048"
+    ],
+    "network_paths": [
+      "ASSET-HW-946725",
+      "edge-waf",
+      "payments-gw",
+      "payments-lb",
+      "payments.example.bank:443"
+    ],
+    "proven": [
+      "ASSET-HW-946725",
+      "Card Authorization",
+      "HSM-001 RSA-2048 SIGN/VERIFY",
+      "HSM-001-P1",
+      "HSM-001-P2",
+      "HSM-002",
+      "HSM-CLUSTER-A",
+      "OpenSSL 3.0.13",
+      "PaymentHSM firmware 8.4.2",
+      "Payments API",
+      "RSA-2048",
+      "edge-waf",
+      "payments-api",
+      "payments-gw",
+      "payments-lb",
+      "payments.example.bank:443"
+    ],
+    "possible": [
+      "Card Services",
+      "HSM-001 AES-256-GCM ENCRYPT",
+      "HSM-001 ML-KEM-768 ENCAPSULATE",
+      "ML-KEM-768",
+      "Payments"
+    ],
+    "edges_walked": 21,
+    "statement": "HSM-001: 2 application(s), 2 business system(s), 4 cryptographic asset(s), 5 network path(s) affected; 5 reached only through a declared edge",
+    "not_proven": [
+      "that reachability is impact: a device in the path is exposure, and whether the business stops needs the owner's assessment",
+      "that the path is complete: a relationship nobody recorded is missing here, not absent from the estate"
+    ]
+  },
+  "views_of_hsm": {
+    "schema": "cryptoscan.hbom/1",
+    "query": "HSM-001",
+    "seed": "HSM-001",
+    "by_bom": {
+      "HBOM": [
+        {
+          "asset_id": "HSM-001",
+          "kind": "HSM",
+          "hops": 0
+        },
+        {
+          "asset_id": "PaymentHSM firmware 8.4.2",
+          "kind": "FIRMWARE",
+          "hops": 1
+        },
+        {
+          "asset_id": "HSM-002",
+          "kind": "HSM",
+          "hops": 1
+        },
+        {
+          "asset_id": "HSM-CLUSTER-A",
+          "kind": "HSM_CLUSTER",
+          "hops": 1
+        },
+        {
+          "asset_id": "HSM-001-P1",
+          "kind": "HSM_PARTITION",
+          "hops": 1
+        },
+        {
+          "asset_id": "HSM-001-P2",
+          "kind": "HSM_PARTITION",
+          "hops": 1
+        },
+        {
+          "asset_id": "ASSET-HW-010788",
+          "kind": "PHYSICAL_SERVER",
+          "hops": 2
+        },
+        {
+          "asset_id": "ASSET-HW-010788-BIOS",
+          "kind": "BIOS",
+          "hops": 3
+        },
+        {
+          "asset_id": "ASSET-HW-010788-CPU",
+          "kind": "CPU",
+          "hops": 3
+        },
+        {
+          "asset_id": "ASSET-HW-010788-ACCEL",
+          "kind": "CRYPTO_ACCELERATOR",
+          "hops": 3
+        },
+        {
+          "asset_id": "ASSET-HW-010788-GPU1",
+          "kind": "GPU",
+          "hops": 3
+        },
+        {
+          "asset_id": "ASSET-HW-010788-MEM",
+          "kind": "MEMORY",
+          "hops": 3
+        },
+        {
+          "asset_id": "ASSET-HW-010788-MB",
+          "kind": "MOTHERBOARD",
+          "hops": 3
+        },
+        {
+          "asset_id": "ASSET-HW-010788-NIC1",
+          "kind": "NIC",
+          "hops": 3
+        },
+        {
+          "asset_id": "ASSET-HW-010788-PCI1",
+          "kind": "PCI_DEVICE",
+          "hops": 3
+        },
+        {
+          "asset_id": "ASSET-HW-010788-RAID",
+          "kind": "RAID_CONTROLLER",
+          "hops": 3
+        },
+        {
+          "asset_id": "ASSET-HW-010788-STG1",
+          "kind": "STORAGE",
+          "hops": 3
+        },
+        {
+          "asset_id": "ASSET-HW-010788-TPM",
+          "kind": "TPM",
+          "hops": 3
+        },
+        {
+          "asset_id": "ASSET-HW-946725",
+          "kind": "FIREWALL",
+          "hops": 4
+        },
+        {
+          "asset_id": "ASSET-HW-453116",
+          "kind": "NETWORK_SEGMENT",
+          "hops": 4
+        }
+      ],
+      "CBOM": [
+        {
+          "asset_id": "RSA-2048",
+          "kind": "CRYPTO_ASSET",
+          "hops": 1
+        },
+        {
+          "asset_id": "HSM-001 AES-256-GCM ENCRYPT",
+          "kind": "CRYPTO_CAPABILITY",
+          "hops": 1
+        },
+        {
+          "asset_id": "HSM-001 ML-KEM-768 ENCAPSULATE",
+          "kind": "CRYPTO_CAPABILITY",
+          "hops": 1
+        },
+        {
+          "asset_id": "HSM-001 RSA-2048 SIGN/VERIFY",
+          "kind": "CRYPTO_CAPABILITY",
+          "hops": 1
+        },
+        {
+          "asset_id": "ML-KEM-768",
+          "kind": "ALGORITHM",
+          "hops": 2
+        },
+        {
+          "asset_id": "OpenSSL 3.0.13",
+          "kind": "CRYPTO_LIBRARY",
+          "hops": 2
+        }
+      ],
+      "SBOM": [
+        {
+          "asset_id": "Card Authorization",
+          "kind": "APPLICATION",
+          "hops": 1
+        },
+        {
+          "asset_id": "Payments API",
+          "kind": "APPLICATION",
+          "hops": 1
+        },
+        {
+          "asset_id": "Payment Gateway",
+          "kind": "APPLICATION",
+          "hops": 2
+        },
+        {
+          "asset_id": "payments-api",
+          "kind": "PROCESS",
+          "hops": 3
+        }
+      ],
+      "TBOM": [
+        {
+          "asset_id": "Card Services",
+          "kind": "BUSINESS_SYSTEM",
+          "hops": 1
+        },
+        {
+          "asset_id": "Payments",
+          "kind": "BUSINESS_SYSTEM",
+          "hops": 1
+        }
+      ],
+      "NBOM": [
+        {
+          "asset_id": "payments-gw",
+          "kind": "API_GATEWAY",
+          "hops": 2
+        },
+        {
+          "asset_id": "payments.example.bank:443",
+          "kind": "NETWORK_ENDPOINT",
+          "hops": 2
+        },
+        {
+          "asset_id": "payments-lb",
+          "kind": "LOAD_BALANCER",
+          "hops": 3
+        },
+        {
+          "asset_id": "edge-waf",
+          "kind": "WAF",
+          "hops": 3
+        }
+      ],
+      "VBOM": [
+        {
+          "asset_id": "SyntheticHSM PaymentHSM-9000",
+          "kind": "VENDOR_PRODUCT",
+          "hops": 1
+        },
+        {
+          "asset_id": "SyntheticHSM",
+          "kind": "VENDOR",
+          "hops": 2
+        }
+      ],
+      "VULNERABILITY": [
+        {
+          "asset_id": "CVE-2026-1111",
+          "kind": "VULNERABILITY",
+          "hops": 2
+        }
+      ]
+    },
+    "views": 7,
+    "statement": "HSM-001: HBOM 20, CBOM 6, SBOM 4, TBOM 2, NBOM 4, VBOM 2, VULNERABILITY 1 \u2014 one graph, read as separate views",
+    "not_proven": [
+      "that two assets in different views are the same fact: they are the same asset when an edge joins them, and co-occurrence is not a join",
+      "that the walk is exhaustive: a relationship nobody recorded is missing here, not absent from the estate"
+    ]
+  },
+  "coverage_example": {
+    "schema": "cryptoscan.hbom/1",
+    "expected": 200,
+    "collected": 120,
+    "unavailable": 50,
+    "permission_denied": 20,
+    "unknown": 10,
+    "coverage": 0.6,
+    "verdict": "PARTIAL",
+    "gaps": [],
+    "statement": "expected 200, collected 120, unavailable 50, permission denied 20, unknown 10 \u2014 coverage PARTIAL (60%)",
+    "not_proven": [
+      "that the denominator is right: expected comes from a CMDB or a rack diagram, and an estate nobody documented has no denominator at all",
+      "that an inaccessible device is absent: permission denied means nobody looked"
+    ]
+  },
+  "bom": {
+    "component_tree": [
+      {
+        "asset_id": "HSM-001",
+        "kind": "HSM",
+        "depth": 0,
+        "children": [
+          {
+            "asset_id": "HSM-001-P1",
+            "kind": "HSM_PARTITION",
+            "depth": 1,
+            "children": []
+          },
+          {
+            "asset_id": "HSM-001-P2",
+            "kind": "HSM_PARTITION",
+            "depth": 1,
+            "children": []
+          }
+        ]
+      },
+      {
+        "asset_id": "ASSET-HW-010788",
+        "kind": "PHYSICAL_SERVER",
+        "depth": 0,
+        "children": [
+          {
+            "asset_id": "ASSET-HW-010788-BIOS",
+            "kind": "BIOS",
+            "depth": 1,
+            "children": []
+          },
+          {
+            "asset_id": "ASSET-HW-010788-CPU",
+            "kind": "CPU",
+            "depth": 1,
+            "children": []
+          },
+          {
+            "asset_id": "ASSET-HW-010788-ACCEL",
+            "kind": "CRYPTO_ACCELERATOR",
+            "depth": 1,
+            "children": []
+          },
+          {
+            "asset_id": "ASSET-HW-010788-GPU1",
+            "kind": "GPU",
+            "depth": 1,
+            "children": []
+          },
+          {
+            "asset_id": "ASSET-HW-010788-MEM",
+            "kind": "MEMORY",
+            "depth": 1,
+            "children": []
+          },
+          {
+            "asset_id": "ASSET-HW-010788-MB",
+            "kind": "MOTHERBOARD",
+            "depth": 1,
+            "children": []
+          },
+          {
+            "asset_id": "ASSET-HW-010788-NIC1",
+            "kind": "NIC",
+            "depth": 1,
+            "children": []
+          },
+          {
+            "asset_id": "ASSET-HW-010788-PCI1",
+            "kind": "PCI_DEVICE",
+            "depth": 1,
+            "children": []
+          },
+          {
+            "asset_id": "ASSET-HW-010788-RAID",
+            "kind": "RAID_CONTROLLER",
+            "depth": 1,
+            "children": []
+          },
+          {
+            "asset_id": "ASSET-HW-010788-STG1",
+            "kind": "STORAGE",
+            "depth": 1,
+            "children": []
+          },
+          {
+            "asset_id": "ASSET-HW-010788-TPM",
+            "kind": "TPM",
+            "depth": 1,
+            "children": []
+          }
+        ]
+      }
+    ],
+    "refusals": [
+      {
+        "code": "AMBIGUOUS_REF",
+        "subject": "RSA-2048",
+        "reason": "IMPLEMENTS names RSA-2048, which two or more assets in this estate share; qualify it by kind, as `KIND:name:environment`, instead of letting the first match decide"
+      },
+      {
+        "code": "AMBIGUOUS_REF",
+        "subject": "AES-256-GCM",
+        "reason": "IMPLEMENTS names AES-256-GCM, which two or more assets in this estate share; qualify it by kind, as `KIND:name:environment`, instead of letting the first match decide"
+      }
+    ]
+  },
+  "rows": [
+    {
+      "id": "components",
+      "question": "is a server a tree of parts, with the field set",
+      "phase": "review hbom / 1",
+      "probes": [
+        {
+          "probe": "a-server-is-a-tree-of-parts-not-a-row",
+          "ok": true,
+          "observed": "11 component(s): BIOS, CPU, CRYPTO_ACCELERATOR, GPU, MEMORY, MOTHERBOARD, NIC, PCI_DEVICE, RAID_CONTROLLER, STORAGE, TPM"
+        },
+        {
+          "probe": "the-device-field-set-is-declared-and-counted",
+          "ok": true,
+          "observed": "12 of 19 declared field(s) supplied"
+        },
+        {
+          "probe": "what-the-collector-did-not-supply-is-named-not-hidden",
+          "ok": true,
+          "observed": "7 field(s) listed as unknown: part_number, firmware_version, bios_version, hardware_revision, location"
+        },
+        {
+          "probe": "every-component-carries-its-own-evidence-and-identity",
+          "ok": true,
+          "observed": "18 asset(s) carry an identity block"
+        },
+        {
+          "probe": "bios-and-firmware-are-reachable-as-their-own-assets",
+          "ok": true,
+          "observed": "RUNS_BIOS plus RUNS_FIRMWARE, not a version string on the server row"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "hsm",
+      "question": "is an HSM a device with depth, not a vendor string",
+      "phase": "review hbom / 2",
+      "probes": [
+        {
+          "probe": "an-hsm-carries-cluster-ha-peers-and-partitions",
+          "ok": true,
+          "observed": "cluster 1, partitions 2, HA mode Active/Active"
+        },
+        {
+          "probe": "an-hsm-lists-what-it-can-do-with-key-types-and-sizes",
+          "ok": true,
+          "observed": "HSM-001 ML-KEM-768 ENCAPSULATE \u2192 ['ENCAPSULATE']"
+        },
+        {
+          "probe": "the-applications-wired-to-the-device-are-claims-not-attributes",
+          "ok": true,
+          "observed": "4 USES_HSM edge(s)"
+        },
+        {
+          "probe": "a-partition-names-the-application-it-serves",
+          "ok": true,
+          "observed": "each partition records the applications it holds keys for"
+        },
+        {
+          "probe": "a-key-material-attribute-is-refused-at-the-door",
+          "ok": true,
+          "observed": "private_key \u2192 KEY_MATERIAL_REFUSED"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "software",
+      "question": "does hardware meet software through evidence",
+      "phase": "review hbom / 3",
+      "probes": [
+        {
+          "probe": "a-process-runs-on-the-host-it-was-seen-on",
+          "ok": true,
+          "observed": "payments-api reaches ASSET-HW-010788 over RUNS_ON (19 proven node(s))"
+        },
+        {
+          "probe": "an-application-on-a-host-is-a-covered-claim-not-an-assumption",
+          "ok": true,
+          "observed": "Payments API RUNS_ON the server, basis config-parse \u2192 CONFIGURED"
+        },
+        {
+          "probe": "the-business-system-to-hardware-chain-is-walkable-end-to-end",
+          "ok": true,
+          "observed": "system \u2192 application \u2192 process \u2192 host \u2192 component, all from claims"
+        },
+        {
+          "probe": "a-process-loads-the-crypto-library-that-uses-the-algorithm",
+          "ok": true,
+          "observed": "payments-api LOADS OpenSSL 3.0.13, and the library PROVIDES_ALGORITHM"
+        },
+        {
+          "probe": "the-host-row-carries-the-hardware-it-was-seen-with",
+          "ok": true,
+          "observed": "ASSET-HW-010788 is the canonical id, not a hostname"
+        },
+        {
+          "probe": "an-application-cannot-be-a-component-of-a-server",
+          "ok": true,
+          "observed": "HAS_COMPONENT ends at a component, never at an application"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "crypto",
+      "question": "are capability, operation, use and custody distinct",
+      "phase": "review hbom / 4",
+      "probes": [
+        {
+          "probe": "supports-is-a-capability-claim-and-carries-its-own-class",
+          "ok": true,
+          "observed": "SUPPORTS \u2192 VENDOR_DECLARED from the vendor list"
+        },
+        {
+          "probe": "performs-is-a-statement-that-something-ran-there",
+          "ok": true,
+          "observed": "PERFORMS \u2192 CONFIGURED from the HSM API poll"
+        },
+        {
+          "probe": "a-datasheet-cannot-carry-a-performs-claim",
+          "ok": true,
+          "observed": "vendor-datasheet PERFORMS \u2192 CLAIM_WEAKER_THAN_RELATION_REQUIRES"
+        },
+        {
+          "probe": "uses_crypto-is-a-claim-about-the-application-not-the-device",
+          "ok": true,
+          "observed": "Payments API USES_CRYPTO \u2192 OBSERVED"
+        },
+        {
+          "probe": "protected_by-is-a-claim-about-the-key-and-its-custodian",
+          "ok": true,
+          "observed": "RSA-2048 PROTECTED_BY HSM-001 \u2192 CONFIGURED"
+        },
+        {
+          "probe": "a-device-relation-can-never-be-written-from-the-application-side",
+          "ok": true,
+          "observed": "SUPPORTS starts at a device or a firmware, never at an application"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "vendor",
+      "question": "does the vendor chain reach the business",
+      "phase": "review hbom / 5",
+      "probes": [
+        {
+          "probe": "vendor-to-product-to-device-is-four-claims",
+          "ok": true,
+          "observed": "HSM-001 HAS_MODEL product, product SUPPLIED_BY vendor"
+        },
+        {
+          "probe": "the-firmware-release-is-in-the-vendor-chain",
+          "ok": true,
+          "observed": "the release names its vendor, so an advisory can start at either end"
+        },
+        {
+          "probe": "a-vendor-question-reaches-the-systems-that-buy-it",
+          "ok": true,
+          "observed": "SyntheticHSM: 2 application(s), 2 business system(s), 4 cryptographic asset(s), 5 network path(s) affected; 23 reached only through a declared edge"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "network",
+      "question": "is network hardware in the same estate",
+      "phase": "review hbom / 6",
+      "probes": [
+        {
+          "probe": "a-firewall-is-hardware-with-its-own-firmware-and-ha-role",
+          "ok": true,
+          "observed": "FIREWALL with firmware 11.1.3 and HA mode Active/Passive"
+        },
+        {
+          "probe": "the-path-is-firewall-then-waf-then-balancer-then-gateway",
+          "ok": true,
+          "observed": "3 FORWARDS_TO hop(s) from the firewall"
+        },
+        {
+          "probe": "a-nic-attaches-to-a-segment-and-the-segment-carries-the-zone",
+          "ok": true,
+          "observed": "NIC ATTACHED_TO SEG-VLAN-40, zone PAYMENTS, 10.10.1.0/24"
+        },
+        {
+          "probe": "the-network-and-the-hardware-are-one-graph",
+          "ok": true,
+          "observed": "ASSET-HW-946725: 1 application(s), 1 business system(s), 0 cryptographic asset(s), 4 network path(s) affected; 1 reached only through a declared edge"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "business",
+      "question": "does an HSM question become a blast radius",
+      "phase": "review hbom / 7",
+      "probes": [
+        {
+          "probe": "an-hsm-failure-reported-in-the-units-a-business-owner-uses",
+          "ok": true,
+          "observed": "HSM-001: 2 application(s), 2 business system(s), 4 cryptographic asset(s), 5 network path(s) affected; 5 reached only through a declared edge"
+        },
+        {
+          "probe": "business-systems-are-reachable-through-applications-not-by-name-matching",
+          "ok": true,
+          "observed": "2 system(s): Card Services, Payments"
+        },
+        {
+          "probe": "the-cryptographic-assets-behind-the-device-are-counted",
+          "ok": true,
+          "observed": "4 cryptographic asset(s)"
+        },
+        {
+          "probe": "the-network-paths-that-carry-the-traffic-are-counted",
+          "ok": true,
+          "observed": "5 network path(s)"
+        },
+        {
+          "probe": "a-declared-hop-taints-what-sits-above-it",
+          "ok": true,
+          "observed": "5 node(s) reached only through a declared edge"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "firmware",
+      "question": "is firmware first-class, with a lifecycle",
+      "phase": "review hbom / 8",
+      "probes": [
+        {
+          "probe": "firmware-is-a-release-with-a-date-a-status-and-an-end",
+          "ok": true,
+          "observed": "PaymentHSM firmware 8.4.2 8.4.2 \u2192 EOL"
+        },
+        {
+          "probe": "the-release-names-the-devices-that-run-it",
+          "ok": true,
+          "observed": "run by HSM-001"
+        },
+        {
+          "probe": "a-known-vulnerability-reaches-the-release-through-an-edge",
+          "ok": true,
+          "observed": "CVE-2026-1111 \u2192 VENDOR_DECLARED, because the vendor said it"
+        },
+        {
+          "probe": "an-unknown-firmware-status-is-refused-rather-than-stored",
+          "ok": true,
+          "observed": "PROBABLY-FINE \u2192 UNKNOWN_FIRMWARE_STATUS"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "drift",
+      "question": "does hardware drift come back typed",
+      "phase": "review hbom / 9",
+      "probes": [
+        {
+          "probe": "an-unchanged-estate-produces-no-drift",
+          "ok": true,
+          "observed": "no change between two reads of the same estate"
+        },
+        {
+          "probe": "moving-an-address-is-a-network-interface-change-not-a-new-device",
+          "ok": true,
+          "observed": "1 hardware change(s): NETWORK_INTERFACE_CHANGED 1; 1 application(s) sit behind the changed devices"
+        },
+        {
+          "probe": "a-hsm-firmware-change-is-named-as-an-hsm-change",
+          "ok": true,
+          "observed": "8.4.2 \u2192 8.5.0 \u2192 HSM_FIRMWARE_CHANGED"
+        },
+        {
+          "probe": "a-bios-change-and-a-firmware-change-are-different-events",
+          "ok": true,
+          "observed": "BIOS_CHANGED and FIRMWARE_CHANGED are counted separately"
+        },
+        {
+          "probe": "a-removed-part-is-device-removed-and-a-new-one-is-device-added",
+          "ok": true,
+          "observed": "DEVICE_ADDED and DEVICE_REMOVED are both reported"
+        },
+        {
+          "probe": "every-drift-event-carries-the-cryptography-behind-the-device",
+          "ok": true,
+          "observed": "an HSM change names the application that depends on it"
+        },
+        {
+          "probe": "the-twelve-review-change-types-are-all-modelled",
+          "ok": true,
+          "observed": "12 typed hardware changes"
+        }
+      ],
+      "events": [],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "identity",
+      "question": "is hardware identity stable under network change",
+      "phase": "review hbom / 10",
+      "probes": [
+        {
+          "probe": "a-canonical-id-is-derived-from-manufacturer-model-and-serial",
+          "ok": true,
+          "observed": "ASSET-HW-665154 from manufacturer, model, serial_number"
+        },
+        {
+          "probe": "a-renamed-host-and-a-new-address-keep-the-same-id",
+          "ok": true,
+          "observed": "the address moved; the device did not"
+        },
+        {
+          "probe": "network-identifiers-are-kept-but-never-used-as-identity",
+          "ok": true,
+          "observed": "hostname and MAC recorded as observations only"
+        },
+        {
+          "probe": "a-device-known-only-by-hostname-ip-and-mac-has-no-identity",
+          "ok": true,
+          "observed": "IDENTITY_WITHOUT_ANCHOR rather than a hostname-shaped id"
+        },
+        {
+          "probe": "a-manufacturer-and-model-alone-is-provisional-and-says-so",
+          "ok": true,
+          "observed": "two units of one model collide, so the id says it is provisional"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "virtual",
+      "question": "do virtual and cloud platforms correlate",
+      "phase": "review hbom / 11",
+      "probes": [
+        {
+          "probe": "physical-to-hypervisor-to-vm-to-os-to-application-is-one-chain",
+          "ok": true,
+          "observed": "esxi-01: 1 application(s), 0 business system(s), 0 cryptographic asset(s), 0 network path(s) affected"
+        },
+        {
+          "probe": "a-cloud-instance-is-in-a-region-which-is-in-an-account",
+          "ok": true,
+          "observed": "three claims, no viewer-side inference"
+        },
+        {
+          "probe": "the-platform-rows-are-hardware-adjacent-not-applications",
+          "ok": true,
+          "observed": "an application is reached from the platform, not stored as one"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "containers",
+      "question": "does Kubernetes correlate without pretending",
+      "phase": "review hbom / 12",
+      "probes": [
+        {
+          "probe": "a-pod-is-scheduled-on-a-node-and-never-on-a-processor",
+          "ok": true,
+          "observed": "the pod\u2192CPU claim is refused, the pod\u2192node claim is kept"
+        },
+        {
+          "probe": "a-container-reaches-the-crypto-library-through-its-process",
+          "ok": true,
+          "observed": "container \u2192 process \u2192 library \u2192 algorithm, without inventing hardware"
+        },
+        {
+          "probe": "a-container-is-not-given-a-hardware-substrate-it-cannot-prove",
+          "ok": true,
+          "observed": "the container stays in the software view"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "evidence",
+      "question": "does every fact say how it is known",
+      "phase": "review hbom / 13",
+      "probes": [
+        {
+          "probe": "every-device-cites-an-evidence-id",
+          "ok": true,
+          "observed": "26 asset(s), each with at least one evidence id"
+        },
+        {
+          "probe": "the-register-keeps-the-eleven-parts-the-review-asks-for",
+          "ok": true,
+          "observed": "linux-hardware-collector 1.4.2 at 2026-11-03T08:30:00Z"
+        },
+        {
+          "probe": "an-observation-without-a-hash-is-refused",
+          "ok": true,
+          "observed": "evidence that cannot be re-checked is a memory"
+        },
+        {
+          "probe": "a-hardware-asset-without-evidence-is-refused",
+          "ok": true,
+          "observed": "how the platform knows the device exists is part of the asset"
+        },
+        {
+          "probe": "key-material-is-refused-and-a-reference-is-kept",
+          "ok": true,
+          "observed": "PRIVATE KEY \u2192 KEY_MATERIAL_REFUSED; KREF-0007 is kept"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "coverage",
+      "question": "does coverage say what was not seen",
+      "phase": "review hbom / 14",
+      "probes": [
+        {
+          "probe": "coverage-states-the-denominator-and-every-bucket",
+          "ok": true,
+          "observed": "expected 200, collected 120, unavailable 50, permission denied 20, unknown 10 \u2014 coverage PARTIAL (60%)"
+        },
+        {
+          "probe": "coverage-that-does-not-add-up-is-refused",
+          "ok": true,
+          "observed": "190 accounted for of 200 expected \u2192 COVERAGE_DOES_NOT_RECONCILE"
+        },
+        {
+          "probe": "the-estate-carries-its-own-completeness-with-the-gap-reasons",
+          "ok": true,
+          "observed": "PARTIAL: 3 kind(s) complete, 3 short, 2 stated gap(s), 27 unmeasured"
+        },
+        {
+          "probe": "a-kind-with-no-denominator-is-unmeasured-not-complete",
+          "ok": true,
+          "observed": "27 kind(s) unmeasured"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "crossbom",
+      "question": "does the HBOM correlate with the other BOMs",
+      "phase": "review hbom / 15",
+      "probes": [
+        {
+          "probe": "one-hardware-asset-walks-into-the-other-four-views",
+          "ok": true,
+          "observed": "HSM-001: HBOM 20, CBOM 6, SBOM 4, TBOM 2, NBOM 4, VBOM 2, VULNERABILITY 1 \u2014 one graph, read as separate views"
+        },
+        {
+          "probe": "the-walk-reaches-the-application-and-the-business-system",
+          "ok": true,
+          "observed": "HBOM \u2192 CBOM \u2192 SBOM \u2192 NBOM \u2192 VBOM, one graph"
+        },
+        {
+          "probe": "a-link-is-a-reference-pinned-by-digest-not-a-copy",
+          "ok": true,
+          "observed": "bom-link:hbom:fb56fc820a1525e5"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "projection",
+      "question": "is the HBOM a view and never a source",
+      "phase": "review hbom / 16",
+      "probes": [
+        {
+          "probe": "the-hbom-is-the-techbom-restricted-to-hardware",
+          "ok": true,
+          "observed": "26 hardware row(s) out of 42 estate assets"
+        },
+        {
+          "probe": "an-hbom-cannot-be-fed-back-in-as-a-source",
+          "ok": true,
+          "observed": "from_document(HBOM) \u2192 refused: a projection is not a source"
+        },
+        {
+          "probe": "a-techbom-cannot-produce-an-hbom-either",
+          "ok": true,
+          "observed": "from_document(TechBOM) \u2192 refused"
+        },
+        {
+          "probe": "the-same-estate-produces-the-same-ids-and-the-same-statement",
+          "ok": true,
+          "observed": "26 hardware asset(s) across 22 kind(s) and 35 relationship(s) touching them out of 48 in the estate; 2 device root(s); 244 declared field(s) the collectors did not supply; 1 firmware release(s) tracked"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the fixture is the review's own example estate, not a bank's collector output: the shapes are real, the rows are not",
+    "a collector that cannot see a field leaves it unknown, and this guide counts those gaps instead of filling them",
+    "capability is what a vendor or a firmware list says; nothing here re-probes the device to confirm it",
+    "drift compares two collections: a device nobody re-read shows no change",
+    "coverage is only as honest as the denominator, which comes from a CMDB the platform does not own"
+  ]
+}

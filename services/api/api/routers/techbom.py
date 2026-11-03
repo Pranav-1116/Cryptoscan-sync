@@ -273,6 +273,74 @@ class TechnologyBomGraphResponse(BaseModel):
     impact: dict | None = None
 
 
+class HardwareBomResponse(BaseModel):
+    source: str
+    live: bool
+    statement: str
+    summary: dict
+    coverage: dict
+    skipped: list[dict]
+    refusals: list[dict]
+    bom: dict
+    blast_radius: dict | None = None
+
+
+@router.get("/hardware", response_model=HardwareBomResponse)
+def technology_bom_hardware(
+    limit: int = Query(2000, ge=1, le=5000),
+    device: str | None = Query(None, description="Ask what breaks with one device"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """The hardware view of the estate, over the stored ``hardware_assets`` rows.
+
+    ``cbom.hbom_graph`` puts hardware into the same graph as the rest of the estate, so a
+    device is a tree of parts with one identity rather than a row with a vendor string.
+    Nothing read from the store is ``OBSERVED``: a stored row is an inventory read, and
+    the class ceiling is ``CONFIGURED``. A row whose ``device_type`` this model cannot
+    place, or that carries no observation time, is listed under ``skipped`` with the
+    reason instead of being defaulted into a server.
+
+    With ``device=`` the response also carries the blast radius — the applications,
+    business systems, cryptographic assets and network paths that go with that device.
+    """
+    from cbom import hbom_graph as hg
+
+    rows = [
+        {"id": row.id, "asset_id": row.asset_id, "agent_id": row.agent_id,
+         "manufacturer": row.manufacturer, "model": row.model,
+         "device_type": row.device_type,
+         "serial_reference": row.serial_reference,
+         "hardware_revision": row.hardware_revision,
+         "current_fingerprint": row.current_fingerprint,
+         "first_seen": row.first_seen, "last_seen": row.last_seen,
+         "last_change": row.last_change, "firmware": row.firmware,
+         "tpm": row.tpm, "hsm": row.hsm, "crypto_capabilities": row.crypto_capabilities,
+         "risk_level": row.risk_level}
+        for row in db.execute(select(HardwareAsset).limit(limit)).scalars().all()
+    ]
+    body = hg.stored_hardware(rows, environment=_environment_of(db))
+    bom = hg.build(hg.estate(
+        {"assets": body["assets"], "claims": body["claims"]},
+        estate_id="stored-hardware", environment=_environment_of(db),
+        gaps=[{"kind": "HARDWARE",
+               "reason": "the denominator comes from the CMDB and the scan plan; this "
+                         "route receives neither, so coverage is UNMEASURED"}]))
+    answer: dict[str, Any] = {
+        "source": "hardware_bom",
+        "live": True,
+        "statement": body["statement"],
+        "summary": hg.summary(bom),
+        "coverage": bom["coverage"],
+        "skipped": body["skipped"],
+        "refusals": bom["refusals"],
+        "bom": bom,
+    }
+    if device:
+        answer["blast_radius"] = hg.radius(bom, query=device)
+    return answer
+
+
 @router.get("/graph", response_model=TechnologyBomGraphResponse)
 def technology_bom_graph(
     limit: int = Query(2000, ge=1, le=5000),

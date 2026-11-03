@@ -7,6 +7,8 @@ scheme, per-layer version compare, and export (JSON/CSV/CycloneDX/SPDX).
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import db.models  # noqa: F401 — register all tables
 import pytest
 from api.dependencies import get_current_user, get_db_session
@@ -68,7 +70,13 @@ def app_db():
                     purpose="keyexchange", key_size=256, confidence=0.9),
         HardwareAsset(id="hw-hsm-1", asset_id="HSM-0001", manufacturer="ZELNX",
                       model="KMS-S3", device_type="hsm", firmware="7.4.1",
-                      hsm=True, tpm=False, risk_level="medium"),
+                      serial_reference="ZELNX-SN-0001", hsm=True, tpm=False,
+                      risk_level="medium",
+                      first_seen=datetime(2026, 1, 4, tzinfo=timezone.utc),
+                      last_seen=datetime(2026, 11, 3, 8, 30, tzinfo=timezone.utc),
+                      current_fingerprint="ab" * 32,
+                      crypto_capabilities={"RSA-2048": {"key_sizes": [2048],
+                                                        "operations": ["SIGN"]}}),
         Vendor(id="vendor-zelnx", name="ZELNX", criticality="HIGH", vendor_type="hsm"),
         Certificate(fingerprint_sha256="ab" * 32, subject="CN=web-frontend"),
     ])
@@ -570,3 +578,60 @@ async def test_graph_refuses_an_unknown_system_by_name(app_db):
                                 params={"system": "no-such-system"})
     assert resp.status_code == 422
     assert "not a business system" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_hardware_view_reads_stored_rows_and_refuses_what_it_cannot_place(app_db):
+    session = app_db.state.test_sessionmaker()
+    session.add(HardwareAsset(id="hw-srv-1", asset_id="BANK-SRV-001", manufacturer="Dell",
+                              model="PowerEdge R760", device_type="server",
+                              serial_reference="SN-7K2L", firmware="2.4.1",
+                              first_seen=datetime(2026, 1, 4, tzinfo=timezone.utc),
+                              last_seen=datetime(2026, 11, 3, 8, 30, tzinfo=timezone.utc)))
+    session.commit()
+    transport = ASGITransport(app=app_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/v1/technology-bom/hardware")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["source"] == "hardware_bom" and body["live"] is True
+    kinds = set(body["bom"]["counts"])
+    assert {"HSM", "PHYSICAL_SERVER", "CRYPTO_CAPABILITY", "FIRMWARE"} <= kinds
+    hsm = next(row for row in body["bom"]["assets"] if row["kind"] == "HSM")
+    assert hsm["attributes"]["asset_id"] == "HSM-0001"
+    assert hsm["attributes"]["identity"]["method"] == "serial"
+    # the stored row's own fingerprint is the evidence hash, and its class is CONFIGURED
+    record = body["bom"]["evidence_register"][hsm["evidence_ids"][0]]
+    assert record["hash"] == "ab" * 32
+    assert body["bom"]["claims"][0]["confidence"] == "CONFIGURED"
+    assert body["coverage"]["overall"] == "UNMEASURED"
+
+
+@pytest.mark.asyncio
+async def test_hardware_view_names_the_rows_it_cannot_place(app_db):
+    extra = app_db.state.test_sessionmaker()
+    extra.add_all([
+        HardwareAsset(id="hw-x-1", asset_id="X-1", manufacturer="?", model="?",
+                      device_type="toaster", last_seen=datetime(2026, 11, 3, tzinfo=timezone.utc)),
+        HardwareAsset(id="hw-x-2", asset_id="X-2", manufacturer="?", model="?",
+                      device_type="server"),
+    ])
+    extra.commit()
+    transport = ASGITransport(app=app_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/v1/technology-bom/hardware")
+    skipped = resp.json()["skipped"]
+    assert any("device_type" in row["reason"] for row in skipped)
+    assert any("observation time" in row["reason"] for row in skipped)
+
+
+@pytest.mark.asyncio
+async def test_hardware_view_answers_what_breaks_with_a_device(app_db):
+    transport = ASGITransport(app=app_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.get("/api/v1/technology-bom/hardware",
+                                params={"device": "HSM-0001"})
+    assert resp.status_code == 200
+    radius = resp.json()["blast_radius"]
+    assert radius["seed"] == "HSM-0001"
+    assert "application(s)" in radius["statement"]

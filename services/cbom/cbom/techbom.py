@@ -116,6 +116,15 @@ ASSET_TYPES: tuple[str, ...] = (
     # keys and hardware
     "HSM", "KMS", "KEY_REFERENCE", "FIRMWARE", "CRYPTO_CAPABILITY",
     "HOST", "VM", "PHYSICAL_SERVER", "TPM",
+    # hardware components — the device is not one opaque row (review hbom 1)
+    "CPU", "MEMORY", "MOTHERBOARD", "BIOS", "NIC", "STORAGE", "RAID_CONTROLLER",
+    "GPU", "PCI_DEVICE", "CRYPTO_ACCELERATOR", "SMART_CARD", "SECURITY_APPLIANCE",
+    "HSM_CLUSTER", "HSM_PARTITION", "DISK",
+    # physical and virtual platforms
+    "FIREWALL", "NETWORK_SEGMENT", "HYPERVISOR", "OS", "KUBERNETES_NODE",
+    "CLOUD_ACCOUNT", "CLOUD_REGION", "CLOUD_INSTANCE",
+    # evidence and vendor lifecycle
+    "EVIDENCE", "VULNERABILITY",
     # vendor
     "VENDOR", "VENDOR_PRODUCT",
     # runtime deployment identity
@@ -137,6 +146,14 @@ PREFIX: dict[str, str] = {
     "VENDOR_PRODUCT": "PROD", "SOURCE": "SRC", "BUILD": "BUILD", "ARTIFACT": "ART",
     "SBOM": "SBOM", "DEPLOYMENT": "DEP", "POD": "POD", "PROCESS": "PROC",
     "DATABASE": "DB",
+    "CPU": "CPU", "MEMORY": "MEM", "MOTHERBOARD": "MB", "BIOS": "BIOS", "NIC": "NIC",
+    "STORAGE": "STG", "RAID_CONTROLLER": "RAID", "GPU": "GPU", "PCI_DEVICE": "PCI",
+    "CRYPTO_ACCELERATOR": "ACCEL", "SMART_CARD": "SCARD",
+    "SECURITY_APPLIANCE": "APPL", "HSM_CLUSTER": "HSMC", "HSM_PARTITION": "PART",
+    "DISK": "DISK", "FIREWALL": "FW", "NETWORK_SEGMENT": "SEG",
+    "HYPERVISOR": "HYP", "OS": "OS", "KUBERNETES_NODE": "NODE",
+    "CLOUD_ACCOUNT": "ACCT", "CLOUD_REGION": "REGION", "CLOUD_INSTANCE": "INST",
+    "EVIDENCE": "EVID", "VULNERABILITY": "VULN",
 }
 
 #: relation -> (allowed source kinds, allowed target kinds, chain)
@@ -171,12 +188,17 @@ RELATIONS: dict[str, dict[str, Any]] = {
     # network path
     "EXPOSES": {"from": ("APPLICATION", "API_GATEWAY"), "to": ("NETWORK_ENDPOINT",),
                 "chain": "NETWORK"},
-    "PROTECTED_BY": {"from": ("NETWORK_ENDPOINT",), "to": ("WAF",), "chain": "NETWORK"},
+    "PROTECTED_BY": {"from": ("NETWORK_ENDPOINT", "APPLICATION", "NETWORK_SEGMENT",
+                              "CRYPTO_ASSET"),
+                     "to": ("WAF", "FIREWALL", "SECURITY_APPLIANCE", "HSM", "KMS", "TPM"),
+                     "chain": "NETWORK"},
     "FRONTED_BY": {"from": ("NETWORK_ENDPOINT",), "to": ("LOAD_BALANCER",),
                    "chain": "NETWORK"},
-    "FORWARDS_TO": {"from": ("WAF", "LOAD_BALANCER", "API_GATEWAY"),
-                    "to": ("LOAD_BALANCER", "API_GATEWAY", "SERVICE_MESH"),
+    "FORWARDS_TO": {"from": ("FIREWALL", "WAF", "LOAD_BALANCER", "API_GATEWAY"),
+                    "to": ("WAF", "LOAD_BALANCER", "API_GATEWAY", "SERVICE_MESH"),
                     "chain": "NETWORK"},
+    "ATTACHED_TO": {"from": ("NIC", "CRYPTO_ACCELERATOR"),
+                    "to": ("NETWORK_ENDPOINT", "NETWORK_SEGMENT"), "chain": "NETWORK"},
     "ROUTES_TO": {"from": ("API_GATEWAY", "SERVICE_MESH"), "to": ("APPLICATION",),
                   "chain": "NETWORK"},
     "PRESENTS": {"from": ("NETWORK_ENDPOINT", "LOAD_BALANCER", "API_GATEWAY"),
@@ -192,22 +214,84 @@ RELATIONS: dict[str, dict[str, Any]] = {
     "KEY_HELD_BY": {"from": ("CERTIFICATE_AUTHORITY",), "to": ("HSM", "KMS"),
                     "chain": "CERTIFICATE"},
     # keys and hardware
-    "USES_HSM": {"from": ("APPLICATION",), "to": ("HSM",), "chain": "KEYS"},
-    "HAS_MODEL": {"from": ("HSM",), "to": ("VENDOR_PRODUCT",), "chain": "VENDOR"},
+    "USES_HSM": {"from": ("APPLICATION", "SERVICE", "PROCESS"), "to": ("HSM", "KMS"),
+                 "chain": "KEYS"},
+    "HAS_MODEL": {"from": ("HSM", "PHYSICAL_SERVER", "NIC", "GPU", "CRYPTO_ACCELERATOR",
+                           "SECURITY_APPLIANCE", "CPU", "STORAGE", "RAID_CONTROLLER",
+                           "SMART_CARD", "TPM"),
+                  "to": ("VENDOR_PRODUCT",), "chain": "VENDOR"},
     "HOLDS_KEY": {"from": ("HSM", "KMS"), "to": ("KEY_REFERENCE",), "chain": "KEYS"},
-    "RUNS_FIRMWARE": {"from": ("HSM", "PHYSICAL_SERVER", "TPM"), "to": ("FIRMWARE",),
+    "RUNS_FIRMWARE": {"from": ("HSM", "PHYSICAL_SERVER", "TPM", "NIC", "STORAGE",
+                               "RAID_CONTROLLER", "GPU", "CRYPTO_ACCELERATOR",
+                               "SECURITY_APPLIANCE", "SMART_CARD"),
+                      "to": ("FIRMWARE",), "chain": "HARDWARE"},
+    "RUNS_BIOS": {"from": ("PHYSICAL_SERVER", "HOST"), "to": ("BIOS",),
+                  "chain": "HARDWARE"},
+    # a datasheet can say a device supports an algorithm; only a probe can say it
+    # performed the operation there (RELATION_BASIS_CEILING keeps the two apart)
+    "SUPPORTS": {"from": ("FIRMWARE", "HSM", "TPM", "CRYPTO_ACCELERATOR", "SMART_CARD",
+                          "BIOS"),
+                 "to": ("CRYPTO_CAPABILITY",), "chain": "HARDWARE"},
+    "PERFORMS": {"from": ("HSM", "CRYPTO_ACCELERATOR", "TPM"),
+                 "to": ("CRYPTO_CAPABILITY",), "chain": "HARDWARE"},
+    "IMPLEMENTS": {"from": ("CRYPTO_CAPABILITY",), "to": ("ALGORITHM",),
+                   "chain": "CERTIFICATE"},
+    # the device is a tree, not a row (review hbom 1, 2)
+    "HAS_COMPONENT": {"from": ("PHYSICAL_SERVER", "HOST", "VM", "HYPERVISOR",
+                               "KUBERNETES_NODE", "CLOUD_INSTANCE", "SECURITY_APPLIANCE"),
+                      "to": ("CPU", "MEMORY", "MOTHERBOARD", "NIC", "STORAGE",
+                             "RAID_CONTROLLER", "GPU", "PCI_DEVICE",
+                             "CRYPTO_ACCELERATOR", "TPM", "DISK", "SMART_CARD", "HSM",
+                             "BIOS"),
                       "chain": "HARDWARE"},
-    "SUPPORTS": {"from": ("FIRMWARE",), "to": ("CRYPTO_CAPABILITY",), "chain": "HARDWARE"},
+    "HAS_PARTITION": {"from": ("HSM",), "to": ("HSM_PARTITION",), "chain": "HARDWARE"},
+    "MEMBER_OF": {"from": ("HSM", "HSM_PARTITION"), "to": ("HSM_CLUSTER",),
+                  "chain": "HARDWARE"},
+    "PEERS_WITH": {"from": ("HSM",), "to": ("HSM",), "chain": "HARDWARE"},
+    "SERVES": {"from": ("HSM", "HSM_PARTITION", "KMS"), "to": ("APPLICATION",),
+               "chain": "KEYS"},
+    # hardware lifecycle and evidence (review hbom 8, 13)
+    "HAS_VULNERABILITY": {"from": ("FIRMWARE", "BIOS", "OS"), "to": ("VULNERABILITY",),
+                          "chain": "HARDWARE"},
+    "EVIDENCED_BY": {"from": ("PHYSICAL_SERVER", "HOST", "VM", "HSM", "TPM", "CPU",
+                              "MEMORY", "MOTHERBOARD", "BIOS", "NIC", "STORAGE",
+                              "RAID_CONTROLLER", "GPU", "PCI_DEVICE",
+                              "CRYPTO_ACCELERATOR", "SMART_CARD", "SECURITY_APPLIANCE",
+                              "HSM_CLUSTER", "HSM_PARTITION", "DISK", "FIRMWARE",
+                              "FIREWALL", "NETWORK_SEGMENT", "HYPERVISOR", "OS",
+                              "KUBERNETES_NODE", "CLOUD_ACCOUNT", "CLOUD_REGION",
+                              "CLOUD_INSTANCE"),
+                     "to": ("EVIDENCE",), "chain": "HARDWARE"},
     # infrastructure
-    "SCHEDULED_ON": {"from": ("CONTAINER", "POD"), "to": ("HOST",), "chain": "HARDWARE"},
+    "SCHEDULED_ON": {"from": ("CONTAINER", "POD"),
+                     "to": ("HOST", "KUBERNETES_NODE", "VM", "CLOUD_INSTANCE"),
+                     "chain": "HARDWARE"},
     "HOSTED_ON": {"from": ("HOST",), "to": ("VM",), "chain": "HARDWARE"},
-    "RUNS_ON": {"from": ("VM",), "to": ("PHYSICAL_SERVER",), "chain": "HARDWARE"},
+    "RUNS_ON": {"from": ("VM", "PROCESS", "APPLICATION", "SERVICE", "HYPERVISOR",
+                         "KUBERNETES_NODE", "OS"),
+                "to": ("PHYSICAL_SERVER", "HOST", "VM", "KUBERNETES_NODE",
+                       "CLOUD_INSTANCE", "HYPERVISOR"),
+                "chain": "HARDWARE"},
+    # virtual and cloud platforms (review hbom 11, 12)
+    "RUNS_HYPERVISOR": {"from": ("PHYSICAL_SERVER",), "to": ("HYPERVISOR",),
+                        "chain": "HARDWARE"},
+    "HOSTS_OS": {"from": ("VM", "PHYSICAL_SERVER", "CLOUD_INSTANCE"), "to": ("OS",),
+                 "chain": "HARDWARE"},
+    "RUNS_APPLICATION": {"from": ("OS", "KUBERNETES_NODE", "HOST", "CLOUD_INSTANCE"),
+                         "to": ("APPLICATION",), "chain": "SOFTWARE"},
+    "IN_REGION": {"from": ("CLOUD_INSTANCE",), "to": ("CLOUD_REGION",),
+                  "chain": "HARDWARE"},
+    "IN_ACCOUNT": {"from": ("CLOUD_REGION", "CLOUD_INSTANCE"), "to": ("CLOUD_ACCOUNT",),
+                   "chain": "HARDWARE"},
     "CARRIES": {"from": ("PHYSICAL_SERVER",), "to": ("TPM",), "chain": "HARDWARE"},
     # vendor
     "EMBEDS": {"from": ("APPLICATION", "IMAGE", "SERVICE"), "to": ("VENDOR_PRODUCT",),
                "chain": "VENDOR"},
     "SUPPLIED_BY": {"from": ("VENDOR_PRODUCT", "HSM", "HOST", "FIRMWARE", "TPM", "VM",
-                             "PHYSICAL_SERVER"),
+                             "PHYSICAL_SERVER", "CPU", "MEMORY", "MOTHERBOARD", "BIOS",
+                             "NIC", "STORAGE", "RAID_CONTROLLER", "GPU", "PCI_DEVICE",
+                             "CRYPTO_ACCELERATOR", "SMART_CARD", "SECURITY_APPLIANCE",
+                             "FIREWALL"),
                     "to": ("VENDOR",), "chain": "VENDOR"},
     # runtime deployment identity
     "BUILT_INTO": {"from": ("SOURCE",), "to": ("BUILD",), "chain": "RUNTIME"},
@@ -218,6 +302,16 @@ RELATIONS: dict[str, dict[str, Any]] = {
     "SCHEDULES": {"from": ("DEPLOYMENT",), "to": ("POD",), "chain": "RUNTIME"},
     "RUNS_PROCESS": {"from": ("POD",), "to": ("PROCESS",), "chain": "RUNTIME"},
     "LOADS": {"from": ("PROCESS",), "to": ("CRYPTO_LIBRARY",), "chain": "RUNTIME"},
+}
+
+#: relations that need a class *at least* this strong. A datasheet may say an HSM
+#: **supports** RSA — that is a capability claim and ``VENDOR_DECLARED`` is honest — but
+#: only something that read the device or watched it can say the operation **performed**
+#: there. This is the review's "capability ≠ use", as a rule rather than as prose.
+RELATION_MIN_CONFIDENCE: dict[str, str] = {
+    "PERFORMS": CONFIGURED,
+    "RUNS_FIRMWARE": IMPORTED,
+    "EVIDENCED_BY": IMPORTED,
 }
 
 #: evidence classes a crypto-asset relation may carry, kept apart on purpose (review 9)
@@ -501,6 +595,15 @@ def build(estate: Mapping[str, Any]) -> dict[str, Any]:
         if not ok:
             refusals.append(_refused(
                 "TYPE_MISMATCH", f"{row['from']} {row['relation']} {row['to']}", reason))
+            continue
+        floor = RELATION_MIN_CONFIDENCE.get(row["relation"])
+        if floor and CONFIDENCE[row["confidence"]] < CONFIDENCE[floor]:
+            refusals.append(_refused(
+                "CLAIM_WEAKER_THAN_RELATION_REQUIRES",
+                f"{row['from']} {row['relation']} {row['to']}",
+                f"{row['relation']} says something happened at the device, and "
+                f"{row['basis']} supports only {row['confidence']}; it needs at least "
+                f"{floor}, or it is a capability claim and belongs on SUPPORTS"))
             continue
         if row["relation"] == "USES_CRYPTO":
             # review 9: a runtime hit, a manifest row and a certificate key are three
