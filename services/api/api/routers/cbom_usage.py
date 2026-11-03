@@ -337,6 +337,34 @@ class CbomTlsStateResponse(BaseModel):
     statement: str
 
 
+class CbomPassiveRequest(BaseModel):
+    contract: dict = Field(default_factory=dict, description=(
+        "The privacy contract that governs this collection: contract_id, owner, "
+        "purposes, lawful_basis, retention_days, salt_id and the `collects` list"))
+    captures: list[dict] = Field(default_factory=list, description=(
+        "Captured exchanges: handshake metadata only. Pseudonymous fields are hashed "
+        "with `salt` and the raw values are never stored"))
+    salt: str | None = Field(default=None, description=(
+        "Per-deployment salt for pseudonymous fields. Used and discarded; never stored, "
+        "logged or echoed"))
+    as_of: str | None = Field(default=None, description=(
+        "Evaluate retention against this moment instead of the wall clock"))
+
+
+class CbomPassiveResponse(BaseModel):
+    schema_: str = Field(alias="schema")
+    contract_id: str | None
+    observations: list[dict]
+    refused: list[dict]
+    expired: list[str]
+    live: int
+    suites: list[str]
+    statement: str
+    not_proven: list[str]
+    facts: list[dict]
+    summary: dict
+
+
 class CbomIpsecRequest(BaseModel):
     tunnels: list[dict] = Field(default_factory=list, description=(
         "IPsec SAs: peer, local, ike_version, authentication, mode, state, evidence_id, "
@@ -706,6 +734,38 @@ def cbom_tls_state(body: CbomTlsStateRequest,
             checks["disabled"] = ts.disabled(result, endpoint=body.endpoint,
                                              version=body.version)
     return {**result, "checks": checks, "summary": ts.summary(result)}
+
+
+@router.post("/passive", response_model=CbomPassiveResponse)
+def cbom_passive(body: CbomPassiveRequest,
+                 user: str = Depends(require_roles(*CBOM_USAGE_READERS))) -> Any:
+    """Passive observation, gated on a privacy contract that is checked first.
+
+    Review item 15. A capture is accepted only if every field is **classified**, none is
+    **prohibited**, and each is **listed in the contract** — a prohibited field is
+    refused rather than stripped, because a silent `sanitise()` teaches operators the
+    schema tolerates payload. Pseudonymous fields (client address, SNI, JA3) become
+    keyed hashes: the salt is per deployment and is never stored, logged or echoed, so
+    two deployments cannot join their records. An observation expires with its
+    shortest-lived field, and an expired capture contributes no facts — it is reported
+    as expired instead of being cited. Everything here is `OBSERVED` and stays that way:
+    a tap asked the device nothing.
+    """
+    from cbom import passive_observation as po
+
+    privacy = po.contract(**body.contract) if body.contract else po.contract()
+    if not privacy["enforceable"]:
+        # a contract that cannot be checked cannot vouch for a capture, so the request is
+        # refused as a whole instead of refusing every record one at a time.
+        raise HTTPException(status_code=422, detail={"contract": privacy["problems"]})
+    estate = po.estate(body.captures, privacy=privacy, salt=body.salt,
+                       as_of=body.as_of)
+    facts = po.to_algorithms(estate)
+    return {
+        **estate,
+        "facts": facts["facts"],
+        "summary": po.summary(estate),
+    }
 
 
 @router.post("/ipsec", response_model=CbomIpsecResponse)

@@ -1003,3 +1003,61 @@ def test_ipsec_refuses_an_sa_with_no_evidence(client):
                                                  "ike_version": "IKEv2"}]}).json()
     assert body["tunnels"] == []
     assert "no evidence id" in body["refused"][0]["reason"]
+
+
+_PASSIVE_CONTRACT = {
+    "contract_id": "DPC-2026-01", "owner": "dpo@bank.example",
+    "purposes": ["CRYPTO_INVENTORY"],
+    "lawful_basis": "legitimate interest: protecting our own network",
+    "salt_id": "salt-2026q4",
+    "collects": ["dst", "tls_version", "cipher_suite", "first_seen", "last_seen",
+                 "evidence_id", "client_address"],
+}
+
+
+def _capture(**overrides):
+    return {"evidence_id": "CAP-1", "dst": "10.20.1.10", "tls_version": "TLSv1.2",
+            "cipher_suite": "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+            "first_seen": "2026-11-01T00:00:00Z", "last_seen": "2026-11-01T00:10:00Z",
+            "client_address": "10.30.4.51", **overrides}
+
+
+def test_passive_observation_hashes_pseudonyms_and_never_echoes_the_salt(client):
+    body = _post(client, "/passive", {"contract": _PASSIVE_CONTRACT,
+                                      "captures": [_capture()],
+                                      "salt": "s3cret-salt"}).json()
+    assert body["observations"][0]["fields"]["client_address"].startswith("p-")
+    assert "10.30.4.51" not in str(body)
+    assert "s3cret-salt" not in str(body)
+    assert body["facts"][0]["collection"] == "PASSIVE"
+    assert body["live"] == 1
+
+
+def test_passive_observation_refuses_a_prohibited_field(client):
+    contract = {**_PASSIVE_CONTRACT,
+                "collects": [*_PASSIVE_CONTRACT["collects"], "authorization"]}
+    response = _post(client, "/passive",
+                     {"contract": contract,
+                      "captures": [_capture(authorization="Bearer x")], "salt": "k"})
+    assert response.status_code == 422
+    assert any("authorization is prohibited" in problem
+               for problem in response.json()["detail"]["contract"])
+
+
+def test_passive_observation_refuses_a_stripped_payload_field(client):
+    body = _post(client, "/passive", {"contract": _PASSIVE_CONTRACT,
+                                      "captures": [_capture(payload="GET / HTTP/1.1")],
+                                      "salt": "k"}).json()
+    assert body["observations"] == []
+    assert "prohibited field" in body["refused"][0]["reason"]
+
+
+def test_passive_observation_expires_a_stale_capture(client):
+    body = _post(client, "/passive", {
+        "contract": _PASSIVE_CONTRACT,
+        "captures": [_capture(first_seen="2025-01-01T00:00:00Z",
+                              last_seen="2025-01-02T00:00:00Z")],
+        "salt": "k", "as_of": "2026-11-03T00:00:00Z"}).json()
+    assert body["expired"] == ["CAP-1"]
+    assert body["facts"] == []
+    assert body["live"] == 0

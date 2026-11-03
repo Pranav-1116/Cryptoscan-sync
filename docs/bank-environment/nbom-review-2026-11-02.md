@@ -191,7 +191,7 @@ is a `CRYPTOGRAPHIC_REGRESSION` — a strong signal, not a conclusion.
 | 12 topology with evidence | **done in this round** | guide 160 (`cbom.topology`); `usage_graph` keeps the graph-engine edges |
 | 13 SSH depth | **done in this round** | guide 161 (`cbom.ssh_crypto`) |
 | 14 VPN/IPsec | **done in this round** | guide 162 (`cbom.ipsec_crypto`) |
-| 15 passive observation | not implemented | open (privacy contract required) |
+| 15 passive observation | **done in this round** | guide 163 (`cbom.passive_observation`); privacy contract enforced before ingest |
 | 16 NBOM → CBOM | implemented | guide 148 |
 | 17 NBOM → twin | implemented | guide 152 |
 | 18, 21 change and snapshots | **done in this round** | guide 155 (`cbom.nbom_history`) |

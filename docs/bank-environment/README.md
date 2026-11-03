@@ -555,6 +555,28 @@
 > evidence; `coverage_note` lets a caller carry `PARTIAL` with the picture.
 > `POST /cbom/usage/graph` exposes it, typed, behind the same reader roles.
 
+> [Passive observation, with the privacy contract enforced in code](163-passive-observation-privacy.md)
+> (**5 pass · 0 partial · 0 fail**, 25 probes) closes NBOM review item 15, which the
+> review gates on a privacy contract — so the contract here is **checked before a record
+> is accepted**, not cited after the fact. `cbom.passive_observation` classifies every
+> field as `METADATA`, `PSEUDONYMOUS` or `PROHIBITED`, and a capture is refused when a
+> field is unclassifiable, prohibited, or simply not listed in the contract. **Refused,
+> never stripped**: a silent `sanitise()` teaches operators that the schema tolerates
+> payload, so `payload`, `cookie`, `authorization` and `token` fail loudly with the field
+> named. Pseudonymous fields (client address, SNI, JA3) become keyed, truncated hashes —
+> the salt is per deployment and is never stored, logged or echoed, so two deployments
+> cannot join their records and an inside-deployment link is stated as a limit rather
+> than denied. **An observation expires with its shortest-lived field** (30 days beside a
+> pseudonym, not 90 beside a timestamp), expiry is computed against an explicit `as_of`,
+> and an expired capture contributes **no facts** — it is reported as expired instead of
+> being quietly cited. Every fact is `OBSERVED` and stays `OBSERVED`: a tap asked the
+> device nothing, so it can never promote a fact to configured or declared, which keeps
+> guide 154's distinction intact. A contract without an owner, a purpose, a lawful basis
+> or both retention windows is **not enforceable**, and a contract that lists a prohibited
+> field is rejected outright — the API answers `422` with the problems rather than
+> refusing each record one at a time. `POST /cbom/passive` exposes it, typed, behind the
+> reader roles.
+
 > [IPsec negotiates twice, and PFS is not the DH group in phase 1](162-ipsec-crypto-depth.md)
 > (**6 pass · 0 partial · 0 fail**, 30 probes) closes NBOM review item 14. A tunnel has
 > **two security associations** — an IKE SA (phase 1: encryption, PRF/integrity, DH

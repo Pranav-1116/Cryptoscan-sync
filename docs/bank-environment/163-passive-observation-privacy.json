@@ -1,0 +1,678 @@
+{
+  "schema": "cryptoscan.cbom-passive-guide/1",
+  "generated_at": "2026-11-03T01:19:21.916488+00:00",
+  "as_of": "2026-11-03T00:00:00Z",
+  "counts": {
+    "PASS": 5,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 25,
+  "classes": [
+    "METADATA",
+    "PSEUDONYMOUS",
+    "PROHIBITED"
+  ],
+  "fields": {
+    "src": "METADATA",
+    "dst": "METADATA",
+    "src_port": "METADATA",
+    "dst_port": "METADATA",
+    "protocol": "METADATA",
+    "first_seen": "METADATA",
+    "last_seen": "METADATA",
+    "bytes_client_to_server": "METADATA",
+    "bytes_server_to_client": "METADATA",
+    "packets": "METADATA",
+    "tls_version": "METADATA",
+    "cipher_suite": "METADATA",
+    "kex_group": "METADATA",
+    "signature_algorithm": "METADATA",
+    "ssh_kex": "METADATA",
+    "ssh_host_key": "METADATA",
+    "ssh_cipher": "METADATA",
+    "ssh_mac": "METADATA",
+    "certificate_sha256": "METADATA",
+    "certificate_key_bits": "METADATA",
+    "certificate_key_type": "METADATA",
+    "session_id_present": "METADATA",
+    "evidence_id": "METADATA",
+    "source": "METADATA",
+    "client_address": "PSEUDONYMOUS",
+    "server_name": "PSEUDONYMOUS",
+    "ja3": "PSEUDONYMOUS",
+    "ja4": "PSEUDONYMOUS",
+    "session_id_hash": "PSEUDONYMOUS",
+    "payload": "PROHIBITED",
+    "plaintext": "PROHIBITED",
+    "decrypted": "PROHIBITED",
+    "password": "PROHIBITED",
+    "cookie": "PROHIBITED",
+    "authorization": "PROHIBITED",
+    "token": "PROHIBITED",
+    "client_certificate_subject": "PROHIBITED",
+    "http_headers": "PROHIBITED",
+    "private_key": "PROHIBITED"
+  },
+  "purposes": [
+    "CRYPTO_INVENTORY",
+    "MIGRATION_PLANNING",
+    "WEAK_PROTOCOL_DETECTION",
+    "INCIDENT_RESPONSE"
+  ],
+  "contract": {
+    "schema": "cryptoscan.cbom-passive/1",
+    "contract_id": "DPC-2026-01",
+    "owner": "dpo@bank.example",
+    "purposes": [
+      "CRYPTO_INVENTORY",
+      "WEAK_PROTOCOL_DETECTION"
+    ],
+    "lawful_basis": "legitimate interest: protecting the bank's own network",
+    "retention_days": {
+      "METADATA": 90,
+      "PSEUDONYMOUS": 30
+    },
+    "salt_id": "salt-2026q4",
+    "reviewed_at": "2026-10-28",
+    "collects": [
+      "dst",
+      "dst_port",
+      "protocol",
+      "tls_version",
+      "cipher_suite",
+      "kex_group",
+      "signature_algorithm",
+      "certificate_sha256",
+      "certificate_key_type",
+      "certificate_key_bits",
+      "first_seen",
+      "last_seen",
+      "bytes_client_to_server",
+      "bytes_server_to_client",
+      "evidence_id",
+      "client_address",
+      "server_name",
+      "ja3"
+    ],
+    "prohibits": [
+      "authorization",
+      "client_certificate_subject",
+      "cookie",
+      "decrypted",
+      "http_headers",
+      "password",
+      "payload",
+      "plaintext",
+      "private_key",
+      "token"
+    ],
+    "enforceable": true,
+    "problems": [],
+    "statement": "contract DPC-2026-01 by dpo@bank.example: CRYPTO_INVENTORY, WEAK_PROTOCOL_DETECTION; retention 90d metadata / 30d pseudonymous; salt salt-2026q4"
+  },
+  "estate": {
+    "schema": "cryptoscan.cbom-passive/1",
+    "contract_id": "DPC-2026-01",
+    "observations": [
+      {
+        "schema": "cryptoscan.cbom-passive/1",
+        "evidence_id": "CAP-1",
+        "contract_id": "DPC-2026-01",
+        "pseudonym_salt": "salt-2026q4",
+        "fields": {
+          "evidence_id": "CAP-1",
+          "dst": "10.20.1.10",
+          "dst_port": 443,
+          "protocol": "tls",
+          "tls_version": "TLSv1.2",
+          "cipher_suite": "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+          "kex_group": "x25519",
+          "signature_algorithm": "sha256WithRSAEncryption",
+          "certificate_sha256": "abababababababababababababababababababababababababababababababab",
+          "certificate_key_type": "RSA",
+          "certificate_key_bits": 2048,
+          "first_seen": "2026-11-01T00:00:00Z",
+          "last_seen": "2026-11-01T00:10:00Z",
+          "bytes_client_to_server": 48213,
+          "bytes_server_to_client": 918442,
+          "client_address": "p-320f67241c0e",
+          "server_name": "p-8e221fc48a18",
+          "ja3": "p-4f56d86ce64e"
+        },
+        "pseudonymous_fields": [
+          "client_address",
+          "ja3",
+          "server_name"
+        ],
+        "first_seen": "2026-11-01T00:00:00+00:00",
+        "last_seen": "2026-11-01T00:10:00+00:00",
+        "retention_days": {
+          "METADATA": 90,
+          "PSEUDONYMOUS": 30
+        },
+        "expires_with": "PSEUDONYMOUS",
+        "expires_at": "2026-12-01T00:10:00+00:00",
+        "expired": false,
+        "confidence": "OBSERVED",
+        "statement": "capture CAP-1: 10.20.1.10 TLSv1.2 TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA between 2026-11-01T00:00:00+00:00 and 2026-11-01T00:10:00+00:00 \u2014 one exchange, observed and nothing more"
+      },
+      {
+        "schema": "cryptoscan.cbom-passive/1",
+        "evidence_id": "CAP-2",
+        "contract_id": "DPC-2026-01",
+        "pseudonym_salt": "salt-2026q4",
+        "fields": {
+          "evidence_id": "CAP-2",
+          "dst": "10.20.1.11",
+          "dst_port": 443,
+          "protocol": "tls",
+          "tls_version": "TLSv1.3",
+          "cipher_suite": "TLS_AES_256_GCM_SHA384",
+          "kex_group": "x25519",
+          "certificate_sha256": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "certificate_key_type": "EC",
+          "certificate_key_bits": 256,
+          "first_seen": "2026-11-02T00:00:00Z",
+          "last_seen": "2026-11-02T00:20:00Z",
+          "bytes_client_to_server": 5120,
+          "bytes_server_to_client": 88210
+        },
+        "pseudonymous_fields": [],
+        "first_seen": "2026-11-02T00:00:00+00:00",
+        "last_seen": "2026-11-02T00:20:00+00:00",
+        "retention_days": {
+          "METADATA": 90,
+          "PSEUDONYMOUS": 30
+        },
+        "expires_with": "METADATA",
+        "expires_at": "2027-01-31T00:20:00+00:00",
+        "expired": false,
+        "confidence": "OBSERVED",
+        "statement": "capture CAP-2: 10.20.1.11 TLSv1.3 TLS_AES_256_GCM_SHA384 between 2026-11-02T00:00:00+00:00 and 2026-11-02T00:20:00+00:00 \u2014 one exchange, observed and nothing more"
+      },
+      {
+        "schema": "cryptoscan.cbom-passive/1",
+        "evidence_id": "CAP-3",
+        "contract_id": "DPC-2026-01",
+        "pseudonym_salt": "salt-2026q4",
+        "fields": {
+          "evidence_id": "CAP-3",
+          "dst": "10.20.1.12",
+          "dst_port": 443,
+          "protocol": "tls",
+          "tls_version": "TLSv1.0",
+          "cipher_suite": "TLS_RSA_WITH_3DES_EDE_CBC_SHA",
+          "kex_group": "secp256r1",
+          "certificate_key_type": "RSA",
+          "certificate_key_bits": 1024,
+          "first_seen": "2026-10-30T00:00:00Z",
+          "last_seen": "2026-10-30T00:05:00Z",
+          "client_address": "p-dfc6bc39c880"
+        },
+        "pseudonymous_fields": [
+          "client_address"
+        ],
+        "first_seen": "2026-10-30T00:00:00+00:00",
+        "last_seen": "2026-10-30T00:05:00+00:00",
+        "retention_days": {
+          "METADATA": 90,
+          "PSEUDONYMOUS": 30
+        },
+        "expires_with": "PSEUDONYMOUS",
+        "expires_at": "2026-11-29T00:05:00+00:00",
+        "expired": false,
+        "confidence": "OBSERVED",
+        "statement": "capture CAP-3: 10.20.1.12 TLSv1.0 TLS_RSA_WITH_3DES_EDE_CBC_SHA between 2026-10-30T00:00:00+00:00 and 2026-10-30T00:05:00+00:00 \u2014 one exchange, observed and nothing more"
+      },
+      {
+        "schema": "cryptoscan.cbom-passive/1",
+        "evidence_id": "CAP-OLD",
+        "contract_id": "DPC-2026-01",
+        "pseudonym_salt": "salt-2026q4",
+        "fields": {
+          "evidence_id": "CAP-OLD",
+          "dst": "10.20.1.13",
+          "dst_port": 443,
+          "protocol": "tls",
+          "tls_version": "TLSv1.1",
+          "cipher_suite": "TLS_RSA_WITH_AES_128_CBC_SHA",
+          "first_seen": "2026-01-01T00:00:00Z",
+          "last_seen": "2026-01-02T00:00:00Z"
+        },
+        "pseudonymous_fields": [],
+        "first_seen": "2026-01-01T00:00:00+00:00",
+        "last_seen": "2026-01-02T00:00:00+00:00",
+        "retention_days": {
+          "METADATA": 90,
+          "PSEUDONYMOUS": 30
+        },
+        "expires_with": "METADATA",
+        "expires_at": "2026-04-02T00:00:00+00:00",
+        "expired": true,
+        "confidence": "OBSERVED",
+        "statement": "capture CAP-OLD: 10.20.1.13 TLSv1.1 TLS_RSA_WITH_AES_128_CBC_SHA between 2026-01-01T00:00:00+00:00 and 2026-01-02T00:00:00+00:00 \u2014 one exchange, observed and nothing more"
+      }
+    ],
+    "refused": [],
+    "expired": [
+      "CAP-OLD"
+    ],
+    "live": 3,
+    "suites": [
+      "TLS_AES_256_GCM_SHA384",
+      "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+      "TLS_RSA_WITH_3DES_EDE_CBC_SHA"
+    ],
+    "statement": "4 observation(s) under contract DPC-2026-01, 3 live and 1 expired; suites seen: TLS_AES_256_GCM_SHA384, TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA, TLS_RSA_WITH_3DES_EDE_CBC_SHA",
+    "not_proven": [
+      "that the observed exchange is the estate's current configuration: a capture is one conversation, and a client can negotiate a weaker suite than the server's policy allows on the next one",
+      "anything about exchanges the collector did not see: a passive tap at one point misses what is tunnelled, off-net or carried over a path it does not span",
+      "that a pseudonym is unlinkable in practice: the salt keeps two deployments apart, and inside one deployment the same pseudonym across records is still a link",
+      "the contents of the session: this model reads handshake metadata and refuses payload, so it cannot say what was sent or whether it was sensitive",
+      "that a certificate seen on the wire was valid at the time: chain validation is guide 159's subject and is not re-derived from a fingerprint"
+    ]
+  },
+  "facts": {
+    "schema": "cryptoscan.cbom-passive/1",
+    "facts": [
+      {
+        "algorithm": "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+        "role": "BULK",
+        "parameters": {},
+        "class": "NETWORK_OBSERVED",
+        "collection": "PASSIVE",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "CAP-1"
+        ],
+        "contract_id": "DPC-2026-01",
+        "destination": "10.20.1.10",
+        "protocol": "TLS"
+      },
+      {
+        "algorithm": "x25519",
+        "role": "KEY_EXCHANGE",
+        "parameters": {},
+        "class": "NETWORK_OBSERVED",
+        "collection": "PASSIVE",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "CAP-1"
+        ],
+        "contract_id": "DPC-2026-01",
+        "destination": "10.20.1.10",
+        "protocol": "TLS"
+      },
+      {
+        "algorithm": "TLSv1.2",
+        "role": "PROTOCOL",
+        "parameters": {},
+        "class": "NETWORK_OBSERVED",
+        "collection": "PASSIVE",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "CAP-1"
+        ],
+        "contract_id": "DPC-2026-01",
+        "destination": "10.20.1.10",
+        "protocol": "TLS"
+      },
+      {
+        "algorithm": "RSA",
+        "role": "SIGNATURE",
+        "parameters": {
+          "key_bits": 2048
+        },
+        "class": "NETWORK_OBSERVED",
+        "collection": "PASSIVE",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "CAP-1"
+        ],
+        "contract_id": "DPC-2026-01",
+        "destination": "10.20.1.10",
+        "protocol": "TLS"
+      },
+      {
+        "algorithm": "sha256WithRSAEncryption",
+        "role": "SIGNATURE",
+        "parameters": {},
+        "class": "NETWORK_OBSERVED",
+        "collection": "PASSIVE",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "CAP-1"
+        ],
+        "contract_id": "DPC-2026-01",
+        "destination": "10.20.1.10",
+        "protocol": "TLS"
+      },
+      {
+        "algorithm": "TLS_AES_256_GCM_SHA384",
+        "role": "BULK",
+        "parameters": {},
+        "class": "NETWORK_OBSERVED",
+        "collection": "PASSIVE",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "CAP-2"
+        ],
+        "contract_id": "DPC-2026-01",
+        "destination": "10.20.1.11",
+        "protocol": "TLS"
+      },
+      {
+        "algorithm": "x25519",
+        "role": "KEY_EXCHANGE",
+        "parameters": {},
+        "class": "NETWORK_OBSERVED",
+        "collection": "PASSIVE",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "CAP-2"
+        ],
+        "contract_id": "DPC-2026-01",
+        "destination": "10.20.1.11",
+        "protocol": "TLS"
+      },
+      {
+        "algorithm": "TLSv1.3",
+        "role": "PROTOCOL",
+        "parameters": {},
+        "class": "NETWORK_OBSERVED",
+        "collection": "PASSIVE",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "CAP-2"
+        ],
+        "contract_id": "DPC-2026-01",
+        "destination": "10.20.1.11",
+        "protocol": "TLS"
+      },
+      {
+        "algorithm": "EC",
+        "role": "SIGNATURE",
+        "parameters": {
+          "key_bits": 256
+        },
+        "class": "NETWORK_OBSERVED",
+        "collection": "PASSIVE",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "CAP-2"
+        ],
+        "contract_id": "DPC-2026-01",
+        "destination": "10.20.1.11",
+        "protocol": "TLS"
+      },
+      {
+        "algorithm": "TLS_RSA_WITH_3DES_EDE_CBC_SHA",
+        "role": "BULK",
+        "parameters": {},
+        "class": "NETWORK_OBSERVED",
+        "collection": "PASSIVE",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "CAP-3"
+        ],
+        "contract_id": "DPC-2026-01",
+        "destination": "10.20.1.12",
+        "protocol": "TLS"
+      },
+      {
+        "algorithm": "secp256r1",
+        "role": "KEY_EXCHANGE",
+        "parameters": {},
+        "class": "NETWORK_OBSERVED",
+        "collection": "PASSIVE",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "CAP-3"
+        ],
+        "contract_id": "DPC-2026-01",
+        "destination": "10.20.1.12",
+        "protocol": "TLS"
+      },
+      {
+        "algorithm": "TLSv1.0",
+        "role": "PROTOCOL",
+        "parameters": {},
+        "class": "NETWORK_OBSERVED",
+        "collection": "PASSIVE",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "CAP-3"
+        ],
+        "contract_id": "DPC-2026-01",
+        "destination": "10.20.1.12",
+        "protocol": "TLS"
+      },
+      {
+        "algorithm": "RSA",
+        "role": "SIGNATURE",
+        "parameters": {
+          "key_bits": 1024
+        },
+        "class": "NETWORK_OBSERVED",
+        "collection": "PASSIVE",
+        "confidence": "OBSERVED",
+        "evidence_ids": [
+          "CAP-3"
+        ],
+        "contract_id": "DPC-2026-01",
+        "destination": "10.20.1.12",
+        "protocol": "TLS"
+      }
+    ],
+    "destinations": [
+      "10.20.1.10",
+      "10.20.1.11",
+      "10.20.1.12"
+    ],
+    "statement": "13 distinct observed fact(s) across 3 destination(s), each evidence-cited and none promoted beyond OBSERVED"
+  },
+  "summary": {
+    "schema": "cryptoscan.cbom-passive/1",
+    "contract_id": "DPC-2026-01",
+    "observations": 4,
+    "live": 3,
+    "expired": [
+      "CAP-OLD"
+    ],
+    "refused": 0,
+    "suites": [
+      "TLS_AES_256_GCM_SHA384",
+      "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA",
+      "TLS_RSA_WITH_3DES_EDE_CBC_SHA"
+    ],
+    "statement": "4 observation(s) under contract DPC-2026-01, 3 live and 1 expired; suites seen: TLS_AES_256_GCM_SHA384, TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA, TLS_RSA_WITH_3DES_EDE_CBC_SHA",
+    "not_proven": [
+      "that the observed exchange is the estate's current configuration: a capture is one conversation, and a client can negotiate a weaker suite than the server's policy allows on the next one",
+      "anything about exchanges the collector did not see: a passive tap at one point misses what is tunnelled, off-net or carried over a path it does not span",
+      "that a pseudonym is unlinkable in practice: the salt keeps two deployments apart, and inside one deployment the same pseudonym across records is still a link",
+      "the contents of the session: this model reads handshake metadata and refuses payload, so it cannot say what was sent or whether it was sensitive",
+      "that a certificate seen on the wire was valid at the time: chain validation is guide 159's subject and is not re-derived from a fingerprint"
+    ]
+  },
+  "rows": [
+    {
+      "id": "the_contract",
+      "question": "is the privacy contract a check rather than a paragraph?",
+      "phase": "review 15",
+      "probes": [
+        {
+          "probe": "a-contract-that-cannot-be-checked-is-not-enforceable",
+          "ok": true,
+          "observed": "4 problem(s) on an empty contract"
+        },
+        {
+          "probe": "a-complete-contract-names-owner-purpose-and-retention",
+          "ok": true,
+          "observed": "contract DPC-2026-01 by dpo@bank.example: CRYPTO_INVENTORY, WEAK_PROTOCOL_DETECTION; retention 90d metadata / 30d pseudonymous; salt salt-2026q4"
+        },
+        {
+          "probe": "a-prohibited-field-cannot-be-contracted-for",
+          "ok": true,
+          "observed": "payload is refused at contract time, not at capture time"
+        },
+        {
+          "probe": "pseudonymous-data-may-not-outlive-metadata",
+          "ok": true,
+          "observed": "retention is per class and the shorter one is the binding one"
+        },
+        {
+          "probe": "collecting-a-pseudonym-needs-a-deployment-salt-id",
+          "ok": true,
+          "observed": "without a salt id the pseudonym would be a global identifier"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "enforcement",
+      "question": "are prohibited fields refused visibly instead of dropped?",
+      "phase": "review 15",
+      "probes": [
+        {
+          "probe": "a-clean-capture-is-accepted",
+          "ok": true,
+          "observed": "handshake metadata only"
+        },
+        {
+          "probe": "payload-is-refused-rather-than-stripped",
+          "ok": true,
+          "observed": "a sanitise() that quietly drops it would teach the schema to accept it"
+        },
+        {
+          "probe": "an-unclassifiable-field-is-refused",
+          "ok": true,
+          "observed": "unknown is not the same as harmless"
+        },
+        {
+          "probe": "a-field-outside-the-contract-is-refused",
+          "ok": true,
+          "observed": "the contract lists what may be collected and the collector adds nothing"
+        },
+        {
+          "probe": "a-capture-without-an-evidence-id-is-refused",
+          "ok": true,
+          "observed": "a capture with no record is a claim"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "pseudonyms",
+      "question": "can an address be followed across records without being stored?",
+      "phase": "review 15",
+      "probes": [
+        {
+          "probe": "an-address-becomes-a-keyed-pseudonym-and-the-raw-value-never-lands",
+          "ok": true,
+          "observed": "p-6dee369539ee"
+        },
+        {
+          "probe": "two-deployments-cannot-join-their-pseudonyms",
+          "ok": true,
+          "observed": "different salt, different pseudonym"
+        },
+        {
+          "probe": "the-salt-id-is-recorded-and-the-salt-is-not",
+          "ok": true,
+          "observed": "the record can be audited without holding the secret"
+        },
+        {
+          "probe": "a-pseudonym-without-a-salt-is-refused",
+          "ok": true,
+          "observed": "better a refusal than a raw address in the store"
+        },
+        {
+          "probe": "metadata-stays-readable-so-the-inventory-is-still-useful",
+          "ok": true,
+          "observed": "the cryptography is the point; the client is not"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "retention",
+      "question": "does an observation stop being evidence when its retention ends?",
+      "phase": "review 15",
+      "probes": [
+        {
+          "probe": "an-observation-expires-with-its-shortest-lived-field",
+          "ok": true,
+          "observed": "30 days, because a pseudonym lives beside the metadata"
+        },
+        {
+          "probe": "an-observation-past-retention-is-marked-expired",
+          "ok": true,
+          "observed": "CAP-OLD"
+        },
+        {
+          "probe": "an-expired-observation-contributes-no-facts",
+          "ok": true,
+          "observed": "retention is not a suggestion"
+        },
+        {
+          "probe": "the-live-count-excludes-what-is-no-longer-evidence",
+          "ok": true,
+          "observed": "4 observation(s) under contract DPC-2026-01, 3 live and 1 expired; suites seen: TLS_AES_256_GCM_SHA384, TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA, TLS_RSA_WITH_3DES_EDE_CBC_SHA"
+        },
+        {
+          "probe": "expiry-is-computed-against-an-explicit-as-of-not-the-wall-clock",
+          "ok": true,
+          "observed": "the same captures, a later moment, nothing left to cite"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "facts_and_shape",
+      "question": "does passive collection reach the CBOM without overreach?",
+      "phase": "review 15 / 16 boundary",
+      "probes": [
+        {
+          "probe": "a-passive-fact-says-how-it-was-collected",
+          "ok": true,
+          "observed": "13 fact(s), each citing the contract"
+        },
+        {
+          "probe": "a-passive-fact-is-never-promoted-to-configured",
+          "ok": true,
+          "observed": "a tap asked the device nothing"
+        },
+        {
+          "probe": "roles-come-from-the-same-vocabulary-as-the-rest-of-the-platform",
+          "ok": true,
+          "observed": "BULK, KEY_EXCHANGE, PROTOCOL, SIGNATURE"
+        },
+        {
+          "probe": "refusals-stay-visible-in-the-estate",
+          "ok": true,
+          "observed": "one accepted, one refused, both counted"
+        },
+        {
+          "probe": "the-report-states-what-a-passive-tap-cannot-prove",
+          "ok": true,
+          "observed": "5 stated limit(s)"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "one capture is one conversation. A client can negotiate weaker than the server's policy allows on the next one, so a suite seen is not a policy",
+    "a tap sees the traffic on its own span: what is tunnelled past it, off-net or on a path it does not cover is invisible, not absent",
+    "a pseudonym is unlinkable across deployments and still a link inside one: the same client pseudonym appearing twice is a correlation",
+    "the model reads handshake metadata only. It refuses payload, cookies and authorization headers, so it cannot say what was sent",
+    "certificate validity is not derived from a fingerprint; the chain is guide 159's subject",
+    "the contract is a technical check on the collector, not a legal opinion. An owner must still decide the lawful basis and sign it"
+  ]
+}
