@@ -1035,3 +1035,190 @@ def test_a_firewall_can_run_firmware_like_the_device_it_is():
     bom = n.build(n.estate(device, estate_id="firmware"))
     assert bom["refusals"] == []
     assert any(row["relation"] == "RUNS_FIRMWARE" for row in bom["claims"])
+
+
+# --------------------------------------------------------------------------- #
+# Guide 172 — the dependencies under the ones already drawn
+# --------------------------------------------------------------------------- #
+
+def test_a_block_a_builder_returns_reaches_the_projection():
+    application = tb.asset("APPLICATION", "Ledger API", evidence_ids=[EVID])
+    database = tb.asset("DATABASE", "DB-09", evidence_ids=[EVID])
+    listener = endpoint(port=5432, host="10.0.9.1", name="db-09:5432",
+                        tls={"version": "TLS1.3", "suite": "TLS_AES_256_GCM_SHA384"})
+    part = n.database_dependency(application_row=application, database_row=database,
+                                 endpoint_row=listener, tde={"enabled": True},
+                                 evidence_ids=[EVID])
+    document = n.estate(part, estate_id="db")
+    assert "database_crypto" in document["sections"]
+    bom = n.build(document)
+    assert "DB-09" in bom["sections"]["database_crypto"]
+
+
+def test_two_parts_of_one_section_merge():
+    merged = n.merge({"database_crypto": {"A": {"at_rest": {}}}},
+                     {"database_crypto": {"B": {"at_rest": {}}}})
+    assert set(merged["sections"]["database_crypto"]) == {"A", "B"}
+
+
+def test_a_database_encrypted_on_the_wire_and_not_on_disk_is_a_finding():
+    application = tb.asset("APPLICATION", "Ledger API", evidence_ids=[EVID])
+    database = tb.asset("DATABASE", "DB-09", evidence_ids=[EVID])
+    listener = endpoint(port=5432, host="10.0.9.1", name="db-09:5432",
+                        tls={"version": "TLS1.3", "suite": "TLS_AES_256_GCM_SHA384"})
+    bom = n.build(n.estate(
+        n.database_dependency(application_row=application, database_row=database,
+                              endpoint_row=listener, tde={"enabled": False},
+                              evidence_ids=[EVID]), estate_id="db"))
+    gap = n.database_crypto_gap(bom)
+    assert [row["code"] for row in gap["findings"]] == ["AT_REST_UNENCRYPTED"]
+    assert gap["findings"][0]["in_transit"] is True
+
+
+def test_nothing_read_about_at_rest_is_not_the_same_as_no_encryption():
+    application = tb.asset("APPLICATION", "Ledger API", evidence_ids=[EVID])
+    database = tb.asset("DATABASE", "DB-09", evidence_ids=[EVID])
+    listener = endpoint(port=5432, host="10.0.9.1", name="db-09:5432",
+                        tls={"version": "TLS1.3", "suite": "TLS_AES_256_GCM_SHA384"})
+    bom = n.build(n.estate(
+        n.database_dependency(application_row=application, database_row=database,
+                              endpoint_row=listener, evidence_ids=[EVID]), estate_id="db"))
+    codes = {row["code"] for row in n.database_crypto_gap(bom)["findings"]}
+    assert codes == {"TDE_NOT_RECORDED"}
+
+
+def _certificate_estate(*, key_size: int = 2048, signature: str = "SHA256",
+                        root: bool = True) -> tuple[dict, dict]:
+    key_algorithm = n.algorithm(name=f"RSA-{key_size}", family="RSA", key_size=key_size,
+                                evidence_ids=[EVID])
+    certificate = n.certificate(name="CERT-009", subject="CN=payments",
+                                signature_algorithm=signature, evidence_ids=[EVID])
+    issuer = n.authority(name="Issuing CA", kind="INTERMEDIATE", evidence_ids=[EVID])
+    chain = n.certificate_chain(
+        certificate_row=certificate,
+        key_row=n.public_key(name="PK-009", key_algorithm_row=key_algorithm,
+                             evidence_ids=[EVID]),
+        key_algorithm_row=key_algorithm,
+        signature_algorithm_row=n.algorithm(name=f"RSA-{signature}", family="RSA",
+                                            hash_name=signature, evidence_ids=[EVID]),
+        issuer_row=issuer,
+        root_row=n.authority(name="Root CA", kind="ROOT", evidence_ids=[EVID])
+        if root else None,
+        basis="tls-handshake", evidence_ids=[EVID])
+    listener = endpoint(host="10.0.0.9", port=443, name="front:443",
+                        tls={"version": "TLS1.3", "suite": "TLS_AES_256_GCM_SHA384",
+                             "certificate": "CERT-009"})
+    present = n.presents_certificate(endpoint_row=listener, certificate_row=certificate,
+                                     basis="tls-handshake", evidence_ids=[EVID])
+    return n.build(n.estate(chain, present, estate_id="cert")), certificate
+
+
+def test_a_certificate_is_reached_from_the_endpoint_it_is_served_on():
+    bom, _ = _certificate_estate()
+    depth = n.certificate_depth(bom, query="front:443")
+    kinds = [row["kind"] for row in depth["certificates"][0]["links"]]
+    assert depth["rooted"] == 1
+    assert kinds[0] == "CERTIFICATE" and "PUBLIC_KEY" in kinds and "ALGORITHM" in kinds
+
+
+def test_a_certificate_named_but_not_held_is_a_finding():
+    bom = n.build(n.estate(
+        endpoint(host="10.0.0.9", port=443, name="front:443",
+                 tls={"certificate": "CERT-404"}), estate_id="dangling"))
+    findings = n.certificate_depth(bom, query="front:443")["findings"]
+    assert [row["code"] for row in findings] == ["CERTIFICATE_UNRESOLVED"]
+
+
+def test_a_weak_key_a_broken_hash_and_an_unrooted_chain_are_named():
+    bom, _ = _certificate_estate(key_size=1024, signature="SHA1", root=False)
+    codes = {row["code"] for row in n.certificate_depth(bom, query="front:443")["findings"]}
+    assert codes == {"WEAK_KEY", "WEAK_SIGNATURE", "CHAIN_NOT_ROOTED"}
+
+
+def test_an_operation_is_a_node_the_application_invokes():
+    application = tb.asset("APPLICATION", "Payments API", evidence_ids=[EVID])
+    hsm = tb.asset("HSM", "HSM-001", evidence_ids=[EVID])
+    key = n.key_reference(name="KEY-REF-8271", key_ref="pkcs11:id=8271", purpose="SIGNING",
+                          algorithm="RSA", key_size=2048, evidence_ids=[EVID])
+    operation = n.crypto_operation(name="OP-SIGN-001", application_row=application,
+                                   operation="SIGN", key_row=key, provider_row=hsm,
+                                   evidence_ids=[EVID])
+    bom = n.build(n.estate(operation, estate_id="ops"))
+    found = n.operations(bom, query="Payments API")
+    assert found["operations"][0]["key"] == "KEY-REF-8271"
+    assert found["operations"][0]["provider"] == "HSM-001"
+    assert "INVOKES" in {row["relation"] for row in bom["claims"]}
+
+
+def test_an_operation_with_no_key_or_no_provider_is_a_finding():
+    application = tb.asset("APPLICATION", "Payments API", evidence_ids=[EVID])
+    operation = n.crypto_operation(name="OP-ENCRYPT-002", application_row=application,
+                                   operation="ENCRYPT", evidence_ids=[EVID])
+    bom = n.build(n.estate(operation, estate_id="ops"))
+    counts = n.operations(bom)["counts"]
+    assert counts == {"OPERATION_WITHOUT_KEY": 1, "OPERATION_WITHOUT_PROVIDER": 1}
+
+
+def test_key_material_and_a_vague_verb_are_both_refused():
+    with pytest.raises(tb.ClaimRefused) as material:
+        n.crypto_operation(name="OP-X", application_row={"name": "a"}, operation="SIGN",
+                           private_key="---BEGIN---")
+    assert material.value.code == "KEY_MATERIAL_REFUSED"
+    with pytest.raises(tb.ClaimRefused) as vague:
+        n.crypto_operation(name="OP-X", application_row={"name": "a"},
+                           operation="USE_CRYPTO")
+    assert vague.value.code == "UNKNOWN_CRYPTO_OPERATION"
+
+
+def test_an_application_is_not_a_key_provider():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.crypto_operation(name="OP-X", application_row={"name": "a"}, operation="SIGN",
+                           provider_row={"name": "a", "kind": "APPLICATION"})
+    assert refused.value.code == "NOT_A_KEY_PROVIDER"
+
+
+def test_coverage_takes_the_worse_of_the_two_at_every_consumer():
+    block = n.coverage(expected=500, observed=420, unavailable=50, unknown=30)
+    propagated = n.propagate_coverage(block, consumers={"cbom": "COMPLETE",
+                                                        "twin": "PARTIAL"})
+    assert propagated["consumers"] == {"cbom": "PARTIAL", "twin": "PARTIAL"}
+    assert [row["code"] for row in propagated["findings"]] == ["COVERAGE_LAUNDERED"]
+
+
+def test_a_consumer_that_knows_less_keeps_its_own_answer():
+    block = n.coverage(expected=10, observed=10)
+    propagated = n.propagate_coverage(block, consumers={"cbom": "UNKNOWN"})
+    assert propagated["network"] == "COMPLETE"
+    assert propagated["consumers"]["cbom"] == "UNKNOWN"
+
+
+def test_a_segment_with_counts_is_measured_not_assumed():
+    block = n.coverage(expected=500, observed=500)
+    propagated = n.propagate_coverage(
+        block, segments={"EDGE": {"expected": 20, "observed": 20},
+                         "CARDHOLDER": {"expected": 100, "observed": 60,
+                                        "unavailable": 40}})
+    assert propagated["network"] == "PARTIAL"
+    assert propagated["weakest_segment"] == ["CARDHOLDER"]
+
+
+def test_a_verdict_that_is_not_a_verdict_is_refused():
+    with pytest.raises(tb.ClaimRefused) as refused:
+        n.propagate_coverage({"verdict": "MOSTLY"})
+    assert refused.value.code == "UNKNOWN_COVERAGE_VERDICT"
+
+
+def test_two_claims_with_two_bases_are_two_edges_not_one():
+    front = endpoint(name="waf:443")
+    backend = endpoint(port=8443, host="10.0.2.5", name="app:8443")
+    claims = [
+        {"from": "waf:443", "relation": "FORWARDS_TO", "to": "app:8443",
+         "basis": "load-balancer-config", "evidence_ids": [EVID], "port": 8443},
+        {"from": "waf:443", "relation": "FORWARDS_TO", "to": "app:8443",
+         "basis": "config-parse", "evidence_ids": [EVID], "port": 8443},
+    ]
+    bom = n.build(n.estate(front, backend, {"assets": [], "claims": claims},
+                           estate_id="two-bases"))
+    ids = [row["id"] for row in bom["claims"]]
+    assert len(ids) == 2 and len(set(ids)) == 2
+    assert len(n.lifecycle(bom)["states"]) == 2

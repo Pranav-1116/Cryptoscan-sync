@@ -147,7 +147,7 @@ ASSET_TYPES: tuple[str, ...] = (
     # the named things a network observation lands on (review nbom 1–3, 13–14)
     "CIPHER_SUITE", "SSH_SERVICE", "VPN_GATEWAY", "IPSEC_TUNNEL",
     # keys and hardware
-    "HSM", "KMS", "KEY_REFERENCE", "FIRMWARE", "CRYPTO_CAPABILITY",
+    "HSM", "KMS", "KEY_REFERENCE", "FIRMWARE", "CRYPTO_CAPABILITY", "CRYPTO_OPERATION",
     "HOST", "VM", "PHYSICAL_SERVER", "TPM",
     # hardware components — the device is not one opaque row (review hbom 1)
     "CPU", "MEMORY", "MOTHERBOARD", "BIOS", "NIC", "STORAGE", "RAID_CONTROLLER",
@@ -176,7 +176,7 @@ PREFIX: dict[str, str] = {
     "WAF": "WAF", "CERTIFICATE": "CERT",
     "CERTIFICATE_AUTHORITY": "CA", "PUBLIC_KEY": "KEY", "ALGORITHM": "ALG",
     "HSM": "HSM", "KMS": "KMS", "KEY_REFERENCE": "KREF", "FIRMWARE": "FW",
-    "CRYPTO_CAPABILITY": "CAP", "HOST": "HOST", "VM": "VM",
+    "CRYPTO_CAPABILITY": "CAP", "CRYPTO_OPERATION": "OP", "HOST": "HOST", "VM": "VM",
     "PHYSICAL_SERVER": "SRV", "TPM": "TPM", "VENDOR": "VENDOR",
     "VENDOR_PRODUCT": "PROD", "SOURCE": "SRC", "BUILD": "BUILD", "ARTIFACT": "ART",
     "SBOM": "SBOM", "DEPLOYMENT": "DEP", "POD": "POD", "PROCESS": "PROC",
@@ -253,7 +253,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
                  "to": ("CERTIFICATE",), "chain": "NETWORK"},
     # certificate → key → algorithm → issuer
     "CONTAINS_KEY": {"from": ("CERTIFICATE",), "to": ("PUBLIC_KEY",), "chain": "CERTIFICATE"},
-    "USES_ALGORITHM": {"from": ("PUBLIC_KEY", "CRYPTO_ASSET"), "to": ("ALGORITHM",),
+    "USES_ALGORITHM": {"from": ("PUBLIC_KEY", "CRYPTO_ASSET", "CRYPTO_OPERATION"),
+                       "to": ("ALGORITHM",),
                        "chain": "CERTIFICATE"},
     "ISSUED_BY": {"from": ("CERTIFICATE",), "to": ("CERTIFICATE_AUTHORITY",),
                   "chain": "CERTIFICATE"},
@@ -265,7 +266,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
                           "chain": "CERTIFICATE"},
     # keys and hardware
     "USES_HSM": {"from": ("APPLICATION", "SERVICE", "PROCESS", "LOAD_BALANCER",
-                          "API_GATEWAY", "FIREWALL", "SECURITY_APPLIANCE", "DATABASE"),
+                          "API_GATEWAY", "FIREWALL", "SECURITY_APPLIANCE", "DATABASE",
+                          "CRYPTO_OPERATION"),
                  "to": ("HSM", "KMS"), "chain": "KEYS"},
     "HAS_MODEL": {"from": ("HSM", "LOAD_BALANCER", "WAF", "API_GATEWAY", "SERVICE_MESH",
                            "DATABASE", "VPN_GATEWAY", "PHYSICAL_SERVER", "NIC", "GPU",
@@ -291,6 +293,10 @@ RELATIONS: dict[str, dict[str, Any]] = {
                           "IPSEC_TUNNEL", "OS", "VENDOR_PRODUCT", "IDS", "IPS"),
                  "to": ("CRYPTO_CAPABILITY", "CIPHER_SUITE", "ALGORITHM"),
                  "chain": "NETWORK"},
+    #: an application does not "use crypto"; it asks for an operation, and the operation
+    #: is what carries the key and the provider (review nbom 8)
+    "INVOKES": {"from": ("APPLICATION", "SERVICE", "PROCESS"),
+                "to": ("CRYPTO_OPERATION",), "chain": "KEYS"},
     "PERFORMS": {"from": ("HSM", "CRYPTO_ACCELERATOR", "TPM"),
                  "to": ("CRYPTO_CAPABILITY",), "chain": "HARDWARE"},
     "IMPLEMENTS": {"from": ("CRYPTO_CAPABILITY",), "to": ("ALGORITHM",),
@@ -409,7 +415,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
                          "to": ("CERTIFICATE",), "chain": "NETWORK"},
     "USES_KMS": {"from": ("APPLICATION", "SERVICE", "PROCESS", "DATABASE", "LOAD_BALANCER"),
                  "to": ("KMS",), "chain": "KEYS"},
-    "USES_KEY": {"from": ("APPLICATION", "SERVICE", "PROCESS", "DATABASE", "LOAD_BALANCER"),
+    "USES_KEY": {"from": ("APPLICATION", "SERVICE", "PROCESS", "DATABASE", "LOAD_BALANCER",
+                          "CRYPTO_OPERATION"),
                  "to": ("KEY_REFERENCE",), "chain": "KEYS"},
     "SIGNED_WITH": {"from": ("CERTIFICATE",), "to": ("ALGORITHM",), "chain": "CERTIFICATE"},
     #: a sidecar does the TLS, not the application: the handshake belongs to the proxy
@@ -772,6 +779,10 @@ def build(estate: Mapping[str, Any]) -> dict[str, Any]:
         row["from_id"] = assets[source_key]["id"]
         row["to_id"] = assets[target_key]["id"]
         row["id"] = f"EDGE-{_digest(source_key + row['relation'] + target_key, 8)}"
+        if any(item["id"] == row["id"] for item in claims):
+            # two claims, one edge id: the basis is part of the identity, so the second
+            # claim gets an id of its own rather than overwriting a lifecycle state
+            row["id"] = f"EDGE-{_digest(source_key + row['relation'] + target_key + row['basis'], 8)}"
         # the same edge from the same basis is the same edge: a second copy would double
         # every route and every count that walks it, without adding a fact
         twin = next((item for item in claims

@@ -55,7 +55,7 @@ NBOM_KINDS: tuple[str, ...] = (
     "CERTIFICATE", "CERTIFICATE_AUTHORITY", "PUBLIC_KEY", "ALGORITHM",
     "SERVICE", "APPLICATION", "BUSINESS_SYSTEM", "PROCESS", "CONTAINER", "POD",
     "HOST", "VM", "PHYSICAL_SERVER", "CLOUD_INSTANCE", "KUBERNETES_NODE", "OS",
-    "HSM", "KMS", "KEY_REFERENCE", "CRYPTO_ASSET", "CRYPTO_LIBRARY",
+    "HSM", "KMS", "KEY_REFERENCE", "CRYPTO_ASSET", "CRYPTO_LIBRARY", "CRYPTO_OPERATION",
     "VENDOR", "VENDOR_PRODUCT", "FIRMWARE", "NIC", "EVIDENCE",
 )
 
@@ -91,7 +91,8 @@ HANDSHAKE_BASES: tuple[str, ...] = ("tls-handshake", "packet-capture", "passive-
 SPINE: tuple[str, ...] = (
     "CONTAINS", "PROVIDES", "RUNS", "RUNS_PROCESS", "RUNS_APPLICATION", "EXPOSES",
     "LISTENS_ON", "ROUTES_TO",
-    "FORWARDS_TO", "TERMINATES_TLS", "RE_ENCRYPTS", "PASSTHROUGH", "PROTECTS",
+    "FORWARDS_TO", "FRONTED_BY", "TERMINATES_TLS", "RE_ENCRYPTS", "PASSTHROUGH", "PROTECTS",
+    "INVOKES",
     "AUTHENTICATES", "PROXY_FOR", "CONNECTS_TO", "TUNNELS_TO", "STORES_IN", "USES_HSM",
     "USES_KMS", "USES_KEY", "USES_CERTIFICATE", "PRESENTS", "CONTAINS_KEY",
     "USES_ALGORITHM", "SIGNED_WITH", "ISSUED_BY", "SIGNED_BY", "NEGOTIATES",
@@ -134,11 +135,26 @@ def part(*assets: Any, claims: Iterable[Mapping[str, Any]] = ()) -> dict[str, An
 
 
 def merge(*parts: Any) -> dict[str, Any]:
-    """Concatenate parts. Identical rows collapse; anything else is left for build()."""
+    """Concatenate parts. Identical rows collapse; anything else is left for build().
+
+    A part may carry a *section* beside its assets and claims — the at-rest block of a
+    database, for instance. Those are merged one level deep and carried to the projection,
+    because a builder that returns a fact and has it dropped on the way to the BOM has
+    measured nothing.
+    """
     assets: list[dict[str, Any]] = []
     claims: list[dict[str, Any]] = []
+    sections: dict[str, Any] = {}
     seen: set[tuple[str, str, str, str]] = set()
     for item in parts:
+        if isinstance(item, Mapping):
+            for key, value in item.items():
+                if key in ("assets", "claims"):
+                    continue
+                if isinstance(value, Mapping) and isinstance(sections.get(key), Mapping):
+                    sections[key] = {**sections[key], **value}
+                else:
+                    sections[key] = value
         # a part is {assets, claims}; a bare row is one asset and is accepted too, so a
         # caller never loses an asset to the shape of the bundle it arrived in
         rows = ([item] if isinstance(item, Mapping)
@@ -162,7 +178,7 @@ def merge(*parts: Any) -> dict[str, Any]:
                       row["environment"]))
             assets.append(row)
         claims.extend((item or {}).get("claims") or [])
-    return {"assets": assets, "claims": claims}
+    return {"assets": assets, "claims": claims, "sections": sections}
 
 
 def estate(*parts: Any, estate_id: str = "estate", environment: str = "PRODUCTION",
@@ -175,6 +191,7 @@ def estate(*parts: Any, estate_id: str = "estate", environment: str = "PRODUCTIO
         "environment": environment,
         "assets": body["assets"],
         "claims": body["claims"],
+        "sections": body["sections"],
         "expected": dict(expected or {}),
         "gaps": list(gaps or []),
     }
@@ -1206,6 +1223,7 @@ def build(estate_doc: Mapping[str, Any]) -> dict[str, Any]:
             continue
         if finding["findings"]:
             policy[row["name"]] = finding
+    sections = dict(estate_doc.get("sections") or {})
     inspection: dict[str, Any] = {}
     for row in endpoints.values():
         try:
@@ -1234,6 +1252,7 @@ def build(estate_doc: Mapping[str, Any]) -> dict[str, Any]:
                     if row["kind"] in SENSOR_KINDS],
         "inspection": inspection,
         "rate_limits": rate_limit_gap(bom),
+        "sections": sections,
         "exposure": pqc_exposure(bom),
         "graph": networks,
         "tls_modes": dict(sorted(modes.items())),
@@ -1313,6 +1332,7 @@ ID_PREFIX: dict[str, str] = {
     "CIPHER_SUITE": "CIPHER-SUITE", "CERTIFICATE": "CERTIFICATE",
     "SSH_SERVICE": "SSH-SERVICE", "IPSEC_TUNNEL": "IPSEC-TUNNEL",
     "IDS": "IDS", "IPS": "IPS", "RATE_LIMIT": "RATE-LIMIT", "FIREWALL": "FIREWALL",
+    "CRYPTO_OPERATION": "CRYPTO-OP", "VENDOR": "VENDOR", "HOST": "HOST", "VM": "VM",
 }
 
 
@@ -2351,6 +2371,396 @@ def probe_ledger(decisions: Iterable[Mapping[str, Any]], *,
                       + (f" ({reasons})" if reasons else "")),
         "not_proven": ["that a sent request reached the service: the record says it was "
                        "allowed, and the response is a separate observation"],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# The dependencies under the ones already drawn
+# --------------------------------------------------------------------------- #
+
+#: a named certificate on a listener is a fact; without an edge it is a dangling string.
+#: The review asks for the chain to be *reached* from the endpoint, not merely stored.
+CERTIFICATE_LINK: tuple[str, ...] = ("PRESENTS", "USES_CERTIFICATE")
+
+#: a chain that ends in an intermediate has been parsed, not validated.
+PUBLIC_SUFFIX_MARKERS: tuple[str, ...] = ("ROOT", "SELF_SIGNED")
+
+#: below these a key is not "legacy", it is broken. Refused by the numbers rather than
+#: described as "weak" and left to the reader.
+MINIMUM_KEY_SIZE: dict[str, int] = {"RSA": 2048, "DSA": 2048, "DH": 2048, "ECDSA": 256,
+                                    "EDDSA": 256}
+
+WEAK_CURVES: frozenset[str] = frozenset({"P-192", "SECP192R1", "P-224", "SECP224R1"})
+
+WEAK_SIGNATURES: tuple[str, ...] = ("MD2", "MD4", "MD5", "SHA1", "SHA-1")
+
+#: the operations a bank's key inventory is actually about
+CRYPTO_OPERATIONS: tuple[str, ...] = ("SIGN", "VERIFY", "ENCRYPT", "DECRYPT", "WRAP",
+                                      "UNWRAP", "DERIVE", "MAC", "RANDOM", "HASH",
+                                      "GENERATE_KEY")
+
+
+def presents_certificate(*, endpoint_row: Mapping[str, Any],
+                         certificate_row: Mapping[str, Any],
+                         basis: Any = "tls-handshake", evidence_ids: Iterable[Any] | None = None,
+                         **facts: Any) -> dict[str, Any]:
+    """``endpoint → PRESENTS → certificate``: the edge the listener's configuration implies.
+
+    A listener that names ``certificate: CERT-001`` and draws no edge is a dangling
+    reference, and a graph full of them is a certificate inventory with a picture on top.
+    """
+    if endpoint_row.get("kind") not in ("NETWORK_ENDPOINT", "LOAD_BALANCER", "API_GATEWAY",
+                                        "WAF", "SERVICE_MESH", "DATABASE"):
+        raise tb.ClaimRefused(
+            "NOT_A_TLS_PRESENTER",
+            f"{endpoint_row.get('kind')} does not present a certificate; a listener, a "
+            "gateway or a terminator does")
+    return part(endpoint_row, certificate_row,
+                claims=[tb.claim(endpoint_row["name"], "PRESENTS", certificate_row["name"],
+                                 basis=basis, evidence_ids=evidence_ids, **facts)])
+
+
+def certificate_depth(bom: Mapping[str, Any], *, query: Any,
+                      max_depth: int = 8) -> dict[str, Any]:
+    """Every certificate an endpoint presents, walked to the weakest link.
+
+    ``endpoint → certificate → public key → algorithm → signature algorithm → issuer →
+    root`` is five questions with five answers, and the answer a review needs is which of
+    them is the weak one. An endpoint that names a certificate the estate does not hold is
+    reported as ``CERTIFICATE_UNRESOLVED`` rather than silently skipped: the reference is
+    real, the object behind it is missing.
+    """
+    keys = _endpoint_keys(bom, query)
+    findings: list[dict[str, Any]] = []
+    certificates: list[dict[str, Any]] = []
+    for key in sorted(keys):
+        row = bom["by_key"][key]
+        named = str((row["attributes"].get("tls") or {}).get("certificate") or "")
+        links = [claim for claim in bom["claims"]
+                 if claim["from_key"] == key and claim["relation"] in CERTIFICATE_LINK]
+        if not links and named:
+            findings.append({"code": "CERTIFICATE_UNRESOLVED", "endpoint": row["name"],
+                             "certificate": named,
+                             "reason": "the listener names a certificate and no edge "
+                                       "reaches it; the reference is real and the object "
+                                       "is missing"})
+            continue
+        for link in links:
+            certificates.append(_certificate_walk(bom, link["to_key"], findings))
+    chain_complete = [row for row in certificates if row["rooted"]]
+    return {
+        "query": str(query),
+        "certificates": certificates,
+        "findings": findings,
+        "counts": {code: sum(1 for row in findings if row["code"] == code)
+                   for code in sorted({row["code"] for row in findings})},
+        "rooted": len(chain_complete),
+        "statement": (f"{len(certificates)} certificate(s) presented on {len(keys)} "
+                      f"endpoint(s); {len(chain_complete)} reach a root, "
+                      f"{len(findings)} finding(s): "
+                      + (", ".join(sorted({row["code"] for row in findings})) or "none")),
+        "not_proven": ["that the certificate is currently served: the chain is what the "
+                       "estate holds and what the handshake presented, and revocation is "
+                       "a separate question",
+                       "that a weak algorithm is exploitable: this names the link and the "
+                       "size, and the risk judgement belongs to the assurance engine"],
+    }
+
+
+def _certificate_walk(bom: Mapping[str, Any], cert_key: str,
+                      findings: list[dict[str, Any]]) -> dict[str, Any]:
+    certificate = bom["by_key"][cert_key]
+    chain: list[dict[str, Any]] = [_link_row(bom, certificate, "delivers")]
+    seen: set[str] = {cert_key}
+    frontier = [cert_key]
+    stage = 0
+    rooted = False
+    while frontier and stage < 8:
+        stage += 1
+        following: list[str] = []
+        for key in frontier:
+            for claim in bom["claims"]:
+                if claim["from_key"] != key:
+                    continue
+                if claim["relation"] not in ("CONTAINS_KEY", "USES_ALGORITHM", "SIGNED_WITH",
+                                             "ISSUED_BY", "SIGNED_BY", "USES_CERTIFICATE"):
+                    continue
+                if claim["to_key"] in seen:
+                    continue
+                seen.add(claim["to_key"])
+                node = bom["by_key"][claim["to_key"]]
+                chain.append(_link_row(bom, node, claim["relation"], claim["confidence"]))
+                if node["kind"] == "CERTIFICATE_AUTHORITY" and \
+                        str((node["attributes"] or {}).get("ca_kind")) in \
+                        PUBLIC_SUFFIX_MARKERS:
+                    rooted = True
+                following.append(claim["to_key"])
+        frontier = following
+
+    for row in chain:
+        attributes = row["attributes"]
+        if row["kind"] == "ALGORITHM":
+            name = str(row["name"]).upper()
+            if any(token in name for token in WEAK_SIGNATURES):
+                findings.append({
+                    "code": "WEAK_SIGNATURE", "certificate": certificate["name"],
+                    "algorithm": row["name"],
+                    "reason": "the certificate is signed with a broken hash"})
+            family = str(attributes.get("family") or "").upper()
+            minimum = MINIMUM_KEY_SIZE.get(family)
+            size = attributes.get("key_size")
+            curve = str(attributes.get("curve") or "").upper()
+            if minimum and isinstance(size, int) and size < minimum:
+                findings.append({
+                    "code": "WEAK_KEY", "certificate": certificate["name"],
+                    "algorithm": row["name"], "key_size": size, "minimum": minimum,
+                    "reason": f"{size} bits is below the {minimum}-bit floor for {family}"})
+            elif curve in WEAK_CURVES:
+                findings.append({
+                    "code": "WEAK_KEY", "certificate": certificate["name"],
+                    "algorithm": row["name"], "curve": row["attributes"].get("curve"),
+                    "reason": "the curve is below the 256-bit floor"})
+    if not rooted:
+        findings.append({
+            "code": "CHAIN_NOT_ROOTED", "certificate": certificate["name"],
+            "reason": "the chain ends at an intermediate; a chain that never reaches a "
+                      "root authority is a parsed file, not a trust path"})
+    return {
+        "certificate": {"name": certificate["name"], "id": certificate.get("id"),
+                        "subject": (certificate["attributes"] or {}).get("subject"),
+                        "serial": (certificate["attributes"] or {}).get("serial")},
+        "links": chain, "rooted": rooted, "depth": len(chain),
+        "weakest": next((row for row in chain if row["kind"] == "ALGORITHM"), None),
+    }
+
+
+def _link_row(bom: Mapping[str, Any], node: Mapping[str, Any], relation: str,
+              confidence: Any = "CONFIGURED") -> dict[str, Any]:
+    return {"relation": relation, "kind": node["kind"], "name": node["name"],
+            "id": node.get("id"), "confidence": str(confidence).upper(),
+            "attributes": dict(node.get("attributes") or {})}
+
+
+def crypto_operation(*, name: Any, application_row: Mapping[str, Any],
+                     operation: Any, key_row: Mapping[str, Any] | None = None,
+                     provider_row: Mapping[str, Any] | None = None,
+                     algorithm_row: Mapping[str, Any] | None = None,
+                     purpose: Any = None, basis: Any = "api-poll",
+                     evidence_ids: Iterable[Any] | None = None,
+                     **metadata: Any) -> dict[str, Any]:
+    """``application → INVOKES → operation → key / provider / algorithm``.
+
+    The review's point 8 is a level, not a verb: *who asked for RSA signing, on which key,
+    and did the HSM do it or the application?* A key reference and an operation are both
+    metadata; no key material is accepted here, at all.
+    """
+    operation_text = str(operation or "").strip().upper()
+    if operation_text not in CRYPTO_OPERATIONS:
+        raise tb.ClaimRefused(
+            "UNKNOWN_CRYPTO_OPERATION",
+            f"{operation or '(none)'} is not a crypto operation this model names; "
+            "'uses crypto' is not an operation")
+    _forbid_key_material(dict(metadata), where=f"crypto operation {name}")
+    if provider_row is not None and provider_row.get("kind") not in ("HSM", "KMS", "TPM"):
+        raise tb.ClaimRefused(
+            "NOT_A_KEY_PROVIDER",
+            f"{provider_row.get('name')} ({provider_row.get('kind')}) is not a key "
+            "provider; doing the operation in the application is a different claim")
+    row = tb.asset("CRYPTO_OPERATION", name, operation=operation_text,
+                   purpose=purpose, key_ref=key_row["name"] if key_row else None,
+                   provider=provider_row["name"] if provider_row else None,
+                   algorithm=algorithm_row["name"] if algorithm_row else None,
+                   runs_in=str((provider_row or {}).get("kind") or "APPLICATION"),
+                   evidence_ids=evidence_ids, **metadata)
+    assets: list[Mapping[str, Any]] = [row, application_row]
+    claims = [tb.claim(application_row["name"], "INVOKES", name, basis=basis,
+                       evidence_ids=evidence_ids, operation=operation_text)]
+    if key_row is not None:
+        assets.append(key_row)
+        claims.append(tb.claim(name, "USES_KEY", key_row["name"], basis=basis,
+                               evidence_ids=evidence_ids, operation=operation_text))
+    if provider_row is not None:
+        assets.append(provider_row)
+        claims.append(tb.claim(name, "USES_HSM", provider_row["name"], basis=basis,
+                               evidence_ids=evidence_ids, operation=operation_text))
+    if algorithm_row is not None:
+        assets.append(algorithm_row)
+        claims.append(tb.claim(name, "USES_ALGORITHM", algorithm_row["name"], basis=basis,
+                               evidence_ids=evidence_ids, operation=operation_text))
+    return part(*assets, claims=claims)
+
+
+def operations(bom: Mapping[str, Any], *, query: Any = None) -> dict[str, Any]:
+    """Every crypto operation, with the key it used and where it ran.
+
+    The two findings that matter are the ones a key inventory exists to catch: an
+    operation whose key is unnamed (so the key inventory is incomplete) and an operation
+    performed in the application when an HSM was available (so the key is in the process).
+    """
+    # the filter is "operations this node invokes", so the query is a node, not a listener
+    wanted = {_resolve_one(bom, query)} if query is not None else set()
+    rows: list[dict[str, Any]] = []
+    findings: list[dict[str, Any]] = []
+    for row in bom.get("assets") or []:
+        if row["kind"] != "CRYPTO_OPERATION":
+            continue
+        incoming = [claim for claim in bom["claims"] if claim["to_key"] == row["key"]]
+        applications = [bom["by_key"][claim["from_key"]]["name"] for claim in incoming
+                        if claim["relation"] == "INVOKES"]
+        if wanted and not any(claim["from_key"] in wanted for claim in incoming):
+            continue
+        outgoing = [claim for claim in bom["claims"] if claim["from_key"] == row["key"]]
+        key = next((bom["by_key"][claim["to_key"]]["name"] for claim in outgoing
+                    if claim["relation"] == "USES_KEY"), None)
+        provider = next((bom["by_key"][claim["to_key"]]["name"] for claim in outgoing
+                         if claim["relation"] == "USES_HSM"), None)
+        algorithm = next((bom["by_key"][claim["to_key"]]["name"] for claim in outgoing
+                          if claim["relation"] == "USES_ALGORITHM"), None)
+        attributes = row["attributes"] or {}
+        rows.append({"name": row["name"], "id": row.get("id"),
+                     "operation": attributes.get("operation"),
+                     "applications": sorted(set(applications)), "key": key,
+                     "provider": provider, "algorithm": algorithm,
+                     "runs_in": attributes.get("runs_in"),
+                     "purpose": attributes.get("purpose")})
+        if key is None:
+            findings.append({"code": "OPERATION_WITHOUT_KEY", "operation": row["name"],
+                             "reason": "the operation names no key, so the key inventory "
+                                       "cannot be complete"})
+        if provider is None:
+            findings.append({"code": "OPERATION_WITHOUT_PROVIDER",
+                             "operation": row["name"], "application": applications[0]
+                             if applications else None,
+                             "reason": "the operation runs in the application; the key it "
+                                       "uses is in the process, not in the HSM"})
+    return {
+        "query": str(query) if query is not None else None,
+        "operations": rows,
+        "findings": findings,
+        "counts": {code: sum(1 for row in findings if row["code"] == code)
+                   for code in sorted({row["code"] for row in findings})},
+        "statement": (f"{len(rows)} crypto operation(s), "
+                      f"{sum(1 for row in rows if row['provider'])} in an HSM/KMS, "
+                      f"{len(findings)} finding(s)"),
+        "not_proven": ["that the key is the one that produced the signature: the "
+                       "operation names a key reference, and the reference is metadata"],
+    }
+
+
+# --------------------------------------------------------------------------- #
+# At rest and in transit: two dependencies, not one
+# --------------------------------------------------------------------------- #
+
+def database_crypto_gap(bom: Mapping[str, Any]) -> dict[str, Any]:
+    """A database encrypted on the socket and in the clear on the disk.
+
+    ``in_transit`` and ``at_rest`` are separate blocks in the estate and separate findings
+    here, because collapsing them is how a report says "encrypted" about a database whose
+    only encryption is the connection.
+    """
+    block = (bom.get("sections") or {}).get("database_crypto") or {}
+    findings: list[dict[str, Any]] = []
+    for name, row in sorted(block.items()):
+        transit = dict(row.get("in_transit") or {})
+        at_rest = dict(row.get("at_rest") or {})
+        if not transit:
+            findings.append({"code": "TLS_NOT_OBSERVED", "database": name,
+                             "reason": "no TLS parameters were recorded on the database "
+                                       "endpoint, so the wire is not evidenced"})
+        if not at_rest:
+            findings.append({"code": "TDE_NOT_RECORDED", "database": name,
+                             "reason": "nothing was read about encryption at rest; a "
+                                       "record is not the same as no encryption, and it "
+                                       "is not the same as encryption either"})
+        elif str(at_rest.get("enabled")).lower() in ("false", "no", "0", "off", "none"):
+            findings.append({"code": "AT_REST_UNENCRYPTED", "database": name,
+                             "in_transit": bool(transit),
+                             "reason": "the database is encrypted in transit and not at "
+                                       "rest — two different dependencies, one of them "
+                                       "missing"})
+        if transit and at_rest and transit.get("suite") == at_rest.get("algorithm"):
+            findings.append({"code": "AT_REST_MIRRORS_TRANSIT", "database": name,
+                             "algorithm": transit.get("suite"),
+                             "reason": "the same algorithm on the wire and on the disk is "
+                                       "one key decision applied twice, not two "
+                                       "independent ones"})
+    return {
+        "databases": block,
+        "findings": findings,
+        "counts": {code: sum(1 for row in findings if row["code"] == code)
+                   for code in sorted({row["code"] for row in findings})},
+        "statement": (f"{len(block)} database(s) with a crypto record; "
+                      f"{len(findings)} finding(s): "
+                      + (", ".join(sorted({row['code'] for row in findings})) or "none")),
+        "rule": "in transit and at rest are two dependencies: a TLS-only database is "
+                "encrypted on the wire and readable on the disk",
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Coverage propagates, and never improves downstream
+# --------------------------------------------------------------------------- #
+
+#: a worse verdict can never be averaged away by a better one
+SEVERITY: dict[str, int] = {"COMPLETE": 0, "PARTIAL": 1, "UNKNOWN": 2}
+
+
+def propagate_coverage(coverage_block: Mapping[str, Any],
+                       segments: Mapping[str, Mapping[str, Any]] | None = None,
+                       consumers: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """The network's coverage, inherited by every view that reads it.
+
+    ``consumers`` is what each downstream view *claims*: ``COMPLETE``, ``PARTIAL`` or
+    ``UNKNOWN``. The result is the worse of the two, always — a CBOM that says
+    ``COMPLETE`` while 50 endpoints were unreachable is refused as
+    ``COVERAGE_LAUNDERED``, because coverage is a denominator and a denominator cannot be
+    improved by being re-told.
+    """
+    network = str(coverage_block.get("verdict") or "UNKNOWN").upper()
+    if network not in SEVERITY:
+        raise tb.ClaimRefused("UNKNOWN_COVERAGE_VERDICT",
+                              f"{network} is not a coverage verdict")
+    scope = {"network": network}
+    if segments:
+        segments = {name: (dict(row) if "verdict" in row else coverage(**row))
+                    for name, row in segments.items()}
+        weakest = max((str(row.get("verdict") or "UNKNOWN").upper()
+                       for row in segments.values()), key=lambda name: SEVERITY[name],
+                      default="COMPLETE")
+        scope["segments"] = {name: str(row.get("verdict") or "UNKNOWN").upper()
+                             for name, row in sorted(segments.items())}
+        scope["weakest_segment"] = [name for name, row in sorted(segments.items())
+                                    if str(row.get("verdict")).upper()
+                                    == weakest][:1]
+        if SEVERITY[weakest] > SEVERITY[network]:
+            network = weakest
+            scope["network"] = network
+    downstream: dict[str, str] = {}
+    findings: list[dict[str, Any]] = []
+    for name, claimed in sorted((consumers or {}).items()):
+        claim_text = str(claimed or "UNKNOWN").upper()
+        if claim_text not in SEVERITY:
+            raise tb.ClaimRefused("UNKNOWN_COVERAGE_VERDICT",
+                                  f"{name} claims {claim_text}, which is not a verdict")
+        if SEVERITY[claim_text] < SEVERITY[network]:
+            findings.append({
+                "code": "COVERAGE_LAUNDERED", "consumer": name, "claimed": claim_text,
+                "inherited": network,
+                "reason": f"{name} reports {claim_text} while the network it reads is "
+                          f"{network}; coverage cannot improve downstream"})
+        downstream[name] = max((claim_text, network), key=lambda value: SEVERITY[value])
+    return {
+        "network": network,
+        "segments": scope.get("segments"),
+        "weakest_segment": scope.get("weakest_segment"),
+        "consumers": downstream,
+        "findings": findings,
+        "statement": (f"network coverage {network} propagates to "
+                      + (", ".join(f"{name} {verdict}"
+                                   for name, verdict in downstream.items()) or "no consumer")
+                      + (f"; {len(findings)} laundered" if findings else "")),
+        "rule": "a downstream view inherits the worse of its own claim and the network's "
+                "coverage; unavailable is not absent, and it does not round up",
     }
 
 

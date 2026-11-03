@@ -1,0 +1,827 @@
+{
+  "schema": "cryptoscan.cbom-nbom-depth-guide/1",
+  "generated_at": "2026-11-03T06:13:08.908860+00:00",
+  "counts": {
+    "PASS": 6,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 51,
+  "statement": "10 network endpoint(s), 63 evidenced edge(s), 3 TLS boundary mode(s) in use, 9 proven route(s); 1 claim(s) refused",
+  "points": [
+    {
+      "point": 1,
+      "question": "network endpoint has a stable identity beyond ip port",
+      "probe": "01-network-endpoint-has-a-stable-identity-beyond-ip-port",
+      "ok": true,
+      "observed": "NET-ENDPOINT ids per kind beside TECH-EP and the content id \u2014 NET-ENDPOINT-007, APPLICATION-001, SYSTEM-001"
+    },
+    {
+      "point": 2,
+      "question": "endpoint reaches a service through a named basis",
+      "probe": "02-endpoint-reaches-a-service-through-a-named-basis",
+      "ok": true,
+      "observed": "payments.bank.example:443 \u2192 payments-api on sni-header \u2014 payments.bank.example:443 ROUTES_TO payments-api on sni-header"
+    },
+    {
+      "point": 3,
+      "question": "the three tls modes are three graphs",
+      "probe": "03-the-three-tls-modes-are-three-graphs",
+      "ok": true,
+      "observed": "TERMINATES_TLS, RE_ENCRYPTS and PASSTHROUGH in one estate \u2014 PASSTHROUGH 1, RE_ENCRYPTS 1, TERMINATES_TLS 1"
+    },
+    {
+      "point": 4,
+      "question": "the certificate chain is five edges to a root",
+      "probe": "04-the-certificate-chain-is-five-edges-to-a-root",
+      "ok": true,
+      "observed": "certificate \u2192 key \u2192 algorithm, signature, issuer \u2192 root \u2014 2 certificate(s) presented on 1 endpoint(s); 2 reach a root, 0 finding(s): none"
+    },
+    {
+      "point": 5,
+      "question": "a cipher suite is decomposed not an opaque asset",
+      "probe": "05-a-cipher-suite-is-decomposed-not-an-opaque-asset",
+      "ok": true,
+      "observed": "kex, auth, bulk and mac as four crypto assets \u2014 suite roles ['auth', 'bulk', 'kex', 'mac']"
+    },
+    {
+      "point": 6,
+      "question": "supported configured negotiated and observed stay apart",
+      "probe": "06-supported-configured-negotiated-and-observed-stay-apart",
+      "ok": true,
+      "observed": "SUPPORTS, tls_policy, NEGOTIATES and the evidence class \u2014 policy TLS1.3-TLS1.3, 2 supported, 1 negotiated"
+    },
+    {
+      "point": 7,
+      "question": "the process and its runtime crypto are reachable",
+      "probe": "07-the-process-and-its-runtime-crypto-are-reachable",
+      "ok": true,
+      "observed": "application \u2192 RUNS_APPLICATION \u2192 process \u2192 USES_CRYPTO \u2014 5 on the wire, 1 in the process, 0 in both"
+    },
+    {
+      "point": 8,
+      "question": "an application invokes an operation a provider performs",
+      "probe": "08-an-application-invokes-an-operation-a-provider-performs",
+      "ok": true,
+      "observed": "application \u2192 INVOKES \u2192 operation \u2192 key, HSM, algorithm \u2014 2 crypto operation(s), 1 in an HSM/KMS, 2 finding(s)"
+    },
+    {
+      "point": 9,
+      "question": "a database is encrypted in transit and at rest separately",
+      "probe": "09-a-database-is-encrypted-in-transit-and-at-rest-separately",
+      "ok": true,
+      "observed": "two blocks, two findings, one database \u2014 1 database(s) with a crypto record; 1 finding(s): AT_REST_UNENCRYPTED"
+    },
+    {
+      "point": 10,
+      "question": "the sidecar does the tls not the application",
+      "probe": "10-the-sidecar-does-the-tls-not-the-application",
+      "ok": true,
+      "observed": "PROXY_FOR from the sidecar, AUTHENTICATES from the mesh \u2014 envoy-sidecar PROXY_FOR Payments API; MESH-01 AUTHENTICATES it"
+    },
+    {
+      "point": 11,
+      "question": "the gateway routes to the application with evidence",
+      "probe": "11-the-gateway-routes-to-the-application-with-evidence",
+      "ok": true,
+      "observed": "ROUTES_TO carrying a basis, a port and an evidence id \u2014 payments-api:8443 ROUTES_TO Payments API on api-gateway-config"
+    },
+    {
+      "point": 12,
+      "question": "the waf protects and terminates separately",
+      "probe": "12-the-waf-protects-and-terminates-separately",
+      "ok": true,
+      "observed": "PROTECTS the application, TERMINATES_TLS to the next hop \u2014 WAF-01 PROTECTS Payments API; waf-01:443 TERMINATES_TLS waf-01:8081"
+    },
+    {
+      "point": 13,
+      "question": "ssh is kex host key cipher and mac",
+      "probe": "13-ssh-is-kex-host-key-cipher-and-mac",
+      "ok": true,
+      "observed": "four NEGOTIATES edges with a role each \u2014 ssh roles ['cipher', 'host-key', 'kex', 'mac']"
+    },
+    {
+      "point": 14,
+      "question": "the tunnel carries encryption integrity and a dh group",
+      "probe": "14-the-tunnel-carries-encryption-integrity-and-a-dh-group",
+      "ok": true,
+      "observed": "IKEv2, AES-256, SHA-256, DH-19, and the zone it joins \u2014 branch-to-payments: IKEv2, UP"
+    },
+    {
+      "point": 15,
+      "question": "the projection is a graph not a list",
+      "probe": "15-the-projection-is-a-graph-not-a-list",
+      "ok": true,
+      "observed": "vertices, edges and adjacency from one build \u2014 59 vertex/vertices, 63 edge(s)"
+    },
+    {
+      "point": 16,
+      "question": "every edge carries its nine fields and its collector",
+      "probe": "16-every-edge-carries-its-nine-fields-and-its-collector",
+      "ok": true,
+      "observed": "EDGE_FIELDS on every claim, collector where one is known \u2014 63 edge(s) with 9 field(s); 8 name a collector"
+    },
+    {
+      "point": 17,
+      "question": "a relationship has a lifecycle",
+      "probe": "17-a-relationship-has-a-lifecycle",
+      "ok": true,
+      "observed": "FIRST_SEEN, ACTIVE, CHANGED, SUPERSEDED, REMOVED, UNKNOWN \u2014 63 edge(s) with a state: ACTIVE 8, UNKNOWN 55"
+    },
+    {
+      "point": 18,
+      "question": "the digital twin reads the same graph",
+      "probe": "18-the-digital-twin-reads-the-same-graph",
+      "ok": true,
+      "observed": "who connects to whom, with which TLS and certificate \u2014 63 edge(s) into the twin \u2014 one graph, read as the network projection rather than stored as a second database"
+    },
+    {
+      "point": 19,
+      "question": "the device has a vendor product and a firmware",
+      "probe": "19-the-device-has-a-vendor-product-and-a-firmware",
+      "ok": true,
+      "observed": "LB-01 \u2192 HAS_MODEL \u2192 product \u2192 SUPPLIED_BY \u2192 vendor \u2014 LB-01 HAS_MODEL F5 BIG-IP i5800, SUPPLIED_BY F5, RUNS_FIRMWARE 17.1.1"
+    },
+    {
+      "point": 20,
+      "question": "the device runs on hardware",
+      "probe": "20-the-device-runs-on-hardware",
+      "ok": true,
+      "observed": "LB-01 \u2192 RUNS_ON \u2192 Hardware-9281 \u2014 LB-01 RUNS_ON Hardware-9281 (Mumbai-DC2, R12)"
+    },
+    {
+      "point": 21,
+      "question": "coverage propagates and never improves downstream",
+      "probe": "21-coverage-propagates-and-never-improves-downstream",
+      "ok": true,
+      "observed": "PARTIAL inherited by every consumer, and laundering refused \u2014 network coverage PARTIAL propagates to cbom PARTIAL; 1 laundered"
+    },
+    {
+      "point": 22,
+      "question": "the whole chain exists end to end",
+      "probe": "22-the-whole-chain-exists-end-to-end",
+      "ok": true,
+      "observed": "system \u2192 application \u2192 process \u2192 service \u2192 endpoint \u2192 waf \u2192 lb \u2192 gateway \u2192 mesh \u2192 database \u2192 hsm \u2192 crypto \u2192 vendor \u2014 1 service \u2192 2 process \u2192 1 application \u2192 1 system \u2192 3 device \u2192 1 database \u2192 2 keys \u2192 7 crypto \u2192 3 vendor"
+    }
+  ],
+  "certificate_depth": {
+    "query": "waf-01:443",
+    "certificates": [
+      {
+        "certificate": {
+          "name": "CERT-001",
+          "id": "TECH-CERT-001",
+          "subject": "CN=payments.bank.example",
+          "serial": "4f:9a:21"
+        },
+        "links": [
+          {
+            "relation": "delivers",
+            "kind": "CERTIFICATE",
+            "name": "CERT-001",
+            "id": "TECH-CERT-001",
+            "confidence": "CONFIGURED",
+            "attributes": {
+              "subject": "CN=payments.bank.example",
+              "issuer": "Bank Issuing CA",
+              "serial": "4f:9a:21",
+              "not_after": "2027-04-01T00:00:00Z",
+              "signature_algorithm": "ECDSA-SHA256"
+            }
+          },
+          {
+            "relation": "SIGNED_WITH",
+            "kind": "ALGORITHM",
+            "name": "ECDSA-SHA256",
+            "id": "TECH-ALG-003",
+            "confidence": "NETWORK_OBSERVED",
+            "attributes": {
+              "family": "ECDSA",
+              "hash": "SHA256",
+              "quantum_sensitive": true
+            }
+          },
+          {
+            "relation": "CONTAINS_KEY",
+            "kind": "PUBLIC_KEY",
+            "name": "PK-CERT-001",
+            "id": "TECH-KEY-001",
+            "confidence": "NETWORK_OBSERVED",
+            "attributes": {
+              "curve": "P-256",
+              "algorithm": "ECDSA P-256"
+            }
+          },
+          {
+            "relation": "ISSUED_BY",
+            "kind": "CERTIFICATE_AUTHORITY",
+            "name": "Bank Issuing CA",
+            "id": "TECH-CA-001",
+            "confidence": "NETWORK_OBSERVED",
+            "attributes": {
+              "ca_kind": "INTERMEDIATE"
+            }
+          },
+          {
+            "relation": "USES_ALGORITHM",
+            "kind": "ALGORITHM",
+            "name": "ECDSA P-256",
+            "id": "TECH-ALG-002",
+            "confidence": "NETWORK_OBSERVED",
+            "attributes": {
+              "family": "ECDSA",
+              "key_size": 256,
+              "curve": "P-256",
+              "quantum_sensitive": true
+            }
+          },
+          {
+            "relation": "SIGNED_BY",
+            "kind": "CERTIFICATE_AUTHORITY",
+            "name": "Bank Root CA",
+            "id": "TECH-CA-002",
+            "confidence": "NETWORK_OBSERVED",
+            "attributes": {
+              "ca_kind": "ROOT"
+            }
+          }
+        ],
+        "rooted": true,
+        "depth": 6,
+        "weakest": {
+          "relation": "SIGNED_WITH",
+          "kind": "ALGORITHM",
+          "name": "ECDSA-SHA256",
+          "id": "TECH-ALG-003",
+          "confidence": "NETWORK_OBSERVED",
+          "attributes": {
+            "family": "ECDSA",
+            "hash": "SHA256",
+            "quantum_sensitive": true
+          }
+        }
+      },
+      {
+        "certificate": {
+          "name": "CERT-001",
+          "id": "TECH-CERT-001",
+          "subject": "CN=payments.bank.example",
+          "serial": "4f:9a:21"
+        },
+        "links": [
+          {
+            "relation": "delivers",
+            "kind": "CERTIFICATE",
+            "name": "CERT-001",
+            "id": "TECH-CERT-001",
+            "confidence": "CONFIGURED",
+            "attributes": {
+              "subject": "CN=payments.bank.example",
+              "issuer": "Bank Issuing CA",
+              "serial": "4f:9a:21",
+              "not_after": "2027-04-01T00:00:00Z",
+              "signature_algorithm": "ECDSA-SHA256"
+            }
+          },
+          {
+            "relation": "SIGNED_WITH",
+            "kind": "ALGORITHM",
+            "name": "ECDSA-SHA256",
+            "id": "TECH-ALG-003",
+            "confidence": "NETWORK_OBSERVED",
+            "attributes": {
+              "family": "ECDSA",
+              "hash": "SHA256",
+              "quantum_sensitive": true
+            }
+          },
+          {
+            "relation": "CONTAINS_KEY",
+            "kind": "PUBLIC_KEY",
+            "name": "PK-CERT-001",
+            "id": "TECH-KEY-001",
+            "confidence": "NETWORK_OBSERVED",
+            "attributes": {
+              "curve": "P-256",
+              "algorithm": "ECDSA P-256"
+            }
+          },
+          {
+            "relation": "ISSUED_BY",
+            "kind": "CERTIFICATE_AUTHORITY",
+            "name": "Bank Issuing CA",
+            "id": "TECH-CA-001",
+            "confidence": "NETWORK_OBSERVED",
+            "attributes": {
+              "ca_kind": "INTERMEDIATE"
+            }
+          },
+          {
+            "relation": "USES_ALGORITHM",
+            "kind": "ALGORITHM",
+            "name": "ECDSA P-256",
+            "id": "TECH-ALG-002",
+            "confidence": "NETWORK_OBSERVED",
+            "attributes": {
+              "family": "ECDSA",
+              "key_size": 256,
+              "curve": "P-256",
+              "quantum_sensitive": true
+            }
+          },
+          {
+            "relation": "SIGNED_BY",
+            "kind": "CERTIFICATE_AUTHORITY",
+            "name": "Bank Root CA",
+            "id": "TECH-CA-002",
+            "confidence": "NETWORK_OBSERVED",
+            "attributes": {
+              "ca_kind": "ROOT"
+            }
+          }
+        ],
+        "rooted": true,
+        "depth": 6,
+        "weakest": {
+          "relation": "SIGNED_WITH",
+          "kind": "ALGORITHM",
+          "name": "ECDSA-SHA256",
+          "id": "TECH-ALG-003",
+          "confidence": "NETWORK_OBSERVED",
+          "attributes": {
+            "family": "ECDSA",
+            "hash": "SHA256",
+            "quantum_sensitive": true
+          }
+        }
+      }
+    ],
+    "findings": [],
+    "counts": {},
+    "rooted": 2,
+    "statement": "2 certificate(s) presented on 1 endpoint(s); 2 reach a root, 0 finding(s): none",
+    "not_proven": [
+      "that the certificate is currently served: the chain is what the estate holds and what the handshake presented, and revocation is a separate question",
+      "that a weak algorithm is exploitable: this names the link and the size, and the risk judgement belongs to the assurance engine"
+    ]
+  },
+  "operations": {
+    "query": "Payments API",
+    "operations": [
+      {
+        "name": "OP-ENCRYPT-002",
+        "id": "TECH-OP-001",
+        "operation": "ENCRYPT",
+        "applications": [
+          "Payments API"
+        ],
+        "key": null,
+        "provider": null,
+        "algorithm": "ChaCha20-Poly1305",
+        "runs_in": "APPLICATION",
+        "purpose": null
+      },
+      {
+        "name": "OP-SIGN-001",
+        "id": "TECH-OP-002",
+        "operation": "SIGN",
+        "applications": [
+          "Payments API"
+        ],
+        "key": "KEY-REF-8271",
+        "provider": "HSM-001",
+        "algorithm": "RSA-2048",
+        "runs_in": "HSM",
+        "purpose": "payment instruction signature"
+      }
+    ],
+    "findings": [
+      {
+        "code": "OPERATION_WITHOUT_KEY",
+        "operation": "OP-ENCRYPT-002",
+        "reason": "the operation names no key, so the key inventory cannot be complete"
+      },
+      {
+        "code": "OPERATION_WITHOUT_PROVIDER",
+        "operation": "OP-ENCRYPT-002",
+        "application": "Payments API",
+        "reason": "the operation runs in the application; the key it uses is in the process, not in the HSM"
+      }
+    ],
+    "counts": {
+      "OPERATION_WITHOUT_KEY": 1,
+      "OPERATION_WITHOUT_PROVIDER": 1
+    },
+    "statement": "2 crypto operation(s), 1 in an HSM/KMS, 2 finding(s)",
+    "not_proven": [
+      "that the key is the one that produced the signature: the operation names a key reference, and the reference is metadata"
+    ]
+  },
+  "database_crypto": {
+    "databases": {
+      "DB-01": {
+        "in_transit": {
+          "version": "TLS1.3",
+          "suite": "TLS_AES_256_GCM_SHA384"
+        },
+        "at_rest": {
+          "enabled": false,
+          "algorithm": null
+        },
+        "distinct": true
+      }
+    },
+    "findings": [
+      {
+        "code": "AT_REST_UNENCRYPTED",
+        "database": "DB-01",
+        "in_transit": true,
+        "reason": "the database is encrypted in transit and not at rest \u2014 two different dependencies, one of them missing"
+      }
+    ],
+    "counts": {
+      "AT_REST_UNENCRYPTED": 1
+    },
+    "statement": "1 database(s) with a crypto record; 1 finding(s): AT_REST_UNENCRYPTED",
+    "rule": "in transit and at rest are two dependencies: a TLS-only database is encrypted on the wire and readable on the disk"
+  },
+  "propagation": {
+    "network": "PARTIAL",
+    "segments": {
+      "BRANCH": "COMPLETE",
+      "CARDHOLDER": "PARTIAL",
+      "EDGE": "COMPLETE"
+    },
+    "weakest_segment": [
+      "CARDHOLDER"
+    ],
+    "consumers": {
+      "cbom_network_evidence": "PARTIAL",
+      "digital_twin_network": "PARTIAL"
+    },
+    "findings": [
+      {
+        "code": "COVERAGE_LAUNDERED",
+        "consumer": "digital_twin_network",
+        "claimed": "COMPLETE",
+        "inherited": "PARTIAL",
+        "reason": "digital_twin_network reports COMPLETE while the network it reads is PARTIAL; coverage cannot improve downstream"
+      }
+    ],
+    "statement": "network coverage PARTIAL propagates to cbom_network_evidence PARTIAL, digital_twin_network PARTIAL; 1 laundered",
+    "rule": "a downstream view inherits the worse of its own claim and the network's coverage; unavailable is not absent, and it does not round up"
+  },
+  "sections": {
+    "kind": 1,
+    "name": 1,
+    "key": 1,
+    "environment": 1,
+    "version": 1,
+    "owner": 1,
+    "location": 1,
+    "status": 1,
+    "first_seen": 1,
+    "last_seen": 1,
+    "source": 1,
+    "evidence_ids": 1,
+    "attributes": 33,
+    "sections": 0,
+    "evidence_id": 1,
+    "collector": 1,
+    "collector_version": 1,
+    "target_id": 1,
+    "observed_at": 1,
+    "evidence_type": 1,
+    "raw_reference": 1,
+    "normalized_fact": 1,
+    "hash": 1,
+    "confidence": 1,
+    "database_crypto": 1
+  },
+  "refusals": [
+    {
+      "code": "DUPLICATE_ASSET",
+      "subject": "VENDOR:f5:production",
+      "reason": "F5 is described twice for PRODUCTION; the first description is kept and the second is refused rather than merged"
+    }
+  ],
+  "rows": [
+    {
+      "id": "audit",
+      "question": "is each of the twenty-two points present in the built projection",
+      "phase": "1\u201322",
+      "probes": [
+        {
+          "probe": "01-network-endpoint-has-a-stable-identity-beyond-ip-port",
+          "ok": true,
+          "observed": "NET-ENDPOINT ids per kind beside TECH-EP and the content id \u2014 NET-ENDPOINT-007, APPLICATION-001, SYSTEM-001"
+        },
+        {
+          "probe": "02-endpoint-reaches-a-service-through-a-named-basis",
+          "ok": true,
+          "observed": "payments.bank.example:443 \u2192 payments-api on sni-header \u2014 payments.bank.example:443 ROUTES_TO payments-api on sni-header"
+        },
+        {
+          "probe": "03-the-three-tls-modes-are-three-graphs",
+          "ok": true,
+          "observed": "TERMINATES_TLS, RE_ENCRYPTS and PASSTHROUGH in one estate \u2014 PASSTHROUGH 1, RE_ENCRYPTS 1, TERMINATES_TLS 1"
+        },
+        {
+          "probe": "04-the-certificate-chain-is-five-edges-to-a-root",
+          "ok": true,
+          "observed": "certificate \u2192 key \u2192 algorithm, signature, issuer \u2192 root \u2014 2 certificate(s) presented on 1 endpoint(s); 2 reach a root, 0 finding(s): none"
+        },
+        {
+          "probe": "05-a-cipher-suite-is-decomposed-not-an-opaque-asset",
+          "ok": true,
+          "observed": "kex, auth, bulk and mac as four crypto assets \u2014 suite roles ['auth', 'bulk', 'kex', 'mac']"
+        },
+        {
+          "probe": "06-supported-configured-negotiated-and-observed-stay-apart",
+          "ok": true,
+          "observed": "SUPPORTS, tls_policy, NEGOTIATES and the evidence class \u2014 policy TLS1.3-TLS1.3, 2 supported, 1 negotiated"
+        },
+        {
+          "probe": "07-the-process-and-its-runtime-crypto-are-reachable",
+          "ok": true,
+          "observed": "application \u2192 RUNS_APPLICATION \u2192 process \u2192 USES_CRYPTO \u2014 5 on the wire, 1 in the process, 0 in both"
+        },
+        {
+          "probe": "08-an-application-invokes-an-operation-a-provider-performs",
+          "ok": true,
+          "observed": "application \u2192 INVOKES \u2192 operation \u2192 key, HSM, algorithm \u2014 2 crypto operation(s), 1 in an HSM/KMS, 2 finding(s)"
+        },
+        {
+          "probe": "09-a-database-is-encrypted-in-transit-and-at-rest-separately",
+          "ok": true,
+          "observed": "two blocks, two findings, one database \u2014 1 database(s) with a crypto record; 1 finding(s): AT_REST_UNENCRYPTED"
+        },
+        {
+          "probe": "10-the-sidecar-does-the-tls-not-the-application",
+          "ok": true,
+          "observed": "PROXY_FOR from the sidecar, AUTHENTICATES from the mesh \u2014 envoy-sidecar PROXY_FOR Payments API; MESH-01 AUTHENTICATES it"
+        },
+        {
+          "probe": "11-the-gateway-routes-to-the-application-with-evidence",
+          "ok": true,
+          "observed": "ROUTES_TO carrying a basis, a port and an evidence id \u2014 payments-api:8443 ROUTES_TO Payments API on api-gateway-config"
+        },
+        {
+          "probe": "12-the-waf-protects-and-terminates-separately",
+          "ok": true,
+          "observed": "PROTECTS the application, TERMINATES_TLS to the next hop \u2014 WAF-01 PROTECTS Payments API; waf-01:443 TERMINATES_TLS waf-01:8081"
+        },
+        {
+          "probe": "13-ssh-is-kex-host-key-cipher-and-mac",
+          "ok": true,
+          "observed": "four NEGOTIATES edges with a role each \u2014 ssh roles ['cipher', 'host-key', 'kex', 'mac']"
+        },
+        {
+          "probe": "14-the-tunnel-carries-encryption-integrity-and-a-dh-group",
+          "ok": true,
+          "observed": "IKEv2, AES-256, SHA-256, DH-19, and the zone it joins \u2014 branch-to-payments: IKEv2, UP"
+        },
+        {
+          "probe": "15-the-projection-is-a-graph-not-a-list",
+          "ok": true,
+          "observed": "vertices, edges and adjacency from one build \u2014 59 vertex/vertices, 63 edge(s)"
+        },
+        {
+          "probe": "16-every-edge-carries-its-nine-fields-and-its-collector",
+          "ok": true,
+          "observed": "EDGE_FIELDS on every claim, collector where one is known \u2014 63 edge(s) with 9 field(s); 8 name a collector"
+        },
+        {
+          "probe": "17-a-relationship-has-a-lifecycle",
+          "ok": true,
+          "observed": "FIRST_SEEN, ACTIVE, CHANGED, SUPERSEDED, REMOVED, UNKNOWN \u2014 63 edge(s) with a state: ACTIVE 8, UNKNOWN 55"
+        },
+        {
+          "probe": "18-the-digital-twin-reads-the-same-graph",
+          "ok": true,
+          "observed": "who connects to whom, with which TLS and certificate \u2014 63 edge(s) into the twin \u2014 one graph, read as the network projection rather than stored as a second database"
+        },
+        {
+          "probe": "19-the-device-has-a-vendor-product-and-a-firmware",
+          "ok": true,
+          "observed": "LB-01 \u2192 HAS_MODEL \u2192 product \u2192 SUPPLIED_BY \u2192 vendor \u2014 LB-01 HAS_MODEL F5 BIG-IP i5800, SUPPLIED_BY F5, RUNS_FIRMWARE 17.1.1"
+        },
+        {
+          "probe": "20-the-device-runs-on-hardware",
+          "ok": true,
+          "observed": "LB-01 \u2192 RUNS_ON \u2192 Hardware-9281 \u2014 LB-01 RUNS_ON Hardware-9281 (Mumbai-DC2, R12)"
+        },
+        {
+          "probe": "21-coverage-propagates-and-never-improves-downstream",
+          "ok": true,
+          "observed": "PARTIAL inherited by every consumer, and laundering refused \u2014 network coverage PARTIAL propagates to cbom PARTIAL; 1 laundered"
+        },
+        {
+          "probe": "22-the-whole-chain-exists-end-to-end",
+          "ok": true,
+          "observed": "system \u2192 application \u2192 process \u2192 service \u2192 endpoint \u2192 waf \u2192 lb \u2192 gateway \u2192 mesh \u2192 database \u2192 hsm \u2192 crypto \u2192 vendor \u2014 1 service \u2192 2 process \u2192 1 application \u2192 1 system \u2192 3 device \u2192 1 database \u2192 2 keys \u2192 7 crypto \u2192 3 vendor"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "sections",
+      "question": "does a fact a builder returns reach the projection",
+      "phase": "9, 21",
+      "probes": [
+        {
+          "probe": "a-builder-s-block-survives-estate",
+          "ok": true,
+          "observed": "sections: ['database_crypto']"
+        },
+        {
+          "probe": "the-projection-carries-the-section-it-was-given",
+          "ok": true,
+          "observed": "1 database(s) in the built NBOM"
+        },
+        {
+          "probe": "two-parts-of-the-same-section-merge-instead-of-replacing",
+          "ok": true,
+          "observed": "merged: ['DB-02', 'DB-03']"
+        },
+        {
+          "probe": "a-bom-that-dropped-its-sections-would-lose-point-9",
+          "ok": true,
+          "observed": "1 database(s) with a crypto record; 1 finding(s): AT_REST_UNENCRYPTED"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "certificate-depth",
+      "question": "is point 4 a chain or a picture of one",
+      "phase": "4",
+      "probes": [
+        {
+          "probe": "a-named-certificate-on-a-listener-is-an-edge",
+          "ok": true,
+          "observed": "waf-01:443 PRESENTS CERT-001 on tls-handshake"
+        },
+        {
+          "probe": "the-depth-is-reached-from-the-endpoint-not-stored-beside-it",
+          "ok": true,
+          "observed": "CERTIFICATE \u2192 ALGORITHM \u2192 PUBLIC_KEY \u2192 CERTIFICATE_AUTHORITY \u2192 ALGORITHM \u2192 CERTIFICATE_AUTHORITY"
+        },
+        {
+          "probe": "the-chain-says-whether-it-reaches-a-root",
+          "ok": true,
+          "observed": "rooted: 2 of 2"
+        },
+        {
+          "probe": "a-weak-key-and-a-broken-hash-are-named-by-size",
+          "ok": true,
+          "observed": "RSA-1024 + SHA1 + an intermediate as the last link"
+        },
+        {
+          "probe": "a-certificate-the-estate-does-not-hold-is-a-finding-not-a-skip",
+          "ok": true,
+          "observed": "tls.certificate = CERT-999 with no node \u2192 CERTIFICATE_UNRESOLVED"
+        },
+        {
+          "probe": "every-link-carries-its-own-evidence-class",
+          "ok": true,
+          "observed": "6 link(s), each with a class"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "operations",
+      "question": "is point 8 a level in the graph or a verb in a report",
+      "phase": "8",
+      "probes": [
+        {
+          "probe": "an-operation-is-a-node-with-an-id-of-its-own",
+          "ok": true,
+          "observed": "TECH-OP-001 \u2026 beside TECH-HSM-001 and TECH-KREF-001"
+        },
+        {
+          "probe": "an-application-invokes-it-rather-than-using-crypto",
+          "ok": true,
+          "observed": "Payments API INVOKES OP-SIGN-001"
+        },
+        {
+          "probe": "the-operation-names-its-key-its-provider-and-its-algorithm",
+          "ok": true,
+          "observed": "SIGN on RSA-2048 with KEY-REF-8271 in HSM-001"
+        },
+        {
+          "probe": "an-operation-with-no-key-is-a-finding",
+          "ok": true,
+          "observed": "OPERATION_WITHOUT_KEY on 1 operation(s)"
+        },
+        {
+          "probe": "an-operation-done-in-the-application-is-a-different-claim",
+          "ok": true,
+          "observed": "OP-ENCRYPT-002 runs in the application, not the HSM"
+        },
+        {
+          "probe": "no-key-material-is-accepted-only-metadata",
+          "ok": true,
+          "observed": "private_key \u2192 KEY_MATERIAL_REFUSED"
+        },
+        {
+          "probe": "uses-crypto-is-not-an-operation",
+          "ok": true,
+          "observed": "USE_CRYPTO \u2192 UNKNOWN_CRYPTO_OPERATION"
+        },
+        {
+          "probe": "an-application-is-not-a-key-provider",
+          "ok": true,
+          "observed": "provider = an application \u2192 NOT_A_KEY_PROVIDER"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "at-rest",
+      "question": "is point 9 two dependencies or one",
+      "phase": "9",
+      "probes": [
+        {
+          "probe": "in-transit-and-at-rest-are-two-blocks-on-one-database",
+          "ok": true,
+          "observed": "DB-01: in_transit TLS1.3, at_rest disabled, distinct"
+        },
+        {
+          "probe": "a-database-encrypted-on-the-wire-and-not-on-disk-says-so",
+          "ok": true,
+          "observed": "AT_REST_UNENCRYPTED with in_transit True"
+        },
+        {
+          "probe": "nothing-read-about-at-rest-is-not-the-same-as-no-encryption",
+          "ok": true,
+          "observed": "no tde block \u2192 TDE_NOT_RECORDED, not AT_REST_UNENCRYPTED"
+        },
+        {
+          "probe": "a-database-with-no-tls-on-its-listener-is-its-own-finding",
+          "ok": true,
+          "observed": "no tls parameters \u2192 TLS_NOT_OBSERVED"
+        },
+        {
+          "probe": "the-same-algorithm-on-both-sides-is-one-decision-applied-twice",
+          "ok": true,
+          "observed": "TLS suite = TDE algorithm \u2192 AT_REST_MIRRORS_TRANSIT"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    },
+    {
+      "id": "coverage-propagation",
+      "question": "does point 21 propagate or merely echo",
+      "phase": "21",
+      "probes": [
+        {
+          "probe": "the-coverage-verdict-travels-with-its-denominator",
+          "ok": true,
+          "observed": "expected 500 endpoint(s): observed 420, unavailable 50, unknown 30, permission denied 0 \u2014 coverage PARTIAL"
+        },
+        {
+          "probe": "a-downstream-view-inherits-the-worse-of-its-claim-and-the-network",
+          "ok": true,
+          "observed": "network coverage PARTIAL propagates to cbom PARTIAL, twin PARTIAL"
+        },
+        {
+          "probe": "a-cbom-cannot-claim-complete-over-a-partial-network",
+          "ok": true,
+          "observed": "2 COVERAGE_LAUNDERED"
+        },
+        {
+          "probe": "a-consumer-that-knows-less-keeps-its-own-answer",
+          "ok": true,
+          "observed": "UNKNOWN is worse than PARTIAL and is not improved by it"
+        },
+        {
+          "probe": "the-weakest-segment-decides-the-network-it-does-not-average-away",
+          "ok": true,
+          "observed": "3 segment(s), overall PARTIAL: BRANCH COMPLETE, CARDHOLDER PARTIAL, EDGE COMPLETE"
+        },
+        {
+          "probe": "a-verdict-that-is-not-a-verdict-is-refused",
+          "ok": true,
+          "observed": "MOSTLY \u2192 UNKNOWN_COVERAGE_VERDICT"
+        }
+      ],
+      "verdict": "PASS",
+      "failed": []
+    }
+  ],
+  "limits": [
+    "the fixture is the bank's own path: every shape is real, the rows are not",
+    "a certificate chain is what the estate holds and the handshake presented; revocation and expiry state are separate questions this does not answer",
+    "a weak key is named by size against a floor, not scored: the risk judgement belongs to the assurance engine, and nothing here calls a finding an exploit",
+    "a crypto operation names a key reference and a provider; it never proves the key that produced a signature, and it never holds key material",
+    "coverage propagation is arithmetic on verdicts, not a second measurement: it cannot see an endpoint the network never saw",
+    "point 21's downstream consumers are named by the caller; nothing here knows which reports actually read this projection"
+  ]
+}

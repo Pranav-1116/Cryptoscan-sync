@@ -584,6 +584,30 @@
 > certificates** are nodes too (`HOLDS_CERTIFICATE`), bounded so a key reference cannot be
 > passed off as one.
 
+> [The review, point by point](172-nbom-depth.md)
+> (**6 pass · 0 partial · 0 fail**, 51 probes) reads the twenty-two points off the *built*
+> projection rather than the source — **22 of 22 present** — and builds the five
+> dependencies underneath them, one of which was a defect that had been losing an answer
+> since guide 169. **A block a builder returned never reached the BOM**: `estate()` kept
+> only `assets` and `claims`, so `database_dependency()`'s at-rest record was dropped and
+> TDE had never once been in a projection. Sections survive now, and
+> `database_crypto_gap()` reads them: `AT_REST_UNENCRYPTED`, `TDE_NOT_RECORDED`,
+> `TLS_NOT_OBSERVED`, `AT_REST_MIRRORS_TRANSIT` — in transit and at rest are two
+> dependencies, and a TLS-only database is encrypted on the wire and readable on the disk.
+> **A certificate named on a listener drew no edge**: `tls: {certificate: CERT-001}` was a
+> fact with no claim, so the graph could hold both nodes and no dependency.
+> `presents_certificate()` draws it and `certificate_depth()` walks endpoint → certificate
+> → public key → algorithm → signature → issuer → root, naming `WEAK_KEY` by size against a
+> floor, `WEAK_SIGNATURE`, `CHAIN_NOT_ROOTED`, and `CERTIFICATE_UNRESOLVED` when the estate
+> is asked for a certificate it does not hold. **Point 8 had no operation level**:
+> `CRYPTO_OPERATION` is a kind now — application → `INVOKES` → operation → key reference,
+> provider, algorithm — with `SIGN`/`WRAP`/`DERIVE` as the vocabulary,
+> `OPERATION_WITHOUT_KEY` and `OPERATION_WITHOUT_PROVIDER` as the findings, and no key
+> material accepted anywhere. **Point 21 propagated by assertion**: `coverage()` echoed its
+> own verdict into a dict. `propagate_coverage()` computes it, takes the worse of the two
+> at every consumer, measures a segment from its counts, and reports
+> `COVERAGE_LAUNDERED` when a CBOM claims `COMPLETE` over a `PARTIAL` network.
+
 > [The controls in front of the estate](171-controls.md)
 > (**9 pass · 0 partial · 0 fail**, 53 probes) answers the six questions a bank asks about
 > its own controls — *IDS, IPS, firewall, rate limit, request sending* — and refuses the

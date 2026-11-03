@@ -311,3 +311,12 @@ its own, the runtime/network comparison as an operation, evidence records on net
 edges, exposure, the vendor's capability, history, and coverage per segment. Each is now
 built, and guide 170 (`docs/bank-environment/170-nbom-gaps.md`,
 **11 pass · 0 partial · 0 fail**) measures it.
+
+Read back a third time, against the text as written and against the *built* projection,
+five dependencies under these points were still missing and one was a defect. Guide 172
+(`docs/bank-environment/172-nbom-depth.md`, **6 pass · 0 partial · 0 fail**, 51 probes)
+audits all twenty-two points off the build — 22 of 22 present — and answers the five:
+sections that a builder returned were being dropped before the BOM (point 9's at-rest
+record, since guide 169), a certificate named on a listener drew no edge (point 4), there
+was no crypto operation level at all (point 8), and coverage propagated by assertion rather
+than arithmetic (point 21).
