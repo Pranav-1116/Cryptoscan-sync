@@ -178,6 +178,10 @@ ASSET_TYPES: tuple[str, ...] = (
     # runtime deployment identity
     "SOURCE", "BUILD", "ARTIFACT", "SBOM", "DEPLOYMENT", "POD", "PROCESS",
     "RELEASE", "NAMESPACE", "CLUSTER",
+    # the supply chain above the build (guide 175): a repository is where the code lives, a
+    # commit is the revision, a replica set is the controller between deployment and pod,
+    # and a layer is what an image's packages actually arrive in
+    "REPOSITORY", "COMMIT", "REPLICA_SET", "IMAGE_LAYER",
     # the provider is not the algorithm: OpenSSL, BoringSSL, JCE, CNG, PKCS#11 (cbom 5)
     "CRYPTO_PROVIDER",
     "DATABASE",
@@ -196,6 +200,7 @@ PREFIX: dict[str, str] = {
     "PHYSICAL_SERVER": "SRV", "TPM": "TPM", "VENDOR": "VENDOR",
     "VENDOR_PRODUCT": "PROD", "SOURCE": "SRC", "BUILD": "BUILD", "ARTIFACT": "ART",
     "SBOM": "SBOM", "DEPLOYMENT": "DEP", "POD": "POD", "PROCESS": "PROC",
+    "REPOSITORY": "REPO", "COMMIT": "SHA", "REPLICA_SET": "RS", "IMAGE_LAYER": "LAYER",
     "RELEASE": "REL", "NAMESPACE": "NS", "CLUSTER": "K8S",
     "CRYPTO_PROVIDER": "PROVIDER",
     "DATABASE": "DB",
@@ -222,7 +227,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
              "to": ("CONTAINER", "APPLICATION", "SERVICE", "POD", "PROCESS"),
              "chain": "SOFTWARE"},
     "FROM_IMAGE": {"from": ("CONTAINER",), "to": ("IMAGE",), "chain": "SOFTWARE"},
-    "SHIPS": {"from": ("IMAGE",), "to": ("PACKAGE",), "chain": "SOFTWARE"},
+    "SHIPS": {"from": ("IMAGE", "IMAGE_LAYER"), "to": ("PACKAGE", "CRYPTO_LIBRARY"),
+              "chain": "SOFTWARE"},
     "LINKS": {"from": ("PACKAGE",), "to": ("CRYPTO_LIBRARY",), "chain": "SOFTWARE"},
     "PROVIDES_ALGORITHM": {"from": ("CRYPTO_LIBRARY",), "to": ("CRYPTO_ASSET",),
                            "chain": "SOFTWARE"},
@@ -336,7 +342,9 @@ RELATIONS: dict[str, dict[str, Any]] = {
     "SERVES": {"from": ("HSM", "HSM_PARTITION", "KMS"), "to": ("APPLICATION",),
                "chain": "KEYS"},
     # hardware lifecycle and evidence (review hbom 8, 13)
-    "HAS_VULNERABILITY": {"from": ("FIRMWARE", "BIOS", "OS"), "to": ("VULNERABILITY",),
+    "HAS_VULNERABILITY": {"from": ("FIRMWARE", "BIOS", "OS", "PACKAGE", "CRYPTO_LIBRARY",
+                                   "IMAGE", "APPLICATION"),
+                          "to": ("VULNERABILITY",),
                           "chain": "HARDWARE"},
     "EVIDENCED_BY": {"from": ("NETWORK_ENDPOINT", "CIPHER_SUITE", "SSH_SERVICE",
                              "IPSEC_TUNNEL", "VPN_GATEWAY", "DATABASE",
@@ -403,6 +411,24 @@ RELATIONS: dict[str, dict[str, Any]] = {
     "RUNS_CONTAINER": {"from": ("POD",), "to": ("CONTAINER",), "chain": "RUNTIME"},
     # runtime deployment identity
     "BUILT_INTO": {"from": ("SOURCE",), "to": ("BUILD",), "chain": "RUNTIME"},
+    #: the supply chain above the build (guide 175). An application is *tracked in* a
+    #: repository, a repository is *at* a commit and a build is *built from* that commit:
+    #: three edges, because "which revision produced this SBOM" is a walk, not a label.
+    "TRACKED_IN": {"from": ("APPLICATION", "SERVICE", "BUILD"), "to": ("REPOSITORY",),
+                   "chain": "SOFTWARE"},
+    "AT_COMMIT": {"from": ("REPOSITORY",), "to": ("COMMIT",), "chain": "SOFTWARE"},
+    "BUILT_FROM": {"from": ("BUILD",), "to": ("COMMIT",), "chain": "SOFTWARE"},
+    #: what an SBOM *lists* is a component; an image *ships* it and a process *loads* it
+    "LISTS": {"from": ("SBOM",), "to": ("PACKAGE", "CRYPTO_LIBRARY"), "chain": "SOFTWARE"},
+    "INSTALLED_IN": {"from": ("PACKAGE", "CRYPTO_LIBRARY"),
+                     "to": ("IMAGE", "IMAGE_LAYER", "HOST", "VM", "CONTAINER",
+                            "PHYSICAL_SERVER", "KUBERNETES_NODE"),
+                     "chain": "SOFTWARE"},
+    "HAS_LAYER": {"from": ("IMAGE",), "to": ("IMAGE_LAYER",), "chain": "SOFTWARE"},
+    "MANAGES": {"from": ("DEPLOYMENT",), "to": ("REPLICA_SET",), "chain": "SOFTWARE"},
+    #: a package is a product's component, and the product has a vendor (guide 175, 15)
+    "PRODUCT_OF": {"from": ("PACKAGE", "APPLICATION", "IMAGE", "CRYPTO_LIBRARY"),
+                   "to": ("VENDOR_PRODUCT",), "chain": "SOFTWARE"},
     "PRODUCES": {"from": ("BUILD",), "to": ("ARTIFACT",), "chain": "RUNTIME"},
     "DESCRIBED_BY": {"from": ("ARTIFACT",), "to": ("SBOM",), "chain": "RUNTIME"},
     #: a release is what an application ships, and it is the level a change record names
@@ -411,7 +437,8 @@ RELATIONS: dict[str, dict[str, Any]] = {
     #: a provider implements algorithms; a provider that is only declared is capability
     "PACKAGED_AS": {"from": ("ARTIFACT",), "to": ("IMAGE",), "chain": "RUNTIME"},
     "DEPLOYED_AS": {"from": ("IMAGE",), "to": ("DEPLOYMENT",), "chain": "RUNTIME"},
-    "SCHEDULES": {"from": ("DEPLOYMENT",), "to": ("POD",), "chain": "RUNTIME"},
+    "SCHEDULES": {"from": ("DEPLOYMENT", "REPLICA_SET"), "to": ("POD", "PROCESS"),
+                  "chain": "RUNTIME"},
     "RUNS_PROCESS": {"from": ("POD",), "to": ("PROCESS",), "chain": "RUNTIME"},
     # --- network dependencies: who listens, who routes, who terminates TLS -----------
     #: the port belongs to the endpoint; the device that owns it says so here, rather
@@ -475,7 +502,7 @@ RELATIONS: dict[str, dict[str, Any]] = {
                    "to": ("NETWORK_SEGMENT", "NETWORK_ENDPOINT", "VPN_GATEWAY"),
                    "chain": "NETWORK"},
     "LOADS": {"from": ("PROCESS", "CONTAINER", "POD"),
-              "to": ("CRYPTO_LIBRARY", "CRYPTO_PROVIDER"), "chain": "RUNTIME"},
+              "to": ("CRYPTO_LIBRARY", "CRYPTO_PROVIDER", "PACKAGE"), "chain": "RUNTIME"},
 }
 
 #: relations that need a class *at least* this strong. A datasheet may say an HSM

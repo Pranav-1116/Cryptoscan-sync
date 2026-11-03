@@ -1,0 +1,1869 @@
+{
+  "schema": "cryptoscan.sbom-dependency-guide/1",
+  "generated_at": "2026-11-03T07:53:43Z",
+  "estate": {
+    "id": null,
+    "assets": 64,
+    "claims": 74,
+    "refusals": 0
+  },
+  "counts": {
+    "PASS": 28,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 79,
+  "points_present": 28,
+  "statement": "28 of 28 points of the SBOM dependency chain are present in the built projection, across 79 probes; 64 assets and 74 claims",
+  "levels": {
+    "system": 1,
+    "application": 3,
+    "repository": 1,
+    "commit": 1,
+    "build": 1,
+    "artifact": 8,
+    "image": 4,
+    "deployment": 4,
+    "pod": 2,
+    "process": 1,
+    "component": 10,
+    "capability": 9
+  },
+  "rows": [
+    {
+      "id": "SBOM-01",
+      "point": 1,
+      "question": "an SBOM component names the application that owns it",
+      "phase": "the chain",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-component-resolves-to-its-application",
+          "ok": true,
+          "observed": "pkg:generic/openssl: owners ['Payments API']"
+        },
+        {
+          "probe": "the-ownership-path-is-evidenced",
+          "ok": true,
+          "observed": "Payments API RELEASED_AS payments-api 4.2.1"
+        },
+        {
+          "probe": "a-component-nobody-owns-says-so",
+          "ok": true,
+          "observed": "pkg:generic/ghost@0.0.9: pkg:generic/ghost@0.0.9: no application owns it in this projection"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-02",
+      "point": 2,
+      "question": "the artifact names the repository, the commit and the build that produced it",
+      "phase": "the chain",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-provenance-chain-is-complete",
+          "ok": true,
+          "observed": "payments-api-4.2.1.jar: git.bank.internal/payments/payments-api \u2192 a81f92c \u2192 BUILD-18291 \u2192 SBOM-18291"
+        },
+        {
+          "probe": "every-step-names-its-node",
+          "ok": true,
+          "observed": "repo git.bank.internal/payments/payments-api, commit a81f92c, build BUILD-18291, pipeline jenkins-payments-ci"
+        },
+        {
+          "probe": "a-missing-step-is-reported-not-filled",
+          "ok": true,
+          "observed": "payments-api:latest: provenance is missing repository, commit, build"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-03",
+      "point": 3,
+      "question": "an SBOM binds to a digest, and a tag is refused as an identity",
+      "phase": "the chain",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-sbom-binds-to-the-artifact-digest",
+          "ok": true,
+          "observed": "SBOM-18291 \u2192 payments-api-4.2.1.jar at sha256:abc123def4567890abc123def4567890 \u2192 payments-api:4.2.1 at sha256:8af92c1d4e5f60718293a4b5c6d7e8f9"
+        },
+        {
+          "probe": "the-image-digest-is-carried-too",
+          "ok": true,
+          "observed": "image payments-api:4.2.1 at sha256:8af92c1d4e5f60718293a4b5c6d7e8f9"
+        },
+        {
+          "probe": "a-tag-only-artifact-is-refused",
+          "ok": true,
+          "observed": "SBOM-latest \u2192 TAG_ONLY_IDENTITY"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-04",
+      "point": 4,
+      "question": "existence in an SBOM is not a deployment",
+      "phase": "the chain",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-deployed-component-reaches-a-deployment",
+          "ok": true,
+          "observed": "pkg:generic/openssl: EXISTS=yes, INSTALLED=yes, DEPLOYED=yes, RUNNING=yes, LOADED=yes"
+        },
+        {
+          "probe": "a-component-installed-nowhere-running-is-not-deployed",
+          "ok": true,
+          "observed": "pkg:generic/openssl-dev: EXISTS=no, INSTALLED=yes, DEPLOYED=no, RUNNING=no, LOADED=no"
+        },
+        {
+          "probe": "the-strongest-state-is-named",
+          "ok": true,
+          "observed": "strongest LOADED of ['EXISTS', 'INSTALLED', 'DEPLOYED', 'RUNNING', 'LOADED']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-05",
+      "point": 5,
+      "question": "the declared version and the runtime version are both preserved",
+      "phase": "runtime",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-two-versions-disagree-and-both-survive",
+          "ok": true,
+          "observed": "pkg:generic/openssl: DECLARED_VERSION=3.0.13, IMAGE_VERSION=3.0.13, RUNTIME_VERSION=3.0.11, VENDOR_VERSION=3.0.13 \u2014 2 versions, preserved"
+        },
+        {
+          "probe": "the-conflict-is-NOT-silently-resolved",
+          "ok": true,
+          "observed": "code DEPENDENCY_VERSION_CONFLICT, distinct ['3.0.11', '3.0.13']"
+        },
+        {
+          "probe": "the-image-and-vendor-layers-are-named",
+          "ok": true,
+          "observed": "DECLARED_VERSION=3.0.13, IMAGE_VERSION=3.0.13, RUNTIME_VERSION=3.0.11, VENDOR_VERSION=3.0.13"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-06",
+      "point": 6,
+      "question": "installed, loaded and used are three different facts",
+      "phase": "runtime",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-loaded-component-carries-all-six-answers",
+          "ok": true,
+          "observed": "pkg:generic/openssl: SBOM_PRESENT, INSTALLED, LOADED, CONFIGURED, STATIC_REFERENCED, RUNTIME_USED"
+        },
+        {
+          "probe": "a-build-only-component-is-present-and-never-loaded",
+          "ok": true,
+          "observed": "pkg:generic/maven@3.9.6: SBOM_PRESENT; not INSTALLED, LOADED, CONFIGURED, STATIC_REFERENCED, RUNTIME_USED"
+        },
+        {
+          "probe": "the-configured-and-static-references-are-separated",
+          "ok": true,
+          "observed": "configured ['Ubuntu 22.04 LTS SUPPORTS'], static ['src/main/java/bank/PaymentsCrypto.java:EVP_DigestSignInit USES_ALGORITHM']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-07",
+      "point": 7,
+      "question": "the SBOM hands capability to the CBOM and never asserts usage",
+      "phase": "handoff",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-capabilities-reach-the-cbom",
+          "ok": true,
+          "observed": "pkg:generic/openssl: 4 capability(ies) handed to the CBOM; 1 corroborated by runtime or network evidence"
+        },
+        {
+          "probe": "each-capability-names-the-algorithm-it-means",
+          "ok": true,
+          "observed": "libcrypto.so.3:AES-128\u2192AES-128, libcrypto.so.3:AES-256-GCM\u2192AES-256-GCM, libcrypto.so.3:RSA-2048\u2192RSA-2048"
+        },
+        {
+          "probe": "no-component-or-library-claims-to-USE-an-algorithm",
+          "ok": true,
+          "observed": "0 USES edge(s) from a component"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-08",
+      "point": 8,
+      "question": "every crypto dependency carries its evidence type",
+      "phase": "handoff",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-review-vocabulary-is-used",
+          "ok": true,
+          "observed": "types ['CAPABILITY', 'IMPORTED', 'RUNTIME_OBSERVED'] of ['CAPABILITY', 'STATIC_OBSERVED', 'CONFIGURED', 'RUNTIME_OBSERVED', 'NETWORK_OBSERVED', 'IMPORTED', 'VENDOR_DECLARED', 'UNKNOWN']"
+        },
+        {
+          "probe": "capability-and-imported-are-distinct-from-runtime",
+          "ok": true,
+          "observed": "CAPABILITY=4, IMPORTED=4, RUNTIME_OBSERVED=1"
+        },
+        {
+          "probe": "a-capability-with-no-collector-is-not-marked-used",
+          "ok": true,
+          "observed": "1 of 4 corroborated"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-09",
+      "point": 9,
+      "question": "the image digest anchors the layers, the packages and the process",
+      "phase": "container",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-image-carries-its-digest",
+          "ok": true,
+          "observed": "payments-api:4.2.1 at sha256:8af92c1d4e5f60718293a4b5c6d7e8f9"
+        },
+        {
+          "probe": "the-base-layer-is-named-and-ships-the-package",
+          "ok": true,
+          "observed": "payments-api:4.2.1@sha256:8af92c1d4e5f60718293a4b5c6d7e8f9: 1 layer(s), 1 package(s), 1 process(es)"
+        },
+        {
+          "probe": "the-process-that-loads-it-is-reached-from-the-image",
+          "ok": true,
+          "observed": "processes ['payments-api[1821]']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-10",
+      "point": 10,
+      "question": "the image reaches its deployment, replica set, pod, container and node",
+      "phase": "kubernetes",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "every-kubernetes-level-is-present",
+          "ok": true,
+          "observed": "payments-api:4.2.1: cluster prod-cluster \u2192 container payments-api-ctr \u2192 deployment payments-api-deploy \u2192 kubernetes_node node-03 \u2192 namespace payments \u2192 physical_server srv-k8s-03 \u2192 pod payments-api-7d9f4c-x2m8p \u2192 process payments-api[1821] \u2192 replica_set payments-api-7d9f4c"
+        },
+        {
+          "probe": "the-replica-set-is-not-skipped",
+          "ok": true,
+          "observed": "replica sets ['payments-api-7d9f4c']"
+        },
+        {
+          "probe": "the-node-sits-on-a-physical-host",
+          "ok": true,
+          "observed": "hosts ['srv-k8s-03']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-11",
+      "point": 11,
+      "question": "a non-container workload reaches its host and the hardware under it",
+      "phase": "hardware",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-process-reaches-its-host",
+          "ok": true,
+          "observed": "Payments API: 1 process(es), 7 component(s), 2 host(s), 2 hardware component(s)"
+        },
+        {
+          "probe": "the-hardware-components-are-named",
+          "ok": true,
+          "observed": "hardware ['CPU-01', 'TPM-01']"
+        },
+        {
+          "probe": "the-component-and-the-process-travel-together",
+          "ok": true,
+          "observed": "processes ['payments-api[1821]'], components 7"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-12",
+      "point": 12,
+      "question": "the dependency graph carries relationship, scope, version and evidence",
+      "phase": "graph",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-tree-is-walked-from-the-application",
+          "ok": true,
+          "observed": "Payments API: 2 direct, 2 transitive, 2 listed only; pkg:generic/http-core@1.2.0, pkg:generic/openssl reached through another component"
+        },
+        {
+          "probe": "every-row-carries-scope-version-and-evidence",
+          "ok": true,
+          "observed": "4 row(s); scopes ['BUILD', 'RUNTIME', 'TRANSITIVE']"
+        },
+        {
+          "probe": "each-row-carries-its-observation-window",
+          "ok": true,
+          "observed": "1 row(s) with a first_seen"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-13",
+      "point": 13,
+      "question": "a transitive dependency is reported with the path that makes it transitive",
+      "phase": "graph",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-sdk-is-direct-and-openssl-is-not",
+          "ok": true,
+          "observed": "direct ['pkg:generic/maven@3.9.6', 'pkg:generic/payments-sdk@2.4.0'], transitive ['pkg:generic/http-core@1.2.0', 'pkg:generic/openssl']"
+        },
+        {
+          "probe": "the-path-names-the-component-it-came-through",
+          "ok": true,
+          "observed": "pkg:generic/payments-sdk@2.4.0 \u2192 pkg:generic/http-core@1.2.0 \u2192 pkg:generic/openssl"
+        },
+        {
+          "probe": "the-statement-says-through-not-uses",
+          "ok": true,
+          "observed": "Payments API: 2 direct, 2 transitive, 2 listed only; pkg:generic/http-core@1.2.0, pkg:generic/openssl reached through another component"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-14",
+      "point": 14,
+      "question": "the scope a dependency was declared in stays on the dependency",
+      "phase": "graph",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-scopes-are-counted-and-production-is-separated",
+          "ok": true,
+          "observed": "8 component(s) across 4 scope(s); 4 in production scope; 1 build-scope component(s) reach a running application"
+        },
+        {
+          "probe": "a-build-scope-component-is-not-production-surface",
+          "ok": true,
+          "observed": "production ['pkg:generic/ghost@0.0.9', 'pkg:generic/openssl', 'pkg:generic/orphan@0.1.0', 'pkg:generic/payments-sdk@2.4.0']; build-scope pkg:generic/maven@3.9.6"
+        },
+        {
+          "probe": "an-unknown-scope-is-refused",
+          "ok": true,
+          "observed": "scope WHATEVER \u2192 UNKNOWN_SCOPE"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-15",
+      "point": 15,
+      "question": "a component reaches its product and the vendor behind it",
+      "phase": "vendor",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-product-and-vendor-are-both-reached",
+          "ok": true,
+          "observed": "product edges ['OpenSSL 3.x']"
+        },
+        {
+          "probe": "the-vendor-is-a-node-not-a-string",
+          "ok": true,
+          "observed": "VENDOR OpenSSL Project"
+        },
+        {
+          "probe": "the-vendor-chain-answers-an-advisory",
+          "ok": true,
+          "observed": "SUPPLIED_BY edges ['OpenSSL 3.x\u2192OpenSSL Project']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-16",
+      "point": 16,
+      "question": "a software dependency that relies on hardware crypto names the hardware",
+      "phase": "hardware",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-hardware-is-reached-through-the-host",
+          "ok": true,
+          "observed": "Payments API: 1 process(es), 7 component(s), 2 host(s), 2 hardware component(s)"
+        },
+        {
+          "probe": "the-tpm-is-the-same-node-the-cbom-uses",
+          "ok": true,
+          "observed": "TPM-01 is one node, read by both projections"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-17",
+      "point": 17,
+      "question": "the application's listener and the crypto it negotiates join the same graph",
+      "phase": "network",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-application-exposes-the-endpoint",
+          "ok": true,
+          "observed": "Payments API EXPOSES payments.bank.example:443"
+        },
+        {
+          "probe": "the-negotiated-suite-is-a-node",
+          "ok": true,
+          "observed": "no hop was evidenced"
+        },
+        {
+          "probe": "the-network-half-is-the-cboms-walk-not-a-copy",
+          "ok": true,
+          "observed": "0 hop(s) read by cbom_dependency.endpoint_hops"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-18",
+      "point": 18,
+      "question": "the certificate's crypto is not the application's crypto",
+      "phase": "network",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-certificate-algorithm-stays-in-its-domain",
+          "ok": true,
+          "observed": "certificate ['ECDSA-P256'], application ['RSA-2048']"
+        },
+        {
+          "probe": "the-application-still-has-its-own",
+          "ok": true,
+          "observed": "application ['RSA-2048']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-19",
+      "point": 19,
+      "question": "the SBOM is a projection of the canonical estate, not a second store",
+      "phase": "canonical",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-projection-reads-the-canonical-estate",
+          "ok": true,
+          "observed": "canonical CANONICAL_ESTATE, projection SBOM, second store False"
+        },
+        {
+          "probe": "the-levels-are-the-canonical-levels",
+          "ok": true,
+          "observed": "64 node(s) of 40 kind(s), 74 edge(s), 34 of them on the supply chain; projection of CANONICAL_ESTATE, one store"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-20",
+      "point": 20,
+      "question": "two names for one asset resolve through evidence, never through the name",
+      "phase": "canonical",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-alias-resolves-to-one-canonical-asset",
+          "ok": true,
+          "observed": "Payments API: 4 record(s) joined by digest:sha256:8af92c1d4e5f60718293a4b5c6d7e8f9, digest:sha256:abc123def4567890abc123def4567890, namespace:payments"
+        },
+        {
+          "probe": "the-join-is-an-anchor-not-a-string",
+          "ok": true,
+          "observed": "anchors ['digest:sha256:8af92c1d4e5f60718293a4b5c6d7e8f9', 'digest:sha256:abc123def4567890abc123def4567890']"
+        },
+        {
+          "probe": "a-name-only-match-is-refused",
+          "ok": true,
+          "observed": "settlement \u2192 NAME_ONLY_IDENTITY"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-21",
+      "point": 21,
+      "question": "four version layers disagree and the conflict is the finding",
+      "phase": "versions",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-conflict-code-is-named",
+          "ok": true,
+          "observed": "DEPENDENCY_VERSION_CONFLICT: ['3.0.11', '3.0.13']"
+        },
+        {
+          "probe": "every-source-is-preserved",
+          "ok": true,
+          "observed": "DECLARED_VERSION=['3.0.13', '3.0.13'], IMAGE_VERSION=['3.0.13'], RUNTIME_VERSION=['3.0.11'], VENDOR_VERSION=['3.0.13']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-22",
+      "point": 22,
+      "question": "a dependency that moved keeps the version it had and the evidence for both",
+      "phase": "time",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-openssl-move-is-detected",
+          "ok": true,
+          "observed": "1 change(s) on pkg:generic/openssl: declared 3.0.11 \u2192 3.0.13"
+        },
+        {
+          "probe": "both-evidence-ids-are-kept",
+          "ok": true,
+          "observed": "before EVID-96003, after EVID-96003"
+        },
+        {
+          "probe": "the-same-projection-compared-with-itself-shows-nothing",
+          "ok": true,
+          "observed": "0 component version(s) moved, 0 added, 0 removed"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-23",
+      "point": 23,
+      "question": "a superseded dependency is kept, not deleted",
+      "phase": "time",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-lifecycle-names-its-states",
+          "ok": true,
+          "observed": "9 dependency edge(s): FIRST_SEEN 1, ACTIVE 2, CHANGED 2, REMOVED 1, UNKNOWN 3"
+        },
+        {
+          "probe": "nothing-was-deleted-to-produce-the-comparison",
+          "ok": true,
+          "observed": "9 row(s) kept; superseded 0, removed 1"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-24",
+      "point": 24,
+      "question": "a count is reported against what was inspected, never against the bank",
+      "phase": "honesty",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-denominator-is-printed",
+          "ok": true,
+          "observed": "2 component(s) discovered; 75/100 application(s) inspected (75.0%); SBOM completeness: PARTIAL"
+        },
+        {
+          "probe": "the-count-is-not-quotable-as-the-estate",
+          "ok": true,
+          "observed": "2 component(s) discovered, quotable as total False"
+        },
+        {
+          "probe": "coverage-that-exceeds-the-estate-is-refused",
+          "ok": true,
+          "observed": "100 expected, 100+ reported \u2192 COVERAGE_EXCEEDS_EXPECTED"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-25",
+      "point": 25,
+      "question": "a vulnerability walks to the component, the deployment and the business system",
+      "phase": "impact",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-component-is-named",
+          "ok": true,
+          "observed": "CVE-2026-0002: 3 component(s), 2 image(s), 2 deployment(s), 1 application(s), 1 business system(s) affected"
+        },
+        {
+          "probe": "the-deployment-and-the-application-are-reached",
+          "ok": true,
+          "observed": "applications ['Payments API'], deployments ['payments-api-7d9f4c', 'payments-api-deploy']"
+        },
+        {
+          "probe": "the-business-system-is-the-end-of-the-walk",
+          "ok": true,
+          "observed": "systems ['Payments System']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-26",
+      "point": 26,
+      "question": "an upgrade is counted after the walk, so the number is the systems it changes",
+      "phase": "impact",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-plan-names-the-applications-and-systems",
+          "ok": true,
+          "observed": "upgrade pkg:generic/openssl 3.0.13 \u2192 3.0.14: affects 1 application(s), 1 business system(s), 2 image(s), 1 process(es); regression: FIPS module re-validation, payment signature regression"
+        },
+        {
+          "probe": "the-images-and-processes-are-counted",
+          "ok": true,
+          "observed": "images ['layer:ubuntu-22.04-base', 'payments-api:4.2.1'], processes ['payments-api[1821]']"
+        },
+        {
+          "probe": "the-regression-work-is-part-of-the-plan",
+          "ok": true,
+          "observed": "regression ['FIPS module re-validation', 'payment signature regression']"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-27",
+      "point": 27,
+      "question": "the SBOM hands capability to the CBOM and never decides PQC readiness",
+      "phase": "pqc",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "the-sensitive-capabilities-are-listed",
+          "ok": true,
+          "observed": "pkg:generic/openssl: 2 quantum-sensitive capability(ies) and 1 observed use(s); the SBOM answers the first and the CBOM answers the second"
+        },
+        {
+          "probe": "the-observed-usage-is-a-different-list",
+          "ok": true,
+          "observed": "capabilities ['ECDSA-P256', 'RSA-2048'], usage ['RSA-2048']"
+        },
+        {
+          "probe": "the-handoff-carries-the-rule-not-a-decision",
+          "ok": true,
+          "observed": "the SBOM hands capability to the CBOM and never decides readiness: a listed RSA is a question a migration asks, an observed RSA-2048 is the candidate"
+        }
+      ],
+      "failed": []
+    },
+    {
+      "id": "SBOM-28",
+      "point": 28,
+      "question": "the whole chain assembles into one graph, level by level",
+      "phase": "graph",
+      "verdict": "PASS",
+      "probes": [
+        {
+          "probe": "every-level-of-the-review-is-present",
+          "ok": true,
+          "observed": "system 1, application 3, repository 1, commit 1, build 1, artifact 8, image 4, deployment 4, pod 2, process 1, component 10, capability 9"
+        },
+        {
+          "probe": "the-supply-relations-are-a-whitelist",
+          "ok": true,
+          "observed": "34 supply relation(s) of 47 used"
+        },
+        {
+          "probe": "the-graph-states-its-source",
+          "ok": true,
+          "observed": "64 node(s) of 40 kind(s), 74 edge(s), 34 of them on the supply chain; projection of CANONICAL_ESTATE, one store"
+        }
+      ],
+      "failed": []
+    }
+  ],
+  "chain": {
+    "query": "Payments API",
+    "node": {
+      "name": "Payments API",
+      "kind": "APPLICATION",
+      "id": "TECH-APP-002",
+      "key": "APPLICATION:payments api:production",
+      "version": null
+    },
+    "down": {
+      "system": [],
+      "application": [],
+      "repository": [
+        {
+          "name": "git.bank.internal/payments/payments-api",
+          "kind": "REPOSITORY",
+          "id": "TECH-REPO-001",
+          "key": "REPOSITORY:git.bank.internal/payments/payments-api:production",
+          "version": null
+        }
+      ],
+      "commit": [
+        {
+          "name": "a81f92c",
+          "kind": "COMMIT",
+          "id": "TECH-SHA-001",
+          "key": "COMMIT:a81f92c:production",
+          "version": null
+        }
+      ],
+      "build": [],
+      "artifact": [
+        {
+          "name": "payments-api 4.2.1",
+          "kind": "RELEASE",
+          "id": "TECH-REL-002",
+          "key": "RELEASE:payments-api 4.2.1:production",
+          "version": null
+        },
+        {
+          "name": "payments-api-4.2.1.jar",
+          "kind": "ARTIFACT",
+          "id": "TECH-ART-002",
+          "key": "ARTIFACT:payments-api-4.2.1.jar:production",
+          "version": null
+        },
+        {
+          "name": "SBOM-18291",
+          "kind": "SBOM",
+          "id": "TECH-SBOM-001",
+          "key": "SBOM:sbom-18291:production",
+          "version": null
+        }
+      ],
+      "image": [
+        {
+          "name": "payments-api:4.2.1",
+          "kind": "IMAGE",
+          "id": "TECH-IMG-001",
+          "key": "IMAGE:payments-api:4.2.1:production",
+          "version": null
+        },
+        {
+          "name": "layer:ubuntu-22.04-base",
+          "kind": "IMAGE_LAYER",
+          "id": "TECH-LAYER-002",
+          "key": "IMAGE_LAYER:layer:ubuntu-22.04-base:production",
+          "version": null
+        }
+      ],
+      "deployment": [
+        {
+          "name": "payments-api-deploy",
+          "kind": "DEPLOYMENT",
+          "id": "TECH-DEP-001",
+          "key": "DEPLOYMENT:payments-api-deploy:production",
+          "version": null
+        },
+        {
+          "name": "payments-api-7d9f4c",
+          "kind": "REPLICA_SET",
+          "id": "TECH-RS-001",
+          "key": "REPLICA_SET:payments-api-7d9f4c:production",
+          "version": null
+        },
+        {
+          "name": "payments",
+          "kind": "NAMESPACE",
+          "id": "TECH-NS-001",
+          "key": "NAMESPACE:payments:production",
+          "version": null
+        },
+        {
+          "name": "prod-cluster",
+          "kind": "CLUSTER",
+          "id": "TECH-K8S-001",
+          "key": "CLUSTER:prod-cluster:production",
+          "version": null
+        }
+      ],
+      "pod": [
+        {
+          "name": "payments-api-7d9f4c-x2m8p",
+          "kind": "POD",
+          "id": "TECH-POD-001",
+          "key": "POD:payments-api-7d9f4c-x2m8p:production",
+          "version": null
+        },
+        {
+          "name": "payments-api-ctr",
+          "kind": "CONTAINER",
+          "id": "TECH-CTR-001",
+          "key": "CONTAINER:payments-api-ctr:production",
+          "version": null
+        }
+      ],
+      "process": [
+        {
+          "name": "payments-api[1821]",
+          "kind": "PROCESS",
+          "id": "TECH-PROC-001",
+          "key": "PROCESS:payments-api[1821]:production",
+          "version": null
+        }
+      ],
+      "component": [
+        {
+          "name": "pkg:generic/mockito@5.4.0",
+          "kind": "PACKAGE",
+          "id": "TECH-PKG-004",
+          "key": "PACKAGE:pkg:generic/mockito@5.4.0:production",
+          "version": "5.4.0"
+        },
+        {
+          "name": "pkg:generic/maven@3.9.6",
+          "kind": "PACKAGE",
+          "id": "TECH-PKG-003",
+          "key": "PACKAGE:pkg:generic/maven@3.9.6:production",
+          "version": "3.9.6"
+        },
+        {
+          "name": "pkg:generic/orphan@0.1.0",
+          "kind": "PACKAGE",
+          "id": "TECH-PKG-007",
+          "key": "PACKAGE:pkg:generic/orphan@0.1.0:production",
+          "version": null
+        },
+        {
+          "name": "pkg:generic/openssl",
+          "kind": "PACKAGE",
+          "id": "TECH-PKG-006",
+          "key": "PACKAGE:pkg:generic/openssl:production",
+          "version": "3.0.13"
+        },
+        {
+          "name": "pkg:generic/http-core@1.2.0",
+          "kind": "PACKAGE",
+          "id": "TECH-PKG-002",
+          "key": "PACKAGE:pkg:generic/http-core@1.2.0:production",
+          "version": "1.2.0"
+        },
+        {
+          "name": "pkg:generic/payments-sdk@2.4.0",
+          "kind": "PACKAGE",
+          "id": "TECH-PKG-008",
+          "key": "PACKAGE:pkg:generic/payments-sdk@2.4.0:production",
+          "version": "2.4.0"
+        },
+        {
+          "name": "libcrypto.so.3",
+          "kind": "CRYPTO_LIBRARY",
+          "id": "TECH-LIB-001",
+          "key": "CRYPTO_LIBRARY:libcrypto.so.3:production",
+          "version": null
+        },
+        {
+          "name": "OpenSSL 3.0.13",
+          "kind": "CRYPTO_PROVIDER",
+          "id": "TECH-PROVIDER-001",
+          "key": "CRYPTO_PROVIDER:openssl 3.0.13:production",
+          "version": "3.0.13"
+        }
+      ],
+      "capability": [
+        {
+          "name": "libcrypto.so.3:AES-128",
+          "kind": "CRYPTO_CAPABILITY",
+          "id": "TECH-CAP-001",
+          "key": "CRYPTO_CAPABILITY:libcrypto.so.3:aes-128:production",
+          "version": null
+        },
+        {
+          "name": "libcrypto.so.3:AES-256-GCM",
+          "kind": "CRYPTO_CAPABILITY",
+          "id": "TECH-CAP-002",
+          "key": "CRYPTO_CAPABILITY:libcrypto.so.3:aes-256-gcm:production",
+          "version": null
+        },
+        {
+          "name": "libcrypto.so.3:RSA-2048",
+          "kind": "CRYPTO_CAPABILITY",
+          "id": "TECH-CAP-004",
+          "key": "CRYPTO_CAPABILITY:libcrypto.so.3:rsa-2048:production",
+          "version": null
+        },
+        {
+          "name": "libcrypto.so.3:ECDSA-P256",
+          "kind": "CRYPTO_CAPABILITY",
+          "id": "TECH-CAP-003",
+          "key": "CRYPTO_CAPABILITY:libcrypto.so.3:ecdsa-p256:production",
+          "version": null
+        },
+        {
+          "name": "AES-128",
+          "kind": "ALGORITHM",
+          "id": "TECH-ALG-001",
+          "key": "ALGORITHM:aes-128:production",
+          "version": null
+        },
+        {
+          "name": "AES-256-GCM",
+          "kind": "ALGORITHM",
+          "id": "TECH-ALG-002",
+          "key": "ALGORITHM:aes-256-gcm:production",
+          "version": null
+        },
+        {
+          "name": "RSA-2048",
+          "kind": "ALGORITHM",
+          "id": "TECH-ALG-004",
+          "key": "ALGORITHM:rsa-2048:production",
+          "version": null
+        },
+        {
+          "name": "ECDSA-P256",
+          "kind": "ALGORITHM",
+          "id": "TECH-ALG-003",
+          "key": "ALGORITHM:ecdsa-p256:production",
+          "version": null
+        },
+        {
+          "name": "OP-SIGN-001",
+          "kind": "CRYPTO_OPERATION",
+          "id": "TECH-OP-001",
+          "key": "CRYPTO_OPERATION:op-sign-001:production",
+          "version": null
+        }
+      ]
+    },
+    "up": {
+      "system": [
+        {
+          "name": "Payments System",
+          "kind": "BUSINESS_SYSTEM",
+          "id": "TECH-SYS-001",
+          "key": "BUSINESS_SYSTEM:payments system:production",
+          "version": null
+        }
+      ],
+      "application": [],
+      "repository": [],
+      "commit": [],
+      "build": [
+        {
+          "name": "BUILD-18291",
+          "kind": "BUILD",
+          "id": "TECH-BUILD-001",
+          "key": "BUILD:build-18291:production",
+          "version": "4.2.1"
+        }
+      ],
+      "artifact": [
+        {
+          "name": "payments-api-4.2.1.jar",
+          "kind": "ARTIFACT",
+          "id": "TECH-ART-002",
+          "key": "ARTIFACT:payments-api-4.2.1.jar:production",
+          "version": null
+        },
+        {
+          "name": "SBOM-18291",
+          "kind": "SBOM",
+          "id": "TECH-SBOM-001",
+          "key": "SBOM:sbom-18291:production",
+          "version": null
+        },
+        {
+          "name": "payments-api 4.2.1",
+          "kind": "RELEASE",
+          "id": "TECH-REL-002",
+          "key": "RELEASE:payments-api 4.2.1:production",
+          "version": null
+        }
+      ],
+      "image": [
+        {
+          "name": "payments-api:4.2.1",
+          "kind": "IMAGE",
+          "id": "TECH-IMG-001",
+          "key": "IMAGE:payments-api:4.2.1:production",
+          "version": null
+        },
+        {
+          "name": "layer:ubuntu-22.04-base",
+          "kind": "IMAGE_LAYER",
+          "id": "TECH-LAYER-002",
+          "key": "IMAGE_LAYER:layer:ubuntu-22.04-base:production",
+          "version": null
+        }
+      ],
+      "deployment": [
+        {
+          "name": "payments-api-7d9f4c",
+          "kind": "REPLICA_SET",
+          "id": "TECH-RS-001",
+          "key": "REPLICA_SET:payments-api-7d9f4c:production",
+          "version": null
+        },
+        {
+          "name": "payments-api-deploy",
+          "kind": "DEPLOYMENT",
+          "id": "TECH-DEP-001",
+          "key": "DEPLOYMENT:payments-api-deploy:production",
+          "version": null
+        }
+      ],
+      "pod": [
+        {
+          "name": "payments-api-7d9f4c-x2m8p",
+          "kind": "POD",
+          "id": "TECH-POD-001",
+          "key": "POD:payments-api-7d9f4c-x2m8p:production",
+          "version": null
+        },
+        {
+          "name": "payments-api-ctr",
+          "kind": "CONTAINER",
+          "id": "TECH-CTR-001",
+          "key": "CONTAINER:payments-api-ctr:production",
+          "version": null
+        }
+      ],
+      "process": [
+        {
+          "name": "payments-api[1821]",
+          "kind": "PROCESS",
+          "id": "TECH-PROC-001",
+          "key": "PROCESS:payments-api[1821]:production",
+          "version": null
+        }
+      ],
+      "component": [
+        {
+          "name": "pkg:generic/openssl",
+          "kind": "PACKAGE",
+          "id": "TECH-PKG-006",
+          "key": "PACKAGE:pkg:generic/openssl:production",
+          "version": "3.0.13"
+        },
+        {
+          "name": "pkg:generic/http-core@1.2.0",
+          "kind": "PACKAGE",
+          "id": "TECH-PKG-002",
+          "key": "PACKAGE:pkg:generic/http-core@1.2.0:production",
+          "version": "1.2.0"
+        },
+        {
+          "name": "pkg:generic/payments-sdk@2.4.0",
+          "kind": "PACKAGE",
+          "id": "TECH-PKG-008",
+          "key": "PACKAGE:pkg:generic/payments-sdk@2.4.0:production",
+          "version": "2.4.0"
+        }
+      ],
+      "capability": []
+    },
+    "edges": [
+      {
+        "source": "Payments API",
+        "relation": "TRACKED_IN",
+        "target": "git.bank.internal/payments/payments-api",
+        "class": "CONFIGURED"
+      },
+      {
+        "source": "Payments API",
+        "relation": "RELEASED_AS",
+        "target": "payments-api 4.2.1",
+        "class": "CONFIGURED"
+      },
+      {
+        "source": "git.bank.internal/payments/payments-api",
+        "relation": "AT_COMMIT",
+        "target": "a81f92c",
+        "class": "CONFIGURED"
+      },
+      {
+        "source": "payments-api 4.2.1",
+        "relation": "BUNDLES",
+        "target": "payments-api-4.2.1.jar",
+        "class": "CONFIGURED"
+      },
+      {
+        "source": "payments-api-4.2.1.jar",
+        "relation": "DESCRIBED_BY",
+        "target": "SBOM-18291",
+        "class": "IMPORTED"
+      },
+      {
+        "source": "payments-api-4.2.1.jar",
+        "relation": "PACKAGED_AS",
+        "target": "payments-api:4.2.1",
+        "class": "CONFIGURED"
+      },
+      {
+        "source": "SBOM-18291",
+        "relation": "LISTS",
+        "target": "pkg:generic/mockito@5.4.0",
+        "class": "IMPORTED"
+      },
+      {
+        "source": "SBOM-18291",
+        "relation": "LISTS",
+        "target": "pkg:generic/maven@3.9.6",
+        "class": "IMPORTED"
+      },
+      {
+        "source": "SBOM-18291",
+        "relation": "LISTS",
+        "target": "pkg:generic/orphan@0.1.0",
+        "class": "IMPORTED"
+      },
+      {
+        "source": "SBOM-18291",
+        "relation": "LISTS",
+        "target": "pkg:generic/openssl",
+        "class": "IMPORTED"
+      },
+      {
+        "source": "SBOM-18291",
+        "relation": "LISTS",
+        "target": "pkg:generic/http-core@1.2.0",
+        "class": "IMPORTED"
+      },
+      {
+        "source": "SBOM-18291",
+        "relation": "LISTS",
+        "target": "pkg:generic/payments-sdk@2.4.0",
+        "class": "IMPORTED"
+      },
+      {
+        "source": "payments-api:4.2.1",
+        "relation": "DEPLOYED_AS",
+        "target": "payments-api-deploy",
+        "class": "CONFIGURED"
+      },
+      {
+        "source": "payments-api:4.2.1",
+        "relation": "HAS_LAYER",
+        "target": "layer:ubuntu-22.04-base",
+        "class": "IMPORTED"
+      },
+      {
+        "source": "pkg:generic/openssl",
+        "relation": "PRODUCT_OF",
+        "target": "OpenSSL 3.x",
+        "class": "IMPORTED"
+      },
+      {
+        "source": "pkg:generic/openssl",
+        "relation": "LINKS",
+        "target": "libcrypto.so.3",
+        "class": "IMPORTED"
+      },
+      {
+        "source": "pkg:generic/openssl",
+        "relation": "HAS_VULNERABILITY",
+        "target": "CVE-2026-0002",
+        "class": "VENDOR_DECLARED"
+      },
+      {
+        "source": "payments-api-deploy",
+        "relation": "MANAGES",
+        "target": "payments-api-7d9f4c",
+        "class": "CONFIGURED"
+      },
+      {
+        "source": "payments-api-deploy",
+        "relation": "RUNS_IN",
+        "target": "payments",
+        "class": "CONFIGURED"
+      },
+      {
+        "source": "OpenSSL 3.x",
+        "relation": "SUPPLIED_BY",
+        "target": "OpenSSL Project",
+        "class": "VENDOR_DECLARED"
+      },
+      {
+        "source": "libcrypto.so.3",
+        "relation": "SUPPORTS",
+        "target": "libcrypto.so.3:AES-128",
+        "class": "CAPABILITY"
+      },
+      {
+        "source": "libcrypto.so.3",
+        "relation": "SUPPORTS",
+        "target": "libcrypto.so.3:AES-256-GCM",
+        "class": "CAPABILITY"
+      },
+      {
+        "source": "libcrypto.so.3",
+        "relation": "SUPPORTS",
+        "target": "libcrypto.so.3:RSA-2048",
+        "class": "CAPABILITY"
+      },
+      {
+        "source": "libcrypto.so.3",
+        "relation": "SUPPORTS",
+        "target": "libcrypto.so.3:ECDSA-P256",
+        "class": "CAPABILITY"
+      },
+      {
+        "source": "payments-api-7d9f4c",
+        "relation": "SCHEDULES",
+        "target": "payments-api-7d9f4c-x2m8p",
+        "class": "CONFIGURED"
+      },
+      {
+        "source": "payments",
+        "relation": "MEMBER_OF_CLUSTER",
+        "target": "prod-cluster",
+        "class": "CONFIGURED"
+      },
+      {
+        "source": "libcrypto.so.3:AES-128",
+        "relation": "IMPLEMENTS",
+        "target": "AES-128",
+        "class": "CAPABILITY"
+      },
+      {
+        "source": "libcrypto.so.3:AES-256-GCM",
+        "relation": "IMPLEMENTS",
+        "target": "AES-256-GCM",
+        "class": "CAPABILITY"
+      },
+      {
+        "source": "libcrypto.so.3:RSA-2048",
+        "relation": "IMPLEMENTS",
+        "target": "RSA-2048",
+        "class": "CAPABILITY"
+      },
+      {
+        "source": "libcrypto.so.3:ECDSA-P256",
+        "relation": "IMPLEMENTS",
+        "target": "ECDSA-P256",
+        "class": "CAPABILITY"
+      },
+      {
+        "source": "payments-api-7d9f4c-x2m8p",
+        "relation": "SCHEDULED_ON",
+        "target": "node-03",
+        "class": "CONFIGURED"
+      },
+      {
+        "source": "payments-api-7d9f4c-x2m8p",
+        "relation": "RUNS_PROCESS",
+        "target": "payments-api[1821]",
+        "class": "OBSERVED"
+      },
+      {
+        "source": "payments-api-7d9f4c-x2m8p",
+        "relation": "RUNS_CONTAINER",
+        "target": "payments-api-ctr",
+        "class": "OBSERVED"
+      },
+      {
+        "source": "node-03",
+        "relation": "RUNS_ON",
+        "target": "srv-k8s-03",
+        "class": "CONFIGURED"
+      },
+      {
+        "source": "payments-api[1821]",
+        "relation": "LOADS",
+        "target": "OpenSSL 3.0.13",
+        "class": "RUNTIME_OBSERVED"
+      },
+      {
+        "source": "payments-api[1821]",
+        "relation": "INVOKES",
+        "target": "OP-SIGN-001",
+        "class": "RUNTIME_OBSERVED"
+      }
+    ],
+    "statement": "Payments API: down repository 1, commit 1, artifact 3, image 2, deployment 4, pod 2, process 1, component 8, capability 9; up system 1, build 1, artifact 3, image 2, deployment 2, pod 2, process 1, component 3",
+    "not_proven": [
+      "that the chain is complete: a level with no rows is a gap in the evidence, and it is printed rather than filled"
+    ]
+  },
+  "provenance": {
+    "artifact": "payments-api-4.2.1.jar",
+    "steps": {
+      "repository": "git.bank.internal/payments/payments-api",
+      "commit": "a81f92c",
+      "build": "BUILD-18291",
+      "pipeline": "jenkins-payments-ci",
+      "artifact": "payments-api-4.2.1.jar",
+      "digest": "sha256:abc123def4567890abc123def4567890",
+      "sbom": "SBOM-18291"
+    },
+    "missing": [],
+    "complete": true,
+    "statement": "payments-api-4.2.1.jar: git.bank.internal/payments/payments-api \u2192 a81f92c \u2192 BUILD-18291 \u2192 SBOM-18291",
+    "rule": "a provenance chain is printed with its gaps: an SBOM whose commit nobody recorded cannot be re-built, and saying so is the finding"
+  },
+  "versions": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "layers": {
+      "DECLARED_VERSION": "3.0.13",
+      "IMAGE_VERSION": "3.0.13",
+      "RUNTIME_VERSION": "3.0.11",
+      "VENDOR_VERSION": "3.0.13"
+    },
+    "sources": {
+      "DECLARED_VERSION": [
+        {
+          "source": "row",
+          "value": "3.0.13",
+          "class": "IMPORTED"
+        },
+        {
+          "source": "sbom",
+          "value": "3.0.13",
+          "class": "IMPORTED",
+          "evidence_id": "EVID-96003"
+        }
+      ],
+      "IMAGE_VERSION": [
+        {
+          "source": "image-scan",
+          "value": "3.0.13",
+          "class": "STATIC_OBSERVED",
+          "evidence_id": "EVID-96004"
+        }
+      ],
+      "RUNTIME_VERSION": [
+        {
+          "source": "process-map",
+          "value": "3.0.11",
+          "class": "RUNTIME_OBSERVED",
+          "evidence_id": "EVID-96006"
+        }
+      ],
+      "VENDOR_VERSION": [
+        {
+          "source": "vendor-portal",
+          "value": "3.0.13",
+          "class": "VENDOR_DECLARED",
+          "evidence_id": "EVID-96008"
+        }
+      ]
+    },
+    "distinct": [
+      "3.0.11",
+      "3.0.13"
+    ],
+    "conflict": true,
+    "code": "DEPENDENCY_VERSION_CONFLICT",
+    "statement": "pkg:generic/openssl: DECLARED_VERSION=3.0.13, IMAGE_VERSION=3.0.13, RUNTIME_VERSION=3.0.11, VENDOR_VERSION=3.0.13 \u2014 2 versions, preserved",
+    "rule": "a declared version, an image version and a runtime version are three observations; the conflict is published, not resolved"
+  },
+  "states": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "states": {
+      "SBOM_PRESENT": true,
+      "INSTALLED": true,
+      "LOADED": true,
+      "CONFIGURED": true,
+      "STATIC_REFERENCED": true,
+      "RUNTIME_USED": true
+    },
+    "evidence": {
+      "SBOM_PRESENT": [
+        "SBOM-18291"
+      ],
+      "INSTALLED": [
+        "layer:ubuntu-22.04-base"
+      ],
+      "LOADED": [
+        "payments-api[1821]"
+      ],
+      "CONFIGURED": [
+        "Ubuntu 22.04 LTS SUPPORTS"
+      ],
+      "STATIC_REFERENCED": [
+        "src/main/java/bank/PaymentsCrypto.java:EVP_DigestSignInit USES_ALGORITHM"
+      ],
+      "RUNTIME_USED": [
+        "OP-SIGN-001"
+      ]
+    },
+    "present": [
+      "SBOM_PRESENT",
+      "INSTALLED",
+      "LOADED",
+      "CONFIGURED",
+      "STATIC_REFERENCED",
+      "RUNTIME_USED"
+    ],
+    "absent": [],
+    "statement": "pkg:generic/openssl: SBOM_PRESENT, INSTALLED, LOADED, CONFIGURED, STATIC_REFERENCED, RUNTIME_USED",
+    "rule": "installed, loaded and used are three different facts; a model that promotes one into the next has replaced a measurement with an assumption"
+  },
+  "handoff": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "rows": [
+      {
+        "capability": "libcrypto.so.3:AES-128",
+        "algorithms": [
+          "AES-128"
+        ],
+        "evidence_types": [
+          "CAPABILITY",
+          "IMPORTED"
+        ],
+        "evidence_ids": [],
+        "verdict": "CAPABILITY_ONLY"
+      },
+      {
+        "capability": "libcrypto.so.3:AES-256-GCM",
+        "algorithms": [
+          "AES-256-GCM"
+        ],
+        "evidence_types": [
+          "CAPABILITY",
+          "IMPORTED"
+        ],
+        "evidence_ids": [],
+        "verdict": "CAPABILITY_ONLY"
+      },
+      {
+        "capability": "libcrypto.so.3:RSA-2048",
+        "algorithms": [
+          "RSA-2048"
+        ],
+        "evidence_types": [
+          "CAPABILITY",
+          "RUNTIME_OBSERVED",
+          "IMPORTED"
+        ],
+        "evidence_ids": [
+          "EVID-96006"
+        ],
+        "verdict": "CORROBORATED"
+      },
+      {
+        "capability": "libcrypto.so.3:ECDSA-P256",
+        "algorithms": [
+          "ECDSA-P256"
+        ],
+        "evidence_types": [
+          "CAPABILITY",
+          "IMPORTED"
+        ],
+        "evidence_ids": [],
+        "verdict": "CAPABILITY_ONLY"
+      }
+    ],
+    "count": 4,
+    "evidence_counts": {
+      "CAPABILITY": 4,
+      "IMPORTED": 4,
+      "RUNTIME_OBSERVED": 1
+    },
+    "corroborated": [
+      "libcrypto.so.3:RSA-2048"
+    ],
+    "statement": "pkg:generic/openssl: 4 capability(ies) handed to the CBOM; 1 corroborated by runtime or network evidence",
+    "rule": "the SBOM contributes capability and provenance; only a collector contributes usage, and the type travels with the row"
+  },
+  "tree": {
+    "query": "Payments API",
+    "node": {
+      "name": "Payments API",
+      "kind": "APPLICATION",
+      "id": "TECH-APP-002",
+      "key": "APPLICATION:payments api:production",
+      "version": null
+    },
+    "direct": [
+      {
+        "component": "pkg:generic/maven@3.9.6",
+        "version": "3.9.6",
+        "dependency_kind": "DIRECT",
+        "path": [
+          "pkg:generic/maven@3.9.6"
+        ],
+        "scope": "BUILD",
+        "evidence_id": "EVID-96003",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      },
+      {
+        "component": "pkg:generic/payments-sdk@2.4.0",
+        "version": "2.4.0",
+        "dependency_kind": "DIRECT",
+        "path": [
+          "pkg:generic/payments-sdk@2.4.0"
+        ],
+        "scope": "RUNTIME",
+        "evidence_id": "EVID-96003",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      }
+    ],
+    "transitive": [
+      {
+        "component": "pkg:generic/http-core@1.2.0",
+        "version": "1.2.0",
+        "dependency_kind": "TRANSITIVE",
+        "path": [
+          "pkg:generic/payments-sdk@2.4.0",
+          "pkg:generic/http-core@1.2.0"
+        ],
+        "scope": "TRANSITIVE",
+        "evidence_id": "EVID-96003",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      },
+      {
+        "component": "pkg:generic/openssl",
+        "version": "3.0.13",
+        "dependency_kind": "TRANSITIVE",
+        "path": [
+          "pkg:generic/payments-sdk@2.4.0",
+          "pkg:generic/http-core@1.2.0",
+          "pkg:generic/openssl"
+        ],
+        "scope": "RUNTIME",
+        "evidence_id": "EVID-96003",
+        "basis": "dependency-graph",
+        "class": "INFERRED",
+        "first_seen": "2026-10-01T08:30:00Z",
+        "last_seen": "2026-11-03T08:30:00Z"
+      }
+    ],
+    "listed_only": [
+      {
+        "component": "pkg:generic/mockito@5.4.0",
+        "version": "5.4.0",
+        "dependency_kind": "LISTED_ONLY",
+        "path": [
+          "pkg:generic/mockito@5.4.0"
+        ],
+        "scope": "TEST",
+        "evidence_id": "EVID-96003",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      },
+      {
+        "component": "pkg:generic/orphan@0.1.0",
+        "version": null,
+        "dependency_kind": "LISTED_ONLY",
+        "path": [
+          "pkg:generic/orphan@0.1.0"
+        ],
+        "scope": "RUNTIME",
+        "evidence_id": "EVID-96003",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      }
+    ],
+    "statement": "Payments API: 2 direct, 2 transitive, 2 listed only; pkg:generic/http-core@1.2.0, pkg:generic/openssl reached through another component",
+    "rule": "a transitive dependency is reported with its path: the direct parent is what a remediation upgrades, and the transitive child is what it fixes"
+  },
+  "scopes": {
+    "counts": {
+      "PRODUCTION": 0,
+      "RUNTIME": 4,
+      "TEST": 1,
+      "DEV": 0,
+      "BUILD": 2,
+      "OPTIONAL": 0,
+      "PROVIDED": 0,
+      "TRANSITIVE": 1
+    },
+    "production": [
+      "pkg:generic/ghost@0.0.9",
+      "pkg:generic/openssl",
+      "pkg:generic/orphan@0.1.0",
+      "pkg:generic/payments-sdk@2.4.0"
+    ],
+    "build_scope_in_runtime": [
+      {
+        "component": "pkg:generic/maven@3.9.6",
+        "scope": "BUILD",
+        "applications": [
+          "Payments API"
+        ]
+      }
+    ],
+    "statement": "8 component(s) across 4 scope(s); 4 in production scope; 1 build-scope component(s) reach a running application",
+    "rule": "a BUILD-scope dependency never runs in production, so it is not counted as production surface however it is named"
+  },
+  "impact": {
+    "query": "CVE-2026-0002",
+    "node": {
+      "name": "CVE-2026-0002",
+      "kind": "VULNERABILITY",
+      "id": "TECH-VULN-001",
+      "key": "VULNERABILITY:cve-2026-0002:production",
+      "version": null
+    },
+    "components": [
+      "pkg:generic/http-core@1.2.0",
+      "pkg:generic/openssl",
+      "pkg:generic/payments-sdk@2.4.0"
+    ],
+    "images": [
+      "layer:ubuntu-22.04-base",
+      "payments-api:4.2.1"
+    ],
+    "deployments": [
+      "payments-api-7d9f4c",
+      "payments-api-deploy"
+    ],
+    "applications": [
+      "Payments API"
+    ],
+    "systems": [
+      "Payments System"
+    ],
+    "statement": "CVE-2026-0002: 3 component(s), 2 image(s), 2 deployment(s), 1 application(s), 1 business system(s) affected",
+    "rule": "impact is a walk from the component to the business system; a CVE that reaches no application is still reported, as a component nobody deployed"
+  },
+  "plan": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "from_version": "3.0.13",
+    "to_version": "3.0.14",
+    "applications": [
+      "Payments API"
+    ],
+    "systems": [
+      "Payments System"
+    ],
+    "images": [
+      "layer:ubuntu-22.04-base",
+      "payments-api:4.2.1"
+    ],
+    "processes": [
+      "payments-api[1821]"
+    ],
+    "deployments": [
+      "payments-api-7d9f4c",
+      "payments-api-deploy"
+    ],
+    "shared_with": [],
+    "regression": [
+      "FIPS module re-validation",
+      "payment signature regression"
+    ],
+    "statement": "upgrade pkg:generic/openssl 3.0.13 \u2192 3.0.14: affects 1 application(s), 1 business system(s), 2 image(s), 1 process(es); regression: FIPS module re-validation, payment signature regression",
+    "rule": "a remediation is counted after the walk, so the number a change board approves is the number of systems that change"
+  },
+  "pqc": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "capabilities": [
+      "ECDSA-P256",
+      "RSA-2048"
+    ],
+    "observed_usage": [
+      "RSA-2048"
+    ],
+    "statement": "pkg:generic/openssl: 2 quantum-sensitive capability(ies) and 1 observed use(s); the SBOM answers the first and the CBOM answers the second",
+    "rule": "the SBOM hands capability to the CBOM and never decides readiness: a listed RSA is a question a migration asks, an observed RSA-2048 is the candidate",
+    "not_proven": [
+      "that a capability is reachable: the component lists it, and no collector has shown a caller using it"
+    ]
+  },
+  "coverage": {
+    "discovered": 2,
+    "components": [
+      "pkg:generic/openssl",
+      "pkg:generic/openssl-dev"
+    ],
+    "expected": 100,
+    "inspected": 75,
+    "failed": 15,
+    "unavailable": 10,
+    "coverage": "PARTIAL",
+    "ratio": 0.75,
+    "quotable_as_total": false,
+    "statement": "2 component(s) discovered; 75/100 application(s) inspected (75.0%); SBOM completeness: PARTIAL",
+    "rule": "a count is reported against what was inspected: 'discovered among' is a finding, 'the bank has' is a claim nobody made"
+  },
+  "identity": {
+    "query": "payments-api",
+    "canonical": "Payments API",
+    "candidates": [
+      "Payments API",
+      "payments-api-4.2.1.jar",
+      "payments-api:4.2.1",
+      "payments-api:latest"
+    ],
+    "anchors": {
+      "digest:sha256:abc123def4567890abc123def4567890": [
+        "Payments API",
+        "payments-api-4.2.1.jar"
+      ],
+      "digest:sha256:8af92c1d4e5f60718293a4b5c6d7e8f9": [
+        "Payments API",
+        "payments-api-4.2.1.jar",
+        "payments-api:4.2.1"
+      ],
+      "namespace:payments": [
+        "payments-api-4.2.1.jar",
+        "payments-api:4.2.1"
+      ]
+    },
+    "statement": "Payments API: 4 record(s) joined by digest:sha256:8af92c1d4e5f60718293a4b5c6d7e8f9, digest:sha256:abc123def4567890abc123def4567890, namespace:payments",
+    "rule": "one canonical asset, many observations: the join is a digest, a repository or a deployment identity \u2014 never a name"
+  },
+  "graph": {
+    "levels": {
+      "system": 1,
+      "application": 3,
+      "repository": 1,
+      "commit": 1,
+      "build": 1,
+      "artifact": 8,
+      "image": 4,
+      "deployment": 4,
+      "pod": 2,
+      "process": 1,
+      "component": 10,
+      "capability": 9
+    },
+    "kinds": {
+      "ALGORITHM": 4,
+      "APPLICATION": 3,
+      "ARTIFACT": 4,
+      "BUILD": 1,
+      "BUSINESS_SYSTEM": 1,
+      "CERTIFICATE": 1,
+      "CERTIFICATE_AUTHORITY": 1,
+      "CIPHER_SUITE": 1,
+      "CLUSTER": 1,
+      "COMMIT": 1,
+      "CONTAINER": 1,
+      "CPU": 1,
+      "CRYPTO_ASSET": 2,
+      "CRYPTO_CAPABILITY": 4,
+      "CRYPTO_LIBRARY": 1,
+      "CRYPTO_OPERATION": 1,
+      "CRYPTO_PROVIDER": 1,
+      "DEPLOYMENT": 1,
+      "HSM": 1,
+      "IMAGE": 2,
+      "IMAGE_LAYER": 2,
+      "KEY_REFERENCE": 1,
+      "KUBERNETES_NODE": 1,
+      "NAMESPACE": 1,
+      "NETWORK_ENDPOINT": 1,
+      "OS": 1,
+      "PACKAGE": 8,
+      "PHYSICAL_SERVER": 2,
+      "POD": 1,
+      "PROCESS": 1,
+      "PUBLIC_KEY": 1,
+      "RELEASE": 2,
+      "REPLICA_SET": 1,
+      "REPOSITORY": 1,
+      "SBOM": 2,
+      "SOURCE": 1,
+      "TPM": 1,
+      "VENDOR": 1,
+      "VENDOR_PRODUCT": 1,
+      "VULNERABILITY": 1
+    },
+    "relations": {
+      "AT_COMMIT": 1,
+      "BACKED_BY": 1,
+      "BUILT_FROM": 1,
+      "BUNDLES": 2,
+      "CONTAINS": 1,
+      "CONTAINS_KEY": 1,
+      "DECLARES": 1,
+      "DEPENDS_ON": 2,
+      "DEPLOYED_AS": 1,
+      "DESCRIBED_BY": 2,
+      "EXPOSES": 1,
+      "FROM_IMAGE": 1,
+      "HAS_COMPONENT": 2,
+      "HAS_LAYER": 2,
+      "HAS_VULNERABILITY": 1,
+      "HOLDS_KEY": 1,
+      "HOSTS_OS": 1,
+      "IMPLEMENTS": 4,
+      "INSTALLED_IN": 3,
+      "INVOKES": 1,
+      "ISSUED_BY": 1,
+      "LINKS": 1,
+      "LISTS": 6,
+      "LOADS": 3,
+      "MANAGES": 1,
+      "MEMBER_OF_CLUSTER": 1,
+      "NEGOTIATES": 1,
+      "PACKAGED_AS": 1,
+      "PRESENTS": 1,
+      "PRODUCES": 1,
+      "PRODUCT_OF": 1,
+      "RELEASED_AS": 2,
+      "RUNS_APPLICATION": 2,
+      "RUNS_CONTAINER": 1,
+      "RUNS_IN": 1,
+      "RUNS_ON": 1,
+      "RUNS_PROCESS": 1,
+      "SCHEDULED_ON": 1,
+      "SCHEDULES": 1,
+      "SHIPS": 2,
+      "SIGNED_WITH": 1,
+      "SUPPLIED_BY": 1,
+      "SUPPORTS": 5,
+      "TRACKED_IN": 1,
+      "USES_ALGORITHM": 3,
+      "USES_CRYPTO": 2,
+      "USES_KEY": 1
+    },
+    "supply_relations": 34,
+    "canonical": "CANONICAL_ESTATE",
+    "second_store": false,
+    "projection": "SBOM",
+    "statement": "64 node(s) of 40 kind(s), 74 edge(s), 34 of them on the supply chain; projection of CANONICAL_ESTATE, one store",
+    "rule": "the SBOM is a projection of the canonical estate: a second database that agrees on the day it is loaded is a second truth waiting to disagree"
+  },
+  "refusals": [],
+  "limits": [
+    "the estate is a fixture: every shape is the review's, the rows are not",
+    "a repository, a commit and a build are three claims from three systems; the guide proves they are joined, not that any of them was re-executed",
+    "an SBOM lists what a scanner found; a component the scanner missed is absent from every level of the chain below the artifact",
+    "direct and transitive are read off the graph: a manifest whose dependency was declared but never resolved shows as transitive and cannot be fixed from here",
+    "a version conflict is preserved, not resolved: which version is right is a question for the team that owns the image",
+    "identity resolution joins on digests, repositories and namespaces; two applications with no shared anchor stay two applications, by design",
+    "coverage is arithmetic on what the collectors reported; it cannot see an application that was never scanned"
+  ]
+}

@@ -627,6 +627,39 @@
 > 4 carry all twelve, and the shortfall is published as `collector 25/63`, `observed_at
 > 32/63`, `first_seen 18/63`.
 
+> [The SBOM dependency chain, twenty-eight points](175-sbom-dependency.md)
+> (**28 pass · 0 partial · 0 fail**, 79 probes) builds the half of the chain that the
+> review draws *before* the software: business system → application → source repository →
+> commit → build → artifact → container image → deployment → pod / VM / host → process →
+> software component → crypto capability, and refuses to let any of those levels be implied
+> by its neighbour. `cbom/sbom_dependency.py` keeps twelve supply levels, six component
+> states, five deployment states, eight dependency scopes, four version layers and eight
+> evidence types apart, and every container builder takes a **part** rather than a row —
+> a layer that ships a package and loses its `SHIPS` edge on the way to the image has been
+> counted and not recorded. **An artifact is bound to a digest, not a tag**
+> (`ARTIFACT_WITHOUT_DIGEST`, `IMAGE_WITHOUT_DIGEST`, `TAG_ONLY_IDENTITY`), so
+> `payments-api-4.2.1.jar` is `sha256:abc123… → git.bank.internal/payments/payments-api →
+> a81f92c → BUILD-18291 → SBOM-18291` and `payments-api:latest` is refused as an identity.
+> **Existence, installation, deployment, load and use are five facts**: OpenSSL is
+> `SBOM_PRESENT, INSTALLED, LOADED, CONFIGURED, STATIC_REFERENCED, RUNTIME_USED`, while
+> `openssl-dev` is installed in `reporting-api:1.0.0` and in a build layer and is deployed
+> nowhere — `INSTALLED=yes, DEPLOYED=no`. **Direct and transitive are read from two
+> different places** (`2 direct, 2 transitive, 2 listed only`), because a flattened CycloneDX
+> list cannot say who asked for a package; OpenSSL arrives as
+> `payments-sdk → http-core → openssl` with the path printed, and a component with no owner
+> says so instead of inheriting one. **A version disagreement is the finding**: SBOM 3.0.13,
+> image 3.0.13, process map 3.0.11 and vendor portal 3.0.13 are four layers of one component
+> and `DEPENDENCY_VERSION_CONFLICT` is published rather than resolved, with
+> `component_history` keeping the previous version and the evidence on both sides. **The
+> handoff is a handoff**: four capabilities go to the CBOM and only the one a collector
+> corroborated counts — `ECDSA-P256` stays `CAPABILITY_ONLY` even though a certificate
+> carries it, because a certificate is not a caller. Impact and remediation are walks, not
+> counts (`CVE-2026-0002: 3 components, 2 images, 2 deployments, 1 application, 1 business
+> system`; `upgrade OpenSSL → 1 application, 1 business system, 2 images, 1 process`), and
+> coverage is a denominator — `75/100 applications inspected (75.0%)` with
+> `quotable_as_total: false`. The projection is 64 nodes of 40 kinds and 74 edges, 34 of them
+> on the supply chain, read off `CANONICAL_ESTATE` with `second_store: false`.
+
 > [The chain, closed](174-chain-closure.md)
 > (**6 pass · 0 partial · 0 fail**, 18 probes) asks the six questions that sit *underneath*
 > the twenty-six points, because a chain can be complete and still not answer them. **The
