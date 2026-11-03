@@ -627,6 +627,40 @@
 > 4 carry all twelve, and the shortfall is published as `collector 25/63`, `observed_at
 > 32/63`, `first_seen 18/63`.
 
+> [Live collection: payloads, transports and the chain they build](177-sbom-live-collection.md)
+> (**16 pass · 0 partial · 0 fail**, 48 probes) closes the other end of 176. That guide began
+> with a store somebody had already filled; this one begins with the answer each bank system
+> actually returns — a git host, a pipeline, a registry, a scanner, a cluster, a probe, an
+> SBOM, a CMDB and an agent's package list — and runs
+> `payload → collector → inventory → estate → chain` until the twelve levels exist without
+> anyone typing a row. `cbom/sbom_collectors.py` states a **ceiling per transport**, not per
+> parser: only `process` may say `OBSERVED`, a scan is `STATIC_OBSERVED`, a Deployment is
+> `CONFIGURED`, an SBOM and a CMDB are `IMPORTED`, and a collector that asks for more than
+> its transport can support is refused rather than promoted. Identity is the whole argument:
+> a commit is a **sha** (`MUTABLE_IDENTITY` for a branch), an artifact and an image anchor on
+> a **digest** (`ARTIFACT_WITHOUT_DIGEST`, `IMAGE_WITHOUT_DIGEST`), a Deployment must name an
+> image, a pod must have a name, and a component is keyed **without** its version —
+> `pkg:generic/openssl@3.0.13` and `pkg:generic/openssl@3.0.11` are one component with two
+> version layers, and merging on the versioned purl would have split one component into three
+> and destroyed the conflict that is the finding. Two transports that agree on an asset are
+> **absorbed** (the registry's layers and the scanner's installed set both survive), two that
+> disagree are a **finding** (`COLLECTOR_DISAGREEMENT`: kept `sha256:8af92c1d…`, also
+> reported `sha256:99999999…`, neither overwriting the other), and a stale read is imported
+> and labelled rather than called live. The fixture is refused six times by name — a branch, a
+> jar with no digest, a Deployment with no image, `^1.3.0`, a versionless component, and a
+> `spreadsheet` transport — and none of the six becomes an asset. What comes out is
+> 28 rows from 10 transports into 30 assets: `system 1, application 3, repository 1,
+> commit 1, build 1, artifact 2, image 2, deployment 4, pod 2, process 1, component 5,
+> capability 4`, with `Payments API → repo → a81f92c → BUILD-18291 → payments-api-4.2.1.jar →
+> SBOM-18291 → payments-sdk → http-core → openssl` walkable and `openssl` both **installed**
+> (scan) and **loaded** (probe) while the two states stay apart. Three defects fell out of
+> building it: the SBOM-chain walk stopped at the commit because a lineage edge was only
+> followed forwards (`AT_COMMIT`, `BUILT_FROM`, `PRODUCES`, `TRACKED_IN` are now followed in
+> both directions, so an estate with no release row still reaches its artifacts), the
+> version-layer reader took the row's summary version **before** the claims and so hid the
+> 3.0.13-against-3.0.11 conflict, and the component path from an application did not cross
+> `TRACKED_IN`, so every component came back `0 direct, 0 transitive`.
+
 > [The SBOM chain, from the store](176-sbom-chain-store.md)
 > (**17 pass · 0 partial · 0 fail**, 46 probes) is the same twelve levels built from the
 > *other* end: a gathered inventory goes into `cbom/sbom_supply.py` and the chain has to

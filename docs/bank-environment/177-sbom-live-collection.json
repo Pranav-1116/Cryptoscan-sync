@@ -1,0 +1,883 @@
+{
+  "schema": "cryptoscan.sbom-live-guide/1",
+  "generated_at": "2026-11-03T10:44:41Z",
+  "counts": {
+    "PASS": 16,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": 48,
+  "points_present": 16,
+  "statement": "16 of 16 points of live collection hold, across 48 probes; 28 row(s) from 10 transport(s), 6 refusal(s), 30 asset(s) in the chain",
+  "transports": {
+    "ci": {
+      "class": "CONFIGURED",
+      "basis": "api-poll",
+      "rows": {
+        "artifacts": 1,
+        "builds": 1
+      },
+      "freshness": {
+        "transport": "ci",
+        "age_hours": 2.0,
+        "stale": false,
+        "collected_at": "2026-11-03T06:30:00Z",
+        "stale_after_hours": 24,
+        "statement": "ci: read 2.0h ago, LIVE",
+        "rule": "live means recently read: a stale row is imported and labelled, never silently promoted to current"
+      },
+      "statement": "ci: 2 row(s) across 2 section(s) at CONFIGURED; 1 refusal(s)"
+    },
+    "cmdb": {
+      "class": "IMPORTED",
+      "basis": "cmdb-import",
+      "rows": {
+        "applications": 3
+      },
+      "freshness": {
+        "transport": "cmdb",
+        "age_hours": 2.0,
+        "stale": false,
+        "collected_at": "2026-11-03T06:30:00Z",
+        "stale_after_hours": 24,
+        "statement": "cmdb: read 2.0h ago, LIVE",
+        "rule": "live means recently read: a stale row is imported and labelled, never silently promoted to current"
+      },
+      "statement": "cmdb: 3 row(s) across 1 section(s) at IMPORTED"
+    },
+    "git": {
+      "class": "CONFIGURED",
+      "basis": "api-poll",
+      "rows": {
+        "commits": 1,
+        "repositories": 1
+      },
+      "freshness": {
+        "transport": "git",
+        "age_hours": 2.0,
+        "stale": false,
+        "collected_at": "2026-11-03T06:30:00Z",
+        "stale_after_hours": 24,
+        "statement": "git: read 2.0h ago, LIVE",
+        "rule": "live means recently read: a stale row is imported and labelled, never silently promoted to current"
+      },
+      "statement": "git: 2 row(s) across 2 section(s) at CONFIGURED; 1 refusal(s)"
+    },
+    "host": {
+      "class": "CONFIGURED",
+      "basis": "agent-inventory",
+      "rows": {
+        "hosts": 1,
+        "software": 2
+      },
+      "freshness": {
+        "transport": "host",
+        "age_hours": 2.0,
+        "stale": false,
+        "collected_at": "2026-11-03T06:30:00Z",
+        "stale_after_hours": 24,
+        "statement": "host: read 2.0h ago, LIVE",
+        "rule": "live means recently read: a stale row is imported and labelled, never silently promoted to current"
+      },
+      "statement": "host: 3 row(s) across 2 section(s) at CONFIGURED"
+    },
+    "kubernetes": {
+      "class": "CONFIGURED",
+      "basis": "deployment-metadata",
+      "rows": {
+        "deployments": 1
+      },
+      "freshness": {
+        "transport": "kubernetes",
+        "age_hours": 2.0,
+        "stale": false,
+        "collected_at": "2026-11-03T06:30:00Z",
+        "stale_after_hours": 24,
+        "statement": "kubernetes: read 2.0h ago, LIVE",
+        "rule": "live means recently read: a stale row is imported and labelled, never silently promoted to current"
+      },
+      "statement": "kubernetes: 1 row(s) across 1 section(s) at CONFIGURED; 1 refusal(s)"
+    },
+    "process": {
+      "class": "OBSERVED",
+      "basis": "process-trace",
+      "rows": {
+        "crypto": 2,
+        "processes": 1,
+        "software": 2
+      },
+      "freshness": {
+        "transport": "process",
+        "age_hours": 0.0,
+        "stale": false,
+        "collected_at": "2026-11-03T08:30:00Z",
+        "stale_after_hours": 24,
+        "statement": "process: read 0.0h ago, LIVE",
+        "rule": "live means recently read: a stale row is imported and labelled, never silently promoted to current"
+      },
+      "statement": "process: 5 row(s) across 3 section(s) at OBSERVED"
+    },
+    "registry": {
+      "class": "CONFIGURED",
+      "basis": "api-poll",
+      "rows": {
+        "images": 1,
+        "layers": 1
+      },
+      "freshness": {
+        "transport": "registry",
+        "age_hours": 2.0,
+        "stale": false,
+        "collected_at": "2026-11-03T06:30:00Z",
+        "stale_after_hours": 24,
+        "statement": "registry: read 2.0h ago, LIVE",
+        "rule": "live means recently read: a stale row is imported and labelled, never silently promoted to current"
+      },
+      "statement": "registry: 2 row(s) across 2 section(s) at CONFIGURED"
+    },
+    "sbom": {
+      "class": "IMPORTED",
+      "basis": "sbom-import",
+      "rows": {
+        "dependencies": 2,
+        "sboms": 1,
+        "software": 3
+      },
+      "freshness": {
+        "transport": "sbom",
+        "age_hours": 2.0,
+        "stale": false,
+        "collected_at": "2026-11-03T06:30:00Z",
+        "stale_after_hours": 24,
+        "statement": "sbom: read 2.0h ago, LIVE",
+        "rule": "live means recently read: a stale row is imported and labelled, never silently promoted to current"
+      },
+      "statement": "sbom: 6 row(s) across 3 section(s) at IMPORTED; 2 refusal(s)"
+    },
+    "scan": {
+      "class": "STATIC_OBSERVED",
+      "basis": "binary-scan",
+      "rows": {
+        "images": 1,
+        "software": 3
+      },
+      "freshness": {
+        "transport": "scan",
+        "age_hours": 2.0,
+        "stale": false,
+        "collected_at": "2026-11-03T06:30:00Z",
+        "stale_after_hours": 24,
+        "statement": "scan: read 2.0h ago, LIVE",
+        "rule": "live means recently read: a stale row is imported and labelled, never silently promoted to current"
+      },
+      "statement": "scan: 4 row(s) across 2 section(s) at STATIC_OBSERVED"
+    }
+  },
+  "collected": {
+    "statement": "28 row(s) from 10 transport(s); 6 refusal(s); 1 stale transport(s): spreadsheet",
+    "counts": {
+      "transports": 10,
+      "rows": 28,
+      "conflicts": 0,
+      "refusals": 6,
+      "stale": 1
+    },
+    "refusals": [
+      {
+        "code": "MUTABLE_IDENTITY",
+        "transport": "git",
+        "subject": "main",
+        "reason": "a commit is named by its sha; a branch or tag name points at a commit that will not be the same commit tomorrow"
+      },
+      {
+        "code": "ARTIFACT_WITHOUT_DIGEST",
+        "transport": "ci",
+        "subject": "payments-api.jar",
+        "reason": "the pipeline reports a name and no digest: a jar called payments-api.jar is overwritten on the next build, so it cannot anchor an SBOM"
+      },
+      {
+        "code": "DEPLOYMENT_WITHOUT_IMAGE",
+        "transport": "kubernetes",
+        "subject": "ghost-deploy",
+        "reason": "the Deployment names no image, so nothing in it can reach a component"
+      },
+      {
+        "code": "UNPINNED_VERSION",
+        "transport": "sbom",
+        "subject": "left-pad",
+        "reason": "the component carries ^1.3.0; a range is a manifest declaration and an SBOM that cannot say which version is in the artifact answers nothing"
+      },
+      {
+        "code": "UNPINNED_VERSION",
+        "transport": "sbom",
+        "subject": "mystery",
+        "reason": "the component carries no version; a range is a manifest declaration and an SBOM that cannot say which version is in the artifact answers nothing"
+      },
+      {
+        "code": "UNKNOWN_TRANSPORT",
+        "transport": "spreadsheet",
+        "subject": "spreadsheet",
+        "reason": "spreadsheet has no collector; the payload is not read and the inventory is missing a transport"
+      }
+    ],
+    "conflicts": [
+      {
+        "code": "COLLECTOR_DISAGREEMENT",
+        "section": "images",
+        "asset": "payments-api:4.2.1",
+        "field": "digest",
+        "kept": "sha256:8af92c1d4e5f60718293a4b5c6d7e8f9",
+        "kept_from": "registry",
+        "reported": "sha256:99999999aaaabbbbccccddddeeeeffff",
+        "reported_from": "registry",
+        "reason": "registry and registry disagree on digest for payments-api:4.2.1: both are kept and neither overwrites the other"
+      }
+    ]
+  },
+  "levels": {
+    "system": 1,
+    "application": 3,
+    "repository": 1,
+    "commit": 1,
+    "build": 1,
+    "artifact": 2,
+    "image": 2,
+    "deployment": 4,
+    "pod": 2,
+    "process": 1,
+    "component": 5,
+    "capability": 4
+  },
+  "rows": [
+    {
+      "id": "LIVE-01",
+      "number": 1,
+      "phase": "source",
+      "question": "a repository and a commit are read from the git host's own answer",
+      "probes": [
+        {
+          "probe": "the-repository-row-carries-its-name",
+          "ok": true,
+          "observed": "git:bank/payments-api"
+        },
+        {
+          "probe": "the-commit-is-identified-by-its-sha",
+          "ok": true,
+          "observed": "git:bank/payments-api@a81f92c"
+        },
+        {
+          "probe": "a-branch-name-is-not-an-identity",
+          "ok": true,
+          "observed": "a commit is named by its sha; a branch or tag name points at a commit that will not be the same commit tomorrow"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-02",
+      "number": 2,
+      "phase": "build",
+      "question": "a build names its commit and an artifact anchors on its digest",
+      "probes": [
+        {
+          "probe": "the-build-names-the-commit",
+          "ok": true,
+          "observed": "ci:BUILD-18291"
+        },
+        {
+          "probe": "the-artifact-carries-a-digest",
+          "ok": true,
+          "observed": "payments-api-4.2.1.jar"
+        },
+        {
+          "probe": "an-artifact-with-only-a-name-is-refused",
+          "ok": true,
+          "observed": "the pipeline reports a name and no digest: a jar called payments-api.jar is overwritten on the next build, so it cannot anchor an SBOM"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-03",
+      "number": 3,
+      "phase": "image",
+      "question": "the registry's digest is the identity and the tag is recorded beside it",
+      "probes": [
+        {
+          "probe": "the-image-is-anchored-on-its-digest",
+          "ok": true,
+          "observed": "oci:payments-api@sha256:8af92c1d4e5f60718293a4b5c6d7e8f9"
+        },
+        {
+          "probe": "the-tag-is-kept-as-a-pointer-not-an-identity",
+          "ok": true,
+          "observed": "payments-api:4.2.1"
+        },
+        {
+          "probe": "a-registry-that-returns-only-a-tag-is-refused",
+          "ok": true,
+          "observed": "IMAGE_WITHOUT_DIGEST"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-04",
+      "number": 4,
+      "phase": "image",
+      "question": "a scanner says what is installed in a digest, one class above the SBOM",
+      "probes": [
+        {
+          "probe": "the-scan-lists-the-packages-it-found",
+          "ok": true,
+          "observed": "pkg:generic/openssl, pkg:generic/payments-sdk, pkg:generic/http-core"
+        },
+        {
+          "probe": "the-scan-is-STATIC_OBSERVED",
+          "ok": true,
+          "observed": "class STATIC_OBSERVED"
+        },
+        {
+          "probe": "the-image-row-names-what-is-installed",
+          "ok": true,
+          "observed": "['pkg:generic/openssl', 'pkg:generic/payments-sdk', 'pkg:generic/http-core']"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-05",
+      "number": 5,
+      "phase": "deployment",
+      "question": "a Deployment is metadata, and it stops at the pod",
+      "probes": [
+        {
+          "probe": "the-deployment-names-its-image-and-pods",
+          "ok": true,
+          "observed": "k8s:prod-cluster/payments/payments-api-deploy"
+        },
+        {
+          "probe": "the-class-is-CONFIGURED-not-OBSERVED",
+          "ok": true,
+          "observed": "class CONFIGURED"
+        },
+        {
+          "probe": "a-deployment-with-no-image-is-refused",
+          "ok": true,
+          "observed": "the Deployment names no image, so nothing in it can reach a component"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-06",
+      "number": 6,
+      "phase": "runtime",
+      "question": "a trace is the only transport that may say OBSERVED",
+      "probes": [
+        {
+          "probe": "the-probe-is-OBSERVED",
+          "ok": true,
+          "observed": "class OBSERVED"
+        },
+        {
+          "probe": "the-loaded-object-names-the-package-that-ships-it",
+          "ok": true,
+          "observed": "['pkg:generic/openssl', 'pkg:generic/openssl']"
+        },
+        {
+          "probe": "the-runtime-version-is-kept-as-a-runtime-source",
+          "ok": true,
+          "observed": "[{'source': 'process-map', 'value': '3.0.11', 'class': 'RUNTIME_OBSERVED', 'evidence_id': 'probe:node-03:1821'}]"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-07",
+      "number": 7,
+      "phase": "component",
+      "question": "an SBOM imports components at IMPORTED and refuses a range",
+      "probes": [
+        {
+          "probe": "the-pinned-components-arrive",
+          "ok": true,
+          "observed": "pkg:generic/openssl, pkg:generic/payments-sdk, pkg:generic/http-core"
+        },
+        {
+          "probe": "a-range-is-refused-as-a-version",
+          "ok": true,
+          "observed": "the component carries ^1.3.0; a range is a manifest declaration and an SBOM that cannot say which version is in the artifact answers nothing"
+        },
+        {
+          "probe": "the-dependency-edges-travel-with-the-components",
+          "ok": true,
+          "observed": "[('pkg:generic/payments-sdk', 'pkg:generic/http-core'), ('pkg:generic/http-core', 'pkg:generic/openssl')]"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-08",
+      "number": 8,
+      "phase": "host",
+      "question": "an agent's inventory is a filesystem fact on a named host",
+      "probes": [
+        {
+          "probe": "the-host-is-named",
+          "ok": true,
+          "observed": "host:srv-lb-01"
+        },
+        {
+          "probe": "the-host-says-what-it-holds",
+          "ok": true,
+          "observed": "['pkg:generic/openssl-dev', 'pkg:generic/nginx']"
+        },
+        {
+          "probe": "an-inventory-with-no-host-is-refused",
+          "ok": true,
+          "observed": "NO_IDENTITY"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-09",
+      "number": 9,
+      "phase": "evidence",
+      "question": "no transport claims a class stronger than it can support",
+      "probes": [
+        {
+          "probe": "only-the-probe-is-OBSERVED",
+          "ok": true,
+          "observed": "['process']"
+        },
+        {
+          "probe": "every-collector-states-its-basis",
+          "ok": true,
+          "observed": "ci api-poll, cmdb cmdb-import, git api-poll, host agent-inventory, kubernetes deployment-metadata, process process-trace, registry api-poll, sbom sbom-import, scan binary-scan"
+        },
+        {
+          "probe": "an-unknown-transport-is-refused-by-name",
+          "ok": true,
+          "observed": "spreadsheet has no collector; the payload is not read and the inventory is missing a transport"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-10",
+      "number": 10,
+      "phase": "merge",
+      "question": "two transports describing one component are merged, not duplicated",
+      "probes": [
+        {
+          "probe": "openssl-is-one-row-with-two-version-sources",
+          "ok": true,
+          "observed": "[[{'source': 'image-scan', 'value': '3.0.13', 'class': 'STATIC_OBSERVED', 'evidence_id': 'scan:payments-api:4.2.1@sha256:8af92c1d4e5f60718293a4b5c6d7e8f9'}, {'source': 'process-map', 'value': '3.0.11', 'class': 'RUNTIME_OBSERVED', 'evidence_id': 'probe:node-03:1821'}, {'source': 'sbom', 'value': '3.0.13', 'class': 'IMPORTED', 'evidence_id': 'sbom:SBOM-18291#pkg:generic/openssl'}]]"
+        },
+        {
+          "probe": "the-observations-are-all-kept",
+          "ok": true,
+          "observed": "[('image-scan', '3.0.13'), ('process-map', '3.0.11'), ('sbom', '3.0.13')]"
+        },
+        {
+          "probe": "the-merge-states-what-it-read",
+          "ok": true,
+          "observed": "28 row(s) from 10 transport(s); 6 refusal(s); 1 stale transport(s): spreadsheet"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-11",
+      "number": 11,
+      "phase": "merge",
+      "question": "a disagreement between two reads is a finding, not an overwrite",
+      "probes": [
+        {
+          "probe": "the-disagreement-is-recorded",
+          "ok": true,
+          "observed": "1 row(s) from 1 transport(s); 1 disagreement(s) kept"
+        },
+        {
+          "probe": "neither-read-wins",
+          "ok": true,
+          "observed": "sha256:8af92c1d4e5f60718293a4b5c6d7e8f9 vs sha256:99999999aaaabbbbccccddddeeeeffff"
+        },
+        {
+          "probe": "only-one-row-survives-into-the-inventory",
+          "ok": true,
+          "observed": "1"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-12",
+      "number": 12,
+      "phase": "freshness",
+      "question": "a stale read is imported and labelled, never called live",
+      "probes": [
+        {
+          "probe": "a-read-this-morning-is-live",
+          "ok": true,
+          "observed": "git: read 2.0h ago, LIVE"
+        },
+        {
+          "probe": "a-read-last-week-is-stale",
+          "ok": true,
+          "observed": "git: read 242.0h ago, STALE"
+        },
+        {
+          "probe": "the-stale-rows-are-still-imported",
+          "ok": true,
+          "observed": "2 row(s) from 1 transport(s); 2 refusal(s); 1 stale transport(s): git"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-13",
+      "number": 13,
+      "phase": "chain",
+      "question": "the payloads assemble into every level of the twelve-level chain",
+      "probes": [
+        {
+          "probe": "every-level-is-populated",
+          "ok": true,
+          "observed": "system 1, application 3, repository 1, commit 1, build 1, artifact 2, image 2, deployment 4, pod 2, process 1, component 5, capability 4"
+        },
+        {
+          "probe": "the-chain-builds-without-a-refusal",
+          "ok": true,
+          "observed": "0 refusal(s)"
+        },
+        {
+          "probe": "the-projection-says-where-it-came-from",
+          "ok": true,
+          "observed": "CANONICAL_ESTATE / live:production"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-14",
+      "number": 14,
+      "phase": "chain",
+      "question": "the chain answers the questions it exists for, from live rows",
+      "probes": [
+        {
+          "probe": "provenance-reaches-the-commit-and-the-build",
+          "ok": true,
+          "observed": "payments-api-4.2.1.jar: bank/payments-api \u2192 a81f92c \u2192 BUILD-18291 \u2192 SBOM-18291"
+        },
+        {
+          "probe": "the-component-names-the-application-that-owns-it",
+          "ok": true,
+          "observed": "pkg:generic/openssl: owned by Payments API"
+        },
+        {
+          "probe": "two-transports-produce-a-version-conflict-not-a-winner",
+          "ok": true,
+          "observed": "pkg:generic/openssl: DECLARED_VERSION=3.0.13, IMAGE_VERSION=3.0.13, RUNTIME_VERSION=3.0.11, VENDOR_VERSION=\u2014 \u2014 2 versions, preserved"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-15",
+      "number": 15,
+      "phase": "chain",
+      "question": "installed, loaded and used stay apart, and directness keeps its path",
+      "probes": [
+        {
+          "probe": "the-component-is-installed-and-loaded",
+          "ok": true,
+          "observed": "pkg:generic/openssl: SBOM_PRESENT, INSTALLED, LOADED; not CONFIGURED, STATIC_REFERENCED, RUNTIME_USED"
+        },
+        {
+          "probe": "the-component-reaches-its-deployment",
+          "ok": true,
+          "observed": "pkg:generic/openssl: EXISTS=yes, INSTALLED=yes, DEPLOYED=yes, RUNNING=yes, LOADED=yes"
+        },
+        {
+          "probe": "the-transitive-path-is-printed",
+          "ok": true,
+          "observed": "Payments API: 1 direct, 2 transitive, 0 listed only; pkg:generic/http-core, pkg:generic/openssl reached through another component"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    },
+    {
+      "id": "LIVE-16",
+      "number": 16,
+      "phase": "honesty",
+      "question": "a refused row never becomes an asset, and the refusals are published",
+      "probes": [
+        {
+          "probe": "the-refused-artifact-is-not-in-the-chain",
+          "ok": true,
+          "observed": "payments-api.jar absent"
+        },
+        {
+          "probe": "the-unpinned-component-is-not-in-the-chain",
+          "ok": true,
+          "observed": "left-pad and mystery absent"
+        },
+        {
+          "probe": "every-refusal-names-its-transport",
+          "ok": true,
+          "observed": "6 refusal(s) across 5 transport(s)"
+        }
+      ],
+      "failed": [],
+      "verdict": "PASS"
+    }
+  ],
+  "provenance": {
+    "artifact": "payments-api-4.2.1.jar",
+    "steps": {
+      "repository": "bank/payments-api",
+      "commit": "a81f92c",
+      "build": "BUILD-18291",
+      "pipeline": "jenkins-payments-ci",
+      "artifact": "payments-api-4.2.1.jar",
+      "digest": "sha256:abc123def4567890abc123def4567890",
+      "sbom": "SBOM-18291"
+    },
+    "missing": [],
+    "complete": true,
+    "statement": "payments-api-4.2.1.jar: bank/payments-api \u2192 a81f92c \u2192 BUILD-18291 \u2192 SBOM-18291",
+    "rule": "a provenance chain is printed with its gaps: an SBOM whose commit nobody recorded cannot be re-built, and saying so is the finding"
+  },
+  "owners": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "kind": "CRYPTO_LIBRARY",
+    "owners": [
+      {
+        "application": "Payments API",
+        "kind": "APPLICATION",
+        "path": [
+          "Payments API TRACKED_IN bank/payments-api",
+          "bank/payments-api TRACKED_IN BUILD-18291",
+          "BUILD-18291 PRODUCES payments-api-4.2.1.jar",
+          "payments-api-4.2.1.jar DESCRIBED_BY SBOM-18291",
+          "SBOM-18291 LISTS pkg:generic/openssl"
+        ],
+        "class": "CONFIGURED"
+      }
+    ],
+    "applications": [
+      "Payments API"
+    ],
+    "statement": "pkg:generic/openssl: owned by Payments API",
+    "rule": "ownership is an evidenced path from an application to the component; a component nobody reaches is a component nobody has deployed",
+    "not_proven": [
+      "that the repository which produced the artifact is the one that holds the component's own source: the SBOM joins them as data, not as provenance"
+    ]
+  },
+  "versions": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "layers": {
+      "DECLARED_VERSION": "3.0.13",
+      "IMAGE_VERSION": "3.0.13",
+      "RUNTIME_VERSION": "3.0.11",
+      "VENDOR_VERSION": null
+    },
+    "sources": {
+      "DECLARED_VERSION": [
+        {
+          "source": "sbom",
+          "value": "3.0.13",
+          "class": "IMPORTED",
+          "evidence_id": "sbom:SBOM-18291#pkg:generic/openssl"
+        }
+      ],
+      "IMAGE_VERSION": [
+        {
+          "source": "image-scan",
+          "value": "3.0.13",
+          "class": "STATIC_OBSERVED",
+          "evidence_id": "scan:payments-api:4.2.1@sha256:8af92c1d4e5f60718293a4b5c6d7e8f9"
+        }
+      ],
+      "RUNTIME_VERSION": [
+        {
+          "source": "process-map",
+          "value": "3.0.11",
+          "class": "RUNTIME_OBSERVED",
+          "evidence_id": "probe:node-03:1821"
+        }
+      ],
+      "VENDOR_VERSION": []
+    },
+    "distinct": [
+      "3.0.11",
+      "3.0.13"
+    ],
+    "conflict": true,
+    "code": "DEPENDENCY_VERSION_CONFLICT",
+    "statement": "pkg:generic/openssl: DECLARED_VERSION=3.0.13, IMAGE_VERSION=3.0.13, RUNTIME_VERSION=3.0.11, VENDOR_VERSION=\u2014 \u2014 2 versions, preserved",
+    "rule": "a declared version, an image version and a runtime version are three observations; the conflict is published, not resolved"
+  },
+  "states": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "states": {
+      "SBOM_PRESENT": true,
+      "INSTALLED": true,
+      "LOADED": true,
+      "CONFIGURED": false,
+      "STATIC_REFERENCED": false,
+      "RUNTIME_USED": false
+    },
+    "evidence": {
+      "SBOM_PRESENT": [
+        "SBOM-18291"
+      ],
+      "INSTALLED": [
+        "installed in payments-api:4.2.1"
+      ],
+      "LOADED": [
+        "payments-api[1821]"
+      ],
+      "CONFIGURED": [],
+      "STATIC_REFERENCED": [],
+      "RUNTIME_USED": []
+    },
+    "present": [
+      "SBOM_PRESENT",
+      "INSTALLED",
+      "LOADED"
+    ],
+    "absent": [
+      "CONFIGURED",
+      "STATIC_REFERENCED",
+      "RUNTIME_USED"
+    ],
+    "statement": "pkg:generic/openssl: SBOM_PRESENT, INSTALLED, LOADED; not CONFIGURED, STATIC_REFERENCED, RUNTIME_USED",
+    "rule": "installed, loaded and used are three different facts; a model that promotes one into the next has replaced a measurement with an assumption"
+  },
+  "deployment": {
+    "query": "pkg:generic/openssl",
+    "component": "pkg:generic/openssl",
+    "states": {
+      "EXISTS": true,
+      "INSTALLED": true,
+      "DEPLOYED": true,
+      "RUNNING": true,
+      "LOADED": true
+    },
+    "evidence": {
+      "EXISTS": [
+        "SBOM-18291 lists it"
+      ],
+      "INSTALLED": [
+        "installed in payments-api:4.2.1"
+      ],
+      "DEPLOYED": [
+        "payments",
+        "payments-api-7d9f4c",
+        "payments-api-deploy",
+        "prod-cluster"
+      ],
+      "RUNNING": [
+        "payments-api[1821]"
+      ],
+      "LOADED": [
+        "payments-api[1821] loads it"
+      ]
+    },
+    "strongest": "LOADED",
+    "deployed": true,
+    "statement": "pkg:generic/openssl: EXISTS=yes, INSTALLED=yes, DEPLOYED=yes, RUNNING=yes, LOADED=yes",
+    "rule": "existence in an SBOM is a document, installation is a filesystem and a load is a syscall; the three are counted apart"
+  },
+  "tree": {
+    "query": "Payments API",
+    "node": {
+      "name": "Payments API",
+      "kind": "APPLICATION",
+      "id": "TECH-APP-001",
+      "key": "APPLICATION:payments api:production",
+      "version": null
+    },
+    "direct": [
+      {
+        "component": "pkg:generic/payments-sdk",
+        "version": "2.4.0",
+        "dependency_kind": "DIRECT",
+        "path": [
+          "pkg:generic/payments-sdk"
+        ],
+        "scope": "RUNTIME",
+        "evidence_id": "sbom:SBOM-18291",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      }
+    ],
+    "transitive": [
+      {
+        "component": "pkg:generic/http-core",
+        "version": "1.2.0",
+        "dependency_kind": "TRANSITIVE",
+        "path": [
+          "pkg:generic/payments-sdk",
+          "pkg:generic/http-core"
+        ],
+        "scope": "RUNTIME",
+        "evidence_id": "dependency:pkg:generic/payments-sdk->pkg:generic/http-core",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      },
+      {
+        "component": "pkg:generic/openssl",
+        "version": "3.0.13",
+        "dependency_kind": "TRANSITIVE",
+        "path": [
+          "pkg:generic/payments-sdk",
+          "pkg:generic/http-core",
+          "pkg:generic/openssl"
+        ],
+        "scope": "RUNTIME",
+        "evidence_id": "dependency:pkg:generic/http-core->pkg:generic/openssl",
+        "basis": "sbom-import",
+        "class": "IMPORTED",
+        "first_seen": null,
+        "last_seen": null
+      }
+    ],
+    "listed_only": [],
+    "statement": "Payments API: 1 direct, 2 transitive, 0 listed only; pkg:generic/http-core, pkg:generic/openssl reached through another component",
+    "rule": "a transitive dependency is reported with its path: the direct parent is what a remediation upgrades, and the transitive child is what it fixes"
+  },
+  "chain_statement": "28 row(s) from 10 transport(s); 6 refusal(s); 1 stale transport(s): spreadsheet; 30 asset(s) and 36 claim(s) in the chain, system 1, application 3, repository 1, commit 1, build 1, artifact 2, image 2, deployment 4, pod 2, process 1, component 5, capability 4",
+  "limits": [
+    "the payloads are recorded answers from each system, not live calls: the collectors are proven against the shapes those systems return, not against a running estate",
+    "a collector reads one answer at one moment; nothing here polls, retries or reconciles a partial read, and freshness is the only statement about age",
+    "the class ceiling is stated per transport, so a collector cannot claim more than its transport \u2014 but a transport that lies is a trust question, not a code one",
+    "an SBOM's declared version and a probe's runtime version are two rows: the chain keeps the conflict and does not decide which one the bank is running"
+  ]
+}

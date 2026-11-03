@@ -83,6 +83,7 @@ BASIS_BY_SECTION: dict[str, str] = {
     "crypto": "capability-list",
     "vendors": "vendor-datasheet",
     "hardware": "cmdb-import",
+    "hosts": "agent-inventory",
     "certificates": "cmdb-import",
     "endpoints": "config-parse",
 }
@@ -97,7 +98,7 @@ HARDWARE_KINDS: dict[str, str] = {"HSM": "HSM", "TPM": "TPM", "CPU": "CPU", "KMS
 STORED_BASES: frozenset[str] = frozenset({
     "api-poll", "agent-inventory", "cmdb-import", "deployment-metadata", "sbom-import",
     "scan-manifest", "vendor-datasheet", "code-analysis", "operator-registration",
-    "capability-list", "dependency-graph", "config-parse",
+    "capability-list", "dependency-graph", "config-parse", "binary-scan", "symbol-scan",
 })
 
 #: the bases that only a probe may claim. A stored row may still carry one — a process trace
@@ -738,6 +739,33 @@ def from_inventory(inventory: Mapping[str, Any] | None, *, environment: Any = No
                                                evidence_ids=evidence)]))
         count("hardware")
         remember(row, section="hardware")
+        placed_assets.append(name)
+
+    # ---- hosts and the packages installed on them --------------------------- #
+    for row in rows("hosts"):
+        name = _norm(row.get("name"))
+        evidence = _evidence(row, "host", name)
+        basis = _basis(row, "hosts", skipped, name)
+        if not name or not evidence or basis is None:
+            _skip(skipped, "HOST", name,
+                  "a host row with no name or no evidence reference cannot be placed")
+            continue
+        kind = HARDWARE_KINDS.get(_norm(row.get("type")).upper(), "PHYSICAL_SERVER")
+        host_row = tb.asset(kind, name, os=row.get("os"), datacenter=row.get("datacenter"),
+                            rack=row.get("rack"), evidence_ids=evidence)
+        claims = []
+        for coordinate in row.get("installed") or []:
+            label = _norm(coordinate)
+            if label not in components:
+                _skip(skipped, "HOST", f"{name} installs {label}",
+                      "the host lists a package this inventory does not hold")
+                continue
+            # a package installed on a host says so itself: INSTALLED_IN starts there
+            claims.append(tb.claim(label, "INSTALLED_IN", name, basis=basis,
+                                   evidence_ids=evidence))
+        parts.append(part(host_row, claims=claims))
+        count("hosts")
+        remember(row, section="hosts")
         placed_assets.append(name)
 
     endpoints_named = {_norm(row.get("name")) for row in rows("endpoints")

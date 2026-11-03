@@ -451,6 +451,30 @@ def levels(bom: Mapping[str, Any]) -> dict[str, int]:
             for _, name in SUPPLY_LEVELS}
 
 
+#: relations that describe one lineage rather than a direction of flow. A build names the
+#: commit it was built from, so *from the commit* the build is found by following that edge
+#: the other way. Without this the walk stops at the commit in every estate that has no
+#: release row — which is most of them.
+LINEAGE_RELATIONS: frozenset[str] = frozenset({
+    "AT_COMMIT", "BUILT_FROM", "BUILT_INTO", "PRODUCES", "DESCRIBED_BY", "PACKAGED_AS",
+    "TRACKED_IN"})
+
+
+def _steps(bom: Mapping[str, Any], current: str, *,
+           forward: bool) -> list[tuple[dict[str, Any], str]]:
+    """The edges that may be followed from one node, lineage included in both directions."""
+    found: list[tuple[dict[str, Any], str]] = []
+    for claim in bom["claims"]:
+        if claim["relation"] not in SUPPLY_RELATIONS:
+            continue
+        lineage = claim["relation"] in LINEAGE_RELATIONS
+        if claim["from_key"] == current and (forward or lineage):
+            found.append((claim, claim["to_key"]))
+        elif claim["to_key"] == current and (not forward or lineage):
+            found.append((claim, claim["from_key"]))
+    return found
+
+
 def _walk(bom: Mapping[str, Any], start: str, *, max_depth: int = 10,
           reverse: bool = False) -> dict[str, Any]:
     buckets: dict[str, dict[str, dict[str, Any]]] = {name: {} for _, name in SUPPLY_LEVELS}
@@ -461,17 +485,7 @@ def _walk(bom: Mapping[str, Any], start: str, *, max_depth: int = 10,
         current, depth = frontier.pop(0)
         if depth >= max_depth:
             continue
-        for claim in bom["claims"]:
-            if claim["relation"] not in SUPPLY_RELATIONS:
-                continue
-            if reverse:
-                if claim["to_key"] != current:
-                    continue
-                neighbour = claim["from_key"]
-            else:
-                if claim["from_key"] != current:
-                    continue
-                neighbour = claim["to_key"]
+        for claim, neighbour in _steps(bom, current, forward=not reverse):
             if neighbour in seen or neighbour not in bom["by_key"]:
                 continue
             seen.add(neighbour)
@@ -516,12 +530,7 @@ def _owners(bom: Mapping[str, Any], start: str, *, max_depth: int = 10
         current, path, depth = frontier.pop(0)
         if depth >= max_depth:
             continue
-        for claim in bom["claims"]:
-            if claim["relation"] not in SUPPLY_RELATIONS:
-                continue
-            if claim["to_key"] != current:
-                continue
-            neighbour = claim["from_key"]
+        for claim, neighbour in _steps(bom, current, forward=False):
             row = bom["by_key"].get(neighbour)
             if row is None or neighbour in seen:
                 continue
@@ -572,17 +581,7 @@ def _kinds_in_walk(bom: Mapping[str, Any], key: str, kinds: Iterable[str], *,
         current, depth = frontier.pop(0)
         if depth >= max_depth:
             continue
-        for claim in bom["claims"]:
-            if claim["relation"] not in SUPPLY_RELATIONS:
-                continue
-            if reverse:
-                if claim["to_key"] != current:
-                    continue
-                neighbour = claim["from_key"]
-            else:
-                if claim["from_key"] != current:
-                    continue
-                neighbour = claim["to_key"]
+        for claim, neighbour in _steps(bom, current, forward=not reverse):
             if neighbour in seen or neighbour not in bom["by_key"]:
                 continue
             seen.add(neighbour)
@@ -992,10 +991,6 @@ def version_layers(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]:
               if isinstance(claim, Mapping)]
     layers: dict[str, Any] = {name: None for name in VERSION_LAYERS}
     sources: dict[str, list[dict[str, Any]]] = {name: [] for name in VERSION_LAYERS}
-    if row.get("version"):
-        layers["DECLARED_VERSION"] = row["version"]
-        sources["DECLARED_VERSION"].append({"source": "row", "value": row["version"],
-                                            "class": tb.IMPORTED})
     for claim in claims:
         layer = VERSION_LAYER_BY_SOURCE.get(str(claim.get("source") or "").lower())
         if layer is None:
@@ -1009,6 +1004,12 @@ def version_layers(bom: Mapping[str, Any], *, query: Any) -> dict[str, Any]:
                                "evidence_id": claim.get("evidence_id")})
         if layers[layer] is None:
             layers[layer] = value
+    if row.get("version") and not sources["DECLARED_VERSION"]:
+        # the row's own version is a summary of the claims. With no declared claim to cite it
+        # is the only statement there is — and it is labelled as the row's, not as a layer's.
+        layers["DECLARED_VERSION"] = row["version"]
+        sources["DECLARED_VERSION"].append({"source": "row", "value": row["version"],
+                                            "class": tb.IMPORTED})
     distinct = sorted({value for value in layers.values() if value})
     conflict = len(distinct) > 1
     return {
@@ -1185,18 +1186,19 @@ def _listed_components(bom: Mapping[str, Any], start: str, *, max_depth: int = 6
     frontier: list[tuple[str, int]] = [(start, 0)]
     forward = ("RELEASED_AS", "BUNDLES", "PACKAGED_AS", "DESCRIBED_BY", "HAS_LAYER", "SHIPS",
                "LISTS", "INSTALLED_IN", "RUNS_APPLICATION", "RUNS_PROCESS", "RUNS_CONTAINER",
-               "FROM_IMAGE", "DEPLOYED_AS")
+               "FROM_IMAGE", "DEPLOYED_AS", "TRACKED_IN")
     while frontier:
         current, depth = frontier.pop(0)
         if depth >= max_depth:
             continue
-        for claim in bom["claims"]:
-            if claim["relation"] not in forward or claim["from_key"] != current:
+        for claim, neighbour in _steps(bom, current, forward=True):
+            if claim["relation"] not in forward and \
+                    claim["relation"] not in LINEAGE_RELATIONS:
                 continue
-            if claim["to_key"] in reachable:
+            if neighbour in reachable:
                 continue
-            reachable.add(claim["to_key"])
-            frontier.append((claim["to_key"], depth + 1))
+            reachable.add(neighbour)
+            frontier.append((neighbour, depth + 1))
     listed = {claim["to_key"] for claim in bom["claims"]
               if claim["relation"] in ("LISTS", "SHIPS") and claim["from_key"] in reachable}
     return sorted(key for key in listed if bom["by_key"][key]["kind"] == "PACKAGE")
