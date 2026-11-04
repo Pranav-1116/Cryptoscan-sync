@@ -112,7 +112,10 @@ def connection_settings(settings, role, *, url=None):
     from types import SimpleNamespace
     prefix = "CRYPTOSCAN_REDIS_" + role.upper() + "_"
     dedicated = prefix + "URL" in os.environ
-    values = {"is_production": getattr(settings, "is_production", str(getattr(settings, "ENVIRONMENT", os.getenv("ENVIRONMENT", "production"))).lower() in {"production", "prod"}),
+    from shared_config import environment as platform_environment
+
+    values = {"is_production": getattr(settings, "is_production",
+                                       platform_environment.is_production(settings)),
               "REDIS_URL": os.environ.get(prefix + "URL", url if url is not None else settings.REDIS_URL)}
     for suffix in ("CA_CERTS", "SENTINELS", "SENTINEL_MASTER", "SENTINEL_USERNAME", "SENTINEL_PASSWORD"):
         fallback = "" if dedicated and suffix != "CA_CERTS" else getattr(settings, "REDIS_" + suffix, "")

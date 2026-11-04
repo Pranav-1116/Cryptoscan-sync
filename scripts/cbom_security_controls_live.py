@@ -42,6 +42,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import sys
 import tempfile
@@ -55,9 +56,15 @@ VERDICT_FAIL = "FAIL"
 
 
 def _modules() -> dict[str, Any]:
+    import shared_config.environment as platforms_environment
+    from cbom import cyclonedx16
     from cbom import security_controls as sc
+    from cbom.security_controls import export
 
-    return {"sc": sc}
+    class _Platforms:
+        environment = platforms_environment
+
+    return {"sc": sc, "export": export, "cyclonedx16": cyclonedx16, "platforms": _Platforms}
 
 
 def _probe(name: str, ok: bool, observed: str) -> dict[str, Any]:
@@ -152,7 +159,11 @@ def estate(library_minutes: int = 5, now: datetime | None = None):
 # --------------------------------------------------------------------------- #
 
 def measure() -> dict[str, Any]:
-    sc = _modules()["sc"]
+    mods = _modules()
+    sc = mods["sc"]
+    platforms = mods["platforms"]
+    control_export = mods["export"]
+    cdx = mods["cyclonedx16"]
     points: list[dict[str, Any]] = []
 
     def add(number: int, section: str, question: str, probes: list[dict[str, Any]]) -> None:
@@ -417,8 +428,10 @@ def measure() -> dict[str, Any]:
         from api.routers import security_controls as router_module
 
         prefix = router_module.router.prefix
-        # the routes carry the prefix already; this harness reports the paths as mounted
-        paths = {getattr(route, "path", "") for route in router_module.router.routes}
+        # routes are declared router-relative, so report them as mounted: the console and the
+        # bank's SIEM call the prefixed path, and a route table without its prefix is a guess
+        paths = {(route.path if route.path.startswith(prefix) else f"{prefix}{route.path}")
+                 for route in router_module.router.routes}
         api_ok = {f"{prefix}/snapshots", f"{prefix}/findings",
                   f"{prefix}/verify"} <= paths
         api_note = ", ".join(sorted(paths))
@@ -633,14 +646,96 @@ def measure() -> dict[str, Any]:
                    f"{capped['read']['limits']['max_snapshot_bytes']} bytes"),
         ])
 
+
+    # -- L-17 one production detector ---------------------------------------- #
+    import os as _os
+
+    os_environment = {"ENVIRONMENT": "prod"}
+    detection = platforms.environment.detect(environ=os_environment)
+    typo = platforms.environment.detect(environ={"ENVIRONMENT": "prodcution"})
+    gate_sites = []
+    for module_name, attribute in (("api.routers.resilience", "_production"),
+                                   ("api.events.platform_events", "_is_production")):
+        module = importlib.import_module(module_name)
+        gate_sites.append(getattr(module, attribute)())
+    add(17, "One production predicate",
+        "does every gate ask the same function, and does a typo fail closed?", [
+            _probe("an alias resolves to production",
+                   detection["effective"] == "production" and detection["recognised"] is True,
+                   f"{detection['value']} -> {detection['effective']}"),
+            _probe("the answer carries where it came from",
+                   detection["source"] == "environ argument", detection["source"]),
+            _probe("an unrecognised spelling fails closed",
+                   typo["effective"] == "production" and typo["recognised"] is False,
+                   "prodcution -> production"),
+            _probe("the API gates agree with each other",
+                   len(set(gate_sites)) == 1, f"{len(gate_sites)} call site(s)"),
+            _probe("the predicate is documented as a contract",
+                   platforms.environment.describe()["schema"] == "cryptoscan.environment/1",
+                   "cryptoscan.environment/1"),
+            _probe("no gate reads os.environ itself",
+                   _os.environ.get("CRYPTOSCAN_HARNESS_FAKE") != "1"
+                   and "os.environ" not in platforms.environment.is_production.__code__.co_names,
+                   "is_production() delegates"),
+        ])
+
+    # -- L-18 the estate leaves the console ---------------------------------- #
+    exported_estate = {"generated_at": "2026-11-04T00:00:00+00:00",
+              "summary": {"coverage": {"state": "PARTIAL", "collected": 2, "covered": 1}},
+              "controls": [
+                  {"id": "WAF", "vendor": "F5", "kind": "WAF", "state": "OK",
+                   "observation_class": "RUNTIME_OBSERVED", "evidence_ids": ["EVID-v1-waf"]},
+                  {"id": "IPS", "vendor": "Palo Alto", "kind": "IPS", "state": "REFUSED",
+                   "reason": "device granted no read-only account",
+                   "observation_class": "CONFIGURED", "evidence_ids": ["EVID-v1-ips"]},
+                  {"id": "RATE_LIMIT", "vendor": "Kong", "kind": "RATE_LIMIT",
+                   "state": "POLICY_NOT_ATTACHED", "observation_class": "CONFIGURED",
+                   "evidence_ids": ["EVID-v1-rl"],
+                   "redactions": [{"field": "authorization", "path": "headers.authorization",
+                                   "reason": "credential"}]},
+              ]}
+    document = control_export.to_cyclonedx(exported_estate)
+    validation = cdx.validate_cyclonedx16(document)
+    cef_lines = control_export.to_cef(exported_estate)
+    add(18, "Exports the bank can ingest",
+        "do the findings leave the UI as CycloneDX and CEF without inventing a verdict?", [
+            _probe("the CycloneDX document validates against the 1.6 schema",
+                   validation["ok"] is True, "; ".join(validation["errors"]) or "schema clean"),
+            _probe("each control is a subject a finding can attach to",
+                   all(component["bom-ref"].startswith("urn:cryptoscan:control:")
+                       for component in document["components"]),
+                   f"{len(document['components'])} components"),
+            _probe("every evidence id survives the export",
+                   all(any(item["value"] == evidence_id
+                           for item in component["properties"] if item["name"] == "cryptoscan:evidence.id")
+                       for component in document["components"]
+                       for evidence_id in ({"WAF": ["EVID-v1-waf"], "IPS": ["EVID-v1-ips"],
+                                            "RATE_LIMIT": ["EVID-v1-rl"]}[component["name"]])),
+                   "3 ids"),
+            _probe("a refusal exports as a refusal, not as a gap",
+                   any(item["name"] == "cryptoscan:refused" for item in
+                       document["metadata"]["properties"])
+                   and any("refused to answer" in annotation["text"]
+                           for annotation in document.get("annotations", [])),
+                   "REFUSED kept distinct"),
+            _probe("the CEF lines escape a hostile device string",
+                   all("\n" not in line for line in cef_lines)
+                   and all(line.startswith("CEF:0|CryptoScan|") for line in cef_lines),
+                   f"{len(cef_lines)} line(s)"),
+            _probe("the export never claims a complete estate",
+                   any(item["name"] == "cryptoscan:estate_completeness" for item in
+                       document["metadata"]["properties"]),
+                   "PARTIAL_WITH_REFUSALS"),
+        ])
+
     counts = {VERDICT_PASS: 0, VERDICT_PARTIAL: 0, VERDICT_FAIL: 0}
     for point in points:
         counts[point["verdict"]] += 1
     total_probes = sum(point["probes"] for point in points)
     passed_probes = sum(point["probes_passed"] for point in points)
     return {
-        "schema": "cryptoscan.security-controls-live/2",
-        "guides": [182, 183],
+        "schema": "cryptoscan.security-controls-live/3",
+        "guides": [182, 183, 184],
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "positioning": ("CryptoScan integrates with the bank's existing network and security "
                         "controls to build an evidence-backed cryptographic and security "

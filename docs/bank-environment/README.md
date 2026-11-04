@@ -703,6 +703,22 @@
 > and the summary counts it, because a refusal that vanishes between the builder and the
 > report is how a graph starts looking complete.
 
+> [From a layer that works to a layer a bank can operate](184-security-control-layer.md)
+> (**18 pass · 0 partial · 0 fail**) closes the second review, which was not about wrong code but
+> about unfinished operation. Four modules each decided for themselves whether they were in
+> production — and following "make it one function" honestly turned up **four more** — so a
+> `.env`-configured deployment looked like development to whichever gate read `os.environ`; there
+> is now one predicate, it reports where its answer came from, and an unrecognised spelling fails
+> closed as production. RLS provisioning moved out of a runbook paragraph into a script that
+> refuses a bootstrap identity and an inline password and insists the verdict comes from the
+> runtime connection; "we take backups" acquired the half that costs money when it is wrong —
+> a weekly drill that restores into a designated recovery database, measures what came back and
+> hash-chains the receipt, refusing point-in-time on a `pg_dump` instead of faking it; the compose
+> contracts can no longer pass by not running; PITR got the bank-side checklist it never had; the
+> layer got a console where a refusal, a gap, an unreachable device and "nothing to report" are
+> four different rows; 76 hardcoded English strings in the Resilience console became keys in both
+> dictionaries; and the estate now leaves the UI as schema-valid CycloneDX 1.6 and escaped CEF.
+
 > [Hardening the guarantees: redaction precision, enforcement at the socket, evidence identity](183-security-control-hardening.md)
 > (**16 pass · 0 partial · 0 fail**, 69 probes) hardens five claims that were true but imprecise.
 > The card-number shape matched any 13–19 digit run, so epoch milliseconds and object ids were

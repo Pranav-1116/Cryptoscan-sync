@@ -32,7 +32,10 @@ logger = logging.getLogger(__name__)
 
 
 def _production() -> bool:
-    """Production as the platform's settings define it, not as this module guesses.
+    """Production, from the one detector the whole platform uses.
+
+    This used to read ``os.environ`` itself — one of four independent detectors in the tree,
+    which disagreed about ``.env``, about ``prod`` and about typos.
 
     Settings load ``ENVIRONMENT`` from the environment *and* from ``.env``
     (``SettingsConfigDict(env_file=".env")``), while the other production gates in
@@ -43,12 +46,9 @@ def _production() -> bool:
     ephemeral signing keys — silently switched off. One definition, used by the
     gates that already exist.
     """
-    try:
-        from api.config.settings import get_settings
+    from shared_config import environment as platform_environment
 
-        return bool(get_settings().is_production)
-    except Exception:  # settings must never make a safety gate fail open
-        return (os.environ.get("ENVIRONMENT") or "").strip().lower() == "production"
+    return platform_environment.is_production()
 
 
 def _signing_secret(db: Session | None = None) -> str:

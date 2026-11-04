@@ -79,7 +79,15 @@ class KeyManager:
 
     @property
     def is_production(self) -> bool:
-        return self._environment.strip().lower() == "production"
+        """One detector, shared with the API, the worker and the events module.
+
+        ``SharedConfig`` reads the environment the same way every service does: an
+        unrecognised value is treated as production, so a typo fails closed here rather
+        than quietly signing releases with an ephemeral key.
+        """
+        from shared_config import environment as platform_environment
+
+        return platform_environment.is_production(environ={"ENVIRONMENT": self._environment})
 
     @property
     def secret(self) -> str:

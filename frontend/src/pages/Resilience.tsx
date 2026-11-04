@@ -41,7 +41,7 @@ export default function Resilience() {
     <div className="page" style={{ padding: 24 }}>
       <h1 style={{ fontSize: 22, margin: 0 }}>{t("resilience.title")}</h1>
       <p style={{ color: "var(--faint)", fontSize: 13, marginTop: 6 }}>
-        signed reports · encrypted logical backups · hash-chain attestation · air-gap feeds · passive OT decode
+        {t("resilience.subtitle")}
       </p>
       <div style={{ display: "flex", gap: 8, margin: "16px 0", flexWrap: "wrap" }}>
         {TABS.map((x) => (
@@ -75,7 +75,7 @@ function ReportPanel() {
     setBusy(true); setErr(undefined);
     let evidence = {};
     try { evidence = JSON.parse(evidenceText || "{}"); }
-    catch (e) { setErr("evidence JSON invalid: " + String(e)); setBusy(false); return; }
+    catch (e) { setErr(t("resilience.evidenceJsonInvalid") + String(e)); setBusy(false); return; }
     if (download) {
       // PDF download directly from backend
       // The session travels as the httpOnly cookie that tenantFetch sends
@@ -108,26 +108,24 @@ function ReportPanel() {
         style={{ display: "block", margin: "6px 0 12px", minWidth: 260 }}>
         {FRAMEWORKS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
       </select>
-      <label style={{ fontSize: 12, color: "var(--faint)" }}>Organization</label>
+      <label style={{ fontSize: 12, color: "var(--faint)" }}>{t("resilience.organization")}</label>
       <input className="input" value={org} onChange={(e) => setOrg(e.target.value)}
         style={{ display: "block", margin: "6px 0 12px", minWidth: 320 }} />
-      <label style={{ fontSize: 12, color: "var(--faint)" }}>Operator-supplied evidence by tag (JSON; not independently verified)</label>
-      <p style={{ fontSize: 12, color: "var(--faint)" }}>
-        Production refuses manual positive assertions. Use retained, independently reviewable evidence for compliance decisions.
-      </p>
+      <label style={{ fontSize: 12, color: "var(--faint)" }}>{t("resilience.evidenceLabel")}</label>
+      <p style={{ fontSize: 12, color: "var(--faint)" }}>{t("resilience.evidenceHelp")}</p>
       <textarea className="input" value={evidenceText} onChange={(e) => setEvidenceText(e.target.value)}
         rows={6} style={{ display: "block", width: "100%", fontFamily: "var(--mono)", fontSize: 12, margin: "6px 0 12px" }} />
       <div style={{ display: "flex", gap: 8 }}>
-        <button className="btn sm" disabled={busy} onClick={() => gen(false)}>preview mapping</button>
+        <button className="btn sm" disabled={busy} onClick={() => gen(false)}>{t("resilience.previewMapping")}</button>
         <button className="btn sm primary" disabled={busy} onClick={() => gen(true)}
           style={{ background: "var(--grad)", color: "var(--text)", border: "none" }}>{t("resilience.generatePdf")}</button>
       </div>
       <Err e={err} />
       {res && (
         <div style={{ marginTop: 16 }}>
-          <Badge ok>compliance {res.mapping?.compliance_pct}% · signature {String(res.signature || "").slice(0, 16)}…</Badge>
+          <Badge ok>{t("resilience.compliance")} {res.mapping?.compliance_pct}% · {t("resilience.signature")} {String(res.signature || "").slice(0, 16)}…</Badge>
           <table className="table" style={{ width: "100%", marginTop: 12, fontSize: 12 }}>
-            <thead><tr><th>control</th><th>title</th><th>status</th><th>evidence</th></tr></thead>
+            <thead><tr><th>{t("resilience.colControl")}</th><th>{t("resilience.colTitle")}</th><th>{t("resilience.colStatus")}</th><th>{t("resilience.colEvidence")}</th></tr></thead>
             <tbody>
               {res.mapping?.control_rows?.map((r: any) => (
                 <tr key={r.control}>
@@ -157,7 +155,7 @@ function BackupPanel() {
 
   const create = async () => {
     setErr(undefined);
-    if (!db.trim()) return setErr("enter an approved PostgreSQL database name first");
+    if (!db.trim()) return setErr(t("resilience.databaseRequired"));
     const out = await apiBackupCreate(db.trim(), "postgres", 1);
     if (!out.ok) return setErr(out.error);
     setCreated(out.data);
@@ -170,14 +168,14 @@ function BackupPanel() {
     if (!listed.ok) return setErr(listed.error);
     const backups = listed.data?.backups ?? [];
     setStored(backups);
-    if (!backups.length) return setErr("no retained backups exist to evaluate");
+    if (!backups.length) return setErr(t("resilience.noRetainedBackups"));
     const out = await apiRetentionPlan(backups);
     if (!out.ok) return setErr(out.error);
     setRetention(out.data);
   };
   const runScheduled = async () => {
     setErr(undefined);
-    if (!db.trim()) return setErr("enter an approved PostgreSQL database name first");
+    if (!db.trim()) return setErr(t("resilience.databaseRequired"));
     const out = await apiBackupRunScheduled([
       { database_id: db.trim(), engine: "postgres", interval_hours: 24 },
     ], false);
@@ -188,7 +186,7 @@ function BackupPanel() {
   };
   const persistAndSweep = async () => {
     setErr(undefined);
-    if (!db.trim()) return setErr("enter an approved PostgreSQL database name first");
+    if (!db.trim()) return setErr(t("resilience.databaseRequired"));
     const dbs = [{ database_id: db.trim(), engine: "postgres", interval_hours: 24 }];
     const cfg = await apiBackupConfigSet(dbs);
     if (!cfg.ok) return setErr(cfg.error);
@@ -203,37 +201,33 @@ function BackupPanel() {
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <div className="card" style={{ padding: 18 }}>
-        <h3 style={{ marginTop: 0 }}>PostgreSQL logical backups</h3>
-        <p style={{ fontSize: 12, color: "var(--faint)" }}>
-          Uses the configured pg_dump backend, encrypts the captured archive and retains its signed manifest.
-          Failed attempts are listed below. These actions do not run retention/purge or prove a restore;
-          PostgreSQL PITR requires a separate physical backup and WAL archive workflow.
-        </p>
+        <h3 style={{ marginTop: 0 }}>{t("resilience.logicalBackups")}</h3>
+        <p style={{ fontSize: 12, color: "var(--faint)" }}>{t("resilience.backupHelp")}</p>
         <button className="btn sm primary" onClick={runScheduled}
-          style={{ background: "var(--grad)", color: "var(--text)", border: "none" }}>run scheduled backup cycle</button>
+          style={{ background: "var(--grad)", color: "var(--text)", border: "none" }}>{t("resilience.runScheduled")}</button>
         <button className="btn sm" onClick={persistAndSweep} style={{ marginLeft: 8 }}>
-          persist schedule + worker sweep
+          {t("resilience.persistSweep")}
         </button>
         <Err e={err} />
         {persisted && <div style={{ marginTop: 6, fontSize: 12 }}>
-          <Badge>persisted {persisted.configured} database schedule(s); worker execution not verified here</Badge>
+          <Badge>{t("resilience.persisted")} {persisted.configured} {t("resilience.persistedSuffix")}</Badge>
         </div>}
         {sched && <div style={{ marginTop: 10, fontSize: 12 }}>
           <Badge ok={Array.isArray(sched.results) && sched.results.length > 0 && !sched.results.some((row: any) => row.ok === false)}>
-            attempted {sched.ran} · skipped {sched.skipped} · retained {sched.stored_backups}
-            {sched.results?.some((row: any) => row.ok === false) ? " · failures reported" : ""}
+            {t("resilience.attempted")} {sched.ran} · {t("resilience.skipped")} {sched.skipped} · {t("resilience.retained")} {sched.stored_backups}
+            {sched.results?.some((row: any) => row.ok === false) ? " · " + t("resilience.failuresReported") : ""}
           </Badge>
           {sched.results?.filter((row: any) => row.ok === false).map((row: any, index: number) =>
             <div key={`${row.database_id}-${index}`} role="alert" style={{ color: "var(--red)", marginTop: 6 }}>
-              {row.database_id}: {row.error || "backup failed"}
+              {row.database_id}: {row.error || t("resilience.backupFailed")}
             </div>)}
           {sched.retention && <div style={{ marginTop: 4, color: "var(--faint)" }}>
-            retention: kept {sched.retention.kept} · purged {sched.retention.purged} · deleted {sched.retention.deleted_keys?.length ?? 0}
+            {t("resilience.retention")}: {t("resilience.kept")} {sched.retention.kept} · {t("resilience.purged")} {sched.retention.purged} · {t("resilience.deleted")} {sched.retention.deleted_keys?.length ?? 0}
           </div>}
         </div>}
         {stored.length > 0 && (
           <table className="table" style={{ width: "100%", marginTop: 10, fontSize: 11 }}>
-            <thead><tr><th>backup</th><th>db</th><th>engine</th><th>seq</th><th>sha256</th></tr></thead>
+            <thead><tr><th>{t("resilience.colBackup")}</th><th>{t("resilience.colDatabase")}</th><th>{t("resilience.colEngine")}</th><th>{t("resilience.colSequence")}</th><th>{t("resilience.colSha256")}</th></tr></thead>
             <tbody>
               {stored.map((m: any, index: number) => <tr key={m.storage_key || `${m.backup_id}-${index}`}>
                 <td style={{ fontFamily: "var(--mono)" }}>{m.backup_id}</td>
@@ -246,26 +240,23 @@ function BackupPanel() {
       </div>
       <div className="card" style={{ padding: 18 }}>
         <h3 style={{ marginTop: 0 }}>{t("resilience.backup")}</h3>
-        <label style={{ fontSize: 12, color: "var(--faint)" }} htmlFor="backup-database">Approved PostgreSQL database name</label>
+        <label style={{ fontSize: 12, color: "var(--faint)" }} htmlFor="backup-database">{t("resilience.databaseLabel")}</label>
         <input id="backup-database" className="input" value={db} onChange={(e) => setDb(e.target.value)}
-          placeholder="Enter the configured database name" style={{ display: "block", margin: "8px 0", minWidth: 220 }} />
+          placeholder={t("resilience.databasePlaceholder")} style={{ display: "block", margin: "8px 0", minWidth: 220 }} />
         <button className="btn sm" onClick={create} disabled={!db.trim()}>{t("resilience.createBackup")}</button>
-        <p style={{ fontSize: 12, color: "var(--faint)" }}>
-          Restore is not available from this console: it changes a database and requires a separately approved,
-          isolated recovery target and a verified bank runbook. A created logical backup is not a PITR drill.
-        </p>
+        <p style={{ fontSize: 12, color: "var(--faint)" }}>{t("resilience.restoreNotAvailable")}</p>
         <Err e={err} />
         {created && <div style={{ marginTop: 10, fontSize: 12 }}>
-          <Badge ok>created {created.manifest?.backup_id} · {created.manifest?.engine} · {created.manifest?.size_bytes}B · HMAC signed</Badge>
+          <Badge ok>{t("resilience.created")} {created.manifest?.backup_id} · {created.manifest?.engine} · {created.manifest?.size_bytes}B · {t("resilience.hmacSigned")}</Badge>
         </div>}
       </div>
       <div className="card" style={{ padding: 18 }}>
         <h3 style={{ marginTop: 0 }}>{t("resilience.retention")}</h3>
-        <button className="btn sm" onClick={plan}>plan retention for stored backups</button>
-        <span style={{ marginLeft: 8, fontSize: 12, color: "var(--faint)" }}>Preview only — no backup is deleted.</span>
+        <button className="btn sm" onClick={plan}>{t("resilience.planRetention")}</button>
+        <span style={{ marginLeft: 8, fontSize: 12, color: "var(--faint)" }}>{t("resilience.previewOnly")}</span>
         <Err e={err} />
         {retention && <div style={{ marginTop: 10, fontSize: 12 }}>
-          <Badge ok>kept {retention.kept} · purged {retention.purged}</Badge>
+          <Badge ok>{t("resilience.kept")} {retention.kept} · {t("resilience.purged")} {retention.purged}</Badge>
           <ul style={{ marginTop: 8 }}>
             {retention.purge?.map((p: any) => <li key={p.backup_id} style={{ color: "var(--amber)" }}>
               {p.backup_id} — {p.tier} · {p.reason}</li>)}
@@ -294,15 +285,15 @@ function AttestationPanel() {
           <Badge ok={verified}>{verified ? t("dash.verified") : t("dash.tampered")}</Badge>
           <table className="table" style={{ width: "100%", marginTop: 12, fontSize: 12 }}>
             <tbody>
-              <tr><td>entries checked (this pass)</td><td>{res.attestation?.entries_checked}</td></tr>
-              <tr><td>total chain entries</td><td>{res.attestation?.entry_count ?? "—"}</td></tr>
-              <tr><td>verification</td><td>{res.attestation?.mode ?? "full"}{res.attestation?.full_verified_at ? ` · full at ${res.attestation.full_verified_at}` : ""}</td></tr>
-              <tr><td>tamper detected</td><td>{String(res.attestation?.tamper_detected)}</td></tr>
-              <tr><td>mismatches</td><td>{res.attestation?.mismatch_count}</td></tr>
-              <tr><td>sequence gaps</td><td>{res.attestation?.sequence_gap_count}</td></tr>
-              <tr><td>chain head</td><td style={{ fontFamily: "var(--mono)", fontSize: 10 }}>{res.attestation?.chain_head}</td></tr>
-              <tr><td>signature (HMAC-SHA256)</td><td style={{ fontFamily: "var(--mono)", fontSize: 10 }}>{res.signature}</td></tr>
-              <tr><td>signer</td><td>{res.attestation?.signer}</td></tr>
+              <tr><td>{t("resilience.entriesChecked")}</td><td>{res.attestation?.entries_checked}</td></tr>
+              <tr><td>{t("resilience.totalChainEntries")}</td><td>{res.attestation?.entry_count ?? "—"}</td></tr>
+              <tr><td>{t("resilience.verification")}</td><td>{res.attestation?.mode ?? "full"}{res.attestation?.full_verified_at ? ` · ${t("resilience.fullAt")} ${res.attestation.full_verified_at}` : ""}</td></tr>
+              <tr><td>{t("resilience.tamperDetected")}</td><td>{String(res.attestation?.tamper_detected)}</td></tr>
+              <tr><td>{t("resilience.mismatches")}</td><td>{res.attestation?.mismatch_count}</td></tr>
+              <tr><td>{t("resilience.sequenceGaps")}</td><td>{res.attestation?.sequence_gap_count}</td></tr>
+              <tr><td>{t("resilience.chainHead")}</td><td style={{ fontFamily: "var(--mono)", fontSize: 10 }}>{res.attestation?.chain_head}</td></tr>
+              <tr><td>{t("resilience.signatureHmac")}</td><td style={{ fontFamily: "var(--mono)", fontSize: 10 }}>{res.signature}</td></tr>
+              <tr><td>{t("resilience.signer")}</td><td>{res.attestation?.signer}</td></tr>
             </tbody>
           </table>
         </>
@@ -312,6 +303,7 @@ function AttestationPanel() {
 }
 
 function BundleBuilder() {
+  const { t } = useI18n();
   const [entriesText, setEntriesText] = useState(JSON.stringify([
     { feed: "nvd", id: "CVE-2026-0001", payload: { package: "openssl", cvss: 9.8, version: "3.0.2", summary: "example advisory" } },
   ], null, 2));
@@ -320,24 +312,21 @@ function BundleBuilder() {
   const build = async () => {
     setErr(undefined);
     let entries;
-    try { entries = JSON.parse(entriesText); } catch (e) { return setErr("entries JSON invalid: " + String(e)); }
+    try { entries = JSON.parse(entriesText); } catch (e) { return setErr(t("resilience.entriesJsonInvalid") + String(e)); }
     const out = await apiAirgapBuildBundle(entries);
     if (!out.ok) return setErr(out.error);
     setBundle(out.data);
   };
   return (
     <div>
-      <p style={{ fontSize: 12, color: "var(--faint)" }}>
-        Run on an internet-connected host to package CVE/registry advisories into a signed, hash-verified
-        bundle, then carry it to the air-gapped network and import it below.
-      </p>
+      <p style={{ fontSize: 12, color: "var(--faint)" }}>{t("resilience.bundleHelp")}</p>
       <textarea className="input" rows={4} value={entriesText} onChange={(e) => setEntriesText(e.target.value)}
         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 11 }} />
-      <button className="btn sm" style={{ marginTop: 8 }} onClick={build}>build signed bundle</button>
+      <button className="btn sm" style={{ marginTop: 8 }} onClick={build}>{t("resilience.buildBundle")}</button>
       <Err e={err} />
       {bundle && (
         <div style={{ marginTop: 10 }}>
-          <Badge ok>{bundle.manifest?.entry_count} entries · sha {String(bundle.manifest?.bundle_sha256 || "").slice(0, 16)}… · HMAC signed</Badge>
+          <Badge ok>{bundle.manifest?.entry_count} {t("resilience.entries")} · {t("resilience.sha")} {String(bundle.manifest?.bundle_sha256 || "").slice(0, 16)}… · {t("resilience.hmacSigned")}</Badge>
           <textarea className="input" readOnly rows={4} value={JSON.stringify(bundle)}
             style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 10, marginTop: 8 }}
             onFocus={(e) => e.target.select()} />
@@ -357,7 +346,7 @@ function AirgapPanel() {
   const doImport = async () => {
     setErr(undefined);
     let bundle;
-    try { bundle = JSON.parse(bundleText); } catch (e) { return setErr("bundle JSON invalid: " + String(e)); }
+    try { bundle = JSON.parse(bundleText); } catch (e) { return setErr(t("resilience.bundleJsonInvalid") + String(e)); }
     const out = await apiAirgapImportFeed(bundle);
     if (!out.ok) return setErr(out.error);
     setImported(out.data);
@@ -367,15 +356,15 @@ function AirgapPanel() {
       <div className="card" style={{ padding: 18 }}>
         <h3 style={{ marginTop: 0 }}>{t("resilience.airgap")}</h3>
         {status && <Badge ok={!status.airgap}>
-          {status.airgap ? t("dash.on") : t("dash.off")} · {status.external_feed_hosts_blocked?.length ?? 0} external feed hosts blocked
+          {status.airgap ? t("dash.on") : t("dash.off")} · {status.external_feed_hosts_blocked?.length ?? 0} {t("resilience.externalHostsBlocked")}
         </Badge>}
         <p style={{ fontSize: 12, color: "var(--faint)" }}>
-          Set <code>AIRGAP_MODE=true</code> and <code>AIRGAP_ALLOWLIST</code> to block all external feeds;
-          offline CVE/registry updates arrive as signed bundles.
+          {t("resilience.airgapSet")} <code>AIRGAP_MODE=true</code> {t("resilience.airgapAnd")}{" "}
+          <code>AIRGAP_ALLOWLIST</code> {t("resilience.airgapHelp")}
         </p>
       </div>
       <div className="card" style={{ padding: 18 }}>
-        <h3 style={{ marginTop: 0 }}>Build signed feed bundle (online host)</h3>
+        <h3 style={{ marginTop: 0 }}>{t("resilience.buildBundleHeading")}</h3>
         <BundleBuilder />
       </div>
       <div className="card" style={{ padding: 18 }}>
@@ -383,9 +372,9 @@ function AirgapPanel() {
         <textarea className="input" rows={5} placeholder='{"manifest":{...},"tar_b64":"..."}'
           value={bundleText} onChange={(e) => setBundleText(e.target.value)}
           style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 11 }} />
-        <button className="btn sm" style={{ marginTop: 8 }} onClick={doImport}>verify &amp; import signed bundle</button>
+        <button className="btn sm" style={{ marginTop: 8 }} onClick={doImport}>{t("resilience.verifyImport")}</button>
         <Err e={err} />
-        {imported && <div style={{ marginTop: 10 }}><Badge ok>imported {imported.imported} entries · {JSON.stringify(imported.by_feed)}</Badge></div>}
+        {imported && <div style={{ marginTop: 10 }}><Badge ok>{t("resilience.imported")} {imported.imported} {t("resilience.entries")} · {JSON.stringify(imported.by_feed)}</Badge></div>}
       </div>
     </div>
   );
@@ -411,21 +400,21 @@ function OtPanel() {
     <div className="card" style={{ padding: 18 }}>
       <h3 style={{ marginTop: 0 }}>{t("resilience.otDecode")}</h3>
       <p style={{ fontSize: 12, color: "var(--faint)" }}>
-        Passive decode of observed spans (S7comm/102, EtherNet-IP/44818, BACnet/47808, OPC-UA/4840).
-        <b style={{ color: "var(--green)" }}> {t("resilience.activeProbes")}: 0</b> — SIS/ESD are never probed.
+        {t("resilience.otHelp")} {t("resilience.otProtocols")}
+        <b style={{ color: "var(--green)" }}> {t("resilience.activeProbes")}: 0</b> {t("resilience.sisNeverProbed")}
       </p>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <select className="input" value={proto} onChange={(e) => { setProto(e.target.value as any); setDport(e.target.value === "udp" ? 47808 : 102); }}>
-          <option value="tcp">TCP (S7comm / ENIP / OPC-UA)</option>
-          <option value="udp">UDP (BACnet/IP)</option>
+          <option value="tcp">{t("resilience.protocolTcp")}</option>
+          <option value="udp">{t("resilience.protocolUdp")}</option>
         </select>
         <input className="input" type="number" value={dport} onChange={(e) => setDport(Number(e.target.value))} style={{ width: 90 }} />
       </div>
       <textarea className="input" rows={3} value={hexInput} onChange={(e) => setHexInput(e.target.value)}
         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12, margin: "10px 0" }} />
-      <button className="btn sm primary" onClick={decode} style={{ background: "var(--grad)", color: "var(--text)", border: "none" }}>decode frame</button>
+      <button className="btn sm primary" onClick={decode} style={{ background: "var(--grad)", color: "var(--text)", border: "none" }}>{t("resilience.decodeFrame")}</button>
       <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
-        <label style={{ fontSize: 12, color: "var(--faint)" }}>Upload a passive capture (.pcap) — parsed offline, never probed</label>
+        <label style={{ fontSize: 12, color: "var(--faint)" }}>{t("resilience.pcapLabel")}</label>
         <input type="file" accept=".pcap,.cap" className="input" style={{ display: "block", margin: "6px 0" }}
           onChange={async (e) => {
             const file = e.target.files?.[0];
@@ -442,7 +431,7 @@ function OtPanel() {
       {res && (
         <div style={{ marginTop: 14 }}>
           <Badge ok={!res.cleartext_engineering_detected}>
-            {res.frames_flagged} flagged · protocols {res.protocols?.join(", ") || "none"} · probes {res.active_probes_sent}
+            {res.frames_flagged} {t("resilience.flagged")} · {t("resilience.protocols")} {res.protocols?.join(", ") || t("resilience.none")} · {t("resilience.probes")} {res.active_probes_sent}
           </Badge>
           {res.findings?.map((f: any, i: number) => (
             <div key={i} className="card" style={{ padding: 12, marginTop: 10, fontSize: 12 }}>
@@ -451,7 +440,7 @@ function OtPanel() {
               <div style={{ color: "var(--faint)", fontFamily: "var(--mono)", fontSize: 11, marginTop: 4 }}>{JSON.stringify(f.detail)}</div>
             </div>
           ))}
-          {res.frames_flagged === 0 && <p style={{ fontSize: 12, color: "var(--faint)", marginTop: 10 }}>{t("common.noData")} / no cleartext engineering detected in this frame.</p>}
+          {res.frames_flagged === 0 && <p style={{ fontSize: 12, color: "var(--faint)", marginTop: 10 }}>{t("common.noData")} / {t("resilience.noCleartext")}</p>}
         </div>
       )}
     </div>

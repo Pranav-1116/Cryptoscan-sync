@@ -417,7 +417,9 @@ def _validate_bank_origin(config: Config) -> None:
     """Refuse plaintext remote hosts; the operator still selects and trusts the bank endpoint."""
     parsed = urllib.parse.urlsplit(config.server or "")
     loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
-    local_dev = os.getenv("ENVIRONMENT", "").strip().lower() in {"development", "test", "testing"}
+    from shared_config import environment as platform_environment
+
+    local_dev = platform_environment.environment_name() in {"development", "test"}
     if (not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment
             or parsed.path not in ("", "/") or (parsed.scheme != "https" and not (parsed.scheme == "http" and loopback and local_dev))):
         raise Refused("control plane must use an HTTPS origin",

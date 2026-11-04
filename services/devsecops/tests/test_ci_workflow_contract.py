@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 from pathlib import Path
 
@@ -25,11 +26,27 @@ def _script(name):
 suites = _script("ci_suites")
 junit = _script("check_junit")
 
-# The two compose contracts below shell out to `docker compose config`, which is the
+# The compose contracts below shell out to `docker compose config`, which is the
 # authority for what the file *renders*. Without the CLI there is no render, and a
-# green result would be a guess: skip and say so instead of failing on the sandbox.
-requires_docker = pytest.mark.skipif(shutil.which("docker") is None,
-                                     reason="docker compose CLI unavailable: cannot render")
+# green result would be a guess.
+#
+# So absence is only tolerated on a developer sandbox. Inside CI it is a failure:
+# a skipped contract reports the same colour as a passing one, and "we never ran it"
+# is exactly the outcome the review objected to. `CI` is set by every CI provider.
+IN_CI = bool(os.environ.get("CI"))
+
+
+def _require_compose_cli() -> None:
+    """Fail in CI when the runner lacks the CLI; skip only on a local sandbox."""
+    if shutil.which("docker") is not None:
+        return
+    if IN_CI:
+        pytest.fail(
+            "docker compose CLI is missing on a CI runner: the compose contracts cannot "
+            "render, so a green result would be a guess. Install the compose plugin in the "
+            "workflow (see the 'Assert the docker compose CLI is present' step)."
+        )
+    pytest.skip("docker compose CLI unavailable: cannot render (local sandbox)")
 
 
 def _workflow(name):
@@ -350,8 +367,8 @@ def test_production_guard_ci_fixtures_match_current_runtime_contract(expect_reje
         assert "production configuration is valid" in output
 
 
-@requires_docker
 def test_production_compose_refuses_migration_superuser_and_plaintext_redis(monkeypatch):
+    _require_compose_cli()
     compose = _script("check_prod_compose")
     migrator = "postgresql://cryptoscan:compose-check-only@postgres:5432/cryptoscan"
     monkeypatch.setitem(compose.PLACEHOLDERS, "CRYPTOSCAN_APP_DATABASE_URL", migrator)
@@ -364,8 +381,8 @@ def test_production_compose_refuses_migration_superuser_and_plaintext_redis(monk
         compose.check()
 
 
-@requires_docker
 def test_production_s3_overlay_refuses_divergent_worker_and_writable_secret_mount(monkeypatch):
+    _require_compose_cli()
     compose = _script("check_prod_compose")
     render = compose.render
 

@@ -148,8 +148,14 @@ class Qualification:
                     "all qualification assets present" if not missing else f"missing={missing}")
         self.record("preflight:docker", "PASS" if shutil.which("docker") else "SKIP",
                     "docker is available" if shutil.which("docker") else "Docker is required for the production compose stack")
-        self.record("preflight:production-env", "PASS" if os.getenv("ENVIRONMENT") == "production" else "SKIP",
-                    "ENVIRONMENT=production" if os.getenv("ENVIRONMENT") == "production" else "not running inside a production environment; no deployment claim made")
+        from shared_config import environment as platform_environment
+
+        production = platform_environment.is_production()
+        detected = platform_environment.detect()
+        self.record("preflight:production-env", "PASS" if production else "SKIP",
+                    f"environment={detected['effective']} (from {detected['source']})"
+                    if production else
+                    "not running inside a production environment; no deployment claim made")
         engineering = self.out / "engineering-gate.json"
         return_code = self.command("preflight:engineering-gate", [sys.executable, str(SCRIPT / "engineering_gate.py"), "--out", str(engineering)], timeout=180)
         if return_code and engineering.exists():

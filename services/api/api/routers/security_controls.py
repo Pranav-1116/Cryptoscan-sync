@@ -494,3 +494,65 @@ def _iso(value: datetime | None) -> str | None:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.isoformat()
+
+
+@router.get("/export")
+def export_estate(
+    format: str = Query(default="cyclonedx", pattern="^(cyclonedx|cef|cef-lines)$"),
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_tenant_roles(*READ_ROLES)),
+):
+    """The same estate model the console renders, in the bank's own formats.
+
+    Item 19 of the review: a control layer whose only output is a screen is a private estate
+    that the bank's SIEM and its CycloneDX pipeline cannot reconcile. This route projects the
+    *same* rows the console reads — it does not re-collect, re-read a device or invent a state.
+
+    CycloneDX 1.6 because that is what the rest of the BOM estate already emits, and because its
+    ``annotations`` give a finding a subject (the control's bom-ref) without inventing a schema.
+    CEF because a SIEM ingests lines, escaped, with the evidence id in an extension so an alert
+    can be joined back to the snapshot it came from.
+    """
+    from fastapi.responses import PlainTextResponse
+
+    from cbom.security_controls import export as control_export
+
+    health = control_health(db=db, user=user)
+    rows = db.execute(select(SecurityControlFinding).limit(1000)).scalars().all()
+    by_control: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_control.setdefault(row.control, []).append({
+            "state": row.state, "vendor": row.vendor, "reason": row.reason,
+            "evidence_ids": row.evidence_ids or [], "finding": None,
+            "read_state": (health.get("snapshot") or {}).get("read_state"),
+        })
+
+    controls: list[dict[str, Any]] = []
+    for entry in health.get("controls", []):
+        control = str(entry.get("control"))
+        measured = by_control.get(control, [])
+        if measured:
+            controls.extend(dict(item, id=control, kind=entry.get("detail")) for item in measured)
+        else:
+            controls.append({
+                "id": control, "state": entry.get("state"), "kind": entry.get("detail"),
+                "vendor": entry.get("vendor"),
+                # a control nobody read is CONFIGURED at best; the exporter never upgrades it
+                "observation_class": "CONFIGURED",
+                "reason": (health.get("taxonomy", {}).get(str(entry.get("state")), {}) or {}).get("meaning"),
+                "read_state": (health.get("snapshot") or {}).get("read_state"),
+            })
+
+    projection = {
+        "generated_at": (health.get("snapshot") or {}).get("captured_at"),
+        "version": "1",
+        "controls": controls,
+        "summary": {"coverage": health.get("coverage")},
+        "refusals": health.get("snapshot", {}).get("refusals") if health.get("snapshot") else [],
+    }
+    if format == "cyclonedx":
+        return control_export.to_cyclonedx(projection)
+    lines = control_export.to_cef(projection)
+    body = "\n".join(lines)
+    return PlainTextResponse(body if body else "# no findings in the retained snapshots\n",
+                             media_type="text/plain; charset=utf-8")

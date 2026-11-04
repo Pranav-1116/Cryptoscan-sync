@@ -15,7 +15,6 @@ Latency contract (stated, not hidden):
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -31,15 +30,13 @@ def _is_production() -> bool:
     so a transient bus failure broke every environment rather than none.
 
     Defined locally rather than imported from a router: an events module must
-    not depend on the HTTP layer. Falls back to the environment variable when
-    settings cannot be loaded, matching the behaviour in api.routers.telecom.
+    not depend on the HTTP layer — and it no longer needs to, because the
+    predicate itself lives in ``shared_config`` where every service can import
+    it without importing a router, a settings class or the environment.
     """
-    try:
-        from api.config.settings import get_settings
+    from shared_config import environment as platform_environment
 
-        return bool(get_settings().is_production)
-    except Exception:  # noqa: BLE001 - settings unavailable: trust the env
-        return os.environ.get("ENVIRONMENT", "development").lower() in {"production", "prod"}
+    return platform_environment.is_production()
 
 #: max rows the dedup registry keeps (tailer + direct publishers share it)
 _PUBLISHED_IDS_CAP = 4_000

@@ -399,7 +399,9 @@ def require_auditor(
     expected = os.environ.get("AUDITOR_API_KEY")
     if expected and key and hmac.compare_digest(key, expected):
         return "auditor"
-    if not expected and os.environ.get("ENVIRONMENT", "").lower() in {"production"}:
+    from shared_config import environment as platform_environment
+
+    if not expected and platform_environment.is_production():
         raise HTTPException(status_code=401, detail="auditor key required")
     return _require_auditor(request=request, user=user, db=db)
 

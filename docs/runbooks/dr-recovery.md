@@ -30,6 +30,46 @@ Target service levels for the `deploy/ha` stack:
 > Multi-AZ monitor failover, readiness drain, and cluster rate limiting are
 > implemented and were verified in this environment.
 
+## 0. Bank-side prerequisites — fill this in before an incident, not during one
+
+**PITR is not provided by CryptoScan.** The product ships a logical `pg_dump` path, an encrypted
+archive with a signed manifest, and (from this release) a scheduled restore drill that proves
+those archives come back. PostgreSQL point-in-time recovery needs a *physical* base backup plus a
+continuously archived WAL stream — infrastructure the bank owns and operates. The governance
+restore API refuses a requested point in time on a `pg_dump` artifact rather than silently
+restoring "now" and reporting success, so nothing here should be read as a PITR capability.
+
+A reviewer should be able to tick every line. An unticked line is a gap, not a task for the day
+of the incident.
+
+- [ ] **WAL archive destination** — an object store or host path outside the database host,
+      writable by PostgreSQL, readable by the recovery host. Record its URI (not credentials).
+- [ ] **`archive_mode = on` and a real `archive_command`/`archive_library`** — the shipped HA
+      overlay deliberately sets `archive_command=/bin/true`, which archives nothing. Confirm the
+      bank's value, and confirm `pg_stat_archiver.failed_count` is not climbing.
+- [ ] **A physical base backup schedule** — `pg_basebackup` (or the bank's snapshot mechanism) at
+      a cadence inside the agreed RPO, retained for at least the recovery window.
+- [ ] **WAL retention covering the recovery window** — stated in hours, checked against the
+      object store's lifecycle policy. Retention shorter than the window makes the window a lie.
+- [ ] **A designated recovery host and database** — never the source. CryptoScan's drill refuses
+      a target equal to the source for exactly this reason.
+- [ ] **A rehearsed recovery command** — `recovery_target_time`, `restore_command`, and the
+      promotion step, written down with the bank's own paths.
+- [ ] **A measured PITR drill** — at least one restore to a chosen past timestamp, with the
+      resulting row counts and the timestamp recorded. Until this exists, RPO is a target, not a
+      measurement.
+- [ ] **The restore drill is scheduled** — `scripts/restore_drill.py` runs weekly in
+      `.github/workflows/restore-drill.yml` and files `restore-drill-history.jsonl`. In the
+      bank's environment, point it at the bank's backup directory and recovery database, and
+      keep the receipts with the other audit evidence.
+- [ ] **Backup encryption keys are escrowed** — the archive is Fernet-encrypted and the manifest
+      is HMAC-signed; a lost key means an unreadable backup. Escrow is the bank's job.
+
+What each drill proves, stated narrowly: a passing `restore_drill.py` run proves *this archive*
+restored into *this recovery database* and that the measured tables came back. It does not prove
+PITR, off-site copies, or a disaster-recovery qualification. The receipt says so in its own
+`claims` block.
+
 ## 1. Backups (scheduled, verified)
 
 ```bash
@@ -43,6 +83,11 @@ bash scripts/db_backup.sh                          # add --with-neo4j for a cons
 # verify a backup restores and the evidence chain is intact
 python scripts/backup_evidence.py --verify backups/cryptoscan-<ts>.db
 bash scripts/db_restore.sh backups/db/pg-<ts>.dump   # asks for confirmation, checksum-first
+
+# prove the archive restores, into a designated recovery database, with a receipt
+export CRYPTOSCAN_RESTORE_TARGET_DB=postgresql://drill@recovery-host:5432/cryptoscan_drill
+python scripts/restore_drill.py --backup-dir /var/lib/cryptoscan/backups --database-id cryptoscan \
+    --out evidence/restore-drill-$(date -u +%Y%m%dT%H%M%SZ).json
 ```
 
 

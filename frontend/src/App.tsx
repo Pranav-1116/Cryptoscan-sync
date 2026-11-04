@@ -78,6 +78,7 @@ const Register = lazy(() => import("./pages/Register"));
 const Reports = lazy(() => import("./pages/Reports"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const Resilience = lazy(() => import("./pages/Resilience"));
+const SecurityControls = lazy(() => import("./pages/SecurityControls"));
 const Risk = lazy(() => import("./pages/Risk"));
 const RoleDashboard = lazy(() => import("./pages/RoleDashboard"));
 const Runtime = lazy(() => import("./pages/Runtime"));
@@ -220,6 +221,7 @@ function RoutedPages() {
       <Route path="/protocols" element={<Protocols />} />
       <Route path="/reports" element={<Reports />} />
       <Route path="/resilience" element={<Resilience />} />
+      <Route path="/security-controls" element={<SecurityControls />} />
       <Route path="/risk" element={<Risk />} />
       <Route path="/role-dashboard" element={<RoleDashboard />} />
       <Route path="/runtime" element={<Runtime />} />

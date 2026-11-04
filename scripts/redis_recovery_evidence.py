@@ -44,7 +44,9 @@ def save(path, value):
 
 
 def client(role):
-    settings = SimpleNamespace(is_production=os.getenv("ENVIRONMENT", "production").lower() in {"prod", "production"},
+    from shared_config import environment as platform_environment
+
+    settings = SimpleNamespace(is_production=platform_environment.is_production(),
         **{name: os.getenv(name, "") for name in ("REDIS_URL", "REDIS_CA_CERTS", "REDIS_SENTINELS", "REDIS_SENTINEL_MASTER", "REDIS_SENTINEL_USERNAME", "REDIS_SENTINEL_PASSWORD")})
     return verified_redis_client(connection_settings(settings, role), decode_responses=True)
 

@@ -24,7 +24,9 @@ def _plaintext_fallback_forbidden() -> bool:
 
         return bool(get_settings().is_production)
     except Exception:  # settings unavailable -> assume production, fail closed
-        return os.environ.get("ENVIRONMENT", "production").strip().lower() == "production"
+        from shared_config import environment as platform_environment
+
+        return platform_environment.is_production()
 
 
 def _iterations() -> int:

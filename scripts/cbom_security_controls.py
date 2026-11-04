@@ -709,8 +709,9 @@ def measure() -> dict[str, Any]:
             "them rather than re-collecting them",
             "correlation resolves only as far as the inventories reach; an unresolved hop is "
             "reported, and it stays unresolved until the platform collects that layer",
-            "nothing is persisted: findings and evidence are documents, and a table for them "
-            "is a separate guide that must not become a second source of truth",
+            "this offline check persists nothing: it exercises the analysis, and the "
+            "tenant-scoped evidence tables behind the API are exercised by the database and "
+            "API suites, not here",
         ],
     }
 

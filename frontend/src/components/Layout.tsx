@@ -188,6 +188,9 @@ export const PRIMARY_SECTIONS: NavSection[] = [
         icon: ShieldCheck,
         children: [
           { to: "/security-center", label: "Posture", icon: ShieldCheck },
+          // the bank's own controls sit with the posture they contribute to: one screen
+          // reads this estate, the other reads the controls that produced it
+          { to: "/security-controls", label: "Control estate", icon: PlugsConnected },
           // the trail sits beside the controls it records; a section that grows a
           // row per page stops being a tree (Layout.navigation keeps that floor)
           { to: "/audit", label: "Audit trail", icon: ListChecks },

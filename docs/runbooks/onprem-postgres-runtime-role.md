@@ -10,6 +10,26 @@ the migration job. The API, worker, monitor, notifications and estate daemon mus
 use a **different** bank-provisioned login role. Production startup refuses a
 superuser, a `BYPASSRLS` role, or a schema with incomplete forced policies.
 
+## The scripted sequence
+
+`scripts/provision_runtime_role.py` is the checked-in form of the sequence below. Hand-typing
+the grants is how deployments diverge, so prefer it:
+
+```bash
+# review exactly what will run, without a database connection
+python scripts/provision_runtime_role.py plan --role cryptoscan_app --database cryptoscan
+# run it as the bank's migration owner (needs an explicit acknowledgement)
+CRYPTOSCAN_PROVISION_ACK=1 python scripts/provision_runtime_role.py apply \
+    --role cryptoscan_app --dsn "$CRYPTOSCAN_MIGRATION_DSN"
+# measure the result from the RUNTIME connection, not the DBA one
+python scripts/provision_runtime_role.py verify --dsn "$CRYPTOSCAN_APP_DATABASE_URL"
+```
+
+`apply` succeeding proves the statements ran. Only `verify` — which must report
+`measures_this_role`, `is_superuser: false`, `bypasses_rls: false` and `all` tables forced —
+speaks about whether the database binds the runtime. The script refuses a role that is a
+superuser or `BYPASSRLS`, refuses an inline password in the DSN, and never writes a password.
+
 ## Bank DBA sequence
 
 1. In a DBA session, create a distinct login role with `NOSUPERUSER`,

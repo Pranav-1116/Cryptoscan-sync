@@ -261,3 +261,51 @@ def test_health_route_names_every_control_and_never_says_nothing(writer, api):
     assert "PARTIAL_READ" in payload["taxonomy"]
     assert payload["taxonomy"]["AUTH_FAILED"]["operator_action"].startswith("rotate")
     assert payload["note"].startswith("a state describes what the platform could learn")
+
+
+# --------------------------------------------------------------------------- #
+# item 19 — the estate leaves the console
+# --------------------------------------------------------------------------- #
+
+def test_the_estate_exports_as_schema_valid_cyclonedx(writer, api):
+    from cbom.cyclonedx16 import validate_cyclonedx16
+
+    writer.post("/api/security-controls/snapshots", json=body())
+    response = TestClient(api).get("/api/security-controls/export?format=cyclonedx")
+    assert response.status_code == 200, response.text
+    document = response.json()
+    assert document["bomFormat"] == "CycloneDX" and document["specVersion"] == "1.6"
+    assert validate_cyclonedx16(document)["ok"] is True
+    refs = {component["bom-ref"] for component in document["components"]}
+    assert any(ref.startswith("urn:cryptoscan:control:") for ref in refs)
+    # every finding names the control it belongs to instead of floating free
+    for annotation in document.get("annotations", []):
+        assert annotation["subjects"] and annotation["subjects"][0] in refs
+
+
+def test_the_export_carries_evidence_ids_and_never_upgrades_a_claim(writer, api):
+    writer.post("/api/security-controls/snapshots", json=body())
+    document = TestClient(api).get("/api/security-controls/export?format=cyclonedx").json()
+    text = json.dumps(document)
+    assert "EVID-FIREWALL-00000000abcd" in text
+    # a control this snapshot never read must not appear as RUNTIME_OBSERVED
+    for component in document["components"]:
+        properties = {item["name"]: item["value"] for item in component["properties"]}
+        if properties.get("cryptoscan:control.state") != "OBSERVED":
+            assert properties.get("cryptoscan:control.observation_class") != "RUNTIME_OBSERVED"
+
+
+def test_the_same_estate_exports_as_escaped_cef_lines(writer, api):
+    writer.post("/api/security-controls/snapshots", json=body())
+    response = TestClient(api).get("/api/security-controls/export?format=cef")
+    assert response.status_code == 200
+    lines = [line for line in response.text.splitlines() if line.startswith("CEF:0|")]
+    assert lines, response.text
+    for line in lines:
+        assert line.count("|") >= 7
+        assert "cs1Label=EvidenceId" in line
+
+
+def test_an_unknown_export_format_is_refused_by_name(writer, api):
+    response = TestClient(api).get("/api/security-controls/export?format=pdf")
+    assert response.status_code == 422

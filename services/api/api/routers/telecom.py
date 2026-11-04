@@ -74,13 +74,14 @@ def _state_key(base: str) -> str:
 
 
 def _is_production() -> bool:
-    import os
     try:
         from api.config.settings import get_settings
 
         return bool(get_settings().is_production)
     except Exception:
-        return os.environ.get("ENVIRONMENT", "development").lower() in {"production", "prod"}
+        from shared_config import environment as platform_environment
+
+        return platform_environment.is_production()
 
 
 def _redis_snapshot_client():

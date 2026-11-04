@@ -2544,6 +2544,24 @@ export const apiBackupSweep = (applyRetention = true) =>
 export const apiBackupConfigSet = (databases: Array<{ database_id: string; engine: string; interval_hours?: number }>) =>
   _rsPost<any>("/api/v1/resilience/backup/config", { databases });
 
+/* --- Security control integration layer (read-only over the bank's own controls) --- */
+export const apiSecurityControlsHealth = () =>
+  _rsGet<any>("/api/v1/security-controls/health");
+
+export const apiSecurityControlsFindings = (params: { control?: string; state?: string; subject?: string } = {}) => {
+  const query = new URLSearchParams(
+    Object.entries(params).filter(([, value]) => Boolean(value)) as [string, string][],
+  ).toString();
+  return _rsGet<any>(`/api/v1/security-controls/findings${query ? `?${query}` : ""}`);
+};
+
+export const apiSecurityControlsVerify = () =>
+  _rsGet<any>("/api/v1/security-controls/verify");
+
+/* The estate model, consumed by the bank's SIEM as well as this console. */
+export const apiSecurityControlExportUrl = (format: "cyclonedx" | "cef" | "cef-lines") =>
+  `/api/v1/security-controls/export?format=${format}`;
+
 /* ========================================================================== */
 /* Trust & key management: payment-crypto key inventory/rotation, HSM        */
 /* ceremonies, workload SPIFFE/SVID identity, OT safe-scan policy (real ops). */

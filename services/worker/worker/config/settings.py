@@ -78,7 +78,10 @@ class WorkerSettings(BaseSettings):
 
     @property
     def is_production(self) -> bool:
-        return self.ENVIRONMENT.lower() == "production"
+        """One detector, shared with the API, the events module and CBOM signing."""
+        from shared_config import environment as platform_environment
+
+        return platform_environment.is_production(self)
 
     def validate_runtime(self) -> None:
         if not self.is_production:

@@ -47,7 +47,15 @@ def _settings_values() -> tuple[str, str]:
 
 
 def _production() -> bool:
-    return _settings_values()[0].lower() in {"production", "prod"}
+    """Production, from the one detector the whole platform uses.
+
+    This was a fifth detector — it read the settings value and matched its own alias set
+    (``{"production", "prod"}``), so ``prd``, ``live`` or a typo meant "not production" here
+    and "production" in the router next door.
+    """
+    from shared_config import environment as platform_environment
+
+    return platform_environment.is_production()
 
 
 def _client():

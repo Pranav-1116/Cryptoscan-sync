@@ -285,7 +285,9 @@ def _prod_guard_findings() -> list[Finding]:
                 "configuration — the guard has drifted too strict",
             )
         )
-    if os.environ.get("ENVIRONMENT", "").lower() == "production":
+    from shared_config import environment as platform_environment
+
+    if platform_environment.is_production():
         result = _run_guard({})
         if result.returncode != 0:
             findings.append(

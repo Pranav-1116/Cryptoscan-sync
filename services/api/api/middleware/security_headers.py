@@ -9,7 +9,6 @@ zero-overhead equivalent for response-header middleware.
 
 from __future__ import annotations
 
-import os
 
 # Restrictive content security policy for the SPA + API. The console is a
 # self-contained React bundle (no third-party CDNs, no inline event handlers,
@@ -37,7 +36,9 @@ _BASE_HEADERS = [
 
 
 def _in_production() -> bool:
-    return os.environ.get("ENVIRONMENT", "").strip().lower() in {"production", "prod", "staging", "stage"}
+    from shared_config import environment as platform_environment
+
+    return platform_environment.environment_name() in {"production", "staging"}
 
 
 class SecurityHeadersMiddleware:
