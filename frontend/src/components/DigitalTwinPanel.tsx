@@ -442,6 +442,18 @@ export default function DigitalTwinPanel() {
                   <div className="mono" style={{ fontSize: 10.5, color: "var(--cyan)" }}>
                     HIERARCHY · {placement.levels_observed.join(" → ")}
                   </div>
+                  {/* the organisation chart, where any collection asserted it */}
+                  {(placement.organizations ?? []).map((org) => (
+                    <div key={org.name} className="dim" style={{ fontSize: 10 }}>
+                      entity {org.name} · {org.assets} asset(s)
+                    </div>
+                  ))}
+                  {(placement.departments ?? []).map((dept) => (
+                    <div key={dept.name} className="dim" style={{ fontSize: 10 }}>
+                      department {dept.name}
+                      {dept.organization ? ` (${dept.organization})` : ""} · {dept.assets} asset(s)
+                    </div>
+                  ))}
                   {placement.regions.map((region) => (
                     <div key={region.name} className="dim" style={{ fontSize: 10 }}>
                       region {region.name} · {region.assets} asset(s)

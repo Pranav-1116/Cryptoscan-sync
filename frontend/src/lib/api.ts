@@ -7197,6 +7197,13 @@ export interface EstatePlacement {
   schema: string; model: string; levels: string[];
   levels_observed: string[]; levels_unobserved: string[];
   bank: string | null;
+  /* the organisation chart above the infrastructure: an entity owns departments,
+     a department owns assets. Absent on older payloads, so readers guard. */
+  organizations?: Array<{ name: string; assets: number; by_type: Record<string, number>;
+    departments: EstatePlacementLevelRow[]; environments: EstatePlacementLevelRow[] }>;
+  departments?: Array<{ name: string; organization?: string | null; assets: number;
+    by_type: Record<string, number>; owners: EstatePlacementLevelRow[];
+    environments: EstatePlacementLevelRow[] }>;
   environments: Array<{ name: string; assets: number; by_type: Record<string, number>;
     business_systems: string[]; locations: Array<{ name: string; assets: number }> }>;
   regions: Array<{ name: string; assets: number; by_type: Record<string, number>;

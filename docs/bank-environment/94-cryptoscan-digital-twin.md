@@ -137,6 +137,8 @@ CryptoScan:    Server-123
 
 ```
 Bank
+├── Organization          (legal entity / group; asserted, never inferred)
+│   └── Department        (business unit / cost centre, with its owners)
 ├── Region
 ├── Data Center
 ├── Cloud Environment
@@ -147,6 +149,13 @@ Bank
 │   └── Development
 └── Business Systems
 ```
+
+`ESTATE_LEVELS` carries all eight levels. The two organisation levels were added after
+the specification audit (`docs/DIGITAL-TWIN-SPEC.md` §13): a multi-entity bank could
+not previously ask "which legal entity and which department owns this asset?" in the
+placement model. Both are derived from an asserted attribute only — an asset with an
+owner name but no department is counted under `unassigned.DEPARTMENT` with the reason,
+rather than having a cost centre invented for it.
 
 Example:
 

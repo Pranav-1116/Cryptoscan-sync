@@ -64,9 +64,15 @@ SIMULATION_SCHEMA = "cryptoscan.estate-twin-simulation/1"
 #: what a scenario *would* touch, before it is run against a copy
 SIMULATION_PREVIEW_SCHEMA = "cryptoscan.estate-twin-simulation-preview/1"
 
-#: §4 layer 1 — the placement levels the twin understands
+#: §4 layer 1 — the placement levels the twin understands. The organisation chart
+#: sits above the infrastructure: a bank is a set of legal entities, each of which
+#: owns departments, each of which runs systems in regions and data centres. Every
+#: level is derived from an *asserted* attribute and never inferred from the one
+#: below it (see _attribute).
 ESTATE_LEVELS: tuple[str, ...] = (
     "BANK",
+    "ORGANIZATION",
+    "DEPARTMENT",
     "REGION",
     "DATA_CENTER",
     "CLOUD_ENVIRONMENT",
@@ -438,6 +444,8 @@ def graph_from_snapshot(snapshot_doc: Mapping[str, Any]) -> EstateGraph:
 #: count: a level is present when evidence says so, never because a string looked
 #: like a region name.
 _PLACEMENT_KEYS: dict[str, tuple[str, ...]] = {
+    "ORGANIZATION": ("organization", "organisation", "org", "legal_entity", "group"),
+    "DEPARTMENT": ("department", "dept", "business_unit", "cost_center"),
     "REGION": ("region", "cloud_region", "aws_region", "azure_region", "gcp_region"),
     "DATA_CENTER": ("data_center", "datacenter", "dc", "site", "facility"),
     "CLOUD_ENVIRONMENT": ("cloud_account", "account_id", "subscription_id", "project_id"),
@@ -463,7 +471,8 @@ def _attribute(asset: Mapping[str, Any], keys: Sequence[str]) -> str:
 def _placement_hierarchy(graph: EstateGraph) -> dict[str, Any]:
     """§4 — the levels above the environment, only where evidence puts something.
 
-    Returns the three upper levels, plus an explicit account of what nothing asserts.
+    Returns the five upper levels (the organisation chart, then the infrastructure
+    placement), plus an explicit account of what nothing asserts.
     An asset that no evidence places at a level is counted under ``unassigned`` with
     the reason, so "we do not know the region" is visible rather than rendered as a
     blank that a reader fills in mentally.
@@ -472,17 +481,62 @@ def _placement_hierarchy(graph: EstateGraph) -> dict[str, Any]:
     regions: dict[str, dict[str, Any]] = {}
     data_centers: dict[str, dict[str, Any]] = {}
     clouds: dict[str, dict[str, Any]] = {}
-    assigned = {"REGION": 0, "DATA_CENTER": 0, "CLOUD_ENVIRONMENT": 0}
+    organizations: dict[str, dict[str, Any]] = {}
+    departments: dict[str, dict[str, Any]] = {}
+    assigned = {
+        "ORGANIZATION": 0,
+        "DEPARTMENT": 0,
+        "REGION": 0,
+        "DATA_CENTER": 0,
+        "CLOUD_ENVIRONMENT": 0,
+    }
 
     for asset in graph.assets():
+        organization = _attribute(asset, _PLACEMENT_KEYS["ORGANIZATION"])
+        department = _attribute(asset, _PLACEMENT_KEYS["DEPARTMENT"])
         region = _attribute(asset, _PLACEMENT_KEYS["REGION"])
         data_center = _attribute(asset, _PLACEMENT_KEYS["DATA_CENTER"])
         account = _attribute(asset, _PLACEMENT_KEYS["CLOUD_ENVIRONMENT"])
         provider = _attribute(asset, _CLOUD_PROVIDER_KEYS).upper()
+        owner = _text(asset.get("owner"))
 
         # a data centre whose value is a file path is provenance, not a site
         if data_center and not _is_site(data_center):
             data_center = ""
+
+        # The organisation chart is only as real as the attribute that asserts it:
+        # no asset with a department is placed in an invented parent organisation.
+        if organization:
+            assigned["ORGANIZATION"] += 1
+            bucket = organizations.setdefault(
+                organization,
+                {"name": organization, "assets": 0, "by_type": {}, "departments": {}, "environments": {}},
+            )
+            bucket["assets"] += 1
+            bucket["by_type"][asset["type"]] = bucket["by_type"].get(asset["type"], 0) + 1
+            environment = _text(asset.get("environment")) or "UNSPECIFIED_ENVIRONMENT"
+            bucket["environments"][environment] = bucket["environments"].get(environment, 0) + 1
+            if department:
+                bucket["departments"][department] = bucket["departments"].get(department, 0) + 1
+        if department:
+            assigned["DEPARTMENT"] += 1
+            bucket = departments.setdefault(
+                department,
+                {
+                    "name": department,
+                    "organization": organization or None,
+                    "assets": 0,
+                    "by_type": {},
+                    "owners": {},
+                    "environments": {},
+                },
+            )
+            bucket["assets"] += 1
+            bucket["by_type"][asset["type"]] = bucket["by_type"].get(asset["type"], 0) + 1
+            environment = _text(asset.get("environment")) or "UNSPECIFIED_ENVIRONMENT"
+            bucket["environments"][environment] = bucket["environments"].get(environment, 0) + 1
+            if owner:
+                bucket["owners"][owner] = bucket["owners"].get(owner, 0) + 1
 
         if region:
             assigned["REGION"] += 1
@@ -532,14 +586,25 @@ def _placement_hierarchy(graph: EstateGraph) -> dict[str, Any]:
                     "no evidence asserts a cloud provider or account for these assets. On-premise "
                     "assets are not 'unassigned cloud' and are not counted as one"
                 ),
+                "ORGANIZATION": (
+                    "no evidence names the legal entity or group that owns these assets. The bank "
+                    "itself is not read downward into its subsidiaries: an asset whose owner is a "
+                    "team is not thereby owned by one entity rather than another"
+                ),
+                "DEPARTMENT": (
+                    "no evidence asserts a department or business unit for these assets. An owner "
+                    "name is a person or team, not a cost centre, and is not promoted into one"
+                ),
             }[level],
         }
-        for level in ("REGION", "DATA_CENTER", "CLOUD_ENVIRONMENT")
+        for level in ("ORGANIZATION", "DEPARTMENT", "REGION", "DATA_CENTER", "CLOUD_ENVIRONMENT")
         if total - assigned[level] > 0
     ]
 
     observed = [level for level in ESTATE_LEVELS if level in {"BANK", "ENVIRONMENT", "BUSINESS_SYSTEM"}]
     for level, present in (
+        ("ORGANIZATION", organizations),
+        ("DEPARTMENT", departments),
         ("REGION", regions),
         ("DATA_CENTER", data_centers),
         ("CLOUD_ENVIRONMENT", clouds),
@@ -549,6 +614,39 @@ def _placement_hierarchy(graph: EstateGraph) -> dict[str, Any]:
     ordered = [level for level in ESTATE_LEVELS if level in set(observed)]
 
     return {
+        "organizations": [
+            {
+                "name": bucket["name"],
+                "assets": bucket["assets"],
+                "by_type": bucket["by_type"],
+                "departments": [
+                    {"name": name, "assets": count}
+                    for name, count in sorted(bucket["departments"].items())
+                ],
+                "environments": [
+                    {"name": name, "assets": count}
+                    for name, count in sorted(bucket["environments"].items())
+                ],
+            }
+            for _, bucket in sorted(organizations.items())
+        ],
+        "departments": [
+            {
+                "name": bucket["name"],
+                "organization": bucket["organization"],
+                "assets": bucket["assets"],
+                "by_type": bucket["by_type"],
+                "owners": [
+                    {"name": name, "assets": count}
+                    for name, count in sorted(bucket["owners"].items())
+                ],
+                "environments": [
+                    {"name": name, "assets": count}
+                    for name, count in sorted(bucket["environments"].items())
+                ],
+            }
+            for _, bucket in sorted(departments.items())
+        ],
         "regions": [
             {
                 "name": bucket["name"],
@@ -658,8 +756,10 @@ def placement_model(graph: EstateGraph) -> dict[str, Any]:
 
     return {
         "schema": TWIN_SCHEMA,
-        "model": "cryptoscan.estate-placement/2",
+        "model": "cryptoscan.estate-placement/3",
         "levels": list(ESTATE_LEVELS),
+        "organizations": hierarchy["organizations"],
+        "departments": hierarchy["departments"],
         "levels_observed": hierarchy["levels_observed"],
         "levels_unobserved": hierarchy["levels_unobserved"],
         "bank": bank,

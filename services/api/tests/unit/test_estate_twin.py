@@ -760,7 +760,9 @@ def test_an_estate_with_no_upper_level_facts_lists_them_as_unobserved():
     placement = twin.placement_model(graph)
     assert placement["regions"] == []
     assert placement["levels_observed"] == ["BANK", "ENVIRONMENT", "BUSINESS_SYSTEM"]
-    assert placement["levels_unobserved"] == ["REGION", "DATA_CENTER", "CLOUD_ENVIRONMENT"]
+    assert placement["levels_unobserved"] == [
+        "ORGANIZATION", "DEPARTMENT", "REGION", "DATA_CENTER", "CLOUD_ENVIRONMENT",
+    ]
 
 
 def test_the_overview_carries_the_hierarchy():
@@ -770,3 +772,71 @@ def test_the_overview_carries_the_hierarchy():
     # file path for a location, so it is placed by environment and not by site
     assert body["placement"]["unplaced_count"] == 1
     assert body["levels"] == list(twin.ESTATE_LEVELS)
+
+
+# --------------------------------------------------------------------------- #
+# layer 1 — the organisation chart above the infrastructure
+# --------------------------------------------------------------------------- #
+
+
+def test_an_asserted_organisation_and_department_place_assets_without_inventing_a_parent():
+    """§4 — the bank is a set of entities, not a single root every asset hangs from."""
+    graph = build_graph({
+        "estate": "Synthetic Bank",
+        "assets": [
+            {"ref": "pay", "type": "APPLICATION", "name": "Payment API",
+             "environment": "production", "owner": "Payments Team",
+             "attributes": {"organization": "Bank UAE PJSC", "department": "Payments",
+                            "region": "me-central-1"}},
+            {"ref": "core", "type": "APPLICATION", "name": "Core Ledger",
+             "environment": "production", "owner": "Core Team",
+             "attributes": {"organization": "Bank KSA PJSC", "department": "Core Banking"}},
+            {"ref": "orphan", "type": "APPLICATION", "name": "Unplaced App",
+             "environment": "production",
+             "attributes": {"department": "Retail"}},
+        ],
+        "evidence": [], "relationships": [],
+    })
+    placement = twin.placement_model(graph)
+
+    assert [org["name"] for org in placement["organizations"]] == ["Bank KSA PJSC", "Bank UAE PJSC"]
+    payments = next(d for d in placement["departments"] if d["name"] == "Payments")
+    assert payments["organization"] == "Bank UAE PJSC"
+    assert payments["owners"] == [{"name": "Payments Team", "assets": 1}]
+
+    # a department without an organisation is placed in the department, never in a
+    # parent the evidence does not assert
+    retail = next(d for d in placement["departments"] if d["name"] == "Retail")
+    assert retail["organization"] is None
+    assert "ORGANIZATION" in placement["levels_unobserved"] or any(
+        row["level"] == "ORGANIZATION" for row in placement["unassigned"]
+    )
+
+
+def test_a_level_with_no_assertion_is_counted_with_a_reason_not_left_blank():
+    graph = build_graph({
+        "estate": "B",
+        "assets": [{"ref": "h", "type": "HOST", "name": "app-01", "environment": "production"}],
+        "evidence": [], "relationships": [],
+    })
+    unassigned = {row["level"]: row for row in twin.placement_model(graph)["unassigned"]}
+    assert unassigned["ORGANIZATION"]["assets"] == 1
+    assert unassigned["DEPARTMENT"]["assets"] == 1
+    assert "legal entity" in unassigned["ORGANIZATION"]["reason"]
+    assert "cost centre" in unassigned["DEPARTMENT"]["reason"]
+
+
+def test_the_specification_conformance_route_serves_the_register(api):
+    """§1–§12 — the specification is served from the object a test asserts against."""
+    http, _session = api
+    response = http.get("/api/v1/estate/evidence/twin/spec-conformance")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["schema"] == "cryptoscan.digital-twin-spec-conformance/1"
+    assert body["coverage"]["relationship_types_mapped"] == 18
+    assert body["coverage"]["screens"] == 13
+    assert {gap["id"] for gap in body["gaps"]} == {
+        "s4-eight-layers", "s7-storage", "s9-ui", "layer-7-simulation",
+    }
+    # the register does not need a discovered estate: it describes the build, not a bank
+    assert body["spec"].endswith("DIGITAL-TWIN-SPEC.md")

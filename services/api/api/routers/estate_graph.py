@@ -1919,6 +1919,21 @@ def estate_twin_simulation_scenarios(
     return document
 
 
+@router.get("/twin/spec-conformance", response_model=dict[str, Any])
+def estate_twin_spec_conformance(
+    user: str = Depends(get_current_user),
+):
+    """The Digital Twin specification, the build's answer, and every gap between them.
+
+    Read from ``shared_models/twin_spec.py`` — the same object a test asserts against —
+    so the specification, this API and the console cannot disagree about what is
+    built. Deterministic: no clock, no database, no request context.
+    """
+    from shared_models import twin_spec
+
+    return twin_spec.conformance()
+
+
 @router.get("/twin/simulations")
 def estate_twin_simulations(
     limit: int = Query(default=20, ge=1, le=100),

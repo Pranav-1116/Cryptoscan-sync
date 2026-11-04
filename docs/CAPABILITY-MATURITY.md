@@ -4,7 +4,7 @@
 > `scripts/gen_capability_maturity.py`. Served live at
 > `GET /api/v1/platform/capabilities`.
 
-**90 shipped surfaces, all supported.** The navigation carries no maturity
+**91 shipped surfaces, all supported.** The navigation carries no maturity
 badges: a product's sidebar is not the place to negotiate what is proven. What
 used to be a `beta` or `preview` label is now the **stated limit** column below,
 which is the part that actually told an operator something. A support statement
@@ -72,6 +72,7 @@ role-guarded actions.
 | `/evidence` | Governance | SHA-256 content/chain/manifest hashes, audit packs, verify endpoint. |
 | `/governance` | Governance | Access reviews, exceptions, sign-off; 1.9k LOC, 4 test files. |
 | `/sectors` | Governance | Sector profiles (bank/telecom/energy) select policy packs; 900 LOC. |
+| `/security-controls` | Governance | Read-only inventory of the bank's own controls (firewall/IDS/WAF/HSM/KMS/PKI, 13 types): it records what each control enforces and exports findings; it is not a firewall, an IPS or a rate limiter, and a spec that would mutate a control is refused at registration. |
 | `/security-policy` | Governance | YAML policy packs (BASELINE/PCI/NIST 131A/CNSA 2.0/FIPS/HIPAA), 82 tests, no AI. |
 | `/supervision` | Governance | Supervisory-review view for regulators; a read model over evidence, early. |
 | `/trust` | Governance | Trust-score surface; scoring inputs still being defined. |

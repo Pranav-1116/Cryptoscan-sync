@@ -401,6 +401,37 @@ it("draws the estate hierarchy only where evidence puts something", async () => 
   expect(screen.getByText(/not observed at all: DATA_CENTER, CLOUD_ENVIRONMENT/)).toBeInTheDocument();
 });
 
+it("draws the organisation chart, with a department that has no parent left parentless", async () => {
+  mockFetch({
+    [TWIN]: overview(),
+    [PLACEMENT]: {
+      schema: "x", model: "cryptoscan.estate-placement/3",
+      levels: ["BANK", "ORGANIZATION", "DEPARTMENT", "REGION", "DATA_CENTER",
+        "CLOUD_ENVIRONMENT", "ENVIRONMENT", "BUSINESS_SYSTEM"],
+      levels_observed: ["BANK", "ORGANIZATION", "DEPARTMENT", "ENVIRONMENT"],
+      levels_unobserved: ["REGION", "DATA_CENTER", "CLOUD_ENVIRONMENT", "BUSINESS_SYSTEM"],
+      bank: "Synthetic Bank",
+      organizations: [{ name: "Bank UAE PJSC", assets: 2, by_type: {},
+        departments: [{ name: "Payments", assets: 2 }], environments: [] }],
+      departments: [
+        { name: "Payments", organization: "Bank UAE PJSC", assets: 2, by_type: {},
+          owners: [{ name: "Payments Team", assets: 2 }], environments: [] },
+        { name: "Retail", organization: null, assets: 1, by_type: {}, owners: [], environments: [] },
+      ],
+      environments: [], regions: [], data_centers: [], cloud_environments: [],
+      unassigned: [{ level: "ORGANIZATION", assets: 1, reason: "no evidence names the legal entity" }],
+      business_systems: [], unplaced: [], unplaced_count: 0, placeable: 3, note: "",
+    },
+  });
+  render(<DigitalTwinPanel />);
+  await waitFor(() => expect(screen.getByText(/HIERARCHY · BANK → ORGANIZATION/)).toBeInTheDocument());
+  expect(screen.getByText(/entity Bank UAE PJSC · 2 asset/)).toBeInTheDocument();
+  expect(screen.getByText(/department Payments \(Bank UAE PJSC\) · 2 asset/)).toBeInTheDocument();
+  // a department whose evidence asserts no organisation is drawn without one
+  expect(screen.getByText(/department Retail · 1 asset/)).toBeInTheDocument();
+  expect(screen.getByText(/1 asset\(s\) with no organization in any evidence/)).toBeInTheDocument();
+});
+
 it("searches the durable record and keeps capability away from use", async () => {
   mockFetch({
     [TWIN]: overview(),

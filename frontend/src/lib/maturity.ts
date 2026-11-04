@@ -414,13 +414,13 @@ export const CAPABILITY_LIMITS = {
     "area": "Administration",
     "limit": "Security settings surface; overlaps security-center."
   },
-  "security-controls": {
-    "area": "Administration",
-    "limit": "Read-only view of the bank's own controls: every control's state, its refusals and its unintegrated controls are named rather than omitted, and the export is CycloneDX 1.6 or CEF. Discovery completeness is not proven and the page says so; it does not claim a control is enforced."
-  },
   "security-center": {
     "area": "Administration",
     "limit": "Security posture of the platform itself (headers, rate limits, audit chain verify)."
+  },
+  "security-controls": {
+    "area": "Governance",
+    "limit": "Read-only inventory of the bank's own controls (firewall/IDS/WAF/HSM/KMS/PKI, 13 types): it records what each control enforces and exports findings; it is not a firewall, an IPS or a rate limiter, and a spec that would mutate a control is refused at registration."
   },
   "security-intelligence": {
     "area": "Intelligence",

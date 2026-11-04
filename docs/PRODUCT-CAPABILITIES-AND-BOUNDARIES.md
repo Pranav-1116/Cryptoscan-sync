@@ -206,10 +206,10 @@ snapshot it came from.
 
 ### 4.8 The console
 
-**90 shipped surfaces across 7 areas**, each carrying a *stated limit* rather than a maturity badge
+**91 shipped surfaces across 7 areas**, each carrying a *stated limit* rather than a maturity badge
 (`shared_models/capability_maturity.py`, `GET /api/v1/platform/capabilities`,
 `docs/CAPABILITY-MATURITY.md`). Areas: Overview (12), Discovery (16), Intelligence (27), Governance
-(15), Administration (15), Auth (4), Output (1). The full per-surface register — question, limit, and
+(16), Administration (15), Auth (4), Output (1). The full per-surface register — question, limit, and
 the route that proves it — is the CAPABILITY-MATURITY table; it is generated from the same objects
 the API serves, so the console, the API and the docs cannot drift apart.
 

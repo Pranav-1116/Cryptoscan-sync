@@ -151,6 +151,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "timeline": {"tier": "ga", "area": "Overview", "why": "Estate timeline; aggregates several beta sources."},
     "security-intelligence": {"tier": "ga", "area": "Intelligence", "why": "Cross-scanner identity resolution + profiles; roadmap in SECURITY-INTELLIGENCE-ROADMAP.md."},
     "platform-p2": {"tier": "ga", "area": "Administration", "why": "Phase-2 platform features behind one page (marketplace, datalake, anomaly) — each < 700 LOC."},
+    "security-controls": {"tier": "ga", "area": "Governance", "why": "Read-only inventory of the bank's own controls (firewall/IDS/WAF/HSM/KMS/PKI, 13 types): it records what each control enforces and exports findings; it is not a firewall, an IPS or a rate limiter, and a spec that would mutate a control is refused at registration."},
 }
 
 #: sidebar entries that used to point at routes that do not exist. Kept as a
