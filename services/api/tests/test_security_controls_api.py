@@ -234,3 +234,30 @@ def test_findings_keep_their_evidence_ids(writer, api):
     assert rows and rows[0]["evidence_ids"] == ["EVID-FIREWALL-00000000abcd"]
     assert rows[0]["facts"] == ["OBSERVED"]
     json.dumps(rows)  # the row is serialisable evidence, not an ORM object
+
+
+# --------------------------------------------------------------------------- #
+# the console: every failure has a name
+# --------------------------------------------------------------------------- #
+
+def test_health_route_names_every_control_and_never_says_nothing(writer, api):
+    """A console that renders "no findings" for four different failures is a console that
+    hides three of them. The route is where they stop looking alike."""
+    from api.dependencies import TenantContext
+
+    assert writer.post("/api/security-controls/snapshots", json=body()).status_code == 200
+    api.dependency_overrides[__import__("api").dependencies.get_tenant_context] = (
+        lambda: TenantContext(username="auditor", tenant_id=None, tenant_role="auditor",
+                              is_platform_admin=True))
+    response = TestClient(api).get("/api/security-controls/health")
+    assert response.status_code == 200
+    payload = response.json()
+    controls = {row["control"]: row for row in payload["controls"]}
+    # the snapshot covered FIREWALL and WAF, so those were read; the rest were never asked
+    assert controls["FIREWALL"]["state"] == "OK"
+    assert controls["HSM"]["state"] in {"NOT_CONFIGURED", "OK"}
+    assert payload["coverage"]["nothing_asked"] is False
+    assert payload["coverage"]["total"] == len(controls)
+    assert "PARTIAL_READ" in payload["taxonomy"]
+    assert payload["taxonomy"]["AUTH_FAILED"]["operator_action"].startswith("rotate")
+    assert payload["note"].startswith("a state describes what the platform could learn")

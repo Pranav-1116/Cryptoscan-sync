@@ -81,6 +81,67 @@ class SectionRead:
                 "rows": self.rows, "reason": self.reason or None}
 
 
+#: Rows kept per section before the read is truncated. A firewall with 40,000 rules will not
+#: fit in a snapshot, and a collector that tries has already failed — it just has not noticed.
+#: The cap is a *recorded* truncation, not a silent slice: a partial section that looks whole is
+#: how a rule nobody could see gets a clean audit.
+MAX_ROWS_PER_SECTION = 2000
+#: The largest snapshot one device may contribute. Beyond it the remaining rows are refused
+#: with ``CAP_REACHED``, and the refusal is part of the snapshot.
+MAX_SNAPSHOT_BYTES = 4 * 1024 * 1024
+
+
+def section_digest(rows: list[dict[str, Any]]) -> str:
+    """A stable digest over one section's rows — the unit of incremental collection."""
+    import hashlib
+    import json
+
+    payload = json.dumps(rows, sort_keys=True, default=str, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+class SectionCache:
+    """What the last read of each section said, so an unchanged section can be skipped.
+
+    Nine controls times dozens of devices is hundreds of reads per cycle, and almost none of
+    them changed. The cache is deliberately dumb — it holds per-section digests and sizes, not
+    the rows — so it cannot itself become the memory problem it exists to avoid. A caller that
+    wants the unchanged rows passes them back in (its own store has them).
+    """
+
+    def __init__(self, digests: Mapping[str, str] | None = None,
+                 read_at: Mapping[str, str] | None = None) -> None:
+        self.digests: dict[str, str] = dict(digests or {})
+        self.read_at: dict[str, str] = dict(read_at or {})
+
+    def changed(self, section: str, rows: list[dict[str, Any]]) -> bool:
+        digest = section_digest(rows)
+        return self.digests.get(section) != digest
+
+    def record(self, section: str, rows: list[dict[str, Any]], *, at: str = "") -> str:
+        digest = section_digest(rows)
+        self.digests[section] = digest
+        if at:
+            self.read_at[section] = at
+        return digest
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"digests": dict(sorted(self.digests.items())),
+                "read_at": dict(sorted(self.read_at.items()))}
+
+    @classmethod
+    def from_feed(cls, feed: Mapping[str, Any] | None) -> "SectionCache":
+        """Rebuild the cache from a previous feed *or* a previous snapshot's ``health``."""
+        health = (feed or {}).get("health") or {}
+        digests = health.get("section_digests")
+        if not isinstance(digests, Mapping):
+            read = health.get("read") if isinstance(health.get("read"), Mapping) else {}
+            digests = read.get("section_digests")
+        digests = digests if isinstance(digests, Mapping) else {}
+        read_at = health.get("section_read_at") or {}
+        return cls(digests=digests, read_at=read_at if isinstance(read_at, Mapping) else {})
+
+
 class BaseDriver:
     """Fetch the sections a spec declares, into canonical section names."""
 
@@ -95,7 +156,7 @@ class BaseDriver:
     def __init__(self, transport: ReadOnlyTransport, *,
                  system: str = "", params: Mapping[str, Mapping[str, Any]] | None = None,
                  version: str = "", model: str = "",
-                 log_path: str = "", max_lines: int = 0) -> None:
+                 log_path: str = "", max_lines: int = 0, max_rows: int = 0) -> None:
         """The one constructor. A subclass declares vocabulary, never ``__init__``.
 
         Guide 182 shipped this module with a mix of dataclass and plain subclasses, which
@@ -110,6 +171,7 @@ class BaseDriver:
         self.model = _norm(model) or type(self).model
         self.log_path = _norm(log_path)
         self.max_lines = int(max_lines or 0)
+        self.max_rows = int(max_rows or 0)
         self.reads: list[SectionRead] = []
 
     # -- what a subclass may override --------------------------------------- #
@@ -122,16 +184,55 @@ class BaseDriver:
         return {}
 
     # -- the one implementation --------------------------------------------- #
-    def fetch(self) -> dict[str, Any]:
+    def fetch(self, *, cache: SectionCache | None = None,
+              skip_unchanged: bool = False) -> dict[str, Any]:
+        """Read every declared section, or report why it could not be read.
+
+        ``cache`` supplies the previous read's per-section digests. With ``skip_unchanged``,
+        a section whose rows hash the same as last time is not re-emitted — the caller already
+        holds it — and the section is named in ``unchanged_sections`` so the omission is
+        visible rather than inferred.
+        """
         sections: dict[str, list[dict[str, Any]]] = {}
         states: list[str] = []
+        unchanged: list[str] = []
+        truncated: dict[str, dict[str, Any]] = {}
+        digests: dict[str, str] = {}
+        budget = MAX_SNAPSHOT_BYTES
         for section, path in self.endpoints.items():
             rows, result = self._read(path, params=self.params.get(section))
             states.append(result.state)
+            cap = min(MAX_ROWS_PER_SECTION, self.max_rows or MAX_ROWS_PER_SECTION)
+            dropped = 0
+            if len(rows) > cap:
+                dropped = len(rows) - cap
+                rows = rows[:cap]
+                truncated[section] = {
+                    "rows_read": cap + dropped, "rows_kept": cap, "rows_dropped": dropped,
+                    "cap": cap, "reason": ("the section is larger than one snapshot may hold; "
+                                           "the rows kept are the first by a stable sort, and "
+                                           "the count dropped is recorded because a partial "
+                                           "section that looks whole is a clean audit of a "
+                                           "rule nobody could see")}
+            size = len(_canonical_rows(rows).encode("utf-8")) if rows else 0
+            if size > budget:
+                truncated.setdefault(section, {})["memory_refused"] = True
+                self.reads.append(SectionRead(section=section, path=path, state=result.state,
+                                              rows=0, reason="snapshot memory budget reached"))
+                continue
+            budget -= size
             self.reads.append(SectionRead(section=section, path=path, state=result.state,
                                           rows=len(rows), reason=result.reason))
             if result.ok and rows:
-                sections[section] = _sorted_rows(rows)
+                ordered = _sorted_rows(rows)
+                digest = section_digest(ordered)
+                digests[section] = digest
+                if cache is not None:
+                    if skip_unchanged and not cache.changed(section, ordered):
+                        unchanged.append(section)
+                        continue
+                    cache.record(section, ordered)
+                sections[section] = ordered
         for section, rows in self.extra_sections().items():
             if rows:
                 sections[section] = _sorted_rows(rows)
@@ -155,7 +256,32 @@ class BaseDriver:
                 "failed_sections": [read.section for read in self.reads
                                     if read.state not in {OK, PARTIAL_READ}],
                 "detail": _detail(state, self.reads),
+                # -- scale, in three parts -------------------------------------- #
+                "coverage": self._coverage(state, sections, unchanged),
+                "section_digests": dict(sorted(digests.items())),
+                "unchanged_sections": sorted(unchanged),
+                "truncated": truncated,
+                "limits": {"max_rows_per_section": self.max_rows or MAX_ROWS_PER_SECTION,
+                           "max_snapshot_bytes": MAX_SNAPSHOT_BYTES,
+                           "bytes_remaining": budget},
             },
+        }
+
+    def _coverage(self, state: str, sections: Mapping[str, Any],
+                  unchanged: list[str]) -> dict[str, Any]:
+        """Sections read versus sections the dialect declares — per device, not per estate."""
+        declared = len(self.endpoints)
+        read = len(sections) + len(unchanged)
+        failed = [read.section for read in self.reads if read.state not in {OK, PARTIAL_READ}]
+        return {
+            "sections_declared": declared,
+            "sections_read": read,
+            "sections_failed": len(failed),
+            "sections_unchanged": len(unchanged),
+            "failed": failed,
+            "fraction": round(read / declared, 3) if declared else 0.0,
+            "complete": bool(declared) and read == declared,
+            "state": state,
         }
 
     def _read(self, path: str,
@@ -167,6 +293,12 @@ class BaseDriver:
             return [dict(row) for row in rows if isinstance(row, Mapping)], result
         result = self.transport.get(path, params=params)
         return rows_from(result.body), result
+
+
+def _canonical_rows(rows: list[dict[str, Any]]) -> str:
+    import json
+
+    return json.dumps(rows, sort_keys=True, default=str, separators=(",", ":"))
 
 
 def _detail(state: str, reads: list[SectionRead]) -> str:
@@ -474,18 +606,33 @@ def driver_for(adapter_key: str, transport: ReadOnlyTransport, *,
 # --------------------------------------------------------------------------- #
 
 def live_snapshot(control: str, vendor: str, transport: ReadOnlyTransport, *,
-                  system: str = "", **options: Any) -> dict[str, Any]:
+                  system: str = "", previous: Mapping[str, Any] | None = None,
+                  incremental: bool = False, **options: Any) -> dict[str, Any]:
     """Read a device live and return everything a reviewer needs to judge the read.
 
     The collector is the shipping one — the same class, the same evidence book, the same
     refusals — so a live snapshot and a fixture snapshot are comparable documents. The extra
     keys are the honest ones: ``read`` (which sections the device answered) and ``transport``.
+
+    ``previous`` is the last feed for this device (or the ``health`` block of the last
+    snapshot). With ``incremental=True`` a section whose rows hash the same as last time is not
+    re-read into this snapshot: it is named in ``unchanged_sections`` and merged back from
+    ``previous`` so the snapshot is still complete. The omission and the merge are both
+    recorded, because a snapshot that silently contains less is worse than one that fails.
     """
     from .registry import collector as build_collector
 
     base = build_collector(control, vendor, {})  # validates control + vendor first
     driver = driver_for(base.spec.key, transport, system=system, **options)
-    feed = driver.fetch()
+    cache = SectionCache.from_feed(previous) if (incremental and previous) else None
+    feed = driver.fetch(cache=cache, skip_unchanged=bool(cache))
+    merged: list[str] = []
+    if cache is not None:
+        held = (previous or {}).get("sections") or {}
+        for section in feed.get("health", {}).get("unchanged_sections", []):
+            if section in held:
+                feed["sections"][section] = held[section]
+                merged.append(section)
     collector = build_collector(control, vendor, feed)
     snapshot = collector.snapshot()
     transport_state = (feed.get("health") or {}).get("state", UNREACHABLE)
@@ -500,6 +647,14 @@ def live_snapshot(control: str, vendor: str, transport: ReadOnlyTransport, *,
             "failed_sections": feed.get("health", {}).get("failed_sections", []),
             "partial": transport_state == PARTIAL_READ,
             "detail": feed.get("health", {}).get("detail"),
+            # scale: what this device contributed, what it refused, what was skipped and
+            # what came back from the previous read
+            "coverage": feed.get("health", {}).get("coverage"),
+            "unchanged_sections": feed.get("health", {}).get("unchanged_sections", []),
+            "merged_sections": sorted(merged),
+            "truncated": feed.get("health", {}).get("truncated", {}),
+            "limits": feed.get("health", {}).get("limits"),
+            "incremental": bool(cache),
         },
         "transport": transport.health(),
     }

@@ -383,6 +383,19 @@ class HttpTransport:
     # -- internals ---------------------------------------------------------- #
     def _send(self, method: str, url: str, *, headers: Mapping[str, str],
               params: Mapping[str, Any] | None) -> Any:
+        if self._client_factory is not None:
+            # An injected client is how the read path is tested *and* how a site plugs in its
+            # own mTLS session. It was declared and never used, which made it a promise the
+            # code did not keep — and a test that injects a client which refuses to send
+            # anything is the only way to prove a write never leaves.
+            client = self._client_factory()
+            try:
+                return client.request(method, url, headers=dict(headers),
+                                      params=dict(params or {}))
+            finally:
+                closer = getattr(client, "close", None)
+                if callable(closer):
+                    closer()
         import httpx  # imported here so the module loads without the dependency
 
         with httpx.Client(timeout=self.timeout, verify=self.verify,

@@ -26,6 +26,11 @@ code:
 * **L-10** does the resolver produce the path from the estate, name a stale hop, and drop it
   under ``strict``?
 * **L-11** is the evidence API mounted, and does it refuse a user token?
+* **L-12** does the redaction guard catch card numbers without eating epoch milliseconds?
+* **L-13** is the method allowlist enforced where the bytes leave, not only in a declaration?
+* **L-14** is an evidence id stable, revision-aware, and scheme-tagged?
+* **L-15** does every failure have a name on health, in the summary and for the console?
+* **L-16** is collection incremental, coverage per-device, and memory bounded?
 
 Usage::
 
@@ -440,14 +445,202 @@ def measure() -> dict[str, Any]:
                _user_token_refused(router_module), "user_token_not_accepted"),
     ])
 
+    # -- L-12 redaction precision -------------------------------------------- #
+    corpus = {
+        "epoch_ms": "1735689600000", "epoch_micros": "1735689600000123",
+        "object_id": "1099511627776", "serial": "1234567890123456",
+        "inode": "8392018475629", "bytes": "7812345678901", "uptime_ms": "86400000",
+        "policyid": "1234567890123", "mtu": "9000", "port_range": "8080-8443",
+        "created_at": "2026-11-04T09:14:00Z", "size": "4294967296",
+    }
+    clean, redactions = sc.scrub(dict(corpus))
+    false_positives = sorted(key for key, value in clean.items() if value == sc.REDACTED)
+    caught, _ = sc.scrub({"a": "4111 1111 1111 1111", "b": "5500 0000 0000 0004",
+                          "c": "378282246310005", "d": "6011 0009 9013 9424"})
+    allowed = sc.redaction_allowlist()
+    add(12, "Redaction precision",
+        "does the guard redact the card numbers and not the evidence?", [
+            _probe("legitimate numeric fields survive", not false_positives,
+                   f"{len(corpus)} field(s), {len(false_positives)} false positive(s)"),
+            _probe("four real card numbers are still caught",
+                   sum(1 for value in caught.values() if value == sc.REDACTED) == 4,
+                   "Visa, Mastercard, Amex (15), Discover"),
+            _probe("a Luhn-valid number in no issuer range is not a card",
+                   sc.scrub({"reference": "1234567812345670"})[0]["reference"]
+                   == "1234567812345670", "not a PAN"),
+            _probe("the allowlist is published for review",
+                   "timestamp" in allowed["numeric_fields"]
+                   and "PEM_PRIVATE_KEY" in allowed["never_allowed"],
+                   f"{len(allowed['numeric_fields'])} field(s) allowlisted"),
+        ])
+
+    # -- L-13 read-only, at the socket --------------------------------------- #
+    class _Counter:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def request(self, method: str, url: str, **_kwargs: Any) -> Any:
+            self.calls.append(method.upper())
+
+            class _Response:
+                status_code = 200
+                headers: dict[str, str] = {}
+                text = "{}"
+
+                @staticmethod
+                def json() -> dict[str, Any]:
+                    return {}
+
+            return _Response()
+
+        def close(self) -> None:
+            return None
+
+    counter = _Counter()
+    client = sc.HttpTransport(base_url="https://fw.example.bank",
+                              credential=sc.Credential("t", source="probe"),
+                              _client_factory=lambda: counter)
+    refused_writes = 0
+    for verb in ("POST", "PUT", "PATCH", "DELETE"):
+        try:
+            client.request(verb, "/api/v2/cmdb/firewall/policy")
+        except sc.ControlRefused:
+            refused_writes += 1
+    reads = _Counter()
+    reader = sc.HttpTransport(base_url="https://fw.example.bank",
+                              credential=sc.Credential("t", source="probe"),
+                              _client_factory=lambda: reads)
+    reader.request("GET", "/api/v2/monitor/system/status")
+    reader.request("HEAD", "/api/v2/monitor/license")
+    add(13, "Read-only at the socket",
+        "is the method allowlist enforced where the bytes leave?", [
+            _probe("all four write verbs are refused", refused_writes == 4,
+                   f"{refused_writes}/4 refused"),
+            _probe("no refused write reached the client", counter.calls == [],
+                   f"{len(counter.calls)} request(s) sent"),
+            _probe("GET and HEAD do reach the client", reads.calls == ["GET", "HEAD"],
+                   ", ".join(reads.calls)),
+            _probe("the allowlist is the whole method set",
+                   sc.transport.READ_METHODS == frozenset({"GET", "HEAD"}),
+                   ", ".join(sorted(sc.transport.READ_METHODS))),
+        ])
+
+    # -- L-14 evidence ids: stable, versioned, scheme-tagged ------------------ #
+    book = sc.EvidenceBook("FIREWALL", "Fortinet", "FW-EDGE-01")
+    rule = {"name": "allow-payments", "action": "accept", "src": "10.0.0.0/8",
+            "version": "42"}
+    same = book.id_for("RULE", "allow-payments", rule) == \
+        book.id_for("RULE", "allow-payments", rule)
+    bumped = book.id_for("RULE", "allow-payments", {**rule, "version": "43"})
+    original = book.id_for("RULE", "allow-payments", rule)
+    verified = book.verify(original, "RULE", "allow-payments", rule)
+    add(14, "Evidence identity",
+        "is an evidence id stable, revision-aware and readable after a rule change?", [
+            _probe("an unchanged fact keeps its id", same, "two reads, one id"),
+            _probe("a bumped config revision moves the id", original != bumped,
+                   "version 42 → 43"),
+            _probe("every id carries its digest scheme",
+                   original.startswith(f"EVID-{sc.EVIDENCE_SCHEME}-FIREWALL-"),
+                   sc.evidence_scheme(original)),
+            _probe("a legacy id is named, not misread",
+                   sc.evidence_scheme("EVID-FIREWALL-0123456789ab") == sc.LEGACY_SCHEME,
+                   "v0"),
+            _probe("a citation re-verifies months later", verified["matches"] is True,
+                   "recomputed match"),
+        ])
+
+    # -- L-15 the taxonomy, on every surface --------------------------------- #
+    partial = sc.live_snapshot("FIREWALL", "fortigate", sc.RecordedTransport({
+        "/api/v2/cmdb/firewall/policy": {"results": [{"policyid": 1, "name": "allow"}]},
+    }), system="FW-EDGE-01")
+    unreachable = sc.collector("SIEM", "splunk", {"health": {"reachable": False}})
+    faulted = sc.collector("FIREWALL", "fortigate", {"system": "FW-02",
+                                                     "health": {"state": "AUTH_FAILED"}})
+    projection = sc.project([sc.collector("WAF", "f5_asm", {"system": "WAF-01"}),
+                             unreachable, faulted])
+    coverage = projection["summary"]["coverage"]
+    unsupported = False
+    try:
+        sc.drivers.driver_for("firewall.cisco-asa", sc.RecordedTransport({}))
+    except sc.ControlRefused as exc:
+        unsupported = exc.code == "NO_LIVE_DRIVER"
+    add(15, "Failure taxonomy",
+        "does every failure have a name, on health, in the summary and for the console?", [
+            _probe("three of five sections is PARTIAL_READ with named failures",
+                   partial["read"]["state"] == "PARTIAL_READ"
+                   and set(partial["read"]["coverage"]["failed"])
+                   == {"zones", "interfaces", "vpn", "tls_inspection"},
+                   f"{partial['read']['coverage']['sections_read']}"
+                   f"/{partial['read']['coverage']['sections_declared']} sections"),
+            _probe("health carries the state and its meaning",
+                   unreachable.health()["state"] == "UNREACHABLE"
+                   and unreachable.health()["taxonomy"]["retryable"] is True,
+                   "UNREACHABLE, retryable"),
+            _probe("a refused credential is AUTH_FAILED, not unreachable",
+                   faulted.health()["state"] == "AUTH_FAILED",
+                   faulted.health()["taxonomy"]["operator_action"][:40]),
+            _probe("the projection summary carries coverage, not just counts",
+                   coverage["counts"].get("UNREACHABLE") == 1
+                   and coverage["counts"].get("AUTH_FAILED") == 1
+                   and coverage["complete"] is False,
+                   coverage["statement"]),
+            _probe("a dialect with no driver is UNSUPPORTED_DIALECT",
+                   unsupported and sc.describe("UNSUPPORTED_DIALECT")["group"] == "ABSENT",
+                   "ABSENT"),
+            _probe("every state says what to do about it",
+                   all(sc.describe(state)["operator_action"] for state in sc.CONTROL_STATES),
+                   f"{len(sc.CONTROL_STATES)} states"),
+        ])
+
+    # -- L-16 scale ---------------------------------------------------------- #
+    routes = {"/api/v2/cmdb/firewall/policy": {"results": [{"policyid": 1, "name": "a"}]},
+              "/api/v2/cmdb/system/zone": {"results": [{"name": "payments"}]}}
+    first = sc.live_snapshot("FIREWALL", "fortigate", sc.RecordedTransport(routes),
+                             system="FW-01")
+    previous = {"sections": first["configuration"]["sections"], "health": first["health"]}
+    again = sc.live_snapshot("FIREWALL", "fortigate", sc.RecordedTransport(routes),
+                             system="FW-01", previous=previous, incremental=True)
+    changed_routes = {**routes,
+                      "/api/v2/cmdb/firewall/policy": {"results": [{"policyid": 1,
+                                                                    "name": "b"}]}}
+    changed = sc.live_snapshot("FIREWALL", "fortigate", sc.RecordedTransport(changed_routes),
+                               system="FW-01", previous=previous, incremental=True)
+    big = {"results": [{"policyid": index} for index in range(40)]}
+    capped = sc.live_snapshot("FIREWALL", "fortigate",
+                              sc.RecordedTransport({"/api/v2/cmdb/firewall/policy": big}),
+                              system="FW-01", max_rows=10)
+    add(16, "Scale",
+        "is collection incremental, coverage per-device and memory bounded?", [
+            _probe("an unchanged section is not re-read",
+                   again["read"]["unchanged_sections"] == ["rules", "zones"],
+                   ", ".join(again["read"]["unchanged_sections"])),
+            _probe("the snapshot stays complete: unchanged rows are merged back",
+                   again["read"]["merged_sections"] == ["rules", "zones"],
+                   f"{again['read']['coverage']['sections_read']} section(s) present"),
+            _probe("a changed section is read again",
+                   changed["read"]["unchanged_sections"] == ["zones"],
+                   "rules changed, zones did not"),
+            _probe("coverage is per device, not per estate",
+                   first["read"]["coverage"]["sections_read"] == 2
+                   and sc.live_snapshot("FIREWALL", "fortigate", sc.RecordedTransport({}),
+                                       system="FW-02")["read"]["coverage"]["sections_read"] == 0,
+                   "FW-01 2/5, FW-02 0/5"),
+            _probe("a section past the cap is truncated and says so",
+                   capped["read"]["truncated"]["rules"]["rows_dropped"] == 30,
+                   "40 read, 10 kept"),
+            _probe("the snapshot ceiling is published",
+                   capped["read"]["limits"]["max_snapshot_bytes"] > 0,
+                   f"{capped['read']['limits']['max_snapshot_bytes']} bytes"),
+        ])
+
     counts = {VERDICT_PASS: 0, VERDICT_PARTIAL: 0, VERDICT_FAIL: 0}
     for point in points:
         counts[point["verdict"]] += 1
     total_probes = sum(point["probes"] for point in points)
     passed_probes = sum(point["probes_passed"] for point in points)
     return {
-        "schema": "cryptoscan.security-controls-live/1",
-        "guide": 182,
+        "schema": "cryptoscan.security-controls-live/2",
+        "guides": [182, 183],
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "positioning": ("CryptoScan integrates with the bank's existing network and security "
                         "controls to build an evidence-backed cryptographic and security "
@@ -507,7 +700,7 @@ def render_md(report: dict[str, Any]) -> str:
     counts = report["counts"]
     probes = report["probes"]
     lines = [
-        "# Security control integration — live harness (guide 182)",
+        "# Security control integration — live harness (guides 182–183)",
         "",
         f"> {report['positioning']}",
         "",

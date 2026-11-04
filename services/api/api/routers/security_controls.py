@@ -382,6 +382,67 @@ def verify_chain(
             "problems": problems, "head": previous}
 
 
+@router.get("/health")
+def control_health(
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_tenant_roles(*READ_ROLES)),
+) -> dict[str, Any]:
+    """Per-control state, in the one taxonomy, with the sentence the console must render.
+
+    "No findings" is four different answers — never asked, refused, unreachable, and read with
+    nothing to report — and a console that renders the list renders all four identically. This
+    route is where they stop being identical: every control the layer knows about appears here
+    with a state, what that state means, what to do about it, and whether it was collected at
+    all.
+    """
+    from cbom import security_controls as layer
+    from cbom.security_controls import taxonomy
+
+    catalogue = layer.controls()
+    drivers = layer.DRIVERS
+    driven = {key.split(".")[0].upper() for key in drivers}
+
+    latest = db.execute(
+        select(SecurityControlSnapshot)
+        .order_by(SecurityControlSnapshot.sequence.desc()).limit(1)
+    ).scalars().first()
+    read_state = (latest.read_state.upper() if latest else "NOT_CONFIGURED")
+    seen = set((latest.controls or []) if latest else [])
+
+    entries: list[dict[str, Any]] = []
+    for control, entry in sorted(catalogue.items()):
+        if control in seen and latest is not None:
+            # the control was in the most recent read; its own state is the read's state
+            state = read_state if taxonomy.normalise(read_state) else "NOT_CONFIGURED"
+        elif entry.get("facade") or control.lower() in driven:
+            state = "NOT_CONFIGURED"
+        else:
+            # a device control with no driver: the dialect row documents it and nothing reads it
+            state = "UNSUPPORTED_DIALECT"
+        entries.append({"control": control, "state": state,
+                        "vendor": None, "system": latest.collector if latest else None,
+                        "detail": (f"{len(entry['adapters'])} adapter(s); "
+                                   f"{'facade' if entry.get('facade') else 'device'}")})
+
+    summary = taxonomy.summarise(entries)
+    return {
+        "schema": "cryptoscan.security-control-health/1",
+        "tenant": current_tenant(),
+        "snapshot": ({"id": latest.id, "sequence": latest.sequence,
+                      "captured_at": _iso(latest.captured_at),
+                      "read_state": latest.read_state, "partial": latest.partial,
+                      "refusals": latest.refusals} if latest else None),
+        "taxonomy": {state: taxonomy.describe(state) for state in taxonomy.STATES},
+        "controls": summary["per_control"],
+        "coverage": {key: summary[key] for key in
+                     ("total", "counts", "collected", "failed", "absent", "refused",
+                      "complete", "nothing_asked", "worst", "statement")},
+        "note": ("a state describes what the platform could learn, not what the control does; "
+                 "NOT_CONFIGURED and UNSUPPORTED_DIALECT are gaps in the integration and "
+                 "UNREACHABLE/AUTH_FAILED are faults at the device"),
+    }
+
+
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #

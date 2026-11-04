@@ -703,6 +703,21 @@
 > and the summary counts it, because a refusal that vanishes between the builder and the
 > report is how a graph starts looking complete.
 
+> [Hardening the guarantees: redaction precision, enforcement at the socket, evidence identity](183-security-control-hardening.md)
+> (**16 pass · 0 partial · 0 fail**, 69 probes) hardens five claims that were true but imprecise.
+> The card-number shape matched any 13–19 digit run, so epoch milliseconds and object ids were
+> being redacted as payment data — it is now Luhn **and** issuer-range, with a published allowlist
+> of the numeric fields where a long run is structural. "Read-only" was enforced in the transport
+> but never tested above the socket, and the client hook that would have made it testable was
+> declared and unused: a `POST` now provably never reaches the client. Evidence ids carry the
+> device's own config revision (a rule whose *text* changed moves its id) and a digest-scheme
+> token (`EVID-v1-…`), so `v2` can land without invalidating history. Failure has one taxonomy —
+> `PARTIAL_READ`, `AUTH_FAILED`, `UNSUPPORTED_DIALECT` and friends — on `health()`, in the
+> projection summary, in `live_snapshot()["read"]` and on `GET /security-controls/health`, so
+> "no findings" stops meaning four different things. And scale is correctness: only changed
+> sections are collected, coverage is per device, and a snapshot has a recorded memory ceiling
+> rather than a silent one.
+
 > [Security control integration, live: failing reads, immutable evidence, real windows](182-security-control-integration.md)
 > (**11 pass · 0 partial · 0 fail**, 44 probes) is guide 181 pointed at things that can fail.
 > A read is a *state*, not an exception (`PARTIAL_READ` when three of seven sections answered);

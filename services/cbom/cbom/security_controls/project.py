@@ -238,6 +238,9 @@ def project(collectors: Iterable[Any], *, environment: str = "PRODUCTION",
             "crypto_rows": len(crypto),
             "events": len(events),
             "asset_kinds": _counts(row["kind"] for row in assets.values()),
+            # a summary that reports only counts lets "nothing found" and "nothing read" look
+            # identical; coverage is the block that separates them
+            "coverage": _coverage(list(health)),
             "relation_counts": _counts(row["relation"] for row in accepted),
         },
     }
@@ -252,6 +255,15 @@ def project(collectors: Iterable[Any], *, environment: str = "PRODUCTION",
         result["graph_refusals"] = result["techbom"]["refusals"]
         result["digest"] = digest([row["evidence_ids"] for row in accepted], 16)
     return result
+
+
+def _coverage(health: list[dict[str, Any]]) -> dict[str, Any]:
+    """Per-control state, grouped, with the sentence a console must render."""
+    from .taxonomy import summarise
+
+    return summarise([{"control": row.get("control"), "vendor": row.get("vendor"),
+                       "system": row.get("system"), "state": row.get("state"),
+                       "detail": row.get("detail")} for row in health])
 
 
 def _counts(values: Iterable[Any]) -> dict[str, int]:

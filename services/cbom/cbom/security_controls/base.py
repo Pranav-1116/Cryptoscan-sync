@@ -125,6 +125,38 @@ PROHIBITED_SUFFIXES: tuple[str, ...] = (
     "community",
 )
 
+#: Fields whose value is a *structured number*, not a secret. A guard that redacts every digit
+#: run is as useless as one that redacts none: it fills the snapshot with redactions, hides the
+#: evidence a reviewer needs, and trains everyone to ignore the redaction list. These names are
+#: where a 13-19 digit value is ordinary — an epoch in milliseconds, a 64-bit object id, an
+#: inode, a serial, a byte count.
+#:
+#: The allowlist only exempts the *shape* check for that field. A prohibited field name
+#: (``pan``, ``cvv``) is still refused under any spelling, and a PEM key in a field called
+#: ``timestamp`` is still a PEM key.
+NUMERIC_ALLOWANCES: frozenset[str] = frozenset({
+    # time
+    "timestamp", "timestamps", "time", "ts", "epoch", "epochms", "epochmicros", "epochnanos",
+    "starttime", "endtime", "firstseen", "lastseen", "createdat", "updatedat", "modifiedat",
+    "expiresat", "expiry", "notbefore", "notafter", "uptime", "uptimems", "durationms",
+    "latencyus", "generatedat", "collectedat", "observedat", "detectedat",
+    # identity and counter
+    "id", "ids", "objectid", "objectidentifier", "serial", "serialnumber", "serialreference",
+    "policyid", "ruleid", "ruleindex", "sensorid", "sensoridint", "deviceid", "tenantid",
+    "correlationid", "eventid", "windowseventid", "inode", "fileid", "sequence", "seq",
+    "index", "count", "counter", "requests", "packets", "bytes", "octets", "hits", "sessions",
+    # network structure
+    "port", "ports", "srcport", "dstport", "localport", "remoteport", "vlan", "vlanid", "mtu",
+    "asn", "ouiprefix", "bssid", "ssid", "netmask", "ipv4int", "ipv4", "ipv6",
+    # size and version
+    "size", "keysize", "bits", "keybits", "version", "revision", "rulerevision",
+    "configversion", "firmwareid", "buildnumber", "major", "minor", "patch",
+})
+
+#: the shapes the allowlist can excuse. A PEM key, a bearer token or an AWS key is never
+#: structural, in any field.
+ALLOWABLE_SHAPES: frozenset[str] = frozenset({"CARD_NUMBER"})
+
 #: content shapes. A field can be innocently named and still carry a secret; the value is
 #: inspected as well, because renaming a field is not a privacy control.
 PROHIBITED_SHAPES: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -152,6 +184,11 @@ class ControlRefused(Exception):
 
 
 #: fields the estate builder owns. Anything else a feed says about an asset is an attribute.
+#: the keys of a driver's read record that ``health()`` passes through unchanged
+_READ_KEYS: tuple[str, ...] = ("sections", "failed_sections", "coverage", "section_digests",
+                               "unchanged_sections", "truncated", "limits", "partial", "detail",
+                               "reachable")
+
 _RESERVED_ASSET_FIELDS: frozenset[str] = frozenset({
     "kind", "name", "version", "environment", "location", "owner", "status",
     "source", "evidence_ids", "attributes", "id", "key", "digest",
@@ -179,13 +216,76 @@ def digest(payload: Any, size: int = 12) -> str:
 # Redaction
 # --------------------------------------------------------------------------- #
 
-def _shape_of(value: Any) -> str | None:
+#: card issuer ranges (IIN). A 13-19 digit run that starts with none of these is not a PAN,
+#: whatever else it looks like — this is the check that keeps epoch milliseconds out.
+_CARD_IIN_PREFIXES: tuple[str, ...] = (
+    "4", "51", "52", "53", "54", "55", "22", "23", "24", "25", "26", "27",
+    "34", "37", "30", "36", "38", "39", "60", "65", "62", "35", "31", "33",
+)
+
+
+def _luhn(digits: str) -> bool:
+    total = 0
+    for index, char in enumerate(reversed(digits)):
+        value = ord(char) - 48
+        if index % 2 == 1:
+            value *= 2
+            if value > 9:
+                value -= 9
+        total += value
+    return total % 10 == 0
+
+
+def _card_like(value: str) -> bool:
+    """Whether a digit run is a payment card number, by the two checks that matter.
+
+    A shape regex over ``13-19`` digits matches epoch milliseconds (13 digits), a microsecond
+    timestamp (16), a 64-bit object id (up to 20), a hex-free serial, a byte total. Redacting
+    all of those is not a privacy control, it is an outage of the evidence. So a candidate must
+    be **Luhn-valid** *and* start with an issuer range before it is treated as a card.
+    """
+    digits = re.sub(r"[ -]", "", value)
+    if not digits.isdigit() or not 13 <= len(digits) <= 19:
+        return False
+    if not any(digits.startswith(prefix) for prefix in _CARD_IIN_PREFIXES):
+        return False
+    return _luhn(digits)
+
+
+def _shape_of(value: Any, *, field: str = "") -> str | None:
     if not isinstance(value, str) or len(value) < 8:
         return None
+    allowed = _slug(field) in NUMERIC_ALLOWANCES
     for name, pattern in PROHIBITED_SHAPES:
+        if allowed and name in ALLOWABLE_SHAPES:
+            continue
+        if name == "CARD_NUMBER":
+            if _card_like(value):
+                return name
+            continue
         if pattern.search(value):
             return name
     return None
+
+
+def redaction_allowlist() -> dict[str, Any]:
+    """What the guard deliberately does *not* redact, and why — printed with every audit.
+
+    A redaction guard is a trade. Saying out loud which numeric fields are structural is what
+    makes the trade reviewable; the alternative is a rule nobody can argue with because nobody
+    knows what it covers.
+    """
+    return {
+        "schema": "cryptoscan.redaction-allowlist/1",
+        "numeric_fields": sorted(NUMERIC_ALLOWANCES),
+        "allowed_shapes": sorted(ALLOWABLE_SHAPES),
+        "card_rule": ("a 13-19 digit run is a PAN only when it is Luhn-valid *and* starts with "
+                      "an issuer range; epoch milliseconds, object ids and byte counts fail "
+                      "one of those two"),
+        "never_allowed": sorted({name for name, _ in PROHIBITED_SHAPES} - ALLOWABLE_SHAPES),
+        "note": ("the allowlist relaxes the *shape* check for a named field; a prohibited "
+                 "field name is still refused under every spelling"),
+    }
 
 
 def scrub(payload: Any, *, path: str = "") -> tuple[Any, list[dict[str, Any]]]:
@@ -216,7 +316,7 @@ def _scrub(payload: Any, path: str, redactions: list[dict[str, Any]]) -> Any:
     if isinstance(payload, (list, tuple, set)):
         return [_scrub(item, f"{path}[{index}]", redactions)
                 for index, item in enumerate(payload)]
-    shape = _shape_of(payload)
+    shape = _shape_of(payload, field=path)
     if shape:
         redactions.append({"path": path or "(value)", "reason": shape, "field": path})
         return REDACTED
@@ -253,39 +353,138 @@ def read_only_violations(operations: Iterable[Any]) -> list[str]:
 # Evidence and the adapter spec
 # --------------------------------------------------------------------------- #
 
+#: The digest scheme, as a prefix on every id.
+#:
+#: Why a prefix and not a bare hash: an evidence id is a citation, and a citation that silently
+#: changes meaning when the hashing rule changes invalidates every report that quoted it. With
+#: ``EVID-v1-FIREWALL-<hash>`` in place, ``v2`` can add a field to the digest — a device config
+#: version, a schema revision — and a reader can tell which ids were minted under which rule.
+#: Ids minted before this guide (``EVID-FIREWALL-<hash>``, no scheme token) are *legacy v0*:
+#: they still resolve, and :func:`evidence_scheme` reports them as such rather than pretending
+#: they were computed the same way.
+EVIDENCE_SCHEME = "v1"
+LEGACY_SCHEME = "v0"
+
+#: fields that carry a device's own view of *which revision* of a rule this is. When a row has
+#: one, it enters the digest: a rule can keep its identity (``allow-payments``) and change its
+#: text, and the id has to move when the text moves. A re-read of the unchanged rule keeps the
+#: same version, so the id stays stable — which is the property that makes a diff possible.
+CONFIG_VERSION_FIELDS: tuple[str, ...] = (
+    "version", "revision", "rule_revision", "rule_version", "config_version", "config_rev",
+    "generation", "etag", "last_modified", "modified_at", "updated_at", "last_changed",
+    "commit", "checksum", "text_digest",
+)
+
+
+def evidence_scheme(evidence_id: Any) -> str:
+    """Which digest rule minted this id. Never raises: an unknown shape is reported as such."""
+    parts = _norm(evidence_id).split("-")
+    if len(parts) >= 4 and parts[0] == "EVID" and parts[1] in {"v0", "v1", "v2", "v3"}:
+        return parts[1]
+    if len(parts) >= 3 and parts[0] == "EVID":
+        return LEGACY_SCHEME
+    return "UNKNOWN"
+
+
+def config_version(facts: Any) -> dict[str, Any]:
+    """The row's own configuration revision, under whatever the vendor calls it."""
+    if not isinstance(facts, Mapping):
+        return {}
+    found: dict[str, Any] = {}
+    for key, value in facts.items():
+        slug = _slug(key)
+        if slug in {_slug(name) for name in CONFIG_VERSION_FIELDS} and value not in (None, ""):
+            found[slug] = value
+    return dict(sorted(found.items()))
+
+
 class EvidenceBook:
     """Deterministic evidence ids for one collector.
 
-    ``EVID-<CONTROL>-<digest12>`` over (control, vendor, system, kind, identity, facts): the
-    same fact read twice is the same evidence, and a changed fact is a changed id — which is
-    what makes an evidence-backed model diffable.
+    ``EVID-v1-<CONTROL>-<digest12>`` over (scheme, control, vendor, system, kind, identity,
+    config version, facts).
+
+    Three properties, each one deliberate:
+
+    * **stable** — the same fact read twice is the same id, so a snapshot can be diffed and a
+      retried collection does not manufacture a change;
+    * **versioned** — a rule whose *text* changed while its identity did not moves its id,
+      because the device's own revision (``version``, ``revision``, ``etag``, ``last_modified``
+      …) is part of the digest. Without it, "policy 12 changed" is invisible in a diff of ids;
+    * **scheme-tagged** — the rule above can be replaced without invalidating history.
     """
 
-    def __init__(self, control: str, vendor: str, system: str) -> None:
+    def __init__(self, control: str, vendor: str, system: str,
+                 scheme: str = EVIDENCE_SCHEME) -> None:
         self.control = _norm(control).upper()
         self.vendor = _norm(vendor)
         self.system = _norm(system)
+        self.scheme = scheme
         self.records: dict[str, dict[str, Any]] = {}
 
-    def id_for(self, kind: str, identity: Any, facts: Any = None) -> str:
-        body = {
-            "control": self.control,
-            "vendor": self.vendor,
-            "system": self.system,
-            "kind": _norm(kind).upper(),
-            "identity": _norm(identity),
-            "facts": facts if facts in (None, "", [], {}) else facts,
-        }
-        evidence_id = f"EVID-{self.control}-{digest(body, 12)}"
+    def id_for(self, kind: str, identity: Any, facts: Any = None,
+               *, version: Any = None) -> str:
+        """Mint (or re-mint) the id for one fact.
+
+        ``version`` overrides the version discovered in ``facts``; a caller that knows the
+        device's configuration revision passes it explicitly rather than hoping the row was
+        shaped the way :func:`config_version` expects.
+        """
+        evidence_id = self._mint(kind, identity, facts, version)
+        config = config_version(facts)
+        if version not in (None, ""):
+            config = {**config, "declared": version}
         self.records.setdefault(evidence_id, {
             "evidence_id": evidence_id,
+            "scheme": self.scheme,
             "control": self.control,
             "vendor": self.vendor,
             "system": self.system,
             "kind": _norm(kind).upper(),
             "identity": _norm(identity),
+            "config_version": config,
         })
         return evidence_id
+
+    def _mint(self, kind: str, identity: Any, facts: Any = None,
+              version: Any = None) -> str:
+        """The digest, with no bookkeeping — so ``verify`` can recompute without writing."""
+        config = config_version(facts)
+        if version not in (None, ""):
+            config = {**config, "declared": version}
+        body = {
+            "scheme": self.scheme,
+            "control": self.control,
+            "vendor": self.vendor,
+            "system": self.system,
+            "kind": _norm(kind).upper(),
+            "identity": _norm(identity),
+            "config_version": config,
+            "facts": facts if facts in (None, "", [], {}) else facts,
+        }
+        return f"EVID-{self.scheme}-{self.control}-{digest(body, 12)}"
+
+    def verify(self, evidence_id: Any, kind: str, identity: Any, facts: Any = None) -> dict[str, Any]:
+        """Recompute an id and say whether the citation still holds.
+
+        This is what a report needs when it is re-read six months later: *does the fact I cited
+        still hash to the id I printed?* A mismatch is not an error in the report — it is a
+        changed fact (or an edited citation), and the answer distinguishes them.
+        """
+        expected = self._mint(kind, identity, facts)
+        scheme = evidence_scheme(evidence_id)
+        return {
+            "evidence_id": _norm(evidence_id),
+            "recomputed": expected,
+            "matches": _norm(evidence_id) == expected,
+            "scheme": scheme,
+            "current_scheme": self.scheme,
+            "legacy": scheme == LEGACY_SCHEME,
+            "reason": ("the citation resolves under the current digest rule"
+                       if _norm(evidence_id) == expected else
+                       "the fact hashes differently now: either the fact changed or the "
+                       "citation was never this fact's id"),
+        }
 
     def as_list(self) -> list[dict[str, Any]]:
         return [self.records[key] for key in sorted(self.records)]
@@ -689,6 +888,14 @@ class DeviceCollector(SecurityControlCollector):
             self._refuse("DEVICE_OFFERS_WRITES", self.spec.key,
                          "the endpoint exposes write operations; the adapter stays on the "
                          "read-only subset and says so rather than trusting the session")
+        state = "OK" if reachable else "UNREACHABLE"
+        # a feed can state a stronger failure than "unreachable": a partial read, a refused
+        # credential, a rate limit. It is carried through rather than flattened.
+        declared = _norm(raw.get("state") or raw.get("read_state")).upper()
+        from .taxonomy import STATES as _STATES, describe as _describe
+
+        if declared in _STATES:
+            state = declared
         return {
             "control": self.control,
             "vendor": self.spec.vendor,
@@ -696,6 +903,13 @@ class DeviceCollector(SecurityControlCollector):
             "system": self.evidence.system,
             "reachable": reachable,
             "status": "REACHABLE" if reachable else "UNREACHABLE",
+            "state": state,
+            "taxonomy": _describe(state),
+            # the read block a live driver produced: which sections answered, how much of the
+            # device was covered, what was skipped as unchanged and what was truncated. Carried
+            # through ``health()`` so every surface reports the same coverage — a projection
+            # summary and a console must not disagree about how much of a device was read.
+            "read": {key: raw[key] for key in _READ_KEYS if key in raw},
             "read_only": True,
             "device_offers_writes": not bool(reported_read_only),
             "operations": sorted({_norm(op).upper() for op in self.spec.operations}),
