@@ -84,6 +84,12 @@ ESTATE_LEVELS: tuple[str, ...] = (
 #: Scenarios that change an evidence fact on a copy of the twin. Each one answers a
 #: different question about the *contents* of the estate, and each needs the inputs
 #: listed in :data:`SCENARIO_INPUTS`.
+#:
+#: ``CUSTOM`` is the operator-authored one: seven built-in kinds answer the seven
+#: questions the product anticipated, and the eighth lets a bank ask its own without
+#: waiting for a release. It is an *expression over one evidence record's facts* — see
+#: :data:`CUSTOM_OPERATORS` — not a scripting language, and it cannot forge provenance
+#: (see :data:`CUSTOM_PROTECTED_FIELDS`).
 SCENARIO_KINDS: tuple[str, ...] = (
     "REPLACE_ALGORITHM",
     "RETIRE_ALGORITHM",
@@ -92,6 +98,7 @@ SCENARIO_KINDS: tuple[str, ...] = (
     "REMOVE_COMPONENT",
     "CHANGE_KEY_SIZE",
     "MIGRATE_QUANTUM_VULNERABLE",
+    "CUSTOM",
 )
 
 #: Scenarios that model a *failure* travelling through the topology. They change no
@@ -100,6 +107,11 @@ CASCADE_KINDS: tuple[str, ...] = (
     "CASCADE_ASSET_UNAVAILABLE",
     "CASCADE_CRYPTO_COMPROMISE",
     "CASCADE_ALGORITHM_BREAK",
+    # trust-path compromise: only the *vouching* edges carry it (issued_by, signed_by,
+    # verified_by), so a CA compromise reaches what that CA vouches for and nothing
+    # that merely runs on the same host. The difference from CRYPTO_COMPROMISE is the
+    # carrier set, not the seed.
+    "CASCADE_TRUST_COMPROMISE",
 )
 
 SIMULATION_KINDS: tuple[str, ...] = SCENARIO_KINDS + CASCADE_KINDS
@@ -1510,6 +1522,247 @@ def _capability_blockers(
 #: §15 — what a scenario changes, once per evidence record. One implementation serves both
 #: "what would this touch" (a preview) and "apply it to a copy" (the simulation), so a
 #: preview can never disagree with the run it is previewing.
+# --------------------------------------------------------------------------- #
+# layer 7 — CUSTOM: an operator-authored expression over one evidence record
+# --------------------------------------------------------------------------- #
+#
+# The seven built-in kinds answer the seven questions the product anticipated. A bank
+# always has an eighth, and the honest choices are to make it wait for a release or to
+# let it say what it means in a form the engine can refuse.
+#
+# The form is deliberately small. It is a condition tree over **one evidence record's
+# facts** plus a list of assignments:
+#
+#     {"when": {"all": [{"fact": "algorithm", "op": "eq", "value": "RSA"},
+#                       {"fact": "usage_state", "op": "ne", "value": "SUPPORTED"}]},
+#      "then": {"set": {"algorithm": "ML-DSA-65", "key_size": 3300}}}
+#
+# What it refuses, and why each refusal is the feature:
+#
+# * **provenance** — ``evidence_id``, ``source``, ``collector``, ``observed_at`` and the
+#   evidence type are not writable. A simulation may change what the estate *says*; it
+#   may not change who said it.
+# * **arithmetic, functions, joins** — no expression can compute a new value from
+#   another asset, another record or the clock. A scenario that did would answer with a
+#   number no collector ever produced.
+# * **unbounded size** — eight conditions, eight assignments, depth three. A scenario
+#   larger than that is a program, and this is not a place to run one.
+
+CUSTOM_SCHEMA = "cryptoscan.twin-custom-scenario/1"
+
+#: the whole operator vocabulary. A condition is ``{"fact", "op", "value"}``.
+CUSTOM_OPERATORS: dict[str, str] = {
+    "eq": "the fact equals the value exactly",
+    "ne": "the fact does not equal the value",
+    "in": "the fact is one of a listed value",
+    "contains": "the fact (a string or list) contains the value",
+    "present": "the fact exists and is not empty",
+    "absent": "the fact is missing or empty",
+}
+
+#: combinators: ``{"all": [...]}``, ``{"any": [...]}``, ``{"not": {...}}``
+CUSTOM_COMBINATORS: tuple[str, ...] = ("all", "any", "not")
+
+#: fact keys a scenario may never write. Provenance is not a value a simulation authors,
+#: and a raised evidence class is the one edit that would make a fabricated fact look
+#: better sourced than the record it came from.
+CUSTOM_PROTECTED_FIELDS: frozenset[str] = frozenset({
+    "evidence_id", "record_id", "source", "collector", "collector_version",
+    "evidence_type", "observed_at", "hash", "layer", "target", "asset_id",
+})
+
+MAX_CUSTOM_CONDITIONS = 8
+MAX_CUSTOM_ASSIGNMENTS = 8
+MAX_CUSTOM_DEPTH = 3
+
+_ABSENT = object()
+
+
+def _custom_refusal(expression: Any, *, depth: int = 0) -> dict[str, Any] | None:
+    """Why this expression cannot be run — or ``None`` when it can.
+
+    Structural only: it never looks at the estate. A syntactically valid expression
+    that matches nothing is a ``NO_MATCH``, not an invalid scenario, and the difference
+    matters — the first says "the estate does not describe this", the second says "you
+    typed a program".
+    """
+    if not isinstance(expression, Mapping):
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": (
+                "CUSTOM needs an 'expression' object with 'when' and 'then' "
+                "({'then': {'set': {...}, 'unset': [...]}}). The expression is data, "
+                "never code — the engine has no evaluator beyond these operators"
+            ),
+        }
+    unknown = sorted(set(expression) - {"when", "then", "label", "description"})
+    if unknown:
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": f"unknown expression key(s) {', '.join(unknown)}; allowed: when, then, label, description",
+        }
+    when = expression.get("when")
+    then = expression.get("then")
+    if when is None or then is None:
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": "an expression needs both 'when' (what it matches) and 'then' (what it changes)",
+        }
+    if not isinstance(then, Mapping):
+        return {"status": "INVALID_SCENARIO", "detail": "'then' must be an object with 'set' and/or 'unset'"}
+    unknown_then = sorted(set(then) - {"set", "unset"})
+    if unknown_then:
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": f"unknown 'then' key(s) {', '.join(unknown_then)}; allowed: set, unset",
+        }
+    set_values = then.get("set") or {}
+    unset_values = then.get("unset") or []
+    if not isinstance(set_values, Mapping):
+        return {"status": "INVALID_SCENARIO", "detail": "'then.set' must be an object of fact -> value"}
+    if not isinstance(unset_values, (list, tuple)) or any(not isinstance(item, str) for item in unset_values):
+        return {"status": "INVALID_SCENARIO", "detail": "'then.unset' must be a list of fact names"}
+    if not set_values and not unset_values:
+        return {"status": "INVALID_SCENARIO", "detail": "a scenario that changes nothing has no answer"}
+    if len(set_values) + len(unset_values) > MAX_CUSTOM_ASSIGNMENTS:
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": f"at most {MAX_CUSTOM_ASSIGNMENTS} assignments per scenario; this one is a program",
+        }
+    for field in (*set_values, *unset_values):
+        if str(field) in CUSTOM_PROTECTED_FIELDS:
+            return {
+                "status": "REFUSED_PROVENANCE_WRITE",
+                "detail": (
+                    f"'{field}' records where a fact came from. A simulation may change what the "
+                    "estate says, never who said it — writing provenance would make the copy's "
+                    "evidence stronger or weaker than the record it was derived from"
+                ),
+                "field": str(field),
+            }
+    return _custom_condition_refusal(when, depth=depth, counter=[0])
+
+
+def _custom_condition_refusal(condition: Any, *, depth: int, counter: list[int]) -> dict[str, Any] | None:
+    if depth > MAX_CUSTOM_DEPTH:
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": f"conditions nest at most {MAX_CUSTOM_DEPTH} levels; deeper is a program, not a scenario",
+        }
+    if not isinstance(condition, Mapping) or not condition:
+        return {"status": "INVALID_SCENARIO", "detail": "a condition must be a non-empty object"}
+    unknown = sorted(set(condition) - {"fact", "op", "value", *CUSTOM_COMBINATORS})
+    if unknown:
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": f"unknown condition key(s) {', '.join(unknown)}; allowed: fact, op, value, "
+                      f"{', '.join(CUSTOM_COMBINATORS)}",
+        }
+    combinators = [name for name in CUSTOM_COMBINATORS if name in condition]
+    if combinators and len(combinators) > 1:
+        return {"status": "INVALID_SCENARIO", "detail": "a condition combines once: all, any or not"}
+    if combinators:
+        name = combinators[0]
+        children = condition[name]
+        if name == "not":
+            children = [children]
+        if not isinstance(children, (list, tuple)) or not children:
+            return {"status": "INVALID_SCENARIO", "detail": f"'{name}' needs a non-empty list of conditions"}
+        counter[0] += len(children)
+        if counter[0] > MAX_CUSTOM_CONDITIONS:
+            return {
+                "status": "INVALID_SCENARIO",
+                "detail": f"at most {MAX_CUSTOM_CONDITIONS} conditions; this one is a program",
+            }
+        for child in children:
+            refusal = _custom_condition_refusal(child, depth=depth + 1, counter=counter)
+            if refusal:
+                return refusal
+        return None
+    fact = condition.get("fact")
+    op = str(condition.get("op") or "eq").lower()
+    if not isinstance(fact, str) or not fact.strip():
+        return {"status": "INVALID_SCENARIO", "detail": "a condition needs a 'fact' name"}
+    if op not in CUSTOM_OPERATORS:
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": f"unknown operator '{op}'; allowed: {', '.join(sorted(CUSTOM_OPERATORS))}",
+        }
+    if op in {"eq", "ne", "in", "contains"} and "value" not in condition:
+        return {"status": "INVALID_SCENARIO", "detail": f"operator '{op}' needs a 'value'"}
+    if op == "in" and not isinstance(condition.get("value"), (list, tuple)):
+        return {"status": "INVALID_SCENARIO", "detail": "operator 'in' needs a list value"}
+    counter[0] += 1
+    if counter[0] > MAX_CUSTOM_CONDITIONS:
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": f"at most {MAX_CUSTOM_CONDITIONS} conditions; this one is a program",
+        }
+    return None
+
+
+def _custom_matches(condition: Mapping[str, Any], facts: Mapping[str, Any]) -> bool:
+    """Evaluate one condition against one record's facts. Deterministic, no clock."""
+
+    def _value(fact: str) -> Any:
+        lowered = {str(key).lower(): value for key, value in facts.items()}
+        return lowered.get(str(fact).lower(), _ABSENT)
+
+    if "all" in condition:
+        return all(_custom_matches(child, facts) for child in condition["all"])
+    if "any" in condition:
+        return any(_custom_matches(child, facts) for child in condition["any"])
+    if "not" in condition:
+        return not _custom_matches(condition["not"], facts)
+
+    value = _value(condition["fact"])
+    op = str(condition.get("op") or "eq").lower()
+    wanted = condition.get("value")
+    present = value is not _ABSENT and value not in (None, "", [], {}, ())
+    if op == "present":
+        return present
+    if op == "absent":
+        return not present
+    if op == "eq":
+        return present and str(value) == str(wanted)
+    if op == "ne":
+        return value is _ABSENT or str(value) != str(wanted)
+    if op == "in":
+        return present and any(str(value) == str(item) for item in wanted)
+    if op == "contains":
+        if isinstance(value, (list, tuple, set)):
+            return any(str(item) == str(wanted) for item in value)
+        return present and str(wanted) in str(value)
+    return False
+
+
+def _custom_effect(
+    expression: Mapping[str, Any], facts: Mapping[str, Any]
+) -> tuple[bool, dict[str, Any]]:
+    """``(matched, updates)`` for a custom expression against one record's facts.
+
+    An assignment whose value is already there is not an effect: a scenario that
+    changes nothing must not report a change, or every "before/after" in the result
+    becomes noise a reviewer has to filter by hand.
+    """
+    if not _custom_matches(expression["when"], facts):
+        return False, {}
+    then = expression["then"]
+    updates: dict[str, Any] = {}
+    lowered = {str(key).lower(): key for key in facts}
+    for field, value in (then.get("set") or {}).items():
+        existing_key = lowered.get(str(field).lower(), str(field))
+        if facts.get(existing_key) == value:
+            continue
+        updates[existing_key] = value
+    for field in then.get("unset") or []:
+        existing_key = lowered.get(str(field).lower(), str(field))
+        if existing_key not in facts:
+            continue
+        updates[existing_key] = None
+    return (bool(updates), updates)
+
+
 def _scenario_effect(
     kind: str,
     facts: Mapping[str, Any],
@@ -1610,6 +1863,8 @@ def _scenario_refusal(kind: str, scenario: Mapping[str, Any]) -> dict[str, Any] 
             "status": "INVALID_SCENARIO",
             "detail": f"expected one of {', '.join(SIMULATION_KINDS)}",
         }
+    if kind == "CUSTOM":
+        return _custom_refusal(scenario.get("expression"))
     for field in SCENARIO_INPUTS[kind]:
         present = bool(scenario.get("key_size")) if field == "key_size" else bool(_text(scenario.get(field)))
         if not present:
@@ -1661,13 +1916,17 @@ def preview(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
     # a selector naming only assets the twin does not hold narrows to nothing. Treating that
     # as "no filter" would answer about the whole estate, which is the opposite of the ask
     narrowed_to_nothing = bool(requested) and not target_refs
+
+    def _preview_effect(facts: Mapping[str, Any]) -> tuple[bool, dict[str, Any]]:
+        if kind == "CUSTOM":
+            return _custom_effect(scenario["expression"], facts)
+        return _scenario_effect(kind, facts, scenario, source=source, target=target)
+
     for record in ([] if narrowed_to_nothing else payload["evidence"]):
         if target_refs and str(record.get("target")) not in target_refs:
             continue
         considered += 1
-        hit, _updates = _scenario_effect(
-            kind, record.get("facts") or {}, scenario, source=source, target=target
-        )
+        hit, _updates = _preview_effect(record.get("facts") or {})
         if not hit:
             continue
         matched += 1
@@ -1761,11 +2020,16 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
     affected: set[str] = set()
     effects: list[dict[str, Any]] = []
 
+    def _record_effect(facts: Mapping[str, Any]) -> tuple[bool, dict[str, Any]]:
+        if kind == "CUSTOM":
+            return _custom_effect(scenario["expression"], facts)
+        return _scenario_effect(kind, facts, scenario, source=source, target=target)
+
     for record in payload["evidence"]:
         facts = record.get("facts") or {}
         if target_refs and str(record.get("target")) not in target_refs:
             continue
-        hit, updates = _scenario_effect(kind, facts, scenario, source=source, target=target)
+        hit, updates = _record_effect(facts)
         if hit:
             # the "before" half has to be captured *before* the merge: facts is the same
             # dict the record holds, so a later read would show the scenario's own edit and
@@ -1970,6 +2234,27 @@ CASCADE_RULES: dict[str, dict[str, Any]] = {
             "key rotation and re-issuance: a cascade says who is reached, not how to repair it",
         ],
     },
+    "CASCADE_TRUST_COMPROMISE": {
+        "name": "Trust path compromised (CA / PKI)",
+        "seeds": "targets",
+        "carries": [
+            ("issued_by", "object_to_subject", "anything issued by a compromised issuer is no longer vouched for"),
+            ("signed_by", "object_to_subject", "a signature by a compromised signer is not assurance"),
+            ("verified_by", "object_to_subject", "a verifier that cannot be trusted verifies nothing"),
+            ("uses_certificate", "object_to_subject", "a certificate that cannot be trusted is not a credential"),
+            ("terminates_tls_for", "object_to_subject", "TLS terminated on a chain that no longer holds carries no assurance"),
+        ],
+        "not_modelled": [
+            "trust stores: a host that trusts a root the twin never collected is invisible here, so "
+            "a walk that stops means the issuer edge is missing, not that trust stops",
+            "cross-signing and alternate chains: a certificate with two parents is reached through "
+            "the edge that was collected, not through the shortest chain",
+            "revocation: CRL and OCSP publication, propagation delay and soft-fail behaviour are not "
+            "in the model, and 'reached' never means 'rejected by every verifier'",
+            "name constraints, pinning and policy OIDs: policy that restricts what a CA may sign is "
+            "not recorded, so the radius is a superset of a correct PKI walk",
+        ],
+    },
     "CASCADE_ALGORITHM_BREAK": {
         "name": "Algorithm breaks everywhere",
         "seeds": "algorithm",
@@ -2009,6 +2294,8 @@ SCENARIO_INPUTS: dict[str, tuple[str, ...]] = {
     "REMOVE_COMPONENT": ("from",),
     "CHANGE_KEY_SIZE": ("from", "key_size"),
     "MIGRATE_QUANTUM_VULNERABLE": ("to",),
+    # the custom kind carries its whole query in one object, validated by _custom_refusal
+    "CUSTOM": ("expression",),
 }
 
 _INPUT_REFUSALS = {

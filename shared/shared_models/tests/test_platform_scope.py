@@ -72,7 +72,7 @@ class TestScopeManifest:
         cov = scope_manifest()["simulation_coverage"]
         assert cov["scenarios"] == len(SCENARIOS) == 10
         assert cov["computing"] + cov["partial"] + cov["absent"] == cov["scenarios"]
-        assert cov["absent"] == 2
+        assert cov["absent"] == 0
         assert cov["computing"] == 1
         assert "not a generic enterprise simulation engine" in cov["headline"]
         assert cov["detail_at"] == "/estate/evidence/twin/simulation-scenarios"

@@ -15,8 +15,8 @@ The distinctions, stated plainly:
   operations performed inside the device.
 * **Runtime crypto** — process, binary, library and service metadata. That is not
   evidence that a process actually invoked AES-256-GCM.
-* **Simulation** — a PQC migration foundation plus nine scenario-specific models.
-  It is not a generic enterprise simulation engine.
+* **Simulation** — a PQC migration foundation plus ten scenario-specific models,
+  nine of them partial. It is not a generic enterprise simulation engine.
 
 Each entry names the *real* thing it is not, the register area it belongs to
 (``shared_models/maturity_register.py``), and the route that lets a reader check
@@ -119,7 +119,7 @@ STATEMENTS: tuple[dict, ...] = (
             "across every crypto failure mode"
         ),
         "what_is_real": (
-            "ten deterministic scenarios and three cascades over collected evidence, plus a "
+            "ten deterministic scenarios and four cascades over collected evidence, plus a "
             "per-scenario statement of what each one cannot see"
         ),
         "check_at": "/estate/evidence/twin/simulation-scenarios",

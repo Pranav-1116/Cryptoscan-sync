@@ -151,16 +151,20 @@ SCENARIOS: tuple[dict, ...] = (
         note="vendor-level blast radius only; not artifact-level provenance",
     ),
     _scenario(
-        "TRUST_COMPROMISE", "Trust compromise (CA / PKI)", ABSENT,
+        "TRUST_COMPROMISE", "Trust compromise (CA / PKI)", PARTIAL,
+        covered_by=((TWIN, "CASCADE_TRUST_COMPROMISE"),),
         cannot=(
-            "everything a CA signed: certificate→issuer edges are not modelled as a hierarchy, so "
-            "seeding a CA asset into attack_path reaches only what has an explicit dependency edge",
-            "cross-signed chains and trust stores",
+            "trust stores: a host that trusts a root the twin never collected is invisible, so a "
+            "walk that stops means the issuer edge is missing, not that trust stops",
+            "cross-signed chains, alternate paths and name constraints: the radius is a superset "
+            "of a correct PKI walk, because policy that restricts what a CA may sign is not recorded",
+            "revocation: CRL/OCSP publication, propagation delay and soft-fail behaviour are not in "
+            "the model, and 'reached' never means 'rejected by every verifier'",
         ),
-        requires=("issuer hierarchy", "trust-store membership per host"),
+        requires=("trust-store membership per host", "cross-signing and name constraints"),
         note=(
-            "the closest existing scenario is attack_path with a CA asset as the seed — which is "
-            "topological propagation, not a trust model"
+            "only the vouching edges carry it — issued_by, signed_by, verified_by — so a CA "
+            "compromise reaches what that CA vouches for and not what merely runs beside it"
         ),
     ),
     _scenario(
@@ -174,14 +178,21 @@ SCENARIOS: tuple[dict, ...] = (
         note="BFS over established edges, with the unestablished ones listed as blockers",
     ),
     _scenario(
-        "CUSTOM_SCENARIO", "Custom scenario", ABSENT,
+        "CUSTOM_SCENARIO", "Custom scenario", PARTIAL,
+        covered_by=((TWIN, "CUSTOM"),),
         cannot=(
-            "an operator-authored scenario: there is no scenario DSL, no expression over evidence "
-            "facts, and no way to express a change the seven built-in kinds do not describe",
+            "arithmetic, aggregation or cross-record joins: the expression is a condition tree over "
+            "one evidence record's facts plus a set of assignments, and it cannot compute a value "
+            "from another asset, another record or the clock",
             "composition of several scenarios into one run with an ordered timeline",
+            "a provenance edit: evidence id, source, collector, evidence type and timestamps are "
+            "refused, so a custom scenario cannot make a fact look better sourced than it is",
         ),
-        requires=("a scenario expression language", "ordered multi-step simulation"),
-        note="a caller may run the existing kinds in sequence externally; that is orchestration, not a custom engine",
+        requires=("ordered multi-step simulation", "cross-record expressions"),
+        note=(
+            "an operator can now author the change the seven built-in kinds do not describe — "
+            "as data, validated and refused rather than executed"
+        ),
     ),
 )
 
@@ -232,8 +243,9 @@ def summary() -> dict:
         "absent": counts[ABSENT],
         "headline": (
             f"{counts[EXISTS]} of {total} scenarios compute today; {counts[PARTIAL]} model part "
-            f"of the mechanism and say what they cannot see; {counts[ABSENT]} have no model at "
-            "all. This is not a generic enterprise simulation engine."
+            "of the mechanism and say what they cannot see"
+            + (f"; {counts[ABSENT]} have no model at all" if counts[ABSENT] else "")
+            + ". This is not a generic enterprise simulation engine."
         ),
         "detail_at": "/estate/evidence/twin/simulation-scenarios",
     }

@@ -106,9 +106,12 @@ def test_invalid_tenant_selector_is_refused_before_any_bank_request(monkeypatch,
 def test_loopback_http_requires_explicit_dev_mode_and_insecure_tls_requires_opt_in(monkeypatch, env):
     transport = FakeControlPlane({("POST", "/api/v1/scans/preflight"): (200, {"decision": "NOT_QUALIFIED"})})
     monkeypatch.setenv("CRYPTOSCAN_SERVER", "http://127.0.0.1:8010")
-    monkeypatch.delenv("ENVIRONMENT", raising=False)
-    assert run(monkeypatch, transport, "scan", "--path", "/approved/pay", "--dry-run") == 3
+    # The client reads its own variables, never the server's ENVIRONMENT: a client that
+    # inherits "development" from a shared shell would talk plaintext to a bank.
+    monkeypatch.delenv("CRYPTOSCAN_CLI_ENV", raising=False)
     monkeypatch.setenv("ENVIRONMENT", "development")
+    assert run(monkeypatch, transport, "scan", "--path", "/approved/pay", "--dry-run") == 3
+    monkeypatch.setenv("CRYPTOSCAN_CLI_ENV", "development")
     assert run(monkeypatch, transport, "scan", "--path", "/approved/pay", "--dry-run") == 2
     monkeypatch.setenv("CRYPTOSCAN_SERVER", BASE)
     assert run(monkeypatch, transport, "scan", "--path", "/approved/pay", "--insecure") == 3

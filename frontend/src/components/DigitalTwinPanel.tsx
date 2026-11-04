@@ -7,7 +7,7 @@ import {
   apiEstateTwinGraphLoadPlan, apiEstateTwinSimulations,
   apiEstateChanges, apiEstateChangesDetect, apiEstateChangeAcknowledge,
   apiEstateCatalog, apiEstateCatalogAssets, apiEstateCatalogAsset, apiEstateCryptoRegistry,
-  apiEstateTwinPlacement,
+  apiEstateTwinPlacement, apiEstateTwinWhy,
   apiEstateAssetHistory, apiEstateHistorySummary, apiEstateSearch, apiEstateConflicts,
   apiEstateLifecycle, apiEstateIntel, apiEstateAlgorithm, apiEstateTrustPaths,
   EstateTwinOverview, EstateTwinSearchResult, EstateTwinImpact, EstateTwinSimulation, EstateTwinAssetView,
@@ -15,7 +15,7 @@ import {
   EstateTwinGraphLoad, EstateTwinSimulationList,
   EstateChangeFeed, EstateChangeEvent,
   EstateCatalogSummary, EstateCatalogAsset, EstateCatalogDetail, EstateCryptoRegistry,
-  EstatePlacement, EstateAssetHistory, EstateHistorySummary, EstateSearchResult,
+  EstatePlacement, EstateTwinWhy, EstateAssetHistory, EstateHistorySummary, EstateSearchResult,
   EstateConflictSurvey, EstateLifecycle, EstateCryptoIntel, EstateAlgorithmView,
   EstateTrustPaths,
 } from "../lib/api.js";
@@ -164,6 +164,9 @@ export default function DigitalTwinPanel() {
   const [algorithmView, setAlgorithmView] = useState<EstateAlgorithmView | null>(null);
   /* §24: where each certificate chain stops, and what that does not prove */
   const [trustPaths, setTrustPaths] = useState<EstateTrustPaths | null>(null);
+  /* §28/§9: the most important question in the product — why does the twin believe
+     this edge exists? Answering it for a *selected* edge, not only per asset. */
+  const [edgeWhy, setEdgeWhy] = useState<{ key: string; data: EstateTwinWhy | null } | null>(null);
 
   const capture = async () => {
     setBusy(true);
@@ -290,6 +293,13 @@ export default function DigitalTwinPanel() {
   };
 
   /* The change feed: what moved between observations, and what that does not prove. */
+  /* §9: select an edge, get its evidence — or the reason it was refused. */
+  const askWhy = async (key: string, query: { subject: string; predicate: string; object: string }) => {
+    setEdgeWhy({ key, data: null });
+    const result = await apiEstateTwinWhy(query);
+    setEdgeWhy({ key, data: result.ok ? (result.data as EstateTwinWhy) : null });
+  };
+
   /* The hierarchy above the environment, only where evidence puts something. */
   const loadPlacement = async () => {
     const result = await apiEstateTwinPlacement();
@@ -707,15 +717,58 @@ export default function DigitalTwinPanel() {
                       no established relationship — the twin does not draw edges it cannot evidence
                     </div>
                   )}
-                  {[...asset.relationships.outgoing, ...asset.relationships.incoming].slice(0, 8).map((item, index) => (
-                    <div key={index} className="faint" style={{ fontSize: 10.5, marginTop: 3 }}>
-                      <span className="mono" style={{ color: "var(--cyan)" }}>{item.predicate}</span>{" "}
-                      {item.name ?? item.asset_id}{" "}
-                      <span className="mono" style={{ fontSize: 9.5 }}>
-                        ({item.basis ?? "no basis"} · {item.confidence ?? "UNKNOWN"})
-                      </span>
-                    </div>
-                  ))}
+                  {[...asset.relationships.outgoing, ...asset.relationships.incoming].slice(0, 8).map((item, index) => {
+                    /* an edge is a claim: clicking it asks the twin to show its work */
+                    const subject = item.direction === "in" ? item.asset_id : asset.asset.asset_id;
+                    const object = item.direction === "in" ? asset.asset.asset_id : item.asset_id;
+                    const key = `${subject}|${item.predicate}|${object}`;
+                    const selected = edgeWhy?.key === key;
+                    return (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => void askWhy(key, { subject, predicate: item.predicate, object })}
+                        className="faint"
+                        style={{
+                          display: "block", width: "100%", textAlign: "left", cursor: "pointer",
+                          background: selected ? "var(--panel-2)" : "transparent",
+                          border: 0, padding: "2px 0", fontSize: 10.5, marginTop: 3,
+                          color: selected ? "var(--text)" : undefined,
+                        }}
+                        title="why does the twin believe this relationship?"
+                      >
+                        <span className="mono" style={{ color: "var(--cyan)" }}>{item.predicate}</span>{" "}
+                        {item.name ?? item.asset_id}{" "}
+                        <span className="mono" style={{ fontSize: 9.5 }}>
+                          ({item.basis ?? "no basis"} · {item.confidence ?? "UNKNOWN"})
+                        </span>
+                        {selected && edgeWhy?.data && (
+                          <span style={{ display: "block", marginTop: 3, color: "var(--dim)" }}>
+                            {edgeWhy.data.status === "ESTABLISHED" && (edgeWhy.data.matches?.[0]?.answer
+                              ?? "established; evidence listed below")}
+                            {edgeWhy.data.status === "ESTABLISHED" && edgeWhy.data.matches?.[0]?.evidence
+                              ?.slice(0, 2).map((ev) => (
+                                <span key={ev.evidence_id} className="mono" style={{ display: "block", fontSize: 9 }}>
+                                  {ev.evidence_type} · {ev.collector ?? "unknown collector"} ·{" "}
+                                  {ev.source} · {ev.observed_at ?? "no timestamp"} · {ev.hash.slice(0, 12)}…
+                                </span>
+                              ))}
+                            {edgeWhy.data.status === "NOT_ESTABLISHED" && (
+                              <span style={{ color: "var(--amber)" }}>
+                                refused: {edgeWhy.data.refused?.[0]?.reason ?? edgeWhy.data.answer}
+                              </span>
+                            )}
+                            {(edgeWhy.data.status === "NO_SUCH_RELATIONSHIP"
+                              || edgeWhy.data.status === "UNKNOWN_ASSET") && (
+                              <span style={{ color: "var(--amber)" }}>
+                                {edgeWhy.data.answer ?? edgeWhy.data.detail}
+                              </span>
+                            )}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                   <div className="mono" style={{ fontSize: 10, color: "var(--cyan)", marginTop: 8 }}>EVIDENCE</div>
                   {asset.evidence.records.slice(0, 4).map((record) => (
                     <div key={record.evidence_id} className="faint" style={{ fontSize: 9.5, marginTop: 2 }}>

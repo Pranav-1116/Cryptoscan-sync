@@ -21,9 +21,9 @@ Two rules for editing it:
 
 1. **Never promote a status without changing the code.** A row is a claim about the
    tree; if it is not demonstrable at a proof, it is ``ABSENT``.
-2. **Never delete a gap because it is inconvenient.** ``TRUST_COMPROMISE`` and
-   ``CUSTOM_SCENARIO`` are the two enterprise scenarios this build cannot compute; the
-   rows exist so a bank's reviewer finds the limitation before a pilot does.
+2. **Never delete a gap because it is inconvenient.** Every enterprise scenario now has
+   a model, but nine of the ten are ``PARTIAL``: the rows exist so a bank's reviewer
+   finds what a partial cannot see before a pilot does.
 """
 
 from __future__ import annotations
@@ -104,9 +104,10 @@ SECTIONS: tuple[dict[str, Any], ...] = (
         "s4-eight-layers", "§4 the eight layers", PARTIAL,
         ("shared/shared_models/shared_models/estate_twin.py:placement_model", "/estate/evidence/twin/placement"),
         gap=(
-            "layer 7 (simulation) has no custom-scenario expression language: an operator "
-            "can compose the seven built-in scenario kinds and the three cascades, but "
-            "cannot author a new one"
+            "layer 7's expression language is bounded: conditions over one evidence record's "
+            "facts plus set/unset, with no arithmetic, aggregation, cross-record join or "
+            "temporal operator. A scenario needing any of those is refused rather than "
+            "approximated, and network segmentation has no model at all"
         ),
     ),
     _row(
@@ -158,10 +159,12 @@ SECTIONS: tuple[dict[str, Any], ...] = (
         ("frontend/src/pages/DigitalTwin.tsx", "frontend/src/pages/EstateTwin.tsx"),
         gap=(
             "all thirteen investigations exist, but not as thirteen separate routes: the "
-            "asset, relationship, crypto, network, hardware and vendor views live on "
-            "their own pages and the twin page carries overview, placement, "
-            "completeness and history. There is no single 'Evidence Explorer' page that "
-            "starts from an edge; 'why' is a per-asset drill-down and a route"
+            "asset, relationship, crypto, network, hardware and vendor views live on their "
+            "own pages and the twin page carries overview, placement, completeness and "
+            "history. Selecting an edge now answers 'why' with its collector, source, "
+            "timestamp and hash (and names the refusal when the edge was never "
+            "established), but only from the asset investigation — there is no canvas "
+            "where an edge on the drawn graph opens its evidence"
         ),
     ),
     _row(
@@ -256,11 +259,16 @@ LAYERS: tuple[dict[str, Any], ...] = (
         "layer-7-simulation", "Layer 7 — simulation twin", PARTIAL,
         ("shared/shared_models/shared_models/estate_twin.py:SIMULATION_KINDS", "/estate/evidence/twin/simulate"),
         gap=(
-            "seven fact-editing scenarios and three cascades run against a copy, and the "
-            "live projection id is asserted unchanged. There is no scenario DSL, no "
-            "arbitrary expression over evidence facts, and no network-segmentation "
-            "model; TRUST_COMPROMISE and CUSTOM_SCENARIO are the two enterprise scenarios "
-            "the assessment reports as ABSENT"
+            "eight fact-editing scenarios (seven built-in plus CUSTOM, a validated expression "
+            "over one evidence record's facts) and four cascades run against a copy — the "
+            "trust-path cascade walks issued_by, signed_by, verified_by, uses_certificate and "
+            "terminates_tls_for, so a compromised CA reaches what it vouches for and not what "
+            "merely shares a host — with the live projection id asserted unchanged. What the "
+            "language still cannot express: arithmetic, aggregation, cross-record joins, "
+            "ordered multi-step timelines and network segmentation. What the trust walk still "
+            "cannot see: trust-store membership per host, cross-signing and alternate chains, "
+            "revocation (CRL/OCSP, soft-fail) and name constraints, so its radius is a superset "
+            "of a correct PKI walk"
         ),
     ),
     _row(

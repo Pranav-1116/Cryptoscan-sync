@@ -840,3 +840,121 @@ def test_the_specification_conformance_route_serves_the_register(api):
     }
     # the register does not need a discovered estate: it describes the build, not a bank
     assert body["spec"].endswith("DIGITAL-TWIN-SPEC.md")
+
+
+# --------------------------------------------------------------------------- #
+# layer 7 — CUSTOM: an operator-authored expression, as data
+# --------------------------------------------------------------------------- #
+
+
+def _custom_expression() -> dict:
+    """The fixture's application evidence: AES-256-GCM, no protocol on that record."""
+    return {
+        "when": {"all": [
+            {"fact": "algorithm", "op": "eq", "value": "AES-256-GCM"},
+            {"fact": "protocol", "op": "absent"},
+        ]},
+        "then": {"set": {"algorithm": "ML-KEM-768", "key_size": 3300},
+                 "unset": ["role"]},
+    }
+
+
+def test_a_custom_expression_changes_facts_on_a_copy_and_never_the_live_twin(graph):
+    result = twin.simulate(graph, {"kind": "CUSTOM", "expression": _custom_expression()})
+    assert result["status"] == "SIMULATED", result
+    assert result["matched_evidence"] >= 1
+    after = result["effects"][0]["after"]
+    assert after["algorithm"] == "ML-KEM-768"
+    assert after["key_size"] == 3300
+    # the provenance of the record is untouched: the simulation edits values, not authorship
+    assert result["effects"][0]["evidence_id"] == twin.simulate(
+        graph, {"kind": "CUSTOM", "expression": _custom_expression()}
+    )["effects"][0]["evidence_id"]
+    assert result["live_projection_unchanged"] is True
+
+
+def test_a_custom_expression_may_not_write_provenance(graph):
+    refusal = twin.simulate(graph, {
+        "kind": "CUSTOM",
+        "expression": {"when": {"fact": "algorithm", "op": "eq", "value": "AES-256-GCM"},
+                       "then": {"set": {"evidence_type": "RUNTIME_OBSERVED"}}},
+    })
+    assert refusal["status"] == "REFUSED_PROVENANCE_WRITE"
+    assert "who said it" in refusal["detail"]
+    assert refusal["field"] == "evidence_type"
+
+
+def test_a_custom_expression_that_matches_nothing_is_not_no_impact(graph):
+    result = twin.simulate(graph, {
+        "kind": "CUSTOM",
+        "expression": {"when": {"fact": "algorithm", "op": "eq", "value": "3DES"},
+                       "then": {"set": {"algorithm": "AES-256"}}},
+    })
+    assert result["status"] == "NO_MATCH"
+    assert "not 'no impact'" in result["detail"]
+
+
+def test_the_expression_language_refuses_a_program():
+    for expression, expected in (
+        ({"when": {"fact": "a", "op": "compute", "value": 1}, "then": {"set": {"a": 2}}}, "unknown operator"),
+        ({"when": {"all": []}, "then": {"set": {"a": 2}}}, "non-empty list"),
+        ({"when": {"fact": "a", "op": "in", "value": "abc"}, "then": {"set": {"a": 2}}}, "needs a list value"),
+        ({"when": {"fact": "a", "op": "eq", "value": 1}, "then": {}}, "changes nothing"),
+        ({"when": {"fact": "a", "op": "eq", "value": 1}, "then": {"drop": ["a"]}}, "unknown 'then' key"),
+        ("REPLACE EVERYTHING", "needs an 'expression' object"),
+    ):
+        refusal = twin._scenario_refusal("CUSTOM", {"expression": expression})
+        assert refusal is not None, expression
+        assert refusal["status"] == "INVALID_SCENARIO"
+        assert expected in refusal["detail"], (expression, refusal["detail"])
+
+
+def test_the_expression_cannot_nest_or_grow_into_a_program():
+    deep = {"fact": "a", "op": "eq", "value": 1}
+    for _ in range(twin.MAX_CUSTOM_DEPTH + 1):
+        deep = {"not": deep}
+    refusal = twin._scenario_refusal("CUSTOM", {"expression": {"when": deep, "then": {"set": {"a": 2}}}})
+    assert refusal["status"] == "INVALID_SCENARIO"
+    assert "nest" in refusal["detail"]
+
+    wide = {"all": [{"fact": f"f{index}", "op": "present"} for index in range(twin.MAX_CUSTOM_CONDITIONS + 1)]}
+    refusal = twin._scenario_refusal("CUSTOM", {"expression": {"when": wide, "then": {"set": {"a": 2}}}})
+    assert refusal["status"] == "INVALID_SCENARIO"
+    assert "at most" in refusal["detail"]
+
+
+def test_an_assignment_that_changes_nothing_is_not_an_effect(graph):
+    """A scenario whose value is already there must not report a change."""
+    result = twin.preview(graph, {
+        "kind": "CUSTOM",
+        "expression": {"when": {"fact": "version", "op": "eq", "value": "3.0.13"},
+                       "then": {"set": {"version": "3.0.13"}}},
+    })
+    assert result["status"] == "WOULD_NOT_MATCH"
+
+
+def test_the_api_runs_and_refuses_a_custom_scenario(api):
+    http, _session = api
+    _discover(http)
+    ok = http.post("/api/v1/estate/evidence/twin/simulate",
+                   json={"kind": "CUSTOM", "expression": _custom_expression()})
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["status"] == "SIMULATED"
+    assert ok.json()["scenario"]["expression"] == _custom_expression()
+
+    refused = http.post("/api/v1/estate/evidence/twin/simulate", json={
+        "kind": "CUSTOM",
+        "expression": {"when": {"fact": "algorithm", "op": "eq", "value": "AES-256-GCM"},
+                       "then": {"unset": ["collector"]}},
+    })
+    assert refused.status_code == 200
+    assert refused.json()["status"] == "REFUSED_PROVENANCE_WRITE"
+
+
+def test_the_catalogue_documents_the_custom_kind_with_its_limit():
+    from api import estate_simulation
+
+    entry = estate_simulation.KIND_CATALOG["CUSTOM"]
+    assert entry["inputs"] == ["expression"]
+    assert any("provenance edit" in item for item in entry["does_not_answer"])
+    assert estate_simulation.mode_of("CUSTOM") == "SCENARIO"

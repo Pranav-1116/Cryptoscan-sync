@@ -109,6 +109,70 @@ def test_a_crypto_compromise_follows_the_crypto_edges_not_the_network(graph):
     assert reached.get("Payment API") == "uses_hsm"
 
 
+def _trust_payload() -> dict:
+    """A three-hop PKI chain with a sibling that shares the host but not the trust."""
+    return {
+        "estate": "Synthetic Bank",
+        "assets": [
+            {"ref": "root", "type": "CA", "name": "Bank Root CA"},
+            {"ref": "issuing", "type": "CA", "name": "Bank Issuing CA"},
+            {"ref": "cert", "type": "CERTIFICATE", "name": "payments.bank:443"},
+            {"ref": "api", "type": "APPLICATION", "name": "Payment API"},
+            {"ref": "batch", "type": "APPLICATION", "name": "Batch Job"},
+            {"ref": "host", "type": "HOST", "name": "payment-prod-01"},
+        ],
+        "evidence": [
+            {"evidence_id": "ev-1", "source": "probe", "evidence_type": "NETWORK_ACTIVE_OBSERVED",
+             "target": "cert", "layer": "NETWORK_TRANSPORT",
+             "facts": {"algorithm": "RSA", "protocol": "TLSv1.3"}},
+        ],
+        "relationships": [
+            {"subject": "issuing", "predicate": "issued_by", "object": "root",
+             "basis": "CONFIGURATION", "evidence_ids": ["ev-1"]},
+            {"subject": "cert", "predicate": "issued_by", "object": "issuing",
+             "basis": "CONFIGURATION", "evidence_ids": ["ev-1"]},
+            {"subject": "api", "predicate": "uses_certificate", "object": "cert",
+             "basis": "CONFIGURATION", "evidence_ids": ["ev-1"]},
+            # the sibling shares the host: a network walk would reach it, a trust walk must not
+            {"subject": "batch", "predicate": "runs_on", "object": "host",
+             "basis": "DEPLOYMENT_CONFIG", "evidence_ids": ["ev-1"]},
+            {"subject": "api", "predicate": "runs_on", "object": "host",
+             "basis": "DEPLOYMENT_CONFIG", "evidence_ids": ["ev-1"]},
+        ],
+    }
+
+
+def test_a_trust_compromise_walks_the_vouching_edges_and_stops_before_the_host():
+    graph = build_graph(_trust_payload())
+    root = _asset_id(graph, "Bank Root CA")
+
+    result = twin.cascade(graph, {"kind": "CASCADE_TRUST_COMPROMISE", "targets": [root], "depth": 4})
+
+    assert result["status"] == "SIMULATED"
+    reached = {asset["name"]: asset["via_predicate"] for asset in result["affected_assets"]}
+    assert reached == {
+        "Bank Issuing CA": "issued_by",
+        "payments.bank:443": "issued_by",
+        "Payment API": "uses_certificate",
+    }
+    assert "Batch Job" not in reached, "sharing a host is not inheriting trust"
+    assert result["bom_diff"] == {}, "a trust walk changes no evidence fact"
+
+
+def test_the_trust_cascade_names_its_trust_store_and_revocation_blind_spots():
+    graph = build_graph(_trust_payload())
+    root = _asset_id(graph, "Bank Root CA")
+
+    result = twin.cascade(graph, {"kind": "CASCADE_TRUST_COMPROMISE", "targets": [root]})
+
+    limits = " ".join(result["limits"]).lower()
+    assert "trust store" in limits
+    assert "revocation" in limits and "ocsp" in limits
+    assert "name constraints" in limits
+    # the radius is stated as a superset, not as a correct PKI walk
+    assert "superset" in limits
+
+
 # -- what a cascade refuses to claim ---------------------------------------- #
 
 
@@ -277,7 +341,8 @@ def test_the_catalog_lists_both_families_and_what_each_one_is(api):
     by_kind = {entry["kind"]: entry for entry in body["kinds"]}
     assert by_kind["CASCADE_ALGORITHM_BREAK"]["mode"] == "CASCADE"
     assert by_kind["MIGRATE_QUANTUM_VULNERABLE"]["mode"] == "SCENARIO"
-    assert len(by_kind) == 10
+    assert by_kind["CASCADE_TRUST_COMPROMISE"]["mode"] == "CASCADE"
+    assert len(by_kind) == 12
     for entry in body["kinds"]:
         assert entry["does_not_answer"]
 

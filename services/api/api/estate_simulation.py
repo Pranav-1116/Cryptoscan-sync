@@ -139,6 +139,25 @@ KIND_CATALOG: dict[str, dict[str, Any]] = {
             "agility: replacing the algorithm in the evidence is not replacing it in a deployment",
         ],
     },
+    "CUSTOM": {
+        "name": "Custom expression",
+        "question": "Which records match this condition, and what changes if these facts are set?",
+        "inputs": ["expression"],
+        "optional": ["targets"],
+        "answers": [
+            "every evidence record whose facts satisfy the condition tree",
+            "the exact before/after of each changed fact, and the six BOMs re-projected from the copy",
+            "the blast radius from the changed assets, with the blockers inside it",
+        ],
+        "does_not_answer": [
+            "anything the seven built-in kinds answer more precisely — the custom kind does not "
+            "know what an algorithm is, only what a fact says",
+            "arithmetic, aggregation or joins across records: the expression reads one record's "
+            "facts and writes values, nothing more",
+            "a provenance edit: evidence id, source, collector, evidence type and timestamps are "
+            "refused, because a simulation may change what the estate says, never who said it",
+        ],
+    },
     "CASCADE_ASSET_UNAVAILABLE": {
         "mode": "CASCADE",
         "name": "Asset goes down",
@@ -171,6 +190,27 @@ KIND_CATALOG: dict[str, dict[str, Any]] = {
             "that a compromise happened — this models inherited assurance, not an incident",
             "what data was exposed: the twin records that crypto is used, not what it protected",
             "repair: rotation and re-issuance are a remediation plan, not a traversal",
+        ],
+    },
+    "CASCADE_TRUST_COMPROMISE": {
+        "mode": "CASCADE",
+        "name": "A CA or PKI issuer is compromised",
+        "question": "If the trust anchor or issuing CA behind {seeds} is no longer trustworthy, what stops being vouched for?",
+        "inputs": ["targets"],
+        "optional": ["depth"],
+        "answers": [
+            "everything that issuer or signer vouches for, walked over issued_by, signed_by, "
+            "verified_by, uses_certificate and terminates_tls_for",
+            "the systems reached, and the edge each one inherits the broken trust through",
+            "the trust-store and revocation blind spots, listed rather than assumed away",
+        ],
+        "does_not_answer": [
+            "that a compromise happened — this models inherited assurance, not an incident",
+            "trust-store membership: a host that trusts a root the twin never collected is invisible, "
+            "so where the walk stops is a collection gap, not the boundary of trust",
+            "revocation: CRL/OCSP publication and vendor soft-fail behaviour are not in the model, so "
+            "'reached' never means 'rejected by every verifier'",
+            "cross-signing and name constraints: the radius is a superset of a correct PKI walk",
         ],
     },
     "CASCADE_ALGORITHM_BREAK": {

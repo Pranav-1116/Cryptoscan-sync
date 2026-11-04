@@ -31,6 +31,7 @@ const FIELD_LABEL: Record<string, string> = {
   from: "From (the value the evidence holds today)",
   to: "To (the value the scenario would use instead)",
   key_size: "Key size (bits)",
+  expression: "Expression (JSON: {\"when\": …, \"then\": {\"set\": …, \"unset\": …}})",
 };
 
 const inputStyle: React.CSSProperties = {
@@ -199,6 +200,23 @@ export default function Simulation() {
   );
   const requiredFields = (entry?.inputs ?? []).filter((name) => name !== "targets" && name !== "depth");
 
+  /* A CUSTOM scenario is data, so the console parses it before sending it: a JSON
+     syntax error must be caught here, where it can be pointed at, not reported back
+     as an engine refusal. */
+  const expressionRaw = (fields["expression"] ?? "").trim();
+  const expressionError = useMemo(() => {
+    if (!expressionRaw) return null;
+    try {
+      const parsed = JSON.parse(expressionRaw);
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return "the expression must be a JSON object with 'when' and 'then'";
+      }
+      return null;
+    } catch (error) {
+      return `not valid JSON: ${(error as Error).message}`;
+    }
+  }, [expressionRaw]);
+
   const scenario: SimulationScenario = useMemo(() => {
     const built: SimulationScenario = { kind: entry?.kind ?? kind };
     for (const name of formFields) {
@@ -207,6 +225,14 @@ export default function Simulation() {
       if (name === "key_size") built.key_size = Number(value);
       else if (name === "from") built.from = value;
       else if (name === "to") built.to = value;
+      else if (name === "expression") {
+        try {
+          const parsed = JSON.parse(value);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) built.expression = parsed;
+        } catch {
+          /* left unset: `missing` blocks the run and the parse error is shown on the field */
+        }
+      }
     }
     if (targets.length) built.targets = targets;
     if (isCascade) built.depth = depth;
@@ -216,7 +242,10 @@ export default function Simulation() {
 
   const scenarioKey = JSON.stringify(scenario);
   const previewIsCurrent = preview?.key === scenarioKey;
-  const missing = requiredFields.filter((name) => !(fields[name] ?? "").trim());
+  const missing = requiredFields.filter((name) =>
+    name === "expression"
+      ? !(fields[name] ?? "").trim() || expressionError !== null
+      : !(fields[name] ?? "").trim());
   const seedsMissing = isCascade && entry?.kind !== "CASCADE_ALGORITHM_BREAK" && targets.length === 0;
 
   const resetOutputs = () => {
@@ -313,8 +342,9 @@ export default function Simulation() {
             measured against one projection id and stored quarantined.
           </p>
           <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--faint)", maxWidth: 700 }}>
-            These are ten fixed scenarios and three cascades, not a general simulation engine: trust
-            compromise and operator-authored scenarios have no model in this build. The per-scenario
+            Ten scenarios and four cascades, not a general simulation engine: nine of the ten
+            scenarios model only part of the mechanism, and what each one cannot see is stated
+            rather than assumed away. The per-scenario
             status — and what each one cannot see — is under{" "}
             <Link to="/collector-depth">Collector depth → Simulation</Link>.
           </p>
@@ -486,6 +516,21 @@ export default function Simulation() {
                       {label}
                       {requiredFields.includes(name) ? " *" : " (optional)"}
                     </span>
+                    {name === "expression" ? (
+                      <textarea
+                        aria-label={label}
+                        rows={6}
+                        value={fields[name] ?? ""}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setFields((current) => ({ ...current, [name]: value }));
+                          setPreset(null);
+                          resetOutputs();
+                        }}
+                        placeholder={'{"when": {"fact": "algorithm", "op": "eq", "value": "RSA"}, "then": {"set": {"algorithm": "ML-DSA-65"}}}'}
+                        style={{ ...inputStyle, lineHeight: 1.5, resize: "vertical" }}
+                      />
+                    ) : (
                     <input
                       aria-label={label}
                       list={listId}
@@ -500,6 +545,12 @@ export default function Simulation() {
                       inputMode={name === "key_size" ? "numeric" : undefined}
                       style={inputStyle}
                     />
+                    )}
+                    {name === "expression" && expressionError && (
+                      <span style={{ display: "block", fontSize: 10.5, color: "var(--amber)", marginTop: 3 }}>
+                        {expressionError}
+                      </span>
+                    )}
                     <datalist id={listId}>
                       {[...new Set(values.map((item) => item.value))].map((value) => (
                         <option key={value} value={value} />

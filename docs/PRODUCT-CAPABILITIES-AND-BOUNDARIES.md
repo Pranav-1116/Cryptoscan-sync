@@ -156,7 +156,7 @@ integration** (§4.6).
 | Conflict classification | REAL vs EXPLAINED contradictions, never averaged | `services/api/api/estate_conflicts.py` |
 | Completeness | per component: `UNMEASURED / INCOMPLETE / CONTRADICTED`, and whether it may be counted in a total | `services/cbom/cbom/inventory_completeness.py` |
 | Accuracy | precision/recall per field with `UNKNOWN` excluded from the wrong-answer column, gated per dimension | `services/cbom/cbom/accuracy.py`, `docs/bank-environment/185-accuracy-ground-truth.md` |
-| Simulation | 10 registered scenario slots, **8 that compute** (`PQC_MIGRATION` full; TLS downgrade, certificate compromise, HSM/KMS failure, crypto-library/supply-chain/service compromise partial) and **2 that are absent** (`TRUST_COMPROMISE`, `CUSTOM_SCENARIO`) — `shared_models/enterprise_scenarios.py` reports `EXISTS / PARTIAL / ABSENT` per slot | `/simulation`, `/what-if`, `GET /estate/evidence/twin/simulation-scenarios` |
+| Simulation | 10 registered scenario slots, **all ten with a model**: `PQC_MIGRATION` full, nine partial — including `CUSTOM_SCENARIO` (an operator-authored expression over one evidence record) and `TRUST_COMPROMISE` (`CASCADE_TRUST_COMPROMISE` walks `issued_by`/`signed_by`/`verified_by`/`uses_certificate`, with trust-store and revocation blind spots named) — `shared_models/enterprise_scenarios.py` reports `EXISTS / PARTIAL / ABSENT` per slot | `/simulation`, `/what-if`, `GET /estate/evidence/twin/simulation-scenarios` |
 
 ### 4.5 Governance, evidence and operations
 
@@ -283,7 +283,7 @@ of an IoT estate a bank can act on, and it is the part that survives an audit.
 | **A production Windows collector** | A **candidate** implementation: OS/uninstall/file/SCM, certificates, process/module inventory, TPM device info — with the server's own layer-by-layer "no" on completeness |
 | **Complete hardware discovery** | Synthetic and metadata paths; a vendor/model/firmware catalogue and plugin seam, fed where a vendor exposes metadata |
 | **Proof that a process invoked an algorithm** | Runtime gives process/binary/library/service metadata. "Loaded OpenSSL" ≠ "called AES-256-GCM" |
-| **A generic enterprise simulation engine** | A real PQC-migration foundation plus eight computing scenario models (one full, seven partial). `TRUST_COMPROMISE` and `CUSTOM_SCENARIO` have **no model** and say so in the register |
+| **A generic enterprise simulation engine** | A real PQC-migration foundation plus ten scenario models (one full, nine partial), including a bounded custom expression and a trust-path cascade. What the partials cannot see is named per row — no arithmetic, joins or timelines in the expression language; no trust-store, cross-signing or revocation model in the trust walk |
 | **Point-in-time recovery** | **Not provided.** `pg_dump`/`pg_restore` cannot replay WAL; a restore receipt is never PITR evidence |
 | **A confidence gate on asset identity** | The graph records identity and aliases; an `UNRESOLVED_RELATIONSHIP` instead of a name-based guess is not yet one rule (guide 185 §6) |
 | **A parser qualification matrix** | The crypto detectors are measured; every parser (malformed, duplicate, Unicode, huge, malicious) at ≥99% before qualification is not yet universal |

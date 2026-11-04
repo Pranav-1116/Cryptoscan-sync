@@ -1068,9 +1068,17 @@ class TwinSimulationRequest(BaseModel):
     kind: str = Field(
         description=(
             "a scenario (REPLACE_ALGORITHM | RETIRE_ALGORITHM | DISABLE_PROTOCOL | UPGRADE_COMPONENT | "
-            "REMOVE_COMPONENT | CHANGE_KEY_SIZE | MIGRATE_QUANTUM_VULNERABLE) or a cascade "
+            "REMOVE_COMPONENT | CHANGE_KEY_SIZE | MIGRATE_QUANTUM_VULNERABLE | CUSTOM) or a cascade "
             "(CASCADE_ASSET_UNAVAILABLE | CASCADE_CRYPTO_COMPROMISE | CASCADE_ALGORITHM_BREAK)"
         )
+    )
+    expression: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "the CUSTOM scenario, as data: {'when': <condition tree over one evidence record's "
+            "facts>, 'then': {'set': {...}, 'unset': [...]}}. Never code; provenance fields are "
+            "refused, and the expression is echoed in the result so a run can be reproduced exactly"
+        ),
     )
     from_: str | None = Field(default=None, alias="from", max_length=160)
     to: str | None = Field(default=None, max_length=160)
@@ -1458,6 +1466,7 @@ def estate_twin_simulate(
         "key_size": body.key_size,
         "targets": body.targets or [],
         "label": body.label,
+        "expression": body.expression,
     }
     if estate_simulation.mode_of(body.kind) == "CASCADE":
         scenario["depth"] = body.depth

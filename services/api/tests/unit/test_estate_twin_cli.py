@@ -312,7 +312,12 @@ def test_placement_prints_the_levels_and_what_nothing_asserts(cli_session, with_
     out = capsys.readouterr().out
     assert code == cli.EXIT_OK
     assert "estate     Synthetic Bank" in out
-    assert "not observed: REGION" in out
+    # The new ORGANIZATION/DEPARTMENT levels sit in front of REGION in the level order, so
+    # the sentence is no longer "not observed: REGION" — the assertion is about membership,
+    # not about which level prints first.
+    not_observed = out.split("not observed:", 1)[1].split("\n", 1)[0]
+    for level in ("ORGANIZATION", "DEPARTMENT", "REGION"):
+        assert level in not_observed, (level, not_observed)
     assert "no region" in out
 
 

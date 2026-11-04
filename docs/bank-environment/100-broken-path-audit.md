@@ -553,7 +553,11 @@ printed in `/collector-depth` → Maturity and Simulation:
 | Hardware discovery | `FOUNDATION` | Complete hardware discovery across an estate |
 | HSM | `FOUNDATION` | Proof that a key operation ran inside an HSM; custody and key-use assurance |
 | Runtime crypto | `CANDIDATE` | Proof of which algorithms a process executed |
-| Simulation | `FOUNDATION` | A generic enterprise engine — 1 of 10 scenarios computes, 7 are partial, 2 have no model |
+| Simulation | `FOUNDATION` | A generic enterprise engine — 1 of 10 scenarios computes end to end, 9 are partial and each names what it cannot see |
 
-Trust compromise and operator-authored custom scenarios have no model at all. A
-page existing for either would be a broken path; a page that says so is not.
+Every registered scenario now has a model, so no page here promises a question the
+engine cannot answer at all; what a page must not do is present a partial model as a
+complete one. The trust-path cascade says its radius is an upper bound because trust
+stores, cross-signing and revocation are not collected, and the custom scenario says
+it cannot compute. A page that states the limit is not a broken path; a page that
+hides it is.

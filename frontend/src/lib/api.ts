@@ -6816,8 +6816,10 @@ export interface EstateTwinAssetView {
     note: string;
   };
   relationships: {
-    outgoing: Array<{ predicate: string; asset_id: string; name?: string; type?: string; basis?: string; confidence?: string }>;
-    incoming: Array<{ predicate: string; asset_id: string; name?: string; type?: string; basis?: string; confidence?: string }>;
+    /* `direction` says which side of this asset the edge leaves from: an incoming
+       edge's subject is the other asset, which is what an edge-first "why" needs. */
+    outgoing: Array<{ predicate: string; asset_id: string; name?: string; type?: string; basis?: string; confidence?: string; direction?: "in" | "out"; evidence_ids?: string[] }>;
+    incoming: Array<{ predicate: string; asset_id: string; name?: string; type?: string; basis?: string; confidence?: string; direction?: "in" | "out"; evidence_ids?: string[] }>;
     dependencies: Array<{ predicate: string; name?: string; type?: string; basis?: string }>;
     count: number;
   };
@@ -6838,6 +6840,39 @@ export const apiEstateTwinAsset = (ref: string): Promise<ApiResult<EstateTwinAss
 
 export const apiEstateTwinSearch = (q: string): Promise<ApiResult<EstateTwinSearchResult>> =>
   _rsGet<EstateTwinSearchResult>(`/api/v1/estate/evidence/twin/search?q=${encodeURIComponent(q)}`);
+
+/* §28 "why" — the answer to "why does CryptoScan believe this relationship
+   exists", or the reason the edge was refused. The refusal is the interesting
+   case: an UNKNOWN edge is the absence of a relationship, not a weak one. */
+export interface EstateTwinWhyEdge {
+  edge: { subject: string; subject_name?: string | null; predicate: string; object: string;
+    object_name?: string | null; basis?: string | null; confidence?: string | null };
+  answer: string;
+  evidence: Array<{ evidence_id: string; evidence_type: string; collector?: string | null;
+    source?: string | null; observed_at?: string | null; confidence?: string | null; hash: string }>;
+}
+
+export interface EstateTwinWhy {
+  schema: string;
+  status: "ESTABLISHED" | "NOT_ESTABLISHED" | "NO_SUCH_RELATIONSHIP" | "UNKNOWN_ASSET"
+    | "EVIDENCE" | "NO_SUCH_EVIDENCE";
+  matches?: EstateTwinWhyEdge[];
+  refused?: Array<{ subject?: string; predicate?: string; object?: string; reason?: string }>;
+  answer?: string;
+  detail?: string;
+  note?: string;
+}
+
+export const apiEstateTwinWhy = (query: {
+  subject?: string; predicate?: string; object?: string; evidence_id?: string;
+}): Promise<ApiResult<EstateTwinWhy>> => {
+  const params = new URLSearchParams();
+  if (query.subject) params.set("subject", query.subject);
+  if (query.predicate) params.set("predicate", query.predicate);
+  if (query.object) params.set("object", query.object);
+  if (query.evidence_id) params.set("evidence_id", query.evidence_id);
+  return _rsGet<EstateTwinWhy>(`/api/v1/estate/evidence/twin/why?${params.toString()}`);
+};
 
 export const apiEstateTwinImpact = (selector: Record<string, unknown>): Promise<ApiResult<EstateTwinImpact>> =>
   _rsPost<EstateTwinImpact>("/api/v1/estate/evidence/twin/impact", selector);
@@ -7581,6 +7616,9 @@ export interface SimulationCatalog {
 export interface SimulationScenario {
   kind: string; from?: string; to?: string; key_size?: number | null;
   targets?: string[]; depth?: number; label?: string | null;
+  /* CUSTOM only: the scenario as data — a condition tree plus assignments. It is
+     validated by the engine, which refuses a provenance write and refuses a program. */
+  expression?: Record<string, unknown>;
 }
 
 /** One hop of a cascade: where it came from, over which predicate, and why that predicate

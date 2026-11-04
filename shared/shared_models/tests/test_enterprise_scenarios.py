@@ -117,8 +117,9 @@ class TestTheIdsResolve:
     def test_status_is_not_driven_by_the_number_of_engine_ids(self):
         """A row with two ids is not thereby EXISTS — the depth is what decides."""
         counts = {row["id"]: len(row["covered_by"]) for row in es.SCENARIOS}
-        absent = [i for i, c in counts.items() if c == 0]
-        assert sorted(absent) == ["CUSTOM_SCENARIO", "TRUST_COMPROMISE"]
+        assert all(count >= 1 for count in counts.values())
+        trust = next(row for row in es.SCENARIOS if row["id"] == "TRUST_COMPROMISE")
+        assert trust["status"] == es.PARTIAL
         assert counts["PQC_MIGRATION"] == 2
         assert next(r for r in es.SCENARIOS if r["id"] == "PQC_MIGRATION")["status"] == es.EXISTS
 
@@ -128,8 +129,8 @@ class TestThePublishedRatio:
         summary = es.summary()
         assert summary["scenarios"] == len(es.SCENARIOS) == 10
         assert summary["computing"] == 1
-        assert summary["partial"] == 7
-        assert summary["absent"] == 2
+        assert summary["partial"] == 9
+        assert summary["absent"] == 0
         assert summary["computing"] + summary["partial"] + summary["absent"] == 10
 
     def test_summary_headline_refuses_the_generic_engine(self):
@@ -156,8 +157,8 @@ class TestTheServedCatalogue:
         assert catalogue["rollup"] == {
             "scenarios": 10,
             es.EXISTS: 1,
-            es.PARTIAL: 7,
-            es.ABSENT: 2,
+            es.PARTIAL: 9,
+            es.ABSENT: 0,
         }
 
     def test_the_catalogue_is_a_copy(self):

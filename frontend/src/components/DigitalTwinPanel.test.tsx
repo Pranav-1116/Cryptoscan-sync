@@ -664,3 +664,81 @@ it("keeps weak capability apart from weak use, and an invented algorithm apart f
   expect(screen.getByText(/cannot vouch for a certificate/)).toBeInTheDocument();
   expect(screen.getByText(/no signature is verified/)).toBeInTheDocument();
 });
+
+it("answers why the twin believes an edge, from the edge itself", async () => {
+  /* §9's most important action: select a relationship and open its evidence.
+     The selected edge must answer with a collector, a source, a timestamp and a
+     hash — or with the reason the edge was refused. */
+  mockFetch({
+    [TWIN]: overview(),
+    [`${TWIN}/search`]: {
+      schema: "cryptoscan.estate-twin-search/1", query: "AES-256", status: "MATCHED",
+      counts: { assets: 1, artifacts: 1 },
+      by_asset_type: { APPLICATION: 1 }, by_artifact_asset_type: {}, by_usage_state: {},
+      assets: [{ asset_id: "asset:api", name: "Payment API", type: "APPLICATION" }],
+      artifacts: [{ asset_id: "asset:api", algorithm: "AES-256-GCM", usage_state: "OBSERVED" }],
+      note: "",
+    },
+    [`${TWIN}/assets/asset%3Aapi`]: {
+      schema: "cryptoscan.estate-asset-view/1", model: "cryptoscan.estate-asset-view/1",
+      projection_id: "a".repeat(32), estate: "Synthetic Bank",
+      asset: {
+        asset_id: "asset:api", type: "APPLICATION", name: "Payment API",
+        environment: "production", owner: "Payments", location: null,
+      },
+      attributes: {},
+      placement: { environment: "production", location: null, owner: "Payments", placed: true },
+      crypto: {
+        artifacts: [], by_usage_state: { SUPPORTED: 0, CONFIGURED: 0, NEGOTIATED: 0, OBSERVED: 0 },
+        observed: [], capability_only: [], note: "capability is not use",
+      },
+      relationships: {
+        outgoing: [{
+          predicate: "uses_hsm", direction: "out" as const, asset_id: "asset:hsm",
+          name: "HSM-03", type: "HSM", basis: "PKCS11_REFERENCE", confidence: "HIGH",
+          evidence_ids: ["ev-4"],
+        }],
+        incoming: [], dependencies: [], count: 1,
+      },
+      evidence: {
+        count: 1, by_type: { CONFIGURED: 1 }, strongest: "CONFIGURED",
+        records: [{
+          evidence_id: "ev-4", evidence_type: "CONFIGURED", collector: "linux-static",
+          source: "/etc/payment/pkcs11.conf", observed_at: "2026-11-01T09:00:00Z",
+          hash: "b".repeat(64),
+        }],
+      },
+      unknown: { unresolved_relationships: [], conflicts: [], no_evidence: false },
+      neighbourhood: { depth: 3, reached: 0, assets: [], truncated: false },
+    },
+    [`${TWIN}/why`]: {
+      schema: "cryptoscan.estate-twin-why/1", status: "ESTABLISHED",
+      matches: [{
+        edge: {
+          subject: "asset:api", subject_name: "Payment API", predicate: "uses_hsm",
+          object: "asset:hsm", object_name: "HSM-03", basis: "PKCS11_REFERENCE",
+          confidence: "HIGH",
+        },
+        answer: "uses hsm is established by PKCS11_REFERENCE evidence at HIGH confidence",
+        evidence: [{
+          evidence_id: "ev-4", evidence_type: "CONFIGURED", collector: "linux-static",
+          source: "/etc/payment/pkcs11.conf", observed_at: "2026-11-01T09:00:00Z",
+          confidence: "HIGH", hash: "b".repeat(64),
+        }],
+      }],
+      note: "every edge answers why with a collector, a source, a timestamp and a hash",
+    },
+  });
+  render(<DigitalTwinPanel />);
+  fireEvent.click(await screen.findByText("Search twin"));
+  await waitFor(() => expect(screen.getByText("Payment API")).toBeInTheDocument());
+  fireEvent.click(screen.getByText("Payment API"));
+  await waitFor(() => expect(screen.getByText("RELATIONSHIPS")).toBeInTheDocument());
+  fireEvent.click(screen.getByText("uses_hsm"));
+  await waitFor(() => expect(
+    screen.getByText(/established by PKCS11_REFERENCE evidence at HIGH confidence/),
+  ).toBeInTheDocument());
+  // the edge's own evidence line, not only the asset-level evidence list
+  expect(screen.getAllByText(/linux-static/).length).toBeGreaterThan(1);
+  expect(screen.getAllByText(/bbbbbbbbbbbb/).length).toBeGreaterThan(0);
+});

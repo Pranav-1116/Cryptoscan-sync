@@ -389,6 +389,53 @@ Production Twin ──▶ Clone ──▶ Simulation
                                  └── replace library
 ```
 
+### The custom scenario: the eighth question
+
+Seven built-in kinds cannot anticipate the question a bank actually has, so a scenario
+can be authored as **data** and validated before it runs:
+
+```json
+{"kind": "CUSTOM",
+ "expression": {
+   "when": {"all": [{"fact": "algorithm", "op": "eq", "value": "RSA"},
+                    {"fact": "protocol", "op": "absent"}]},
+   "then": {"set": {"algorithm": "ML-DSA-65", "key_size": 3300},
+            "unset": ["cipher"]}}}
+```
+
+Six operators (`eq`, `ne`, `in`, `contains`, `present`, `absent`), three combinators
+(`all`, `any`, `not`), at most eight conditions, eight assignments and depth three.
+Three refusals matter more than the capability:
+
+* **provenance is not writable.** `evidence_id`, `source`, `collector`,
+  `evidence_type` and `observed_at` come back as `REFUSED_PROVENANCE_WRITE` — a
+  simulation may change what the estate *says*, never who said it, because a copy
+  whose evidence looked better sourced than the original would poison every
+  downstream BOM.
+* **nothing is computed.** No arithmetic, aggregation, cross-record join or clock,
+  so no scenario can produce a value no collector produced.
+* **a no-op is not an effect.** An assignment whose value is already there is not a
+  change, so the before/after contains only real differences.
+
+It runs on the same copy as every other scenario, and the enterprise assessment now
+reports `CUSTOM_SCENARIO` as PARTIAL (previously ABSENT) with its remaining limits
+named.
+
+`TRUST_COMPROMISE` (CA/PKI) has also moved to PARTIAL, through the fourth cascade,
+`CASCADE_TRUST_COMPROMISE`. An earlier version of this guide said the twin could not
+model it because it holds certificate-to-issuer edges and not a trust-store graph —
+half of that is right. It cannot tell you which roots a *host* honours, so a walk
+that stops is a collection gap rather than the edge of trust; but the vouching edges
+it does hold (`issued_by`, `signed_by`, `verified_by`, `uses_certificate`,
+`terminates_tls_for`) are enough to ask "who inherits a broken issuer", and that is
+the question the scenario is named after. Seeding the root CA reaches the issuing CA,
+the certificates it signed and the applications using those certificates; a sibling
+application on the same host is not reached, because running beside something is not
+trusting it. Revocation (CRL/OCSP, soft-fail), cross-signing and name constraints are
+listed as blind spots, and the radius is published as an upper bound. All ten
+registered scenarios now have a model; one computes end to end, nine compute part of
+the mechanism and say which part.
+
 The live twin is read-only to the simulation, by construction: the simulation
 operates on a snapshot copy, and the live projection id must be unchanged
 afterwards.

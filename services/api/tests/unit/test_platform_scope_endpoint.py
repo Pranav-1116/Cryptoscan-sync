@@ -72,7 +72,8 @@ async def test_scope_serves_the_simulation_ratio(app_client):
     cov = body["simulation_coverage"]
     assert cov["scenarios"] == 10
     assert cov["computing"] == 1
-    assert cov["absent"] == 2
+    assert cov["absent"] == 0
+    assert cov["partial"] == 9
     assert "not a generic enterprise simulation engine" in cov["headline"]
 
 

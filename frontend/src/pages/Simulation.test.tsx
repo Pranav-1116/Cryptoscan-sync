@@ -257,6 +257,46 @@ describe("simulation workspace", () => {
     expect(JSON.parse(String(planned?.[1]?.body))).toEqual({ kind: "REPLACE_ALGORITHM", from: "AES", to: "ML-KEM" });
   });
 
+  it("sends a custom scenario as parsed data, and blocks a JSON error before the engine sees it", async () => {
+    const customCatalog = {
+      ...catalog,
+      kinds: [...kinds, {
+        kind: "CUSTOM", mode: "SCENARIO", name: "Custom expression",
+        question: "Which records match this condition, and what changes if these facts are set?",
+        inputs: ["expression"], optional: ["targets"],
+        answers: ["every evidence record whose facts satisfy the condition tree"],
+        does_not_answer: ["a provenance edit: evidence id, source and evidence type are refused"],
+      }],
+      presets: [],
+    };
+    const fetchSpy = mockFetch({
+      [`${BASE}/catalog`]: customCatalog, [`${BASE}/runs`]: emptyHistory, [`${BASE}/plan`]: preview(),
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Custom expression/ }));
+    const field = await screen.findByLabelText(/Expression \(JSON/);
+
+    // a syntax error is the console's to catch: the engine would refuse it as a program
+    fireEvent.change(field, { target: { value: "{when: oops" } });
+    expect(await screen.findByText(/not valid JSON/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preview match" })).toBeDisabled();
+    expect(fetchSpy.mock.calls.some(([url]) => String(url).includes("/simulation/plan"))).toBe(false);
+
+    const expression = { when: { fact: "algorithm", op: "eq", value: "RSA" },
+      then: { set: { algorithm: "ML-DSA-65" } } };
+    fireEvent.change(field, { target: { value: JSON.stringify(expression) } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview match" }));
+
+    await waitFor(() => expect(
+      fetchSpy.mock.calls.some(([url]) => String(url).includes("/simulation/plan")),
+    ).toBe(true));
+    const planned = fetchSpy.mock.calls.find(([url]) => String(url).includes("/simulation/plan"));
+    // the scenario travels as data, not as a string the engine would have to parse
+    expect(JSON.parse(String(planned?.[1]?.body))).toEqual({ kind: "CUSTOM", expression });
+  });
+
   it("reports a run as a copy: live state untouched, six BOMs re-projected, storage quarantined", async () => {
     mockFetch({
       [`${BASE}/catalog`]: catalog, [`${BASE}/plan`]: preview(),

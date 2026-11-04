@@ -654,12 +654,12 @@ does not find it first).
 | 1 | What the twin is | SUPPORTED | `estate_twin.TWIN_SCHEMA`, `GET …/twin` | — |
 | 2 | Why the estate needs one | SUPPORTED | `estate_graph.RELATIONSHIP_PREDICATES` | — |
 | 3 | Observation → twin → intelligence | SUPPORTED | `estate_graph.build_graph`, `estate_twin.snapshot` | — |
-| 4 | The eight layers | PARTIAL | `estate_twin.placement_model` | layer 7 has no custom-scenario DSL |
+| 4 | The eight layers | PARTIAL | `estate_twin.placement_model` | layer 7's expression language is bounded: no arithmetic, joins or temporal operators |
 | 5 | Six BOMs are projections | SUPPORTED | `estate_graph.BOM_KINDS`, `…/boms/{kind}/export` | — |
 | 6 | Payment-API walkthrough | SUPPORTED | `bank-environment/05-practical-bank-walkthrough.md`, `GET …/twin/why` | — |
 | 7 | Hybrid storage | PARTIAL | `EstateAssetRecord`, `cypher_writes.py` | 8 graph labels of 22; evidence objects in PostgreSQL, no MinIO tier, no Redis dependency |
 | 8 | Update lifecycle and asset states | SUPPORTED | `cbom_dependency.LIFECYCLE_STATES`, `transition_asset_lifecycle` | — |
-| 9 | Thirteen screens | PARTIAL | `DigitalTwin.tsx`, `EstateTwin.tsx` | all thirteen investigations exist, but not as thirteen routes; no edge-first evidence explorer |
+| 9 | Thirteen screens | PARTIAL | `DigitalTwin.tsx`, `EstateTwin.tsx` | all thirteen investigations exist, but not as thirteen routes; an edge answers "why" from the asset investigation, not from the drawn graph |
 | 10 | What the twin cannot guarantee | SUPPORTED | `GET …/twin/completeness`, `GET …/twin/why` | — |
 | 11 | P0–P3 priorities | SUPPORTED | guide 94, "Status in this repository" | — |
 | 12 | Not another scanner or database | SUPPORTED | `estate_twin.graph_from_snapshot` | — |
@@ -674,7 +674,7 @@ does not find it first).
 | 4 Cryptographic graph | SUPPORTED | `GET …/twin/crypto-graph`, `cbom.facts` | capability / source / configuration / runtime / network-negotiated are distinct fact classes |
 | 5 Evidence graph | SUPPORTED | `GET …/twin/why`, `EstateRelationshipRecord` | contradiction stored as conflict, both sides kept |
 | 6 Time | SUPPORTED | `GET …/twin/snapshots`, `…/twin/compare` | snapshot, replay, compare, journal; a vanished asset is a coverage event before a removal |
-| 7 Simulation | PARTIAL | `SIMULATION_KINDS`, `POST …/twin/simulate` | 7 fact scenarios + 3 cascades on a copy; no DSL, no segmentation model |
+| 7 Simulation | PARTIAL | `SIMULATION_KINDS`, `POST …/twin/simulate` | 8 fact scenarios (incl. CUSTOM, a validated expression) + 3 cascades on a copy; no arithmetic/joins, no segmentation model |
 | 8 Intelligence & impact | SUPPORTED | `POST …/twin/impact`, `attack_patterns.correlate` | blast radius, blockers, correlation that refuses to declare an incident |
 
 ### 13.3 Relationship vocabulary
@@ -725,13 +725,69 @@ subsidiaries"), never attached to a guessed parent. `GET …/twin/placement` now
 owners, environments and asset counts), and the placement model version moved to
 `cryptoscan.estate-placement/3`.
 
-**Not built, and why.** (1) A custom-scenario DSL — the register already refuses to call
-composition of built-in kinds a "custom engine", and nothing here changes that. (2) The full
-22-label graph projection — the graph is a rebuildable projection of PostgreSQL, so label
-coverage is a query-convenience question, not a truth question. (3) A MinIO evidence tier and a
-Redis dependency — evidence objects are content-addressed rows in PostgreSQL; adding two
-stateful services to a bank deployment to hold what is already hash-chained is a decision for
-the deployment, not a gap in the model.
+**Built — Layer 7, the custom scenario (`CUSTOM`).** The seven built-in kinds answer the seven
+questions the product anticipated; a bank always has an eighth. A scenario can now be
+*operator-authored as data*:
+
+```json
+{"when": {"all": [{"fact": "algorithm", "op": "eq", "value": "RSA"},
+                  {"fact": "usage_state", "op": "ne", "value": "SUPPORTED"}]},
+ "then": {"set": {"algorithm": "ML-DSA-65", "key_size": 3300}}}
+```
+
+Six operators (`eq`, `ne`, `in`, `contains`, `present`, `absent`), three combinators (`all`,
+`any`, `not`), eight conditions, eight assignments, depth three — and three refusals that are
+the point of the feature:
+
+* **provenance is not writable.** `evidence_id`, `source`, `collector`, `evidence_type`,
+  `observed_at` and the hash are refused with `REFUSED_PROVENANCE_WRITE`: a simulation may
+  change what the estate *says*, never who said it.
+* **nothing is computed.** No arithmetic, aggregation, cross-record join or clock. A scenario
+  that needs one is refused rather than answered with a number no collector produced.
+* **a no-op is not an effect.** An assignment whose value is already there does not count as a
+  change, so a "before/after" contains only real differences.
+
+It runs on the same copy as every other scenario (the live projection id is asserted
+unchanged), and the enterprise assessment moved `CUSTOM_SCENARIO` from `ABSENT` to `PARTIAL`
+with its remaining limits stated.
+
+**Built — the trust-path cascade (`CASCADE_TRUST_COMPROMISE`).** `TRUST_COMPROMISE` was the last
+scenario with no model at all. The reason given for that was partly wrong: the twin does not
+hold trust-store membership, but it does hold *vouching* edges — `issued_by`, `signed_by`,
+`verified_by`, `uses_certificate`, `terminates_tls_for` — and those are enough to walk what an
+issuer vouches for. The fourth cascade carries a compromise over exactly that carrier set:
+
+```
+Bank Root CA  --issued_by-->  Bank Issuing CA  --issued_by-->  payments.bank:443
+                                                                     |
+                                                      uses_certificate
+                                                                     v
+                                                                Payment API
+```
+
+A sibling application on the same host is **not** reached, because `runs_on` is not a vouching
+edge — which is the whole difference between this cascade and `CASCADE_CRYPTO_COMPROMISE`, whose
+carrier set is the crypto and containment edges. The answer states four blind spots rather than
+assuming them away: trust-store membership (a host trusting a root the twin never collected is
+invisible, so where the walk stops is a collection gap), cross-signing and alternate chains,
+revocation (CRL/OCSP publication, propagation delay, soft-fail), and name constraints or
+pinning — which is why the radius is published as a *superset* of a correct PKI walk, never as
+one. `TRUST_COMPROMISE` moves from `ABSENT` to `PARTIAL`; all ten registered scenarios now have
+a model, nine of them partial.
+
+**Built — §9's most important action, for an edge.** The asset investigation lists each edge as
+a button: selecting one asks `GET …/twin/why` about *that* subject/predicate/object and renders
+the answer inline — evidence type, collector, source, timestamp and hash — or the reason the
+edge was refused. Previously "why" was reachable per asset and as a route, but no edge could be
+selected.
+
+**Not built, and why.** (1) The full 22-label graph projection — the graph is a rebuildable
+projection of PostgreSQL, so label coverage is a query-convenience question, not a truth
+question. (2) A MinIO evidence tier and a Redis dependency — evidence objects are
+content-addressed rows in PostgreSQL; adding two stateful services to a bank deployment to hold
+what is already hash-chained is a decision for the deployment, not a gap in the model.
+(3) Ordered multi-step timelines and cross-record expressions — the first is a scheduler, the
+second is a query engine, and both would let a scenario produce a value no evidence holds.
 
 ## Sources
 

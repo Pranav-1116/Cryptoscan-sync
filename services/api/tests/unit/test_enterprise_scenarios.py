@@ -84,8 +84,10 @@ def test_only_pqc_migration_is_fully_covered():
 def test_the_generic_engine_is_not_claimed():
     catalogue = es.catalogue()
     assert catalogue["rollup"]["scenarios"] == 10
-    assert catalogue["rollup"][es.ABSENT] >= 1
-    assert catalogue["rollup"][es.ABSENT] + catalogue["rollup"][es.PARTIAL] > 0
+    # No row is left with no model at all — but nine of ten still model only part of the
+    # mechanism, and each says which part it cannot see.
+    assert catalogue["rollup"][es.ABSENT] == 0
+    assert catalogue["rollup"][es.PARTIAL] == 9
     assert any(
         "generic enterprise simulation engine" in sentence.lower()
         for sentence in catalogue["cannot_claim"]

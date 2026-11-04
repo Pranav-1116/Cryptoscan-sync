@@ -221,7 +221,7 @@ under **Collector depth → Maturity**:
 | Hardware discovery | Synthetic and metadata paths only. Not complete hardware discovery. |
 | HSM | A metadata model — vendor, model, firmware, algorithm capability, key metadata, certificate relationships. Not proof of HSM cryptographic operations. |
 | Runtime crypto | Process, binary, library and service metadata. Not evidence that a process invoked AES-256-GCM. |
-| Simulation | A real PQC-migration foundation and nine scenario-specific models. Not a generic enterprise simulation engine: trust compromise and custom scenarios have no model at all. |
+| Simulation | A real PQC-migration foundation and ten scenario-specific models, nine of them partial. Not a generic enterprise simulation engine: the custom expression has no arithmetic, joins or timelines, and the trust walk cannot see trust stores, cross-signing or revocation. |
 
 The full list, with what *is* real behind each row and the route that lets you
 check it, is in [docs/CAPABILITY-MATURITY.md](docs/CAPABILITY-MATURITY.md#capability-boundaries--five-things-this-build-does-not-do).

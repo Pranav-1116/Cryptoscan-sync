@@ -305,6 +305,10 @@ def header_client(monkeypatch, tmp_path):
     monkeypatch.setenv("CBOM_SIGNING_SECRET", "cbom-signing-secret-32-characters-min")
     monkeypatch.setenv("STREAM_SECRET", "stream-secret-32-characters-minimum-x")
     monkeypatch.setenv("AUDITOR_API_KEY", "auditor-api-key-32-characters-minimum")
+    # Production startup refuses a blank Alertmanager webhook token (a pager
+    # that cannot authenticate is a silent outage), so a production-shaped app
+    # has to carry one.
+    monkeypatch.setenv("ALERTMANAGER_WEBHOOK_TOKEN", "alertmanager-webhook-token-32-characters")
     monkeypatch.setenv("NEO4J_URI", "bolt://neo4j.internal:7687")
     monkeypatch.setenv("NEO4J_PASSWORD", "neo4j-password-24-characters-min")
     # Production startup also refuses to boot unless the database is at the
@@ -314,6 +318,11 @@ def header_client(monkeypatch, tmp_path):
     # would make the test slow and about the wrong thing.
     monkeypatch.setattr("db.connection.session.migration_status",
                         lambda engine: {"status": "current", "applied": [], "heads": []})
+    # The tenant-RLS admission check is the subject of
+    # services/database/tests/unit/test_rls.py; an in-memory SQLite engine
+    # cannot satisfy it and this module is about response headers.
+    monkeypatch.setattr("db.connection.session._assert_production_rls",
+                        lambda engine: None)
     # Validate the production Redis transport shape without connecting to a
     # live service; pytest suppresses the background federation in this test.
     monkeypatch.setenv("REDIS_URL", "rediss://ci_acl_user:ci-only-redis-password@redis.example.invalid:6379/0")

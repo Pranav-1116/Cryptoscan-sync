@@ -41,8 +41,9 @@ def test_the_catalog_lists_every_kind_with_the_limit_it_carries(graph):
 
     assert {entry["kind"] for entry in body["kinds"]} == {
         "REPLACE_ALGORITHM", "RETIRE_ALGORITHM", "DISABLE_PROTOCOL", "UPGRADE_COMPONENT",
-        "REMOVE_COMPONENT", "CHANGE_KEY_SIZE", "MIGRATE_QUANTUM_VULNERABLE",
+        "REMOVE_COMPONENT", "CHANGE_KEY_SIZE", "MIGRATE_QUANTUM_VULNERABLE", "CUSTOM",
         "CASCADE_ASSET_UNAVAILABLE", "CASCADE_CRYPTO_COMPROMISE", "CASCADE_ALGORITHM_BREAK",
+        "CASCADE_TRUST_COMPROMISE",
     }
     for entry in body["kinds"]:
         assert entry["question"]
