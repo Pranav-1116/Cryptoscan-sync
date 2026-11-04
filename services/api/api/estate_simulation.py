@@ -158,6 +158,25 @@ KIND_CATALOG: dict[str, dict[str, Any]] = {
             "refused, because a simulation may change what the estate says, never who said it",
         ],
     },
+    "COMPOSITE": {
+        "name": "A sequence of changes",
+        "question": "If these changes were applied in order, what does the estate look like after the last one?",
+        "inputs": ["steps"],
+        "optional": ["targets"],
+        "answers": [
+            "each step applied to the same copy, in the order given, with the evidence each step matched",
+            "the BOM diff of the whole sequence rather than one diff per step to reconcile by hand",
+            "the blast radius anchored on the first step's selector and the last step's target",
+        ],
+        "does_not_answer": [
+            "branching, loops or a clock: the sequence is a fixed list of at most 5 primitive "
+            "scenarios, applied once, in order",
+            "intermediate BOM diffs — only the state after the last step is projected, because a "
+            "half-migrated estate is not a deployment anyone asked about",
+            "a cascade inside a sequence: a failure propagating through a copy has no BOM diff to "
+            "add up, so cascades are refused as steps",
+        ],
+    },
     "CASCADE_ASSET_UNAVAILABLE": {
         "mode": "CASCADE",
         "name": "Asset goes down",

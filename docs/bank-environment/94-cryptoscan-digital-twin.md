@@ -436,6 +436,13 @@ listed as blind spots, and the radius is published as an upper bound. All ten
 registered scenarios now have a model; one computes end to end, nine compute part of
 the mechanism and say which part.
 
+When the change is a sequence rather than one edit, `COMPOSITE` applies up to five primitive
+scenarios to one copy, in order, and reports one BOM diff for the whole migration instead of one
+per step. A step sees the facts the previous step wrote — so "retire TLS 1.0, then replace RSA on
+what is left" behaves the way it reads — and each step's matched evidence is reported, including a
+step that matched nothing (which is a fact about the estate, not an error). Branching, loops and a
+clock are refused rather than approximated.
+
 The live twin is read-only to the simulation, by construction: the simulation
 operates on a snapshot copy, and the live projection id must be unchanged
 afterwards.

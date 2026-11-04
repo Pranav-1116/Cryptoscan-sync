@@ -1068,9 +1068,18 @@ class TwinSimulationRequest(BaseModel):
     kind: str = Field(
         description=(
             "a scenario (REPLACE_ALGORITHM | RETIRE_ALGORITHM | DISABLE_PROTOCOL | UPGRADE_COMPONENT | "
-            "REMOVE_COMPONENT | CHANGE_KEY_SIZE | MIGRATE_QUANTUM_VULNERABLE | CUSTOM) or a cascade "
-            "(CASCADE_ASSET_UNAVAILABLE | CASCADE_CRYPTO_COMPROMISE | CASCADE_ALGORITHM_BREAK)"
+            "REMOVE_COMPONENT | CHANGE_KEY_SIZE | MIGRATE_QUANTUM_VULNERABLE | CUSTOM), a cascade "
+            "(CASCADE_ASSET_UNAVAILABLE | CASCADE_CRYPTO_COMPROMISE | CASCADE_ALGORITHM_BREAK | "
+            "CASCADE_TRUST_COMPROMISE) or COMPOSITE, an ordered list of up to five of those scenarios"
         )
+    )
+    steps: list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "the COMPOSITE sequence, as data: a list of primitive scenarios applied to one copy in "
+            "the order given. Cascades and composites do not nest, and more than five steps is a "
+            "migration plan rather than a simulation"
+        ),
     )
     expression: dict[str, Any] | None = Field(
         default=None,
@@ -1467,6 +1476,7 @@ def estate_twin_simulate(
         "targets": body.targets or [],
         "label": body.label,
         "expression": body.expression,
+        "steps": body.steps,
     }
     if estate_simulation.mode_of(body.kind) == "CASCADE":
         scenario["depth"] = body.depth
@@ -1641,9 +1651,24 @@ class SimulationRunRequest(BaseModel):
     kind: str = Field(
         description=(
             "REPLACE_ALGORITHM | RETIRE_ALGORITHM | DISABLE_PROTOCOL | UPGRADE_COMPONENT | "
-            "REMOVE_COMPONENT | CHANGE_KEY_SIZE | MIGRATE_QUANTUM_VULNERABLE | "
-            "CASCADE_ASSET_UNAVAILABLE | CASCADE_CRYPTO_COMPROMISE | CASCADE_ALGORITHM_BREAK"
+            "REMOVE_COMPONENT | CHANGE_KEY_SIZE | MIGRATE_QUANTUM_VULNERABLE | CUSTOM | COMPOSITE | "
+            "CASCADE_ASSET_UNAVAILABLE | CASCADE_CRYPTO_COMPROMISE | CASCADE_ALGORITHM_BREAK | "
+            "CASCADE_TRUST_COMPROMISE"
         )
+    )
+    expression: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "the CUSTOM scenario, as data: {'when': <condition tree>, 'then': {'set': {...}, "
+            "'unset': [...]}}. Validated and refused rather than executed"
+        ),
+    )
+    steps: list[dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "the COMPOSITE sequence: at most five primitive scenarios, applied to one copy in the "
+            "order given. Cascades and composites do not nest"
+        ),
     )
     from_: str | None = Field(default=None, alias="from", max_length=160)
     to: str | None = Field(default=None, max_length=160)
@@ -1677,6 +1702,12 @@ def _scenario_payload(body: SimulationRunRequest) -> dict[str, Any]:
         "targets": body.targets or [],
         "label": body.label,
     }
+    # Both of these are the scenario itself for their kind: dropping them here would
+    # turn "the console wrote a query" into "the engine was handed an empty one".
+    if body.expression is not None:
+        payload["expression"] = body.expression
+    if body.steps is not None:
+        payload["steps"] = body.steps
     if estate_simulation.mode_of(body.kind) == "CASCADE":
         payload["depth"] = body.depth
     return payload

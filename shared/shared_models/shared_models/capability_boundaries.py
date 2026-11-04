@@ -119,7 +119,8 @@ STATEMENTS: tuple[dict, ...] = (
             "across every crypto failure mode"
         ),
         "what_is_real": (
-            "ten deterministic scenarios and four cascades over collected evidence, plus a "
+            "ten deterministic scenarios, four cascades and a bounded sequence of them over "
+            "collected evidence, plus a "
             "per-scenario statement of what each one cannot see"
         ),
         "check_at": "/estate/evidence/twin/simulation-scenarios",

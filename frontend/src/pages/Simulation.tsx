@@ -32,6 +32,7 @@ const FIELD_LABEL: Record<string, string> = {
   to: "To (the value the scenario would use instead)",
   key_size: "Key size (bits)",
   expression: "Expression (JSON: {\"when\": …, \"then\": {\"set\": …, \"unset\": …}})",
+  steps: "Steps (JSON array of scenarios, applied in order — at most 5)",
 };
 
 const inputStyle: React.CSSProperties = {
@@ -200,22 +201,37 @@ export default function Simulation() {
   );
   const requiredFields = (entry?.inputs ?? []).filter((name) => name !== "targets" && name !== "depth");
 
-  /* A CUSTOM scenario is data, so the console parses it before sending it: a JSON
-     syntax error must be caught here, where it can be pointed at, not reported back
-     as an engine refusal. */
-  const expressionRaw = (fields["expression"] ?? "").trim();
-  const expressionError = useMemo(() => {
-    if (!expressionRaw) return null;
-    try {
-      const parsed = JSON.parse(expressionRaw);
-      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-        return "the expression must be a JSON object with 'when' and 'then'";
+  /* A CUSTOM expression and a COMPOSITE sequence are both data, so the console parses
+     them before sending: a JSON syntax error must be caught here, where it can be
+     pointed at, not reported back as an engine refusal. */
+  const jsonFieldError = useMemo(() => {
+    const errors: Record<string, string> = {};
+    const expressionRaw = (fields["expression"] ?? "").trim();
+    if (expressionRaw) {
+      try {
+        const parsed = JSON.parse(expressionRaw);
+        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+          errors.expression = "the expression must be a JSON object with 'when' and 'then'";
+        }
+      } catch (error) {
+        errors.expression = `not valid JSON: ${(error as Error).message}`;
       }
-      return null;
-    } catch (error) {
-      return `not valid JSON: ${(error as Error).message}`;
     }
-  }, [expressionRaw]);
+    const stepsRaw = (fields["steps"] ?? "").trim();
+    if (stepsRaw) {
+      try {
+        const parsed = JSON.parse(stepsRaw);
+        if (!Array.isArray(parsed)) {
+          errors.steps = "steps must be a JSON array of scenarios, applied in order";
+        } else if (parsed.length === 0) {
+          errors.steps = "a sequence with no steps asks nothing";
+        }
+      } catch (error) {
+        errors.steps = `not valid JSON: ${(error as Error).message}`;
+      }
+    }
+    return errors;
+  }, [fields]);
 
   const scenario: SimulationScenario = useMemo(() => {
     const built: SimulationScenario = { kind: entry?.kind ?? kind };
@@ -232,6 +248,13 @@ export default function Simulation() {
         } catch {
           /* left unset: `missing` blocks the run and the parse error is shown on the field */
         }
+      } else if (name === "steps") {
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) built.steps = parsed as Array<Record<string, unknown>>;
+        } catch {
+          /* left unset: the parse error is shown on the field */
+        }
       }
     }
     if (targets.length) built.targets = targets;
@@ -243,8 +266,8 @@ export default function Simulation() {
   const scenarioKey = JSON.stringify(scenario);
   const previewIsCurrent = preview?.key === scenarioKey;
   const missing = requiredFields.filter((name) =>
-    name === "expression"
-      ? !(fields[name] ?? "").trim() || expressionError !== null
+    name === "expression" || name === "steps"
+      ? !(fields[name] ?? "").trim() || Boolean(jsonFieldError[name])
       : !(fields[name] ?? "").trim());
   const seedsMissing = isCascade && entry?.kind !== "CASCADE_ALGORITHM_BREAK" && targets.length === 0;
 
@@ -342,9 +365,9 @@ export default function Simulation() {
             measured against one projection id and stored quarantined.
           </p>
           <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--faint)", maxWidth: 700 }}>
-            Ten scenarios and four cascades, not a general simulation engine: nine of the ten
-            scenarios model only part of the mechanism, and what each one cannot see is stated
-            rather than assumed away. The per-scenario
+            Ten registered scenarios, four cascades and a bounded sequence of up to five of them —
+            not a general simulation engine: nine of the ten scenarios model only part of the
+            mechanism, and what each one cannot see is stated rather than assumed away. The per-scenario
             status — and what each one cannot see — is under{" "}
             <Link to="/collector-depth">Collector depth → Simulation</Link>.
           </p>
@@ -516,10 +539,10 @@ export default function Simulation() {
                       {label}
                       {requiredFields.includes(name) ? " *" : " (optional)"}
                     </span>
-                    {name === "expression" ? (
+                    {name === "expression" || name === "steps" ? (
                       <textarea
                         aria-label={label}
-                        rows={6}
+                        rows={name === "steps" ? 8 : 6}
                         value={fields[name] ?? ""}
                         onChange={(event) => {
                           const value = event.target.value;
@@ -527,7 +550,11 @@ export default function Simulation() {
                           setPreset(null);
                           resetOutputs();
                         }}
-                        placeholder={'{"when": {"fact": "algorithm", "op": "eq", "value": "RSA"}, "then": {"set": {"algorithm": "ML-DSA-65"}}}'}
+                        placeholder={
+                          name === "steps"
+                            ? '[{"kind": "DISABLE_PROTOCOL", "from": "TLSv1.0"}, {"kind": "MIGRATE_QUANTUM_VULNERABLE", "to": "ML-KEM-768"}]'
+                            : '{"when": {"fact": "algorithm", "op": "eq", "value": "RSA"}, "then": {"set": {"algorithm": "ML-DSA-65"}}}'
+                        }
                         style={{ ...inputStyle, lineHeight: 1.5, resize: "vertical" }}
                       />
                     ) : (
@@ -546,9 +573,9 @@ export default function Simulation() {
                       style={inputStyle}
                     />
                     )}
-                    {name === "expression" && expressionError && (
+                    {(name === "expression" || name === "steps") && jsonFieldError[name] && (
                       <span style={{ display: "block", fontSize: 10.5, color: "var(--amber)", marginTop: 3 }}>
-                        {expressionError}
+                        {jsonFieldError[name]}
                       </span>
                     )}
                     <datalist id={listId}>

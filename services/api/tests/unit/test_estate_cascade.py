@@ -342,7 +342,8 @@ def test_the_catalog_lists_both_families_and_what_each_one_is(api):
     assert by_kind["CASCADE_ALGORITHM_BREAK"]["mode"] == "CASCADE"
     assert by_kind["MIGRATE_QUANTUM_VULNERABLE"]["mode"] == "SCENARIO"
     assert by_kind["CASCADE_TRUST_COMPROMISE"]["mode"] == "CASCADE"
-    assert len(by_kind) == 12
+    assert by_kind["COMPOSITE"]["mode"] == "SCENARIO"
+    assert len(by_kind) == 13
     for entry in body["kinds"]:
         assert entry["does_not_answer"]
 

@@ -114,7 +114,19 @@ CASCADE_KINDS: tuple[str, ...] = (
     "CASCADE_TRUST_COMPROMISE",
 )
 
-SIMULATION_KINDS: tuple[str, ...] = SCENARIO_KINDS + CASCADE_KINDS
+#: ``COMPOSITE`` is not a fourth family: it is a bounded *sequence* of the scenarios
+#: above, applied to one copy in order. A bank whose migration is "retire TLS 1.0, then
+#: replace RSA on what is left, then resize the surviving keys" should not have to run
+#: three simulations and reconcile three BOM diffs by hand — but a general scripting
+#: language is exactly what this engine must not become, because "run these commands"
+#: is not an answer and a simulation that executes arbitrary code cannot be audited.
+#: So the grammar is the closed set of primitive kinds, the order is explicit, and the
+#: step count is capped.
+COMPOSITE_KIND = "COMPOSITE"
+MAX_COMPOSITE_STEPS = 5
+COMPOSITE_STEP_KINDS: tuple[str, ...] = SCENARIO_KINDS
+
+SIMULATION_KINDS: tuple[str, ...] = SCENARIO_KINDS + CASCADE_KINDS + (COMPOSITE_KIND,)
 
 #: §12 — strongest evidence first. Used to answer "how well is this described".
 STRENGTH_ORDER: tuple[str, ...] = (
@@ -1578,6 +1590,59 @@ MAX_CUSTOM_DEPTH = 3
 _ABSENT = object()
 
 
+def _composite_refusal(steps: Any) -> dict[str, Any] | None:
+    """Why this sequence cannot be run — structurally, without looking at the estate.
+
+    Three refusals, each for a reason a reviewer can act on: an empty sequence asks
+    nothing, a sequence longer than ``MAX_COMPOSITE_STEPS`` is a script wearing a
+    scenario's shape, and a step that is itself a cascade or a composite would make
+    the result undecidable ("apply a change, then propagate a failure, then apply a
+    change to the failure" has no single BOM diff to report).
+    """
+    if steps is None:
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": (
+                "COMPOSITE needs 'steps': a list of the primitive scenarios to apply in order, "
+                f"at most {MAX_COMPOSITE_STEPS} of them"
+            ),
+        }
+    if not isinstance(steps, list):
+        return {"status": "INVALID_SCENARIO", "detail": "'steps' must be a list of scenarios"}
+    if not steps:
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": "a composite with no steps asks nothing; use the scenario kind directly",
+        }
+    if len(steps) > MAX_COMPOSITE_STEPS:
+        return {
+            "status": "INVALID_SCENARIO",
+            "detail": (
+                f"{len(steps)} steps exceeds the {MAX_COMPOSITE_STEPS}-step bound. A longer sequence "
+                "is a migration plan, not a simulation: run it in stages and compare the results"
+            ),
+        }
+    for index, step in enumerate(steps, start=1):
+        if not isinstance(step, Mapping):
+            return {"status": "INVALID_SCENARIO", "detail": f"step {index} is not a scenario object"}
+        step_kind = _text(step.get("kind")).upper()
+        if step_kind not in COMPOSITE_STEP_KINDS:
+            return {
+                "status": "INVALID_SCENARIO",
+                "detail": (
+                    f"step {index} names {step_kind or 'no kind'}; a composite step must be one of "
+                    f"{', '.join(COMPOSITE_STEP_KINDS)}. Cascades and composites do not nest"
+                ),
+            }
+        refusal = _scenario_refusal(step_kind, step)
+        if refusal:
+            return {
+                "status": "INVALID_SCENARIO",
+                "detail": f"step {index} ({step_kind}): {refusal.get('detail')}",
+            }
+    return None
+
+
 def _custom_refusal(expression: Any, *, depth: int = 0) -> dict[str, Any] | None:
     """Why this expression cannot be run — or ``None`` when it can.
 
@@ -1858,6 +1923,8 @@ def _scenario_refusal(kind: str, scenario: Mapping[str, Any]) -> dict[str, Any] 
     """The reason a scenario cannot be answered, or ``None`` when it is answerable."""
     if kind in CASCADE_KINDS:
         return _cascade_refusal(kind, scenario)
+    if kind == COMPOSITE_KIND:
+        return _composite_refusal(scenario.get("steps"))
     if kind not in SCENARIO_KINDS:
         return {
             "status": "INVALID_SCENARIO",
@@ -1870,6 +1937,151 @@ def _scenario_refusal(kind: str, scenario: Mapping[str, Any]) -> dict[str, Any] 
         if not present:
             return {"status": "INVALID_SCENARIO", "detail": _INPUT_REFUSALS[field]}
     return None
+
+
+def _apply_composite(
+    graph: EstateGraph, payload: dict[str, Any], steps: list[Mapping[str, Any]]
+) -> tuple[int, set[str], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Apply the steps to one copy, in order, and report each one.
+
+    Order is the point: a step sees the facts the previous step wrote, so "retire
+    TLS 1.0, then replace RSA on what is left" behaves the way an operator reads it.
+    A step that matches nothing is reported as such and does not abort the sequence —
+    that is a fact about the estate, not an error.
+    """
+    matched_total = 0
+    affected: set[str] = set()
+    effects: list[dict[str, Any]] = []
+    report: list[dict[str, Any]] = []
+
+    for index, step in enumerate(steps, start=1):
+        step_kind = _text(step.get("kind")).upper()
+        step_source = _text(step.get("from"))
+        step_target = _text(step.get("to"))
+        refs = {_resolve(graph, ref) for ref in step.get("targets") or [] if _resolve(graph, ref)}
+        step_matched = 0
+        for record in payload["evidence"]:
+            if refs and str(record.get("target")) not in refs:
+                continue
+            facts = record.get("facts") or {}
+            if step_kind == "CUSTOM":
+                hit, updates = _custom_effect(step.get("expression"), facts)
+            else:
+                hit, updates = _scenario_effect(
+                    step_kind, facts, step, source=step_source, target=step_target
+                )
+            if not hit:
+                continue
+            before = copy.deepcopy(facts)
+            facts.update(updates)
+            step_matched += 1
+            matched_total += 1
+            affected.add(str(record.get("target")))
+            effects.append(
+                {
+                    "step": index,
+                    "step_kind": step_kind,
+                    "evidence_id": record.get("evidence_id"),
+                    "asset_id": record.get("target"),
+                    "asset_name": (graph.asset(str(record.get("target"))) or {}).get("name"),
+                    "layer": record.get("layer"),
+                    "evidence_type": record.get("evidence_type"),
+                    "before": before,
+                    "after": copy.deepcopy(facts),
+                }
+            )
+        report.append(
+            {
+                "step": index,
+                "kind": step_kind,
+                "matched_evidence": step_matched,
+                "matched_nothing": step_matched == 0,
+                "targets": list(step.get("targets") or []),
+                "from": step_source or None,
+                "to": step_target or None,
+            }
+        )
+    return matched_total, affected, effects, report
+
+
+def _composite_preview(
+    graph: EstateGraph, scenario: Mapping[str, Any], base_projection: str
+) -> dict[str, Any]:
+    """Would each step match anything? Counted against the *current* evidence.
+
+    The honest limit is stated in ``note``: the steps are previewed independently,
+    because the copies that later steps will see do not exist until the run. A preview
+    is a spelling check, and pretending otherwise would be a cheaper simulation —
+    which is the thing this function is explicitly not.
+    """
+    payload = snapshot(graph)["payload"]
+    steps = list(scenario.get("steps") or [])
+    report: list[dict[str, Any]] = []
+    affected: set[str] = set()
+    total = 0
+    for index, step in enumerate(steps, start=1):
+        step_kind = _text(step.get("kind")).upper()
+        step_source = _text(step.get("from"))
+        step_target = _text(step.get("to"))
+        refs = {_resolve(graph, ref) for ref in step.get("targets") or [] if _resolve(graph, ref)}
+        matched = 0
+        for record in payload["evidence"]:
+            if refs and str(record.get("target")) not in refs:
+                continue
+            facts = record.get("facts") or {}
+            if step_kind == "CUSTOM":
+                hit, _updates = _custom_effect(step.get("expression"), facts)
+            else:
+                hit, _updates = _scenario_effect(
+                    step_kind, facts, step, source=step_source, target=step_target
+                )
+            if not hit:
+                continue
+            matched += 1
+            affected.add(str(record.get("target")))
+        total += matched
+        report.append(
+            {
+                "step": index,
+                "kind": step_kind,
+                "matched_evidence": matched,
+                "matched_nothing": matched == 0,
+                "targets": list(step.get("targets") or []),
+                "from": step_source or None,
+                "to": step_target or None,
+            }
+        )
+    empty = [row["step"] for row in report if row["matched_nothing"]]
+    return {
+        "schema": SIMULATION_PREVIEW_SCHEMA,
+        "status": "WOULD_MATCH" if total else "WOULD_NOT_MATCH",
+        "kind": COMPOSITE_KIND,
+        "scenario": scenario,
+        "base_projection_id": base_projection,
+        "live_state_modified": False,
+        "evidence_considered": len(payload["evidence"]),
+        "matched_evidence": total,
+        "affected_assets": [],
+        "affected_asset_count": len(affected),
+        "steps": report,
+        "steps_matching_nothing": empty,
+        "note": (
+            f"{total} evidence record(s) match these {len(steps)} step(s) against the evidence as it "
+            "stands now. Later steps are previewed against that same evidence, not against the copy "
+            "the earlier steps produce, so a run can match more than this preview counts"
+            if total
+            else (
+                "no step matches any evidence record. That is not 'no impact': the estate may not "
+                "describe the artefact, or it may live in a source that was never collected"
+            )
+        ),
+        "limits": [
+            "steps are previewed independently against the live evidence; the run applies them in "
+            "order to one copy, so a later step can match records an earlier step changed",
+            "a preview counts the evidence records each step would touch; it does not project the six "
+            "BOMs or compute the blast radius — those need the simulation",
+        ],
+    }
 
 
 def preview(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
@@ -1899,6 +2111,9 @@ def preview(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
             **refusal,
             "live_state_modified": False,
         }
+
+    if kind == COMPOSITE_KIND:
+        return _composite_preview(graph, scenario, base_projection)
 
     source = _text(scenario.get("from"))
     target = _text(scenario.get("to"))
@@ -1988,67 +2203,28 @@ def preview(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
-    """§15–§17 — ask "what if" on a copy of the twin.
+def _simulation_result(
+    graph: EstateGraph,
+    *,
+    scenario: Mapping[str, Any],
+    kind: str,
+    live_projection_before: str,
+    base_snapshot: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    matched: int,
+    affected: set[str],
+    effects: list[dict[str, Any]],
+    source: str,
+    target: str,
+    steps_report: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Everything a simulation reports once the edits are on the copy.
 
-    The live graph is only ever *read*. The scenario is applied to the snapshot
-    payload, a new graph is built from it, and the six BOMs are re-projected from
-    that graph. The live projection id is captured before and after, so
-    "simulation changed nothing" is a checked assertion rather than a promise.
+    Shared by the single-step path and by ``COMPOSITE``, so a three-step sequence and a
+    one-step scenario are measured the same way: the same BOM re-projection, the same
+    live-projection assertion, the same blind spots.
     """
-    scenario = dict(scenario or {})
-    kind = _text(scenario.get("kind")).upper()
-    if kind in CASCADE_KINDS:
-        return cascade(graph, scenario)
-    refusal = _scenario_refusal(kind, scenario)
-    if refusal:
-        return {
-            "schema": SIMULATION_SCHEMA,
-            "kind": kind or None,
-            **refusal,
-        }
-
-    live_projection_before = graph.fingerprint()
-    base_snapshot = snapshot(graph)
-    payload = copy.deepcopy(base_snapshot["payload"])
-
-    source = _text(scenario.get("from"))
-    target = _text(scenario.get("to"))
-    target_refs = {_resolve(graph, ref) for ref in scenario.get("targets") or [] if _resolve(graph, ref)}
-
-    matched = 0
-    affected: set[str] = set()
-    effects: list[dict[str, Any]] = []
-
-    def _record_effect(facts: Mapping[str, Any]) -> tuple[bool, dict[str, Any]]:
-        if kind == "CUSTOM":
-            return _custom_effect(scenario["expression"], facts)
-        return _scenario_effect(kind, facts, scenario, source=source, target=target)
-
-    for record in payload["evidence"]:
-        facts = record.get("facts") or {}
-        if target_refs and str(record.get("target")) not in target_refs:
-            continue
-        hit, updates = _record_effect(facts)
-        if hit:
-            # the "before" half has to be captured *before* the merge: facts is the same
-            # dict the record holds, so a later read would show the scenario's own edit and
-            # every effect would report "nothing changed"
-            before = copy.deepcopy(facts)
-            facts.update(updates)
-            matched += 1
-            affected.add(str(record.get("target")))
-            effects.append(
-                {
-                    "evidence_id": record.get("evidence_id"),
-                    "asset_id": record.get("target"),
-                    "asset_name": (graph.asset(str(record.get("target"))) or {}).get("name"),
-                    "layer": record.get("layer"),
-                    "evidence_type": record.get("evidence_type"),
-                    "before": before,
-                    "after": copy.deepcopy(facts),
-                }
-            )
+    extra = {"steps": steps_report} if steps_report is not None else {}
 
     if matched == 0:
         return {
@@ -2064,6 +2240,7 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
                 "source that was never collected"
             ),
             "coverage": graph.coverage()["summary"],
+            **extra,
         }
 
     simulated_graph = build_graph(payload)
@@ -2155,8 +2332,111 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
             "the scenario was applied to a copy of the twin; the six BOMs are projections of that copy, "
             "and the live projection id is identical before and after"
         ),
+        **extra,
     }
 
+
+def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
+    """§15–§17 — ask "what if" on a copy of the twin.
+
+    The live graph is only ever *read*. The scenario is applied to the snapshot
+    payload, a new graph is built from it, and the six BOMs are re-projected from
+    that graph. The live projection id is captured before and after, so
+    "simulation changed nothing" is a checked assertion rather than a promise.
+    """
+    scenario = dict(scenario or {})
+    kind = _text(scenario.get("kind")).upper()
+    if kind in CASCADE_KINDS:
+        return cascade(graph, scenario)
+    refusal = _scenario_refusal(kind, scenario)
+    if refusal:
+        return {
+            "schema": SIMULATION_SCHEMA,
+            "kind": kind or None,
+            **refusal,
+        }
+
+    live_projection_before = graph.fingerprint()
+    base_snapshot = snapshot(graph)
+    payload = copy.deepcopy(base_snapshot["payload"])
+
+    if kind == COMPOSITE_KIND:
+        steps = list(scenario.get("steps") or [])
+        matched, affected, effects, steps_report = _apply_composite(graph, payload, steps)
+        first = steps[0] if steps else {}
+        last = steps[-1] if steps else {}
+        return _simulation_result(
+            graph,
+            scenario=scenario,
+            kind=kind,
+            live_projection_before=live_projection_before,
+            base_snapshot=base_snapshot,
+            payload=payload,
+            matched=matched,
+            affected=affected,
+            effects=effects,
+            # the radius is anchored on the first step's selector and the last step's
+            # target: "what did this migration touch" starts where the operator started
+            # and ends with the algorithm everything was moved to
+            source=_text(first.get("from")),
+            target=_text(last.get("to")),
+            steps_report=steps_report,
+        )
+
+    source = _text(scenario.get("from"))
+    target = _text(scenario.get("to"))
+    target_refs = {_resolve(graph, ref) for ref in scenario.get("targets") or [] if _resolve(graph, ref)}
+
+    matched = 0
+    affected: set[str] = set()
+    effects: list[dict[str, Any]] = []
+
+    def _record_effect(facts: Mapping[str, Any]) -> tuple[bool, dict[str, Any]]:
+        if kind == "CUSTOM":
+            return _custom_effect(scenario["expression"], facts)
+        return _scenario_effect(kind, facts, scenario, source=source, target=target)
+
+    for record in payload["evidence"]:
+        facts = record.get("facts") or {}
+        if target_refs and str(record.get("target")) not in target_refs:
+            continue
+        hit, updates = _record_effect(facts)
+        if hit:
+            # the "before" half has to be captured *before* the merge: facts is the same
+            # dict the record holds, so a later read would show the scenario's own edit and
+            # every effect would report "nothing changed"
+            before = copy.deepcopy(facts)
+            facts.update(updates)
+            matched += 1
+            affected.add(str(record.get("target")))
+            effects.append(
+                {
+                    "evidence_id": record.get("evidence_id"),
+                    "asset_id": record.get("target"),
+                    "asset_name": (graph.asset(str(record.get("target"))) or {}).get("name"),
+                    "layer": record.get("layer"),
+                    "evidence_type": record.get("evidence_type"),
+                    "before": before,
+                    "after": copy.deepcopy(facts),
+                }
+            )
+
+
+
+
+    return _simulation_result(
+        graph,
+        scenario=scenario,
+        kind=kind,
+        live_projection_before=live_projection_before,
+        base_snapshot=base_snapshot,
+        payload=payload,
+        matched=matched,
+        affected=affected,
+        effects=effects,
+        source=source,
+        target=target,
+    )
 
 
 

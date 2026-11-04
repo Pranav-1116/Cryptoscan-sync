@@ -45,6 +45,12 @@ def _engine_ids() -> dict[str, set[str]]:
     return {es.AGILITY: set(_agility_scenarios()), es.TWIN: set(_twin_kinds())}
 
 
+def _empty_graph():
+    from shared_models.estate_graph import build_graph
+
+    return build_graph({"estate": "Empty", "assets": [], "evidence": [], "relationships": []})
+
+
 class TestTheCatalogue:
     def test_ten_scenarios_are_classified(self):
         assert len(es.SCENARIOS) == 10
@@ -109,6 +115,15 @@ class TestTheIdsResolve:
                     assert callable(estate_twin.cascade)
                     assert callable(estate_twin.cascade_preview)
                     assert ref["scenario"] in estate_twin.CASCADE_RULES
+                elif ref["scenario"] == estate_twin.COMPOSITE_KIND:
+                    assert callable(estate_twin.simulate)
+                    assert callable(estate_twin.preview)
+                    # a composite's input is a list of primitive scenarios, not one
+                    # field, so it is validated by its own refusal rather than by
+                    # SCENARIO_INPUTS
+                    assert estate_twin.simulate(
+                        _empty_graph(), {"kind": "COMPOSITE", "steps": []}
+                    )["status"] == "INVALID_SCENARIO"
                 else:
                     assert callable(estate_twin.simulate)
                     assert callable(estate_twin.preview)

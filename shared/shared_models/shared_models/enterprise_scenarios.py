@@ -179,19 +179,22 @@ SCENARIOS: tuple[dict, ...] = (
     ),
     _scenario(
         "CUSTOM_SCENARIO", "Custom scenario", PARTIAL,
-        covered_by=((TWIN, "CUSTOM"),),
+        covered_by=((TWIN, "CUSTOM"), (TWIN, "COMPOSITE")),
         cannot=(
             "arithmetic, aggregation or cross-record joins: the expression is a condition tree over "
             "one evidence record's facts plus a set of assignments, and it cannot compute a value "
             "from another asset, another record or the clock",
-            "composition of several scenarios into one run with an ordered timeline",
+            "branching, looping or a clock across steps: COMPOSITE applies a fixed list of at most "
+            "five primitive scenarios once, in order, so a sequence with a condition between its "
+            "steps is still refused rather than approximated",
             "a provenance edit: evidence id, source, collector, evidence type and timestamps are "
             "refused, so a custom scenario cannot make a fact look better sourced than it is",
         ),
-        requires=("ordered multi-step simulation", "cross-record expressions"),
+        requires=("cross-record expressions", "conditional sequences"),
         note=(
-            "an operator can now author the change the seven built-in kinds do not describe — "
-            "as data, validated and refused rather than executed"
+            "an operator can author the change the seven built-in kinds do not describe — as data, "
+            "validated and refused rather than executed — and chain up to five of them through "
+            "COMPOSITE when the migration is a sequence rather than one edit"
         ),
     ),
 )

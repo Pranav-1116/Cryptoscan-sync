@@ -7619,6 +7619,9 @@ export interface SimulationScenario {
   /* CUSTOM only: the scenario as data — a condition tree plus assignments. It is
      validated by the engine, which refuses a provenance write and refuses a program. */
   expression?: Record<string, unknown>;
+  /* COMPOSITE only: up to five primitive scenarios, applied to one copy in order.
+     Cascades and composites do not nest, and the engine refuses a longer list. */
+  steps?: Array<Record<string, unknown>>;
 }
 
 /** One hop of a cascade: where it came from, over which predicate, and why that predicate

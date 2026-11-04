@@ -751,6 +751,30 @@ It runs on the same copy as every other scenario (the live projection id is asse
 unchanged), and the enterprise assessment moved `CUSTOM_SCENARIO` from `ABSENT` to `PARTIAL`
 with its remaining limits stated.
 
+**Built — `COMPOSITE`, an ordered sequence of changes (`COMPOSITE`).** A migration is rarely one
+edit: "retire TLS 1.0, then replace RSA on what is left, then resize the surviving keys" is three
+scenarios, and running them separately leaves the operator reconciling three BOM diffs computed
+against three different estates. `COMPOSITE` takes up to five primitive scenarios, applies them to
+**one** copy in the order given, and reports the BOM diff of the whole sequence:
+
+```json
+{"kind": "COMPOSITE", "steps": [
+  {"kind": "DISABLE_PROTOCOL", "from": "TLSv1.0"},
+  {"kind": "MIGRATE_QUANTUM_VULNERABLE", "to": "ML-KEM-768", "key_size": 1184}]}
+```
+
+Each step is reported with the evidence it matched, and every effect carries its step number, so a
+reviewer can see *when* a record changed rather than only that it did. A step that matches nothing
+is reported and does not abort the sequence — that is a fact about the estate, not an error — while
+a sequence in which no step matches anything is `NO_MATCH`, never "no impact".
+
+Four refusals keep this from becoming a scripting language: an empty sequence, more than five
+steps, a cascade or another `COMPOSITE` as a step, and a step that is not one of the primitive
+kinds. Branching, loops and a clock are absent by design; a sequence with a condition between its
+steps is refused rather than approximated. The preview is honest about its own limit — steps are
+previewed independently against the evidence as it stands, so the run can match more than the
+preview counted, and the payload says so in the answer rather than in a footnote.
+
 **Built — the trust-path cascade (`CASCADE_TRUST_COMPROMISE`).** `TRUST_COMPROMISE` was the last
 scenario with no model at all. The reason given for that was partly wrong: the twin does not
 hold trust-store membership, but it does hold *vouching* edges — `issued_by`, `signed_by`,
@@ -786,8 +810,9 @@ projection of PostgreSQL, so label coverage is a query-convenience question, not
 question. (2) A MinIO evidence tier and a Redis dependency — evidence objects are
 content-addressed rows in PostgreSQL; adding two stateful services to a bank deployment to hold
 what is already hash-chained is a decision for the deployment, not a gap in the model.
-(3) Ordered multi-step timelines and cross-record expressions — the first is a scheduler, the
-second is a query engine, and both would let a scenario produce a value no evidence holds.
+(3) Cross-record expressions and time-ordered migration windows — an expression reads one record's
+facts, and a `COMPOSITE` sequence has an order but no clock; a scheduler and a query engine would
+each let a scenario produce a value no evidence holds.
 
 ## Sources
 

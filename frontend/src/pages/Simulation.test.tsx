@@ -297,6 +297,51 @@ describe("simulation workspace", () => {
     expect(JSON.parse(String(planned?.[1]?.body))).toEqual({ kind: "CUSTOM", expression });
   });
 
+  it("sends a composite sequence as parsed data, and blocks a broken one before the engine sees it", async () => {
+    const compositeCatalog = {
+      ...catalog,
+      kinds: [...kinds, {
+        kind: "COMPOSITE", mode: "SCENARIO", name: "A sequence of changes",
+        question: "If these changes were applied in order, what does the estate look like after the last one?",
+        inputs: ["steps"], optional: ["targets"],
+        answers: ["each step applied to the same copy, in the order given"],
+        does_not_answer: ["branching, loops or a clock: the sequence is a fixed list of at most 5 steps"],
+      }],
+      presets: [],
+    };
+    const fetchSpy = mockFetch({
+      [`${BASE}/catalog`]: compositeCatalog, [`${BASE}/runs`]: emptyHistory, [`${BASE}/plan`]: preview(),
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    fireEvent.click(screen.getByRole("button", { name: /A sequence of changes/ }));
+    const field = await screen.findByLabelText(/Steps \(JSON/);
+
+    fireEvent.change(field, { target: { value: "[{\"kind\": oops" } });
+    expect(await screen.findByText(/not valid JSON/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preview match" })).toBeDisabled();
+
+    // an object is not a sequence — the console says so rather than letting the engine
+    // refuse a list it never received
+    fireEvent.change(field, { target: { value: "{\"kind\": \"RETIRE_ALGORITHM\"}" } });
+    expect(await screen.findByText(/must be a JSON array of scenarios/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preview match" })).toBeDisabled();
+
+    const steps = [
+      { kind: "DISABLE_PROTOCOL", from: "TLSv1.0" },
+      { kind: "MIGRATE_QUANTUM_VULNERABLE", to: "ML-KEM-768" },
+    ];
+    fireEvent.change(field, { target: { value: JSON.stringify(steps) } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview match" }));
+
+    await waitFor(() => expect(
+      fetchSpy.mock.calls.some(([url]) => String(url).includes("/simulation/plan")),
+    ).toBe(true));
+    const planned = fetchSpy.mock.calls.find(([url]) => String(url).includes("/simulation/plan"));
+    expect(JSON.parse(String(planned?.[1]?.body))).toEqual({ kind: "COMPOSITE", steps });
+  });
+
   it("reports a run as a copy: live state untouched, six BOMs re-projected, storage quarantined", async () => {
     mockFetch({
       [`${BASE}/catalog`]: catalog, [`${BASE}/plan`]: preview(),

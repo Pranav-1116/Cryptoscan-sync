@@ -156,7 +156,7 @@ integration** (§4.6).
 | Conflict classification | REAL vs EXPLAINED contradictions, never averaged | `services/api/api/estate_conflicts.py` |
 | Completeness | per component: `UNMEASURED / INCOMPLETE / CONTRADICTED`, and whether it may be counted in a total | `services/cbom/cbom/inventory_completeness.py` |
 | Accuracy | precision/recall per field with `UNKNOWN` excluded from the wrong-answer column, gated per dimension | `services/cbom/cbom/accuracy.py`, `docs/bank-environment/185-accuracy-ground-truth.md` |
-| Simulation | 10 registered scenario slots, **all ten with a model**: `PQC_MIGRATION` full, nine partial — including `CUSTOM_SCENARIO` (an operator-authored expression over one evidence record) and `TRUST_COMPROMISE` (`CASCADE_TRUST_COMPROMISE` walks `issued_by`/`signed_by`/`verified_by`/`uses_certificate`, with trust-store and revocation blind spots named) — `shared_models/enterprise_scenarios.py` reports `EXISTS / PARTIAL / ABSENT` per slot | `/simulation`, `/what-if`, `GET /estate/evidence/twin/simulation-scenarios` |
+| Simulation | 10 registered scenario slots plus a `COMPOSITE` sequence of up to five primitive scenarios applied in order to one copy, **all ten with a model**: `PQC_MIGRATION` full, nine partial — including `CUSTOM_SCENARIO` (an operator-authored expression over one evidence record) and `TRUST_COMPROMISE` (`CASCADE_TRUST_COMPROMISE` walks `issued_by`/`signed_by`/`verified_by`/`uses_certificate`, with trust-store and revocation blind spots named) — `shared_models/enterprise_scenarios.py` reports `EXISTS / PARTIAL / ABSENT` per slot | `/simulation`, `/what-if`, `GET /estate/evidence/twin/simulation-scenarios` |
 
 ### 4.5 Governance, evidence and operations
 
