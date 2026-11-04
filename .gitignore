@@ -87,3 +87,7 @@ infra/monitoring/secrets/*
 
 # local sandbox notes that are not part of the branch
 docs/bank-environment/90-synthetic-banking-estate.md
+
+# Generated workflow files staged for a token that may push `.github/workflows/**`.
+# Regenerate with `python scripts/pending_workflows.py --write --into .pending`.
+.pending/

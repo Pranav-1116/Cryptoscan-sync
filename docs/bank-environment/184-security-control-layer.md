@@ -85,9 +85,21 @@ named backup that does not exist, and **point-in-time on a `pg_dump`** — becau
 carries no WAL, and restoring to "now" while reporting the requested timestamp would be theatre.
 An empty restore is reported as `RESTORED_EMPTY` and its `claims.backup_restores` is `false`.
 
-`.github/workflows/restore-drill.yml` runs it weekly against a disposable PostgreSQL pair, uploads
-the receipt and the history as a 365-day artifact, and fails the job unless the result is
+`.github/workflows/restore-drill.yml` runs it weekly (Mondays 02:20 UTC) against a disposable
+PostgreSQL pair, seeds rows so a restore that produced nothing cannot compare equal to the source,
+uploads the receipt and the history as a 365-day artifact, and fails the job unless the result is
 `RESTORED_AND_MEASURED`.
+
+That file is **generated**, by `scripts/pending_workflows.py`, and is not committed by this guide:
+the build token used here cannot push `.github/workflows/**` (GitHub refuses it, and the contents
+API returns 403). The generator is committed, its output is covered by
+`scripts/tests/test_pending_workflows.py`, and it is staged in `.pending/` for anyone whose token
+carries the permission:
+
+```
+python scripts/pending_workflows.py --write                 # into .github/workflows/
+python scripts/pending_workflows.py --write --into .pending  # stage for review
+```
 
 ## 4. CI has the CLI (item 15)
 

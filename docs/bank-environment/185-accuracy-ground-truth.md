@@ -159,10 +159,14 @@ cannot become last quarter's.
 Artifacts: `185-accuracy-ground-truth.json` (machine) and `185-accuracy-dashboard.md` (the tables
 above, written by the harness that computes them).
 
-There is no workflow change here. The scheduled-drawer for this is the restore drill's
-(`.github/workflows/restore-drill.yml`, guide 184), and the accuracy gate is meant to join it in
-the same place; adding a workflow file requires a token with `workflows` permission, which the
-build used for this guide did not have.
+The gate's schedule is generated alongside the restore drill's, because it is the same problem:
+`.github/workflows/` cannot be pushed by the token this build has. `scripts/pending_workflows.py`
+renders both `restore-drill.yml` (guide 184) and `accuracy-gate.yml` — weekly, plus on any pull
+request that touches the accuracy modules — and `scripts/tests/test_pending_workflows.py` asserts
+that the scheduled gate compares against the committed baseline, that it fails if the shortcut
+ever starts passing, and that neither job can go green with a failed restore behind it. The files
+are staged in `.pending/`; `python scripts/pending_workflows.py --write` puts them where GitHub
+reads them.
 
 ## 6. What is built here, and what is honestly not
 
