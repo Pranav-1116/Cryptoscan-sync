@@ -405,6 +405,26 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/cbom/vbom/answer/{question}",
+      "reason": "read-only question surface: POST carries the question, the handler writes nothing (guide 184)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/vbom/assess",
+      "reason": "read-only question surface: POST carries the question, the handler writes nothing (guide 184)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/vbom/export/cyclonedx",
+      "reason": "read-only question surface: POST carries the question, the handler writes nothing (guide 184)"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cbom/vbom/summary",
+      "reason": "read-only question surface: POST carries the question, the handler writes nothing (guide 184)"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/cbom/verify",
       "reason": "operator surface: CBOM assembly over estate data"
     },
@@ -1302,6 +1322,11 @@
       "method": "POST",
       "path": "/api/v1/sectors/criticality",
       "reason": "operator surface: sector reference data"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/security-controls/snapshots",
+      "reason": "machine-only: a user token is refused; the collector credential is the gate (guide 182)"
     },
     {
       "method": "POST",

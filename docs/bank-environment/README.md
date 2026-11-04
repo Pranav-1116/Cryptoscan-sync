@@ -703,6 +703,21 @@
 > and the summary counts it, because a refusal that vanishes between the builder and the
 > report is how a graph starts looking complete.
 
+> [Measuring the accuracy claim with UNKNOWN kept out of the wrong column](185-accuracy-ground-truth.md)
+> builds the fact rule and the programme that scores it. Evidence is not a fact and a fact is not a
+> usage: `OpenSSL 3.0.13 installed` becomes `OPENSSL_INSTALLED`, never `AES-256-GCM USED`, so a
+> library's capability list stops arriving in the CBOM as usage. Observation classes are carried —
+> `VENDOR_DECLARED` never becomes `RUNTIME_OBSERVED` however many documents repeat it, and
+> `INFERRED` is recorded as a lead and given no vote. Absence is four facts
+> (`NOT_FOUND_WITHIN_SCOPE`, `NOT_OBSERVABLE`, `COLLECTION_FAILED`, `UNKNOWN`), so a failed HSM
+> collection never reads as "no crypto". Disagreement is preserved: runtime `AES-256-GCM` against
+> static `AES-128-GCM` is a `CONFLICT` with both sides and their evidence ids, not the stronger
+> weight. The measurement keeps `UNKNOWN` out of the wrong-answer column while capping how much of
+> an estate may go unanswered, because a metric that punishes honesty teaches a scanner to guess.
+> Scored against a planted key the rule meets every published target; the `collector → CBOM`
+> shortcut it replaces scores **68.9%** algorithm precision, a **100%** false-positive rate and
+> **0%** evidence attribution.
+
 > [From a layer that works to a layer a bank can operate](184-security-control-layer.md)
 > (**18 pass · 0 partial · 0 fail**) closes the second review, which was not about wrong code but
 > about unfinished operation. Four modules each decided for themselves whether they were in

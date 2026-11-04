@@ -95,6 +95,7 @@ export const CAPABILITIES_JSON = {
   "sectors": "ga",
   "security": "ga",
   "security-center": "ga",
+  "security-controls": "ga",
   "security-intelligence": "ga",
   "security-policy": "ga",
   "settings": "ga",
@@ -412,6 +413,10 @@ export const CAPABILITY_LIMITS = {
   "security": {
     "area": "Administration",
     "limit": "Security settings surface; overlaps security-center."
+  },
+  "security-controls": {
+    "area": "Administration",
+    "limit": "Read-only view of the bank's own controls: every control's state, its refusals and its unintegrated controls are named rather than omitted, and the export is CycloneDX 1.6 or CEF. Discovery completeness is not proven and the page says so; it does not claim a control is enforced."
   },
   "security-center": {
     "area": "Administration",

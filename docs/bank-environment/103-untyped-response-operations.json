@@ -557,6 +557,7 @@
     "GET /api/v1/sectors/quantum-risk",
     "GET /api/v1/sectors/scan-modes",
     "GET /api/v1/sectors/{sector_id}",
+    "GET /api/v1/security-controls/export",
     "GET /api/v1/security/alerts",
     "GET /api/v1/security/policy",
     "GET /api/v1/security/posture",

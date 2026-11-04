@@ -150,7 +150,12 @@ export default function SecurityControls() {
               <tr key={row.control}>
                 <td style={{ fontFamily: "var(--mono)" }}>{row.control}</td>
                 <td><Chip state={String(row.state)} /></td>
-                <td>{taxonomy[row.state]?.meaning ?? row.detail}</td>
+                <td>
+                  <div>{taxonomy[row.state]?.meaning ?? t("securityControls.stateUnknown")}</div>
+                  {/* The collector's own words: "refused a read-only account" is the sentence the
+                      operator acts on, and the taxonomy's category is not a substitute for it. */}
+                  {row.detail && <div style={{ color: "var(--faint)" }}>{row.detail}</div>}
+                </td>
                 <td style={{ color: "var(--faint)" }}>{taxonomy[row.state]?.action ?? "—"}</td>
               </tr>
             ))}

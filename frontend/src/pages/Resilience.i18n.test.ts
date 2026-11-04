@@ -8,11 +8,13 @@
    translatable: every key the page asks for exists in both dictionaries, and no English
    sentence is spelled out inline. */
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import en from "../i18n/en.json";
 import ar from "../i18n/ar.json";
 
-const source = readFileSync(new URL("./Resilience.tsx", import.meta.url), "utf8");
+// jsdom gives `import.meta.url` an http origin, so the path is resolved from the project root.
+const source = readFileSync(resolve(process.cwd(), "src/pages/Resilience.tsx"), "utf8");
 const dictionaries: Record<string, Record<string, string>> = { en, ar };
 
 const usedKeys = [...source.matchAll(/\bt\("([^"]+)"\)/g)].map((match) => match[1]);

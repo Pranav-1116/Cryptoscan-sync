@@ -413,13 +413,31 @@ def _refuse(command: str, exc: Refused) -> int:
     return EXIT_REFUSED
 
 
+#: Environment names that may reach a plaintext loopback control plane. Duplicated rather than
+#: imported: this file is the *remote* client, and a client that imports the server's
+#: configuration package would ship the platform's settings, defaults and dependency tree to an
+#: operator's laptop, and could read a setting the server owns. The boundary test in
+#: `scripts/tests/test_cli_architecture_boundary.py` exists because that import is one line.
+_LOCAL_DEV_ENVIRONMENTS = frozenset({"development", "test"})
+
+
+def _cli_environment(environ: dict[str, str] | None = None) -> str:
+    """The environment this client believes it is pointed at, from its own variables only."""
+    source = os.environ if environ is None else environ
+    raw = (source.get("CRYPTOSCAN_CLI_ENV") or source.get("CRYPTOSCAN_ENV") or "").strip().lower()
+    aliases = {"dev": "development", "local": "development", "development": "development",
+               "test": "test", "testing": "test"}
+    # Unset is production as far as this client is concerned: a client that assumes "dev" when
+    # nobody configured it is a client that will happily talk plaintext to a bank.
+    return aliases.get(raw, raw or "production")
+
+
 def _validate_bank_origin(config: Config) -> None:
     """Refuse plaintext remote hosts; the operator still selects and trusts the bank endpoint."""
     parsed = urllib.parse.urlsplit(config.server or "")
     loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
-    from shared_config import environment as platform_environment
 
-    local_dev = platform_environment.environment_name() in {"development", "test"}
+    local_dev = _cli_environment() in _LOCAL_DEV_ENVIRONMENTS
     if (not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment
             or parsed.path not in ("", "/") or (parsed.scheme != "https" and not (parsed.scheme == "http" and loopback and local_dev))):
         raise Refused("control plane must use an HTTPS origin",

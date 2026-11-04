@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 841 |
+| session | 852 |
 | role | 342 |
 | permission | 74 |
-| tenant-role | 12 |
+| tenant-role | 17 |
 
-**1269** operations; **297** of them change state with nothing but the session gate — the exact list, with the policy
+**1285** operations; **302** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -31,8 +31,8 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `network` | 31 |
 | `collection` | 27 |
 | `estate` | 24 |
+| `cbom` | 15 |
 | `migrations` | 13 |
-| `cbom` | 11 |
 | `vendors` | 10 |
 | `graph` | 9 |
 | `banking` | 8 |
@@ -77,6 +77,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `repos` | 1 |
 | `saas` | 1 |
 | `scans` | 1 |
+| `security-controls` | 1 |
 | `stream` | 1 |
 
 ## Every session-only write
@@ -154,6 +155,10 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/cbom/system/{system_id}/mixed-review` | `api.routers.cbom_legacy_controlled.register_controlled_routes.<locals>.propose` |
 | POST | `/api/v1/cbom/system/{system_id}/mixed-review/approve` | `api.routers.cbom_legacy_controlled.register_controlled_routes.<locals>.approve` |
 | POST | `/api/v1/cbom/validate` | `api.routers.cbom.cbom_validate` |
+| POST | `/api/v1/cbom/vbom/answer/{question}` | `api.routers.cbom_vbom.answer` |
+| POST | `/api/v1/cbom/vbom/assess` | `api.routers.cbom_vbom.assess` |
+| POST | `/api/v1/cbom/vbom/export/cyclonedx` | `api.routers.cbom_vbom.export_cyclonedx` |
+| POST | `/api/v1/cbom/vbom/summary` | `api.routers.cbom_vbom.summary` |
 | POST | `/api/v1/cbom/verify` | `api.routers.cbom.cbom_verify` |
 | POST | `/api/v1/certificates/{cert_id}/revocation` | `api.routers.network.check_revocation` |
 | POST | `/api/v1/chatops/command` | `api.routers.chatops.chatops_command` |
@@ -332,6 +337,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/sectors/compliance-map` | `api.routers.sectors.compliance_map` |
 | POST | `/api/v1/sectors/context` | `api.routers.sectors.sector_context` |
 | POST | `/api/v1/sectors/criticality` | `api.routers.sectors.score_criticality` |
+| POST | `/api/v1/security-controls/snapshots` | `api.routers.security_controls.post_snapshot` |
 | POST | `/api/v1/security/gate` | `api.routers.security.evaluate_gate` |
 | POST | `/api/v1/security/intelligence/chain` | `api.routers.security.build_risk_chain` |
 | POST | `/api/v1/security/intelligence/correlate` | `api.routers.security.correlate_findings` |

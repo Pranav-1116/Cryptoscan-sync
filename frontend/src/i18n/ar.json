@@ -317,6 +317,7 @@
   "securityControls.refusedHelp": "ما رفض الجهاز إخبارنا به، ولماذا. الرفض حقيقة عن التكامل أو الجهاز، وليس عن فعالية الضابط.",
   "securityControls.sequence": "اللقطة",
   "securityControls.snapshots": "اللقطات",
+  "securityControls.stateUnknown": "حالة لا يتعرّف عليها هذا الإصدار",
   "securityControls.tab.chain": "السلسلة",
   "securityControls.tab.controls": "الضوابط",
   "securityControls.tab.export": "التصدير",

@@ -85,11 +85,18 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # exists to ask "may this plane be collected" for whichever one is named. The
     # principal comes from the session gate; the plane's permission is checked in
     # api.security.collector_authority.evaluate() against PERMISSION_MATRIX.
+    # 298–301: POST /api/v1/cbom/vbom/{answer,assess,summary,export/cyclonedx} — the VBOM
+    # question surface. They are POSTs that write nothing: the question is the body, the answer is
+    # read from stored evidence the operator is already entitled to. They cannot carry one
+    # require_roles without inventing a role that means "may ask".
+    # 302: POST /api/v1/security-controls/snapshots — a collector submits a snapshot. The route
+    # refuses a user token outright, so there is no role to require: the credential kind is the
+    # gate.
     # 297: POST /api/v1/ops/alerts/alertmanager — guide 117. Alertmanager has no
     # session and no role: the credential is the shared webhook token checked in
     # the handler, because a rule that fires must not be refused with 401.
-    assert len(rows) <= 297, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 347. "
+    assert len(rows) <= 302, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 302. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

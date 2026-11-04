@@ -69,9 +69,17 @@ def test_the_inventory_does_not_claim_routes_that_are_now_typed(untyped, recorde
     )
 
 
+#: 1157: GET /api/v1/security-controls/export. Deliberately untyped and recorded rather than
+#: typed: the CycloneDX branch returns a document whose shape is owned by the CycloneDX 1.6 schema
+#: (validated by `cbom.cyclonedx16`) and the CEF branch returns `text/plain` lines. A
+#: `response_model` here would publish an `application/json` contract for a route that returns
+#: SIEM lines, which is worse than an honest gap.
+MAX_UNTYPED_OPERATIONS = 1157
+
+
 def test_the_untyped_surface_does_not_grow(untyped, recorded):
     assert len(untyped) == len(recorded)
-    assert len(untyped) <= 1156, (
-        f"{len(untyped)} operations declare no response model; the recorded inventory holds "
-        "1156. This may only go down."
+    assert len(untyped) <= MAX_UNTYPED_OPERATIONS, (
+        f"{len(untyped)} operations declare no response model; the ceiling is "
+        f"{MAX_UNTYPED_OPERATIONS}. This may only go down."
     )

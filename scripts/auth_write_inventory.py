@@ -51,6 +51,17 @@ POLICY: dict[str, str] = {
     "/api/v1/assurance": "operator surface: assurance scope, approvals and evidence intake",
     "/api/v1/network": "operator surface: network inventory and discovery runs",
     "/api/v1/cbom": "operator surface: CBOM assembly over estate data",
+    # The VBOM question surface is four POSTs that write nothing: `answer`, `assess`, `summary`
+    # and the CycloneDX projection all read stored evidence. POST is chosen because the question
+    # is a request body, not because anything changes — and a reader who sees "POST, session only"
+    # in the inventory would assume otherwise, so the reason says it here.
+    "/api/v1/cbom/vbom": "read-only question surface: POST carries the question, the handler "
+                          "writes nothing (guide 184)",
+    # A snapshot is the platform's own reading of a firewall or an HSM. A browser session cannot
+    # hold that claim, so the route refuses a user token outright and requires a machine identity.
+    # There is no *role* to require: the credential kind is the gate.
+    "/api/v1/security-controls": "machine-only: a user token is refused; the collector credential "
+                                 "is the gate (guide 182)",
     "/api/v1/devsecops": "operator surface: pipeline and SBOM ingestion",
     "/api/v1/graph": "operator surface: graph curation of the estate",
     "/api/v1/vendors": "operator surface: vendor and profile registry",

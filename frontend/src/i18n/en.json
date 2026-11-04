@@ -317,6 +317,7 @@
   "securityControls.refusedHelp": "What this device refused to tell us, and why. A refusal is a fact about the integration or the device, not about the control's effectiveness.",
   "securityControls.sequence": "snapshot",
   "securityControls.snapshots": "snapshots",
+  "securityControls.stateUnknown": "a state this build does not recognise",
   "securityControls.tab.chain": "chain",
   "securityControls.tab.controls": "controls",
   "securityControls.tab.export": "export",
