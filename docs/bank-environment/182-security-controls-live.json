@@ -1,0 +1,367 @@
+{
+  "schema": "cryptoscan.security-controls-live/1",
+  "guide": 182,
+  "generated_at": "2026-11-04T12:06:27.046715+00:00",
+  "positioning": "CryptoScan integrates with the bank's existing network and security controls to build an evidence-backed cryptographic and security estate model.",
+  "points": [
+    {
+      "id": "L-01",
+      "number": 1,
+      "section": "Transport",
+      "question": "can the integration be made to write, or to read over plaintext?",
+      "verdict": "PASS",
+      "probes_passed": 4,
+      "probes": 4,
+      "results": [
+        {
+          "probe": "no write verb reaches the device",
+          "ok": true,
+          "observed": "refused DELETE, PATCH, POST, PUT"
+        },
+        {
+          "probe": "plaintext base_url is refused",
+          "ok": true,
+          "observed": "TLS_REQUIRED"
+        },
+        {
+          "probe": "verify=False is refused",
+          "ok": true,
+          "observed": "TLS_VERIFICATION_REQUIRED"
+        },
+        {
+          "probe": "a credential never prints itself",
+          "ok": true,
+          "observed": "repr is redacted"
+        }
+      ]
+    },
+    {
+      "id": "L-02",
+      "number": 2,
+      "section": "Drivers",
+      "question": "does every read control have a driver, and is an unknown dialect named?",
+      "verdict": "PASS",
+      "probes_passed": 3,
+      "probes": 3,
+      "results": [
+        {
+          "probe": "every registered dialect constructs",
+          "ok": true,
+          "observed": "9 dialect(s): api_gateway.kong, firewall.checkpoint, firewall.fortigate, firewall.paloalto, ids.suricata, ips.suricata_inline, load_balancer.f5, load_balancer.nginx, siem.splunk"
+        },
+        {
+          "probe": "an unimplemented dialect is refused by name",
+          "ok": true,
+          "observed": "NO_LIVE_DRIVER"
+        },
+        {
+          "probe": "every driver declares endpoints or a log tail",
+          "ok": true,
+          "observed": "endpoints per dialect"
+        }
+      ]
+    },
+    {
+      "id": "L-03",
+      "number": 3,
+      "section": "Live read",
+      "question": "does a read that failed look like a read that failed?",
+      "verdict": "PASS",
+      "probes_passed": 4,
+      "probes": 4,
+      "results": [
+        {
+          "probe": "an unreachable device is a state, not an empty success",
+          "ok": true,
+          "observed": "BAD_RESPONSE"
+        },
+        {
+          "probe": "the failed sections are named",
+          "ok": true,
+          "observed": "5 section(s) failed"
+        },
+        {
+          "probe": "a partially answered device says PARTIAL_READ",
+          "ok": true,
+          "observed": "PARTIAL_READ, 4 section(s) failed"
+        },
+        {
+          "probe": "the snapshot carries the transport it used",
+          "ok": true,
+          "observed": "read_only: true"
+        }
+      ]
+    },
+    {
+      "id": "L-04",
+      "number": 4,
+      "section": "Evidence store",
+      "question": "can the evidence tell an edit from a retry, and a delete from a gap?",
+      "verdict": "PASS",
+      "probes_passed": 6,
+      "probes": 6,
+      "results": [
+        {
+          "probe": "a retry does not advance the chain",
+          "ok": true,
+          "observed": "sequence 1, duplicate"
+        },
+        {
+          "probe": "an intact chain verifies",
+          "ok": true,
+          "observed": "2 record(s)"
+        },
+        {
+          "probe": "an edited body is found",
+          "ok": true,
+          "observed": [
+            "BODY_ALTERED"
+          ]
+        },
+        {
+          "probe": "a deleted record is found",
+          "ok": true,
+          "observed": [
+            "SEQUENCE_GAP",
+            "CHAIN_BROKEN"
+          ]
+        },
+        {
+          "probe": "retention leaves a tombstone",
+          "ok": true,
+          "observed": "1 removed, tombstone written"
+        },
+        {
+          "probe": "a tenant name cannot escape the store root",
+          "ok": true,
+          "observed": "../ refused"
+        }
+      ]
+    },
+    {
+      "id": "L-05",
+      "number": 5,
+      "section": "Facades",
+      "question": "are HSM, KMS, PKI and NETWORK in the layer without a second architecture?",
+      "verdict": "PASS",
+      "probes_passed": 4,
+      "probes": 4,
+      "results": [
+        {
+          "probe": "the four facade controls are implemented",
+          "ok": true,
+          "observed": "HSM, KMS, NETWORK, PKI"
+        },
+        {
+          "probe": "each names the module it delegates to",
+          "ok": true,
+          "observed": "HSM \u2192 cbom.hsm_pkcs11.assess_hsm_deep, cbom.hsm_pkcs11.detect_vendor; KMS \u2192 cbom.kms_collectors.key_records_from_kms, cbom.kms_collectors.posture, cbom.usage_evidence.key_metadata; NETWORK \u2192 cbom.nbom_graph.endpoint, cbom.nbom_graph.estate; PKI \u2192 cbom.certificate_chain.certificate, cbom.certificate_chain.chain"
+        },
+        {
+          "probe": "a facade has no vendor dialect of its own",
+          "ok": true,
+          "observed": "FACADE_HAS_NO_VENDOR for all four"
+        },
+        {
+          "probe": "nothing is deferred any more",
+          "ok": true,
+          "observed": "deferred: []"
+        }
+      ]
+    },
+    {
+      "id": "L-06",
+      "number": 6,
+      "section": "Prohibited values",
+      "question": "does key material or a request body survive a cycle?",
+      "verdict": "PASS",
+      "probes_passed": 5,
+      "probes": 5,
+      "results": [
+        {
+          "probe": "HSM key material does not survive",
+          "ok": true,
+          "observed": "material and password refused"
+        },
+        {
+          "probe": "a network payload does not survive",
+          "ok": true,
+          "observed": "body and header dropped by name"
+        },
+        {
+          "probe": "the drop is recorded, not silent",
+          "ok": true,
+          "observed": [
+            "authorization",
+            "raw_body"
+          ]
+        },
+        {
+          "probe": "KMS keys are metadata only",
+          "ok": true,
+          "observed": "3 asset(s)"
+        },
+        {
+          "probe": "PKI emits only the model's own relations",
+          "ok": true,
+          "observed": "ISSUED_BY, SIGNED_BY"
+        }
+      ]
+    },
+    {
+      "id": "L-07",
+      "number": 7,
+      "section": "Rate limit windows",
+      "question": "does the audit use the limiter's arithmetic, not its own?",
+      "verdict": "PASS",
+      "probes_passed": 4,
+      "probes": 4,
+      "results": [
+        {
+          "probe": "a sliding window permits N in any rolling window",
+          "ok": true,
+          "observed": "100 over 60s"
+        },
+        {
+          "probe": "a fixed counter permits a boundary burst",
+          "ok": true,
+          "observed": "at most 2 aligned window(s) touched, so a boundary burst of 100 per window is possible and is not a breach"
+        },
+        {
+          "probe": "an aligned window does not get the burst",
+          "ok": true,
+          "observed": "100 over one closed window"
+        },
+        {
+          "probe": "an unknown window model is refused",
+          "ok": true,
+          "observed": "refused"
+        }
+      ]
+    },
+    {
+      "id": "L-08",
+      "number": 8,
+      "section": "Comparability",
+      "question": "is a breach claimed only when the windows are the same interval?",
+      "verdict": "PASS",
+      "probes_passed": 2,
+      "probes": 2,
+      "results": [
+        {
+          "probe": "a mismatched window model is INCOMPARABLE_WINDOW",
+          "ok": true,
+          "observed": "1 incomparable, 0 over limit"
+        },
+        {
+          "probe": "a fragment of a window is not a rate",
+          "ok": true,
+          "observed": "30s sample under a 60s policy"
+        }
+      ]
+    },
+    {
+      "id": "L-09",
+      "number": 9,
+      "section": "Observation states",
+      "question": "are NOT_CONFIGURED, UNKNOWN and OVER_LIMIT kept apart?",
+      "verdict": "PASS",
+      "probes_passed": 4,
+      "probes": 4,
+      "results": [
+        {
+          "probe": "traffic with no policy is NOT_CONFIGURED",
+          "ok": true,
+          "observed": "OPEN-API \u2192 NOT_CONFIGURED"
+        },
+        {
+          "probe": "an aligned counter over the limit is OVER_LIMIT",
+          "ok": true,
+          "observed": "140 over 100 in one closed window"
+        },
+        {
+          "probe": "an unavailable source is reported, not treated as zero",
+          "ok": true,
+          "observed": "OBSERVATION_SOURCE_UNAVAILABLE"
+        },
+        {
+          "probe": "the report says what was not measured",
+          "ok": true,
+          "observed": "2 API(s) had a measured rate; 0 attached API(s) had no observation at all \u2014 a limit nobody measured is not a limit that held"
+        }
+      ]
+    },
+    {
+      "id": "L-10",
+      "number": 10,
+      "section": "Resolver",
+      "question": "does correlation come from the estate, and does it know when it is old?",
+      "verdict": "PASS",
+      "probes_passed": 4,
+      "probes": 4,
+      "results": [
+        {
+          "probe": "the whole path resolves from the inventory",
+          "ok": true,
+          "observed": "APP-PAY-01 \u2192 java:payments \u2192 PAYMENTS-API \u2192 OpenSSL 3.0.13 \u2192 HSM-PAY-01"
+        },
+        {
+          "probe": "a stale hop is named, not used as proof",
+          "ok": true,
+          "observed": "1 stale hop(s)"
+        },
+        {
+          "probe": "strict mode stops where the evidence stops",
+          "ok": true,
+          "observed": "path ends at PAYMENTS-API"
+        },
+        {
+          "probe": "an empty inventory is unresolved, not a pass",
+          "ok": true,
+          "observed": "answerable: false"
+        }
+      ]
+    },
+    {
+      "id": "L-11",
+      "number": 11,
+      "section": "Evidence API",
+      "question": "is a finding stored as evidence, tenant-scoped and citable?",
+      "verdict": "PASS",
+      "probes_passed": 4,
+      "probes": 4,
+      "results": [
+        {
+          "probe": "the write and read routes exist",
+          "ok": true,
+          "observed": "/security-controls/findings, /security-controls/snapshots, /security-controls/verify"
+        },
+        {
+          "probe": "both tables exist and carry tenant_id",
+          "ok": true,
+          "observed": "security_control_snapshots, security_control_findings"
+        },
+        {
+          "probe": "a finding cannot exist without evidence ids",
+          "ok": true,
+          "observed": "FINDING_WITHOUT_EVIDENCE"
+        },
+        {
+          "probe": "a user token is not a collector",
+          "ok": true,
+          "observed": "user_token_not_accepted"
+        }
+      ]
+    }
+  ],
+  "counts": {
+    "PASS": 11,
+    "PARTIAL": 0,
+    "FAIL": 0
+  },
+  "probes": {
+    "total": 44,
+    "passed": 44,
+    "failed": 0
+  }
+}

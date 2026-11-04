@@ -236,3 +236,7 @@ from db.models.estate_catalog import (  # noqa: E402,F401
 )
 
 from db.models.collector_authority import CollectorAuthority  # noqa: E402,F401
+from db.models.security_control import (  # noqa: E402,F401
+    SecurityControlFinding,
+    SecurityControlSnapshot,
+)

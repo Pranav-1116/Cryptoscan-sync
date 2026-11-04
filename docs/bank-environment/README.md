@@ -703,6 +703,21 @@
 > and the summary counts it, because a refusal that vanishes between the builder and the
 > report is how a graph starts looking complete.
 
+> [Security control integration, live: failing reads, immutable evidence, real windows](182-security-control-integration.md)
+> (**11 pass · 0 partial · 0 fail**, 44 probes) is guide 181 pointed at things that can fail.
+> A read is a *state*, not an exception (`PARTIAL_READ` when three of seven sections answered);
+> the evidence is an append-only hash chain that can tell an edited body from a retried read and
+> a purged record from one that never existed; HSM, KMS, PKI and NETWORK came in as **facades**
+> over the collectors the platform already has, so there is no second architecture; a rate limit
+> is now compared using the limiter's own window arithmetic — `FIXED` permits a boundary burst,
+> `SLIDING` permits *N* in any rolling window, and a sample that does not describe the same
+> interval is `INCOMPARABLE_WINDOW` rather than a manufactured breach; and correlation knows
+> what time it is, naming a stale hop instead of describing a 09:14 alert with a 06:00 process
+> list. Evidence lands in `security_control_snapshots` / `security_control_findings`
+> (revision 0133), written only by a collector identity — a user session token is refused as
+> `user_token_not_accepted`, because "the platform observed this device" and "someone typed it"
+> must not look alike.
+
 > [Security control integration: the read-only layer over the bank's own controls](181-security-control-integration.md)
 > (**14 pass · 0 partial · 0 fail**, 47 probes) is the layer the previous guides fed but never
 > built. CryptoScan integrates with the bank's existing network and security controls to build

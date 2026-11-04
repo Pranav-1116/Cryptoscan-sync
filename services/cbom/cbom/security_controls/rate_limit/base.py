@@ -45,6 +45,10 @@ class RateLimitCollector(DeviceCollector):
                 or self._field(raw, "window"),
                 "scope": str(self._field(raw, "scope") or "IP").upper(),
                 "enabled": bool(self._field(raw, "enabled", True)),
+                # the window model matters as much as the number: a fixed counter and a
+                # sliding one permit different traffic at the same configured rate
+                "window_mode": str(self._field(raw, "window_mode")
+                                   or self._field(raw, "mode") or "FIXED").upper(),
                 "targets": list(self._field(raw, "targets") or []),
                 "fact": CONFIGURED,
                 "evidence_id": self.evidence.id_for("LIMIT", index, raw),

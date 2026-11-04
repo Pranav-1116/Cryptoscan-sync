@@ -30,6 +30,7 @@ Two invariants are enforced here rather than documented here:
 from __future__ import annotations
 
 from .audit import audit_rate_limits
+from .drivers import DRIVERS, live_snapshot
 from .base import (
     CONFIGURED,
     CONTROL_TYPES,
@@ -48,19 +49,46 @@ from .base import (
     separate_facts,
 )
 from .correlate import correlate_event
+from .facade import FACADES, facade_spec
+from .observation import (AccessLog, CounterAPI, LimitViolations, WindowModel, audit_limits,
+                          observation_report)
 from .project import project
-from .registry import PACKAGES, adapters, collector, controls, fleet, read_only_audit, spec_for
+from .registry import (FACADE_CONTROLS, PACKAGES, adapters, collector, controls, fleet,
+                       read_only_audit, spec_for)
+from .resolver import (InventoryResolver, SqlResolver, StaticResolver, Window,
+                       correlate_from_inventory)
+from .store import EvidenceStore, content_digest
+from .transport import (Credential, FileTail, HttpTransport, RecordedTransport, SecretSource,
+                        TransportResult)
 
 CONTRACT_VERSION = "cryptoscan.security-controls/1"
 
 __all__ = [
+    "AccessLog",
     "AdapterSpec",
     "CONFIGURED",
+    "CounterAPI",
+    "Credential",
     "CONTRACT_VERSION",
     "CONTROL_TYPES",
     "ControlRefused",
     "DeviceCollector",
+    "DRIVERS",
     "EvidenceBook",
+    "EvidenceStore",
+    "FACADES",
+    "FACADE_CONTROLS",
+    "FileTail",
+    "HttpTransport",
+    "InventoryResolver",
+    "LimitViolations",
+    "RecordedTransport",
+    "SecretSource",
+    "SqlResolver",
+    "StaticResolver",
+    "TransportResult",
+    "Window",
+    "WindowModel",
     "OBSERVED",
     "PACKAGES",
     "READ_OPERATIONS",
@@ -68,12 +96,18 @@ __all__ = [
     "RUNTIME_OBSERVED",
     "SecurityControlCollector",
     "adapters",
+    "audit_limits",
     "audit_rate_limits",
     "collector",
+    "content_digest",
     "controls",
+    "correlate_from_inventory",
     "correlate_event",
     "fact_class",
+    "facade_spec",
     "fleet",
+    "live_snapshot",
+    "observation_report",
     "project",
     "read_only_audit",
     "read_only_violations",

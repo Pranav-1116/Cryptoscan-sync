@@ -221,8 +221,14 @@ def test_sc02_the_whole_registry_is_read_only():
     assert audit["read_only"] is True
     assert audit["adapters_with_writes"] == []
     assert audit["adapters"] >= 25
+    # guide 182 added the four facade controls (HSM, KMS, PKI, NETWORK): they are in the
+    # registry, they read through the platform's own collectors, and they are still read-only
     assert set(audit["controls"]) == {"FIREWALL", "IDS", "IPS", "WAF", "LOAD_BALANCER",
-                                      "API_GATEWAY", "RATE_LIMIT", "VPN", "SIEM"}
+                                      "API_GATEWAY", "RATE_LIMIT", "VPN", "SIEM",
+                                      "HSM", "KMS", "PKI", "NETWORK"}
+    assert set(audit["device_controls"]) == {"FIREWALL", "IDS", "IPS", "WAF", "LOAD_BALANCER",
+                                             "API_GATEWAY", "RATE_LIMIT", "VPN", "SIEM"}
+    assert set(audit["facade_controls"]) == {"HSM", "KMS", "PKI", "NETWORK"}
 
 
 def test_sc02_every_declared_operation_is_on_the_read_allow_list():
@@ -691,24 +697,33 @@ def test_sc09_a_siem_event_keeps_its_correlation_reference():
 # SC-10 the registry is a reviewed surface, not a directory listing
 # --------------------------------------------------------------------------- #
 
-def test_sc10_every_control_type_is_either_implemented_or_named_as_deferred():
+def test_sc10_every_control_type_is_either_implemented_or_named():
+    """Guide 182: nothing is deferred any more. A control is a device adapter or a facade,
+    and either way it has to say what it reads and what it must never collect."""
     catalogue = sc.controls()
     assert set(catalogue) == set(sc.CONTROL_TYPES)
     for control, entry in catalogue.items():
-        if entry["implemented"]:
-            assert len(entry["adapters"]) >= 2, control
-            assert entry["collects"] and entry["must_not"], control
+        assert entry["implemented"] is True, control
+        if entry.get("facade"):
+            assert entry["delegates_to"], control
+            assert len(entry["adapters"]) == 1, control
         else:
-            assert entry["reason"], control
+            assert len(entry["adapters"]) >= 2, control
+        assert entry["collects"] and entry["must_not"], control
+    assert sc.read_only_audit()["deferred"] == []
 
 
-def test_sc10_the_hsm_and_kms_controls_are_named_rather_than_pretended():
+def test_sc10_the_hsm_and_kms_controls_read_through_a_facade_not_a_dialect():
+    """A facade has no vendor of its own: asking for one is refused by name."""
     catalogue = sc.controls()
-    assert catalogue["HSM"]["implemented"] is False
-    assert "hsm_pkcs11" in catalogue["HSM"]["reason"]
-    with pytest.raises(sc.ControlRefused) as refused:
-        sc.spec_for("KMS", "thales")
-    assert refused.value.code == "CONTROL_DEFERRED"
+    assert catalogue["HSM"]["implemented"] is True
+    assert catalogue["HSM"]["facade"] is True
+    assert "hsm_pkcs11" in " ".join(catalogue["HSM"]["delegates_to"])
+    assert catalogue["KMS"]["facade"] is True
+    for control in ("HSM", "KMS", "PKI", "NETWORK"):
+        with pytest.raises(sc.ControlRefused) as refused:
+            sc.spec_for(control, "thales")
+        assert refused.value.code == "FACADE_HAS_NO_VENDOR"
 
 
 def test_sc10_every_requested_vendor_has_a_dialect():

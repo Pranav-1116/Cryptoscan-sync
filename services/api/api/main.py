@@ -138,6 +138,7 @@ from api.routers import (
     security as security_router,
     resilience,
     readiness,
+    security_controls,
     vbom,
 )
 from api.routers import metrics as metrics_router
@@ -574,6 +575,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(systems.router, prefix=prefix)
     app.include_router(cbom.router, prefix=prefix)
     app.include_router(cbom_usage.router, prefix=prefix)
+    app.include_router(security_controls.router, prefix=prefix)
     app.include_router(vbom.router, prefix=prefix)
     app.include_router(cbom_vbom.router, prefix=prefix)
     from api.routers import host_evidence, collection
