@@ -471,6 +471,14 @@ permits TLSv1.0", an asset that tops out below the floor appears beside the edge
 (and an empty edge list reads "nothing recorded on either side of it", not "nothing would break"),
 and a configuration the collector could only partly parse says so rather than reading as complete.
 
+Step 13 also carries the declared population. Every coverage number here is attempted against planned
+per collector, which answers a different question from "did we find the bank's 120 servers". So the
+bank declares its own counts, and the twin measures them: a class with no declared count prints no
+percentage at all, finding more than was declared is a disagreement rather than coverage above 100%,
+and a declared class the estate cannot see is a collection gap rather than an empty estate. Beside it,
+each of the six claim types is measured separately — an asset the estate does not hold is missing from
+the estate, not proven absent, and an unrecorded key size is not a wrong one.
+
 On the Relationship Graph page, the edge-first panel lists the twin's own relationships and
 asks `why` about the one you select: the answer is the evidence (type, collector, source,
 timestamp, hash) or the refusal, and the two are never blended. It reads the twin's export rather

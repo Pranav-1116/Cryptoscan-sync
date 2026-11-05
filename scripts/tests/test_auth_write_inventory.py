@@ -100,8 +100,13 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # 297: POST /api/v1/ops/alerts/alertmanager — guide 117. Alertmanager has no
     # session and no role: the credential is the shared webhook token checked in
     # the handler, because a rule that fires must not be refused with 401.
-    assert len(rows) <= 303, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 303. "
+    # 304: POST /api/v1/estate/evidence/twin/ground-truth — measures the estate against a
+    # bank's own declared population and claims. It carries a declaration in the body (up to
+    # 5000 claims, far past any query string) and stores none of it: the route returns the
+    # measurement and `live_state_modified` is false. It cannot be a GET without inventing a
+    # length limit on the bank's own inventory, so it joins the operator surface by method.
+    assert len(rows) <= 304, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 304. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

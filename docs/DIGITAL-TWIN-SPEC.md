@@ -885,6 +885,35 @@ the answer inline — evidence type, collector, source, timestamp and hash — o
 edge was refused. Previously "why" was reachable per asset and as a route, but no edge could be
 selected.
 
+**Built — a coverage denominator the bank declares, and the disagreement it exposes.** Every
+coverage number this platform could print before answered a *different* question: attempted against
+planned, **per collector**. "NETWORK 12/12 COMPLETE" says nothing about whether the bank's 120 servers
+were found, and §4's own table — *Servers 118/120, HSMs 7/8* — cannot be computed from a collector run
+at all. The denominator is the bank's, so it is declared, and `POST …/twin/ground-truth` measures the
+estate against it. Nothing is stored: a stored declaration that later drifted would read as the
+platform's own baseline, and it is the bank's claim, not ours.
+
+Three refusals shape the output. A class with no declared count prints **no percentage** — 0% and
+100% would both be invented. Finding nine HSMs against eight declared is `OVER_DECLARED`, a
+disagreement to resolve (a stale declaration, or identity resolution splitting one asset into two),
+never "112% coverage". And a declared class the estate cannot see is `EMPTY` — a collection gap, not
+an empty estate.
+
+The same route answers §11's second half: accuracy **per claim type** rather than one score.
+`ASSET_PRESENCE`, `RELATIONSHIP`, `ALGORITHM_USE`, `KEY_SIZE`, `CERTIFICATE` and `OWNERSHIP` are
+checked separately, each claim landing as `MATCHED`, `CONTRADICTED` (the estate holds the thing and
+disagrees about the value), `MISSING_FROM_ESTATE` (the estate does not hold it — a collection gap or
+a stale declaration, and this cannot tell which) or `NOT_CHECKABLE` (the estate cannot answer the
+question, which is reported rather than skipped). A capability list never satisfies a claim about use;
+a key size nobody recorded is `NOT_CHECKABLE`, not a pass; and a relationship the graph *refused* is
+`CONTRADICTED` with the refusal reason, because the reason is the finding.
+
+What it will not report is precision. Precision would need to know whether the estate's **undeclared**
+findings are wrong, and a bank not having declared an asset is not evidence that the asset does not
+exist — an estate finding something the declaration never mentioned is usually the platform working.
+Only agreement over the declared sample is computable, and that is what it computes, labelled
+`DECLARED_SAMPLE_ONLY`.
+
 **Built — the protocol floor, answered from observed handshakes.** §9's Network Topology screen
 lists endpoints and paths; it could not answer the question the list exists for: "if we only accepted
 TLS 1.2 from Friday, what is already below it?" `GET …/twin/protocol-floor?floor=` ranks every

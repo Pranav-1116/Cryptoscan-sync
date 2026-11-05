@@ -677,3 +677,52 @@ def test_the_floor_check_states_that_a_declaration_is_not_a_handshake(graph):
     assert any("runtime client acceptance" in spot for spot in result["blind_spots"])
     assert any("declarations are read from TLS configuration evidence only" in limit
                for limit in result["limits"])
+
+
+# -- a declaration is measured, never stored --------------------------------- #
+#
+# §4 draws the coverage table with a denominator the platform cannot compute; §11 asks
+# for accuracy per claim type. What the API must not do is turn an absent denominator
+# into 0% or a claim the estate does not hold into a conviction.
+
+
+def test_the_api_measures_declared_populations_and_claims(api):
+    http, _session = api
+    _discover(http)
+
+    body = {
+        "declared_by": "bank/inventory-2026Q4",
+        "asset_population": {"LOAD_BALANCER": 2, "APPLICATION": 2},
+        "claims": [
+            {"claim_id": "c1", "type": "ASSET_PRESENCE", "asset": "LB-07"},
+            {"claim_id": "c2", "type": "ASSET_PRESENCE", "asset": "mainframe-lpar-7"},
+        ],
+    }
+    response = http.post(f"{BASE}/twin/ground-truth", json=body)
+    assert response.status_code == 200, response.text
+    document = response.json()
+
+    assert document["status"] == "MEASURED"
+    assert document["live_state_modified"] is False
+    rows = {row["asset_type"]: row for row in document["population"]["rows"]}
+    assert rows["APPLICATION"]["declared"] == 2
+    # the discovered estate holds at least one application; the ratio must follow the
+    # population rather than be assumed, and an over-collected class prints no ratio at all
+    assert rows["APPLICATION"]["collected"] >= 1
+    assert rows["APPLICATION"]["collected_percent"] == (
+        None if rows["APPLICATION"]["status"] == "OVER_DECLARED"
+        else round(100.0 * rows["APPLICATION"]["collected"] / 2, 1)
+    )
+    claims = {item["claim_id"]: item for item in document["claims"]["results"]}
+    assert claims["c1"]["verdict"] == "MATCHED"
+    assert claims["c2"]["verdict"] == "MISSING_FROM_ESTATE"
+    assert "precision is not reported" in document["claims"]["meaning"].lower()
+
+
+def test_the_api_refuses_a_declaration_nobody_signed(api):
+    http, _session = api
+    _discover(http)
+
+    response = http.post(f"{BASE}/twin/ground-truth", json={"asset_population": {"APPLICATION": 4}})
+    # pydantic refuses the missing attribution before the engine ever sees it
+    assert response.status_code == 422

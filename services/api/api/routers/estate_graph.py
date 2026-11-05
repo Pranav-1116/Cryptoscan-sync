@@ -58,7 +58,7 @@ from db.repositories.scan_run_repository import ScanRunRepository
 from db.tenancy import current_tenant
 from api.security import anchor_export
 from api.security.estate_bom_anchor import AnchorError, create_anchor, list_anchors, verify_anchor
-from shared_models import attack_patterns, bom_export, estate_twin, estate_chain
+from shared_models import attack_patterns, bom_export, estate_ground_truth, estate_twin, estate_chain
 from shared_models.estate_graph import BOM_KINDS, SCHEMA, build_graph
 
 import logging
@@ -1792,6 +1792,60 @@ def estate_twin_protocol_floor(
             status_code=422,
             detail={"error": "invalid_floor", "reason": result.get("detail"), **result},
         )
+    return {"run_id": run.id, **result}
+
+
+class GroundTruthDeclaration(BaseModel):
+    """What the bank says should be there. The denominator cannot be computed, only declared."""
+
+    declared_by: str = Field(min_length=1, max_length=200, description="who is accountable for this count")
+    declared_at: str | None = None
+    basis: str = "BANK_INVENTORY_DECLARATION"
+    asset_population: dict[str, Any] = Field(default_factory=dict)
+    claims: list[dict[str, Any]] = Field(default_factory=list, max_length=5000)
+
+
+class GroundTruthOut(BaseModel):
+    """The measurement. The nested population/claims documents carry their own ``meaning``."""
+
+    schema_: str = Field(alias="schema")
+    status: str
+    run_id: str | None = None
+    estate: str | None = None
+    projection_id: str | None = None
+    graph_schema: str | None = None
+    declared_by: str | None = None
+    declared_at: str | None = None
+    basis: str | None = None
+    population: dict[str, Any] | None = None
+    claims: dict[str, Any] | None = None
+    counts: dict[str, Any] | None = None
+    live_state_modified: bool | None = None
+    limits: list[str] | None = None
+    detail: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+@router.post("/twin/ground-truth", response_model=GroundTruthOut)
+def estate_twin_ground_truth(
+    body: GroundTruthDeclaration,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Measure the estate against a bank's own declaration (§4 coverage, §11 accuracy).
+
+    A POST because it carries a declaration and is not cacheable by URL, but it writes
+    nothing: the declaration is measured and returned, never stored, and
+    ``live_state_modified`` is false. Not storing it is deliberate — a stored declaration
+    that later drifts would look like the platform's own baseline, and it is the bank's
+    claim about its estate, not ours.
+    """
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    result = estate_ground_truth.measure(graph, body.model_dump())
+    if result.get("status") == "INVALID_DECLARATION":
+        raise HTTPException(status_code=422, detail={"error": "invalid_declaration", **result})
     return {"run_id": run.id, **result}
 
 

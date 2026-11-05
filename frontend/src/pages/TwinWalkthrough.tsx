@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Panel, Badge } from "../components/ui.jsx";
 import TwinGraphCanvas from "../components/TwinGraphCanvas.jsx";
 import ProtocolFloorPanel from "../components/ProtocolFloorPanel.jsx";
+import GroundTruthPanel from "../components/GroundTruthPanel.jsx";
 import {
   apiEstateChanges, apiEstateIntel, apiEstateTwin, apiEstateTwinAsset, apiEstateTwinSearch,
   type EstateChangeFeed, type EstateCryptoIntel, type EstateTwinAssetView, type EstateTwinOverview,
@@ -320,6 +321,9 @@ export default function TwinWalkthrough() {
             {viewError && <Empty>{viewError}</Empty>}
             <div style={{ marginTop: 4 }}>
               <ProtocolFloorPanel />
+            </div>
+            <div style={{ marginTop: 4 }}>
+              <GroundTruthPanel />
             </div>
           </div>
         );

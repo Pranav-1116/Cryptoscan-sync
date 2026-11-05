@@ -795,6 +795,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/estate/evidence/twin/ground-truth",
+      "reason": "operator surface: every signed-in operator inspects and curates the estate"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/estate/evidence/twin/impact",
       "reason": "operator surface: every signed-in operator inspects and curates the estate"
     },

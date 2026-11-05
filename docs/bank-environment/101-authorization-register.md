@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 857 |
+| session | 858 |
 | role | 342 |
 | permission | 74 |
 | tenant-role | 17 |
 
-**1290** operations; **303** of them change state with nothing but the session gate — the exact list, with the policy
+**1291** operations; **304** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -30,7 +30,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `assurance` | 46 |
 | `network` | 31 |
 | `collection` | 27 |
-| `estate` | 25 |
+| `estate` | 26 |
 | `cbom` | 15 |
 | `migrations` | 13 |
 | `vendors` | 10 |
@@ -228,6 +228,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/estate/evidence/twin/artifacts` | `api.routers.estate_graph.estate_twin_artifact_store` |
 | POST | `/api/v1/estate/evidence/twin/graph/load` | `api.routers.estate_graph.estate_twin_graph_load` |
 | POST | `/api/v1/estate/evidence/twin/graph/verify` | `api.routers.estate_graph.estate_twin_graph_verify` |
+| POST | `/api/v1/estate/evidence/twin/ground-truth` | `api.routers.estate_graph.estate_twin_ground_truth` |
 | POST | `/api/v1/estate/evidence/twin/impact` | `api.routers.estate_graph.estate_twin_impact` |
 | POST | `/api/v1/estate/evidence/twin/impact-as-of` | `api.routers.estate_graph.estate_twin_impact_as_of` |
 | POST | `/api/v1/estate/evidence/twin/remediate` | `api.routers.estate_graph.estate_twin_remediate` |

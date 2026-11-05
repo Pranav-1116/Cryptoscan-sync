@@ -7518,6 +7518,73 @@ export interface EstateTwinProtocolFloorDeclared {
   }>;
 }
 
+/* §4/§11: the denominator the platform cannot compute. A bank declares what it believes
+   is there; the estate is measured against it. Collected > declared is a disagreement to
+   resolve, never a ratio above 100%, and a class with no declared count prints no
+   percentage at all. */
+export interface EstateGroundTruthPopulationRow {
+  asset_type: string;
+  declared: number | null;
+  collected: number;
+  evidenced: number;
+  unevidenced: number;
+  status: "COMPLETE" | "PARTIAL" | "EMPTY" | "OVER_DECLARED" | "NOT_DECLARED";
+  note: string;
+  collected_percent: number | null;
+}
+
+export interface EstateGroundTruthClaimResult {
+  claim_id: string | null;
+  type: string;
+  declared?: Record<string, unknown>;
+  verdict: "MATCHED" | "CONTRADICTED" | "MISSING_FROM_ESTATE" | "NOT_CHECKABLE";
+  reason: string;
+  evidence?: Array<Record<string, unknown>>;
+  note?: string | null;
+}
+
+export interface EstateGroundTruthMeasurement {
+  schema: string;
+  status: "MEASURED" | "INVALID_DECLARATION";
+  declared_by?: string;
+  basis?: string;
+  projection_id?: string;
+  population?: {
+    rows: EstateGroundTruthPopulationRow[];
+    declared_classes: number;
+    classes_with_a_denominator: number;
+    classes_not_declared: number;
+    disagreements: EstateGroundTruthPopulationRow[];
+    meaning: string;
+  };
+  claims?: {
+    results: EstateGroundTruthClaimResult[];
+    by_type: Record<string, {
+      declared: number; MATCHED: number; CONTRADICTED: number;
+      MISSING_FROM_ESTATE: number; NOT_CHECKABLE: number;
+      agreement_rate: number | null; basis: string;
+    }>;
+    meaning: string;
+  };
+  counts?: Record<string, number>;
+  live_state_modified?: boolean;
+  limits?: string[];
+  detail?: string;
+}
+
+export interface EstateGroundTruthDeclaration {
+  declared_by: string;
+  declared_at?: string;
+  basis?: string;
+  asset_population: Record<string, number>;
+  claims: Array<Record<string, unknown>>;
+}
+
+export const apiEstateTwinGroundTruth = (
+  body: EstateGroundTruthDeclaration,
+): Promise<ApiResult<EstateGroundTruthMeasurement>> =>
+  _rsPost<EstateGroundTruthMeasurement>("/api/v1/estate/evidence/twin/ground-truth", body);
+
 export const apiEstateTwinProtocolFloor = (
   floor: string,
   targets?: string[],
