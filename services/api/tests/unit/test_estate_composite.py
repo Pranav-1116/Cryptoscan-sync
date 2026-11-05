@@ -468,3 +468,95 @@ def test_the_plan_route_resolves_the_same_snapshots(api):
 
     assert plan.status_code == 200, plan.text
     assert plan.json()["as_of"]["snapshots"] == [identifier]
+
+
+# -- a protocol floor is a check, not a scenario ---------------------------- #
+#
+# "If we only accepted TLS 1.2 from Friday, what is already below it?" is answered
+# from observed handshakes and edits nothing, so it has no copy, no BOM diff and no
+# run record. What it must never do is let a bucket it cannot judge look compliant:
+# an unrankable protocol value and an asset with no handshake evidence are published
+# as their own findings.
+
+
+def test_the_floor_check_ranks_observed_handshakes_against_the_floor(graph):
+    result = twin.protocol_floor(graph, {"floor": "TLSv1.2"})
+
+    assert result["status"] == "AT_OR_ABOVE_FLOOR"
+    # the estate's two protocol records sit at and above TLSv1.2
+    assert result["counts"]["at_floor"] == 1
+    assert result["counts"]["above_floor"] == 1
+    assert result["counts"]["below_floor"] == 0
+    assert result["counts"]["protocol_records"] == 2
+    assert result["live_state_modified"] is False
+    assert "nothing is edited and no copy is made" in result["note"]
+
+
+def test_a_floor_above_what_the_estate_negotiates_reports_every_record_below_it(graph):
+    result = twin.protocol_floor(graph, {"floor": "TLSv1.3"})
+
+    assert result["status"] == "BELOW_FLOOR_PRESENT"
+    assert result["counts"]["below_floor"] == 1
+    assert [row["negotiated"] for row in result["below_floor"]] == ["TLSv1.2"]
+    # and the asset is named, because "one record" is not actionable
+    assert result["counts"]["assets_below_floor"] == 1
+    assert result["below_floor"][0]["asset_name"] == "LB-07"
+
+
+def test_an_unrankable_protocol_value_is_published_as_unrecognised_not_compliant(graph):
+    payload = _payload()
+    payload["evidence"] = [*payload["evidence"], {
+        "evidence_id": "ev-future", "source": "probe", "evidence_type": "NETWORK_ACTIVE_OBSERVED",
+        "target": "lb", "layer": "NETWORK_TRANSPORT", "facts": {"protocol": "TLS_FUTURE"},
+    }]
+    result = twin.protocol_floor(build_graph(payload), {"floor": "TLSv1.2"})
+
+    assert result["counts"]["unrecognised"] == 1
+    assert result["unrecognised"][0]["negotiated"] == "TLS_FUTURE"
+    assert result["unrecognised"][0]["position"] == "UNRECOGNISED"
+    # it is in neither the below bucket nor the above one
+    assert all(row["negotiated"] != "TLS_FUTURE" for row in result["above_floor"])
+
+
+def test_an_asset_with_no_handshake_evidence_is_counted_rather_than_assumed_compliant(graph):
+    result = twin.protocol_floor(graph, {"floor": "TLSv1.2"})
+
+    assert result["counts"]["assets_without_negotiated_evidence"] > 0
+    assert "application:aaa" not in result["without_negotiated_evidence"]
+    assert result["blind_spots"]
+
+
+def test_the_floor_must_be_a_version_this_build_can_rank(graph):
+    missing = twin.protocol_floor(graph, {})
+    assert missing["status"] == "INVALID_SCENARIO"
+    assert "needs a 'floor'" in missing["detail"]
+
+    unknown = twin.protocol_floor(graph, {"floor": "TLSv9.9"})
+    assert unknown["status"] == "INVALID_SCENARIO"
+    assert "is not a protocol version this build can rank" in unknown["detail"]
+    assert unknown["choices"] == ["SSLv3", "TLSv1.0", "TLSv1.1", "TLSv1.2", "TLSv1.3"]
+
+
+def test_five_spellings_of_the_same_version_are_one_rung():
+    from shared_models.estate_twin import _protocol_key
+
+    for spelling in ("TLSv1.2", "TLS 1.2", "TLS1.2", "tlsv1_2", "TLSV1.2"):
+        assert _protocol_key(spelling) == "TLSV1.2", spelling
+    # a protocol with no version is not a rung
+    assert _protocol_key("TLS") is None
+
+
+def test_the_api_serves_the_floor_check_and_refuses_an_unrankable_floor(api):
+    http, _session = api
+    _discover(http)
+
+    ok = http.get(f"{BASE}/twin/protocol-floor", params={"floor": "TLSv1.2"})
+    assert ok.status_code == 200, ok.text
+    body = ok.json()
+    assert body["schema"] == "cryptoscan.estate-twin-protocol-floor/1"
+    assert body["status"] in {"AT_OR_ABOVE_FLOOR", "BELOW_FLOOR_PRESENT", "INSUFFICIENT_EVIDENCE"}
+    assert body["live_state_modified"] is False
+
+    refused = http.get(f"{BASE}/twin/protocol-floor", params={"floor": "TLSv9.9"})
+    assert refused.status_code == 422
+    assert refused.json()["detail"]["error"] == "invalid_floor"

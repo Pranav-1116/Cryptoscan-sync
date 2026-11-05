@@ -885,6 +885,21 @@ the answer inline — evidence type, collector, source, timestamp and hash — o
 edge was refused. Previously "why" was reachable per asset and as a route, but no edge could be
 selected.
 
+**Built — the protocol floor, answered from observed handshakes.** §9's Network Topology screen
+lists endpoints and paths; it could not answer the question the list exists for: "if we only accepted
+TLS 1.2 from Friday, what is already below it?" `GET …/twin/protocol-floor?floor=` ranks every
+negotiated protocol the estate has observed against a requested floor and publishes four separate
+buckets — below the floor, at the floor, above it, and **unrecognised** (a protocol value this build
+cannot place on the ladder, which is reported as such and never as compliance). Assets with no
+handshake evidence are counted in their own bucket too, because an asset nobody probed is not a
+compliant one.
+
+It is a `GET`, a check and not a scenario: no copy is made, no BOM is re-projected, nothing is
+stored, and `live_state_modified` is false by construction. Its `blind_spots` statement is the
+substance — client acceptance is the half it cannot answer, because a client that only offers an
+older protocol is not an asset — and the panel renders that list rather than letting silence read as
+safety. The check sits on step 5 of the walkthrough, under the endpoints it is about.
+
 **Built — a migration ordered across time, from stored evidence.** A migration is not only a
 sequence, it is a sequence spread over readings: "retire TLS 1.0 on what the estate showed in Q2,
 then replace RSA on what survives". `COMPOSITE` now lets a step name a stored twin snapshot with

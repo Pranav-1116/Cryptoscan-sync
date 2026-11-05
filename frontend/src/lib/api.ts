@@ -7455,6 +7455,50 @@ export interface EstateTrustPaths {
 export const apiEstateTrustPaths = (): Promise<ApiResult<EstateTrustPaths>> =>
   _rsGet<EstateTrustPaths>("/api/v1/estate/evidence/twin/trust-paths");
 
+/* §7/§9 "protocol floor": if this were the weakest accepted protocol, what is already
+   below it? A GET because it asks a question of the observed handshakes and writes
+   nothing. Unrecognised protocol values and assets with no handshake evidence are
+   published as their own buckets — neither is compliance. */
+export interface EstateTwinProtocolFloorRow {
+  asset_id: string; asset_name?: string | null; asset_type?: string | null;
+  evidence_id?: string | null; evidence_type?: string | null;
+  collector?: string | null; observed_at?: string | null;
+  negotiated?: unknown; position?: "BELOW_FLOOR" | "AT_FLOOR" | "ABOVE_FLOOR" | "UNRECOGNISED";
+}
+
+export interface EstateTwinProtocolFloor {
+  schema: string;
+  status: "BELOW_FLOOR_PRESENT" | "AT_OR_ABOVE_FLOOR" | "INSUFFICIENT_EVIDENCE" | "INVALID_SCENARIO";
+  floor?: string | null; floor_rank?: number | null; projection_id?: string | null;
+  counts?: {
+    below_floor?: number; at_floor?: number; above_floor?: number; unrecognised?: number;
+    protocol_records?: number; assets_below_floor?: number;
+    assets_with_negotiated_evidence?: number; assets_without_negotiated_evidence?: number;
+    assets_in_scope?: number;
+  };
+  below_floor?: EstateTwinProtocolFloorRow[];
+  at_floor?: EstateTwinProtocolFloorRow[];
+  above_floor?: EstateTwinProtocolFloorRow[];
+  unrecognised?: EstateTwinProtocolFloorRow[];
+  without_negotiated_evidence?: string[];
+  unresolved_targets?: string[];
+  live_state_modified?: boolean;
+  note?: string | null;
+  blind_spots?: string[];
+  limits?: string[];
+  choices?: string[];
+  detail?: string | null;
+}
+
+export const apiEstateTwinProtocolFloor = (
+  floor: string,
+  targets?: string[],
+): Promise<ApiResult<EstateTwinProtocolFloor>> => {
+  const query = [`floor=${encodeURIComponent(floor)}`,
+    ...(targets ?? []).map((target) => `target=${encodeURIComponent(target)}`)].join("&");
+  return _rsGet<EstateTwinProtocolFloor>(`/api/v1/estate/evidence/twin/protocol-floor?${query}`);
+};
+
 /* ---------------------------------------------------------------------------
  * Evidence assurance (the `/api/v1/assurance` workflows).
  *

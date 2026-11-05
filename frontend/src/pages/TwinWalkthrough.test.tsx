@@ -23,6 +23,7 @@ const SEARCH = "/api/v1/estate/evidence/twin/search";
 const CHANGES = "/api/v1/estate/evidence/changes";
 const INTEL_ROUTE = "/api/v1/estate/evidence/twin/intel";
 const GRAPH = "/api/v1/estate/evidence/twin/graph";
+const FLOOR = "/api/v1/estate/evidence/twin/protocol-floor";
 
 const ASSET_VIEW = {
   asset: { asset_id: "application:aaa", name: "Payment API", type: "APPLICATION",
@@ -126,6 +127,22 @@ const GRAPH_DOC = {
   load_notes: {},
 };
 
+const FLOOR_DOC = {
+  schema: "cryptoscan.estate-twin-protocol-floor/1",
+  status: "BELOW_FLOOR_PRESENT",
+  floor: "TLSv1.2",
+  counts: { below_floor: 1, at_floor: 0, above_floor: 1, unrecognised: 0, protocol_records: 2,
+    assets_below_floor: 1, assets_with_negotiated_evidence: 2, assets_without_negotiated_evidence: 6,
+    assets_in_scope: 8 },
+  below_floor: [{ asset_id: "lb:bbb", asset_name: "LB-07", negotiated: "TLSv1.0",
+    collector: "probe", observed_at: "2026-11-01T09:00:00Z", position: "BELOW_FLOOR" }],
+  at_floor: [], above_floor: [], unrecognised: [],
+  without_negotiated_evidence: ["application:aaa"],
+  note: "1 of 2 observed handshake record(s) negotiated a protocol below TLSv1.2",
+  blind_spots: ["client acceptance: a client that only offers an older protocol is not an asset"],
+  limits: [],
+};
+
 function routes() {
   return {
     [TWIN]: TWIN_OVERVIEW,
@@ -134,6 +151,7 @@ function routes() {
     [CHANGES]: CHANGES_FEED,
     [INTEL_ROUTE]: INTEL_DOC,
     [GRAPH]: GRAPH_DOC,
+    [FLOOR]: FLOOR_DOC,
   };
 }
 

@@ -89,12 +89,19 @@ SCENARIOS: tuple[dict, ...] = (
         "TLS_DOWNGRADE", "TLS downgrade", PARTIAL,
         covered_by=((AGILITY, "protocol_deprecation"), (TWIN, "DISABLE_PROTOCOL")),
         cannot=(
-            "a negotiated-parameter downgrade: the twin holds what a handshake produced, not what "
-            "a client would accept if the floor moved",
-            "per-client fallback behaviour (a client that only speaks TLS 1.0 is not an asset)",
+            "client acceptance: a client that only offers an older protocol is not an asset, so "
+            "which clients would fail after the floor moves is not computable",
+            "enforcement: whether the floor is actually applied at the endpoint, the load balancer "
+            "and its back end is configuration the twin does not read",
         ),
-        requires=("negotiated handshake evidence per endpoint",),
-        note="raises or lowers a protocol floor over collected facts; it does not re-negotiate",
+        requires=("per-client protocol offers",),
+        note=(
+            "raises or lowers a protocol floor over collected facts; it does not re-negotiate. The "
+            "floor itself is checked against observed handshakes by GET "
+            "/estate/evidence/twin/protocol-floor, which reports what negotiated below the floor, "
+            "what it cannot rank and which assets carry no handshake evidence — the last two are "
+            "findings, not compliance"
+        ),
     ),
     _scenario(
         "CERTIFICATE_COMPROMISE", "Certificate compromise", PARTIAL,

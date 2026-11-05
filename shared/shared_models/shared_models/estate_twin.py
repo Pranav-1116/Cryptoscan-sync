@@ -143,6 +143,35 @@ MAX_AS_OF_LENGTH = 120
 
 SIMULATION_KINDS: tuple[str, ...] = SCENARIO_KINDS + CASCADE_KINDS + (COMPOSITE_KIND,)
 
+# -- a protocol floor, which is a question and not a scenario ----------------- #
+#
+# "If we only accepted TLS 1.2 from Friday, what is already below it?" is not a
+# what-if on a copy and it is not a cascade: it edits nothing, and its answer is read
+# off the handshakes the estate has already observed. It is a *check*, so it has no
+# kind in ``SIMULATION_KINDS`` and no place in the run store.
+#
+# The half it can answer is the actionable one: which endpoints negotiated a protocol
+# below the floor. The half it cannot answer is a client's acceptance — a client that
+# only speaks TLS 1.0 is not an asset, and the twin never sees one. That distinction is
+# an output (``blind_spots``), not a footnote in a document.
+PROTOCOL_FLOOR_SCHEMA = "cryptoscan.estate-twin-protocol-floor/1"
+
+#: The version ladder this build can rank. A protocol string outside it is reported as
+#: UNRECOGNISED — never as compliant, because "I do not know this value" and "this value
+#: is fine" are different findings.
+PROTOCOL_FLOOR_RANKS: dict[str, int] = {
+    "SSLV2": 0,
+    "SSLV3": 1,
+    "TLSV1.0": 2,
+    "TLSV1.1": 3,
+    "TLSV1.2": 4,
+    "TLSV1.3": 5,
+}
+
+PROTOCOL_FLOOR_CHOICES: tuple[str, ...] = (
+    "SSLv3", "TLSv1.0", "TLSv1.1", "TLSv1.2", "TLSv1.3",
+)
+
 #: §12 — strongest evidence first. Used to answer "how well is this described".
 STRENGTH_ORDER: tuple[str, ...] = (
     "RUNTIME_OBSERVED",
@@ -1320,6 +1349,187 @@ def search(graph: EstateGraph, query: str, *, limit: int = MAX_LISTED) -> dict[s
 # --------------------------------------------------------------------------- #
 # §27 — blast radius
 # --------------------------------------------------------------------------- #
+
+
+def _protocol_key(value: Any) -> str | None:
+    """Normalise a protocol string to a ladder key, or ``None`` when there is no version.
+
+    ``TLSv1.2``, ``TLS 1.2``, ``TLS1.2``, ``tlsv1_2`` and ``TLSV1.2`` all name the same
+    ladder rung — collectors spell it five ways and refusing four of them would report a
+    spelling as a protocol gap. ``TLS`` on its own carries no version, so it is not a rung.
+    """
+    text = _text(value).upper().replace(" ", "").replace("_", ".").replace("/", "")
+    if not text:
+        return None
+    if text.startswith("TLSV"):
+        return text
+    if text.startswith("TLS") and len(text) > 3:
+        return f"TLSV{text[3:]}"
+    if text.startswith("SSLV"):
+        return text
+    if text in ("TLS", "SSL"):
+        # a protocol named without a version is not a rung on the ladder
+        return None
+    return text
+
+
+def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
+    """§7/§9 — if the accepted protocol floor were X, what is already below it?
+
+    Reads the handshakes the estate has *observed* and ranks each against the requested
+    floor. It edits nothing, so it is not a simulation: there is no copy, no BOM diff and
+    no ``live_state_modified`` flag to check — the graph is only ever read.
+
+    Three groups are kept apart, because collapsing any two of them would be a lie:
+
+    * **below the floor** — an endpoint that negotiated something weaker than the floor.
+      This is the finding the question was asked for;
+    * **unrecognised** — a protocol value this build cannot rank. Reported as
+      UNRECOGNISED, never as compliant: "I do not know this value" is not "this is fine";
+    * **no negotiated evidence** — assets with no handshake evidence at all. Counted as a
+      collection gap, never as above the floor.
+
+    What it cannot answer is stated in ``blind_spots``: a client that only speaks an older
+    protocol is not an asset, so client acceptance, fallback behaviour and enforcement are
+    not in this answer.
+    """
+    floor_raw = _text(scenario.get("floor"))
+    floor_key = _protocol_key(floor_raw)
+    if not floor_raw:
+        return {
+            "schema": PROTOCOL_FLOOR_SCHEMA,
+            "status": "INVALID_SCENARIO",
+            "detail": (
+                "a floor check needs a 'floor' — the weakest protocol that would be accepted, "
+                f"one of {', '.join(PROTOCOL_FLOOR_CHOICES)}"
+            ),
+            "choices": list(PROTOCOL_FLOOR_CHOICES),
+        }
+    if floor_key not in PROTOCOL_FLOOR_RANKS:
+        return {
+            "schema": PROTOCOL_FLOOR_SCHEMA,
+            "status": "INVALID_SCENARIO",
+            "detail": (
+                f"{floor_raw!r} is not a protocol version this build can rank, so nothing can be "
+                f"compared to it. Known: {', '.join(PROTOCOL_FLOOR_CHOICES)}"
+            ),
+            "choices": list(PROTOCOL_FLOOR_CHOICES),
+        }
+
+    floor_rank = PROTOCOL_FLOOR_RANKS[floor_key]
+    payload = snapshot(graph)["payload"]
+
+    requested = [ref for ref in scenario.get("targets") or [] if _text(ref)]
+    target_refs = {_resolve(graph, ref) for ref in requested} - {None}
+    unresolved_targets = [str(ref) for ref in requested if _resolve(graph, ref) is None]
+
+    below: list[dict[str, Any]] = []
+    at: list[dict[str, Any]] = []
+    above: list[dict[str, Any]] = []
+    unrecognised: list[dict[str, Any]] = []
+    measured_assets: set[str] = set()
+
+    for record in payload["evidence"]:
+        target = str(record.get("target"))
+        if target_refs and target not in target_refs:
+            continue
+        facts = record.get("facts") or {}
+        if "protocol" not in facts:
+            # a fact set without a protocol says nothing about the floor. Library versions,
+            # key sizes and certificates are other questions.
+            continue
+        measured_assets.add(target)
+        negotiated = facts.get("protocol")
+        asset = graph.asset(target) or {}
+        entry = {
+            "asset_id": target,
+            "asset_name": asset.get("name"),
+            "asset_type": asset.get("type"),
+            "evidence_id": record.get("evidence_id"),
+            "evidence_type": record.get("evidence_type"),
+            "collector": record.get("collector"),
+            "observed_at": record.get("observed_at"),
+            "negotiated": negotiated,
+        }
+        rank = PROTOCOL_FLOOR_RANKS.get(_protocol_key(negotiated) or "")
+        if rank is None:
+            entry["position"] = "UNRECOGNISED"
+            unrecognised.append(entry)
+        elif rank < floor_rank:
+            entry["position"] = "BELOW_FLOOR"
+            below.append(entry)
+        elif rank == floor_rank:
+            entry["position"] = "AT_FLOOR"
+            at.append(entry)
+        else:
+            entry["position"] = "ABOVE_FLOOR"
+            above.append(entry)
+
+    all_assets = {
+        str(item.get("asset_id")) for item in graph.assets() if item.get("asset_id")
+    }
+    if target_refs:
+        all_assets &= target_refs
+    without_evidence = sorted(all_assets - measured_assets)
+
+    if not measured_assets and not unrecognised:
+        status = "INSUFFICIENT_EVIDENCE"
+    elif below:
+        status = "BELOW_FLOOR_PRESENT"
+    else:
+        status = "AT_OR_ABOVE_FLOOR"
+
+    records_seen = len(below) + len(at) + len(above) + len(unrecognised)
+    below_assets = {entry["asset_id"] for entry in below}
+    counting = (
+        f"{len(below)} of {records_seen} observed handshake record(s) negotiated a protocol below "
+        f"{floor_raw} — {len(below_assets)} asset(s), {len(at)} record(s) at the floor and "
+        f"{len(above)} above it"
+        if records_seen
+        else "no evidence record in this estate carries a negotiated protocol"
+    )
+    return {
+        "schema": PROTOCOL_FLOOR_SCHEMA,
+        "status": status,
+        "floor": floor_raw,
+        "floor_rank": floor_rank,
+        "projection_id": graph.fingerprint(),
+        "counts": {
+            "below_floor": len(below),
+            "at_floor": len(at),
+            "above_floor": len(above),
+            "unrecognised": len(unrecognised),
+            "protocol_records": records_seen,
+            "assets_below_floor": len(below_assets),
+            "assets_with_negotiated_evidence": len(measured_assets),
+            "assets_without_negotiated_evidence": len(without_evidence),
+            "assets_in_scope": len(all_assets),
+        },
+        "below_floor": below[:MAX_LISTED],
+        "at_floor": at[:MAX_LISTED],
+        "unrecognised": unrecognised[:MAX_LISTED],
+        "above_floor": above[:MAX_LISTED],
+        "without_negotiated_evidence": without_evidence[:MAX_LISTED],
+        "unresolved_targets": unresolved_targets,
+        "live_state_modified": False,
+        "note": (
+            f"{counting}. This is a check over handshakes the estate has already observed, "
+            "not a forecast: nothing is edited and no copy is made"
+        ),
+        "blind_spots": [
+            "client acceptance: a client that only offers an older protocol is not an asset, so "
+            "which clients would fail after the floor moves is not in this answer",
+            "enforcement: whether a policy floor is actually applied at the endpoint, the load "
+            "balancer and the load balancer's back end is configuration the twin does not read",
+            "an asset with no negotiated protocol evidence is counted, not assumed compliant",
+        ],
+        "limits": [
+            "the ranking is a version ladder only — a downgrade inside one version (a weaker "
+            "cipher, a shorter key, a missing extended master secret) is a different question",
+            "one record per handshake: the same endpoint measured twice appears twice, which is "
+            "deliberate — two observations that disagree are a conflict, not a vote",
+        ],
+    }
 
 
 def impact(

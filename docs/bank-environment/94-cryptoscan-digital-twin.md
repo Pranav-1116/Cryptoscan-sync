@@ -457,6 +457,14 @@ reads as a fact; and the node cap is printed on the canvas, because a drawing th
 nodes reads as a complete estate. The older `/graph` page still draws the legacy eight-label
 projection for the existing dashboards — that is why the twin's picture lives on the walkthrough.
 
+Step 5 also carries the protocol floor. Pick a floor from SSLv3 to TLSv1.3 and the twin ranks every
+protocol its own evidence has observed against it: what negotiated below the floor, what is at it, what
+is above it, which protocol values this build cannot rank, and which assets carry no handshake evidence
+at all. The last two are findings rather than compliance — an unrankable value is not a pass, and an
+asset nobody probed is not a clean one. The check is a `GET` and edits nothing; what it cannot answer
+is on screen next to the answer, starting with client acceptance, because a client that only offers an
+older protocol is not an asset the twin can see.
+
 On the Relationship Graph page, the edge-first panel lists the twin's own relationships and
 asks `why` about the one you select: the answer is the evidence (type, collector, source,
 timestamp, hash) or the refusal, and the two are never blended. It reads the twin's export rather

@@ -1748,6 +1748,52 @@ def estate_twin_artifact_read(
         ) from exc
 
 
+class ProtocolFloorOut(BaseModel):
+    schema_: str = Field(alias="schema")
+    status: str
+    floor: str | None = None
+    floor_rank: int | None = None
+    projection_id: str | None = None
+    counts: dict[str, Any] | None = None
+    below_floor: list[dict[str, Any]] | None = None
+    at_floor: list[dict[str, Any]] | None = None
+    above_floor: list[dict[str, Any]] | None = None
+    unrecognised: list[dict[str, Any]] | None = None
+    without_negotiated_evidence: list[str] | None = None
+    unresolved_targets: list[str] | None = None
+    live_state_modified: bool | None = None
+    note: str | None = None
+    blind_spots: list[str] | None = None
+    limits: list[str] | None = None
+    choices: list[str] | None = None
+    detail: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+@router.get("/twin/protocol-floor", response_model=ProtocolFloorOut)
+def estate_twin_protocol_floor(
+    floor: str = Query(description="the weakest protocol that would be accepted, e.g. TLSv1.2"),
+    target: list[str] | None = Query(default=None, description="limit the check to these assets"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """If the accepted protocol floor were this, what is already below it?
+
+    A GET because it asks a question of the estate and writes nothing: a POST here would
+    put a read in the authenticated-write inventory and imply it changes something.
+    """
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    result = estate_twin.protocol_floor(graph, {"floor": floor, "targets": list(target or [])})
+    if result.get("status") == "INVALID_SCENARIO":
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_floor", "reason": result.get("detail"), **result},
+        )
+    return {"run_id": run.id, **result}
+
+
 # -- the simulation workspace ---------------------------------------------- #
 # A scenario is a question about a copy. These three routes are the only place the
 # console asks one: the catalog says what can be asked and with which values, the plan

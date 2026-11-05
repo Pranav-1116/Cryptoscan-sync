@@ -465,7 +465,7 @@ export const CAPABILITY_LIMITS = {
   },
   "twin-walkthrough": {
     "area": "Intelligence",
-    "limit": "The specification's thirteen investigations on one canvas: pick an asset, then step through coverage, identity, relationships, crypto facts, network, hardware/HSM, vendors, evidence records, observation dates, drift, blast radius, the facts a scenario would read and PQC exposure. Every step reads the twin the full screen reads, a failed read is printed as a failed read rather than a zero, and nothing is written or simulated from the canvas."
+    "limit": "The specification's thirteen investigations on one canvas: pick an asset, then step through coverage, identity, relationships, crypto facts, network, hardware/HSM, vendors, evidence records, observation dates, drift, blast radius, the facts a scenario would read and PQC exposure. Every step reads the twin the full screen reads, a failed read is printed as a failed read rather than a zero, and nothing is written or simulated from the canvas. The network step also carries the protocol floor: pick SSLv3 through TLSv1.3 and it reports which observed handshakes negotiated below it, which protocol values this build cannot rank and which assets carry no handshake evidence \u2014 the last two published as findings, never as compliance \u2014 beside the blind spots it cannot see, beginning with client acceptance, which is not an asset."
   },
   "vbom": {
     "area": "Intelligence",
