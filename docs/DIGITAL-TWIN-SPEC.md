@@ -659,7 +659,7 @@ does not find it first).
 | 6 | Payment-API walkthrough | SUPPORTED | `bank-environment/05-practical-bank-walkthrough.md`, `GET …/twin/why` | — |
 | 7 | Hybrid storage | PARTIAL | `EstateAssetRecord`, `estate_twin.graph_export` / `SPEC_GRAPH_LABELS`, `services/api/api/estate_graph_loader.py` | all 22 specification labels are emitted (asset types, evidence types, four placement levels); the legacy `cypher_writes.py` projection is a narrower eight-label schema; evidence objects stay in PostgreSQL, no MinIO tier, no Redis dependency |
 | 8 | Update lifecycle and asset states | SUPPORTED | `cbom_dependency.LIFECYCLE_STATES`, `transition_asset_lifecycle` | — |
-| 9 | Thirteen screens | PARTIAL | `DigitalTwin.tsx`, `EstateTwin.tsx` | all thirteen investigations exist, but not as thirteen routes; an edge answers "why" from the asset investigation, not from the drawn graph |
+| 9 | Thirteen screens | PARTIAL | `DigitalTwin.tsx`, `Graph.tsx`, `TwinEdgeExplorer.tsx` | all thirteen investigations have their own route and an edge can be selected and asked about; what is absent is the single thirteen-screen walkthrough in one canvas |
 | 10 | What the twin cannot guarantee | SUPPORTED | `GET …/twin/completeness`, `GET …/twin/why` | — |
 | 11 | P0–P3 priorities | SUPPORTED | guide 94, "Status in this repository" | — |
 | 12 | Not another scanner or database | SUPPORTED | `estate_twin.graph_from_snapshot` | — |
@@ -751,6 +751,18 @@ It runs on the same copy as every other scenario (the live projection id is asse
 unchanged), and the enterprise assessment moved `CUSTOM_SCENARIO` from `ABSENT` to `PARTIAL`
 with its remaining limits stated.
 
+**Built — §9's edge-first explorer, on the canvas.** The Relationship Graph now carries an
+*edge-first* panel over the twin's own export: the edge list is the twin's relationships (canonical
+asset ids, the twin's predicate vocabulary), and selecting one asks `GET …/twin/why` about exactly
+that subject/predicate/object. The answer is the evidence — type, collector, source, timestamp and
+hash, per record — or the refusal, and the two are never blended: "nothing was returned" is printed
+as *that is not "no evidence exists"*. Refused candidates are counted where they are not drawn, and
+a failed read of the export says the export is unavailable rather than rendering an empty graph.
+
+It reads the twin's export rather than the legacy `/api/v1/graph` projection on purpose: that graph
+is a separate, narrower schema, and asking the twin about its ids would answer `UNKNOWN_ASSET` for
+every edge a reader clicked — a refusal that looks like a finding.
+
 **Built — §7's graph labels, all 22 of them.** The twin's export emitted asset nodes and
 evidence nodes, and kept the organisation chart on asset properties. §7 asks for `Organization`,
 `Region`, `DataCenter` and `Environment` as *nodes* — a data centre is a thing a bank's graph asks
@@ -824,11 +836,14 @@ selected.
 **Not built, and why.** (1) A MinIO evidence tier and a Redis dependency — evidence objects are
 content-addressed rows in PostgreSQL; adding two stateful services to a bank deployment to hold
 what is already hash-chained is a decision for the deployment, not a gap in the model.
-(2) Re-pointing the legacy `cypher_writes` projection at the new export — it is a separate,
-narrower schema used by the older dashboards; the twin's loader is the supported path and the
-legacy builder is left alone rather than half-migrated. (3) Cross-record expressions and time-ordered migration windows — an expression reads one
-record's facts, and a `COMPOSITE` sequence has an order but no clock; a scheduler and a query
-engine would each let a scenario produce a value no evidence holds.
+(2) The specification's single thirteen-screen walkthrough in one canvas, and re-pointing the
+legacy `cypher_writes` projection at the new export: the thirteen investigations are thirteen
+routes, the curated dependency graph is a separate narrower schema used by the older dashboards,
+and the twin's loader is the supported path — so the legacy builder is left alone rather than
+half-migrated, and the edge explorer sits beside the drawn graph rather than inside it.
+(3) Cross-record expressions and time-ordered migration windows — an expression reads one record's
+facts, and a `COMPOSITE` sequence has an order but no clock; a scheduler and a query engine would
+each let a scenario produce a value no evidence holds.
 
 ## Sources
 

@@ -436,6 +436,12 @@ listed as blind spots, and the radius is published as an upper bound. All ten
 registered scenarios now have a model; one computes end to end, nine compute part of
 the mechanism and say which part.
 
+On the Relationship Graph page, the edge-first panel lists the twin's own relationships and
+asks `why` about the one you select: the answer is the evidence (type, collector, source,
+timestamp, hash) or the refusal, and the two are never blended. It reads the twin's export rather
+than the legacy `/api/v1/graph` projection, because the legacy graph uses different ids and would
+answer `UNKNOWN_ASSET` for every edge — a refusal that reads like a finding.
+
 When the change is a sequence rather than one edit, `COMPOSITE` applies up to five primitive
 scenarios to one copy, in order, and reports one BOM diff for the whole migration instead of one
 per step. A step sees the facts the previous step wrote — so "retire TLS 1.0, then replace RSA on

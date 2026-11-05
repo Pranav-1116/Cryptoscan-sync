@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { Panel, Badge, Table, PageHead, Bar, Ring } from "../components/ui.jsx";
 import { apiBlast, LiveBadge } from "../lib/api.js";
+import TwinEdgeExplorer from "../components/TwinEdgeExplorer";
 import { useLive } from "../lib/useLive.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { EASE, useMotionOK, CountUp } from "../lib/motion";
@@ -558,6 +559,9 @@ export default function Graph(){
             </div>
             <div style={{fontSize:11, color:"var(--dim)", marginTop:8, lineHeight:1.5}}>Declared = operator statement · Scanner-derived = evidence-bound · Low density does not imply safety — it implies sparse discovery.</div>
           </Panel>
+
+          {/* edge-first: the twin's own relationships, each asking its own "why" */}
+          <TwinEdgeExplorer />
         </div>
       </div>
 

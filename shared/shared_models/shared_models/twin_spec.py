@@ -161,13 +161,15 @@ SECTIONS: tuple[dict[str, Any], ...] = (
         "s9-ui", "§9 the thirteen investigation screens", PARTIAL,
         ("frontend/src/pages/DigitalTwin.tsx", "frontend/src/pages/EstateTwin.tsx"),
         gap=(
-            "all thirteen investigations exist, but not as thirteen separate routes: the "
-            "asset, relationship, crypto, network, hardware and vendor views live on their "
-            "own pages and the twin page carries overview, placement, completeness and "
-            "history. Selecting an edge now answers 'why' with its collector, source, "
-            "timestamp and hash (and names the refusal when the edge was never "
-            "established), but only from the asset investigation — there is no canvas "
-            "where an edge on the drawn graph opens its evidence"
+            "all thirteen investigations exist as their own route, and an edge can now be "
+            "selected and asked about — the Relationship Graph carries an edge-first "
+            "explorer over the twin's own export, answering 'why' with the collector, "
+            "source, timestamp and hash, or naming the refusal. What is not built: the "
+            "specification's single thirteen-screen walkthrough in one canvas. The views "
+            "are thirteen routes and the curated dependency graph on /graph is drawn from "
+            "a separate legacy projection, so clicking a line on *that* canvas does not "
+            "open twin evidence — the edge explorer beside it does, from the twin's own "
+            "edges"
         ),
     ),
     _row(
@@ -337,7 +339,10 @@ SCREENS: tuple[dict[str, Any], ...] = (
         "id": "relationship-graph", "title": "Relationship Graph",
         "route": "/graph", "component": "frontend/src/pages/Graph.tsx",
         "api": "/api/v1/estate/evidence/twin/graph",
-        "note": "the estate graph export, and the curated dependency graph",
+        "note": (
+            "the estate graph export, the curated dependency graph, and the edge-first "
+            "explorer that asks the twin why it believes a relationship"
+        ),
     },
     {
         "id": "crypto-graph", "title": "Cryptographic Graph",
@@ -369,7 +374,7 @@ SCREENS: tuple[dict[str, Any], ...] = (
         "api": "/api/v1/estate/evidence/twin/why",
         "note": (
             "the page browses evidence records; the per-edge question is answered by the "
-            "why route and the asset drill-down, not by a dedicated edge-first screen"
+            "why route, the asset drill-down and the edge-first explorer on /graph"
         ),
     },
     {
