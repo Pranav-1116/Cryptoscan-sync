@@ -147,6 +147,29 @@ def test_every_statement_merges_on_identity_so_a_reload_converges(export):
         assert "MERGE (n {id: row.id})" in statement["cypher"]
 
 
+def test_placement_nodes_get_their_own_family_label(export):
+    """A data centre is a placement node, not an asset with a strange type."""
+    statements = loader.plan(export, loaded_at="2026-10-28T00:00:00Z")
+    node_cyphers = [s["cypher"] for s in statements if s["kind"] == "node"]
+
+    assert any(":EstatePlacement:ENVIRONMENT" in cypher for cypher in node_cyphers)
+    assert not any(":EstateAsset:ENVIRONMENT" in cypher for cypher in node_cyphers)
+
+
+def test_a_placement_label_outside_the_vocabulary_is_refused():
+    with pytest.raises(loader.ExportRejected):
+        loader.node_statement("CLUSTER_ROOM", placement=True)
+
+
+def test_the_kind_label_is_the_same_one_the_loader_writes(export):
+    """One definition of "what kind of node is this", not one per caller."""
+    for node in export["nodes"]:
+        kind = loader.kind_label(node["labels"])
+        assert kind in set(loader.ASSET_TYPES) | set(loader.EVIDENCE_TYPES) | set(
+            loader.PLACEMENT_LABELS
+        ), (kind, node["labels"])
+
+
 def test_asset_and_evidence_nodes_are_labelled_differently(export):
     statements = loader.plan(export, loaded_at="2026-10-28T00:00:00Z")
     node_cyphers = [s["cypher"] for s in statements if s["kind"] == "node"]
@@ -346,8 +369,7 @@ class _ParityDriver:
 def _store_matching(export) -> _ParitySession:
     by_label: dict[str, list[str]] = {}
     for node in export["nodes"]:
-        label = next(label for label in node["labels"] if label.upper() not in {"ASSET", "EVIDENCE"})
-        by_label.setdefault(label, []).append(node["id"])
+        by_label.setdefault(loader.kind_label(node["labels"]), []).append(node["id"])
     rels: dict[str, int] = {}
     for edge in export["relationships"]:
         rels[edge["type"]] = rels.get(edge["type"], 0) + 1
@@ -372,7 +394,7 @@ def test_a_store_holding_exactly_the_projection_is_in_parity(export):
 def test_a_missing_node_is_named_not_counted(export):
     session = _store_matching(export)
     victim = export["nodes"][0]
-    label = next(label for label in victim["labels"] if label.upper() not in {"ASSET", "EVIDENCE"})
+    label = loader.kind_label(victim["labels"])
     session.ids_by_label[label].remove(victim["id"])
 
     result = loader.parity(export, driver=_ParityDriver(session))

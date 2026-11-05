@@ -134,12 +134,15 @@ SECTIONS: tuple[dict[str, Any], ...] = (
             "services/graph_engine/graph_engine/builders/cypher_writes.py",
         ),
         gap=(
-            "the graph projection labels 8 node types, not the 22 the specification "
-            "proposes (System, CryptoAsset, BusinessProcess, BusinessOwner, "
-            "ComplianceScope, Vendor, Certificate, CloudResource). Evidence objects are "
-            "stored in PostgreSQL with content hashes; there is no MinIO/S3 evidence tier "
-            "and no Redis dependency — the estate graph is rebuilt in process, Redis is "
-            "optional and the graph store is rebuildable"
+            "the twin's own graph export now covers the specification's 22 node labels — "
+            "asset types, evidence types and the four placement levels that used to be "
+            "asset properties only (SPEC_GRAPH_LABELS, graph_label_coverage) — and the "
+            "loader writes each family under its own label with a validated kind label. "
+            "What is still true: the legacy cypher_writes projection in graph_engine is a "
+            "separate, narrower eight-label schema used by the older dashboards, and "
+            "evidence objects are stored in PostgreSQL with content hashes rather than in "
+            "a MinIO/S3 tier, with no Redis dependency — the estate graph is rebuilt in "
+            "process, Redis is optional and the graph store is rebuildable"
         ),
     ),
     _row(

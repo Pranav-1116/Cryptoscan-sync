@@ -87,6 +87,21 @@ ASSET_TYPES: tuple[str, ...] = (
 
 BOM_KINDS: tuple[str, ...] = ("SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "TECHBOM")
 
+#: Placement levels that become *nodes* in a graph projection rather than only
+#: attributes on the asset. A data centre is a thing a bank's graph asks about
+#: ("what runs in UAE DC1") and a string property answers it one asset at a time.
+#: The names are the specification's Neo4j vocabulary (§7 of the twin spec): the
+#: `BusinessSystem` it lists is this build's `SYSTEM` asset type, and `NetworkDevice`
+#: is `FIREWALL`/`LOAD_BALANCER`/`VPN`.
+PLACEMENT_LABELS: tuple[str, ...] = (
+    "ORGANIZATION",
+    "DEPARTMENT",
+    "REGION",
+    "DATA_CENTER",
+    "CLOUD_ENVIRONMENT",
+    "ENVIRONMENT",
+)
+
 #: §24 evidence taxonomy. The strongest evidence a fact can carry is what it says.
 EVIDENCE_TYPES: tuple[str, ...] = (
     "RUNTIME_OBSERVED",
@@ -1823,6 +1838,7 @@ __all__ = [
     "EVIDENCE_TYPES",
     "IDENTITY_KEYS",
     "IDENTITY_VERSION",
+    "PLACEMENT_LABELS",
     "POLICY_VERSION",
     "PROJECTION_SCHEMA",
     "RELATIONSHIP_BASES",

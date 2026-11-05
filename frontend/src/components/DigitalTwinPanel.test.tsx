@@ -132,9 +132,10 @@ it("plans a graph-store load without writing anything", async () => {
     [TWIN]: overview(),
     [GRAPH]: {
       schema: "cryptoscan.estate-graph-export/1", projection_id: "c".repeat(32), generated_at: null,
-      counts: { asset_nodes: 3, evidence_nodes: 4, relationships: 2, unresolved: 1 },
+      counts: { asset_nodes: 3, evidence_nodes: 4, placement_nodes: 6, relationships: 2, unresolved: 1 },
       nodes: [], relationships: [], unresolved: [],
       load_notes: { not_source_of_truth: "the store is a copy", edge_identity: "edges are (from,to,type)" },
+      label_coverage: { Organization: ["ORGANIZATION"], DataCenter: ["DATA_CENTER"], KMS: ["KMS_KEY"] },
     },
     [GRAPH_LOAD]: {
       schema: "cryptoscan.estate-graph-load/1", projection_id: "c".repeat(32), estate: "Synthetic Bank",
@@ -146,6 +147,10 @@ it("plans a graph-store load without writing anything", async () => {
   });
   render(<DigitalTwinPanel />);
   (await screen.findByText("Graph export")).click();
+  // the organisation chart is in the projection, and the panel says so rather than
+  // leaving a reader to infer that a data centre is only a string on an asset
+  expect(await screen.findByText("6 placement nodes")).toBeInTheDocument();
+  expect(screen.getByText("3 spec labels covered")).toBeInTheDocument();
   (await screen.findByText("Plan the graph-store load")).click();
   await waitFor(() => expect(screen.getByText(/DRY RUN — nothing written/)).toBeInTheDocument());
   expect(screen.getByText("5 statement(s)")).toBeInTheDocument();

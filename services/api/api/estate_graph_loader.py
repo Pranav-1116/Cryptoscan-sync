@@ -35,6 +35,7 @@ from typing import Any, Iterable, Mapping, Sequence
 from shared_models.estate_graph import (
     ASSET_TYPES,
     EVIDENCE_TYPES,
+    PLACEMENT_LABELS,
     RELATIONSHIP_PREDICATES,
 )
 
@@ -47,6 +48,12 @@ _SAFE_TOKEN = re.compile(r"^[A-Z][A-Z0-9_]{0,39}$")
 
 ASSET_LABEL = "EstateAsset"
 EVIDENCE_LABEL = "EstateEvidence"
+PLACEMENT_LABEL = "EstatePlacement"
+
+#: The family token in ``labels[0]``. A node's *kind* label is the last label that is
+#: not one of these, so ``["PLACEMENT", "DATA_CENTER"]`` is a data-centre node in the
+#: placement family rather than a data centre with no family at all.
+_FAMILY_LABELS = {"ASSET", "EVIDENCE", "PLACEMENT"}
 UNRESOLVED_TYPE = "UNRESOLVED_CANDIDATE"
 SUPPORTS_TYPE = "SUPPORTS"
 
@@ -75,6 +82,29 @@ def _check_token(value: str, *, allowed: Iterable[str] | None, what: str) -> str
             f"({', '.join(sorted(str(item) for item in allowed))[:200]})"
         )
     return token
+
+
+def _family(labels: Sequence[str]) -> tuple[str, str]:
+    """``(kind label, family)`` for one node's labels.
+
+    The export writes ``[family, kind]`` — ``["ASSET", "APPLICATION"]``,
+    ``["EVIDENCE", "RUNTIME_OBSERVED"]``, ``["PLACEMENT", "DATA_CENTER"]`` — so the
+    kind is the last label that is not a family token. Anything else is ``UNKNOWN``,
+    which is refused by ``node_statement`` rather than written as an untyped node.
+    """
+    tokens = [str(label).upper() for label in labels]
+    family = tokens[0] if tokens and tokens[0] in _FAMILY_LABELS else ""
+    kind = next((token for token in reversed(tokens) if token not in _FAMILY_LABELS), "UNKNOWN")
+    return kind, family
+
+
+def kind_label(labels: Sequence[str]) -> str:
+    """The kind label for a node's label list — public so a checker asks the same way.
+
+    A test that re-derives this from the export with its own set of family tokens is a
+    test that can disagree with the loader about what a node is.
+    """
+    return _family(labels)[0]
 
 
 def validate_export(export: Mapping[str, Any]) -> dict[str, Any]:
@@ -111,11 +141,11 @@ def validate_export(export: Mapping[str, Any]) -> dict[str, Any]:
         if not labels:
             raise ExportRejected(f"node {node_id!r} has no labels")
         for label in labels:
-            if str(label).upper() in {"ASSET", "EVIDENCE"}:
+            if str(label).upper() in _FAMILY_LABELS:
                 continue
             _check_token(
                 str(label),
-                allowed=set(ASSET_TYPES) | set(EVIDENCE_TYPES),
+                allowed=set(ASSET_TYPES) | set(EVIDENCE_TYPES) | set(PLACEMENT_LABELS),
                 what="node label",
             )
 
@@ -151,14 +181,23 @@ def _batches(items: Sequence[Any], size: int) -> list[Sequence[Any]]:
     return [items[index:index + size] for index in range(0, len(items), size)]
 
 
-def node_statement(label: str, *, evidence: bool = False) -> str:
+def node_statement(label: str, *, evidence: bool = False, placement: bool = False) -> str:
     """MERGE-by-id upsert for one label.
 
     ``MERGE`` on the deterministic id rather than ``CREATE`` is what makes a
     re-load converge: the same snapshot loaded twice must not double the store.
     """
-    label_token = _check_token(label, allowed=set(ASSET_TYPES) | set(EVIDENCE_TYPES), what="node label")
-    extra = f"{EVIDENCE_LABEL}:{label_token}" if evidence else f"{ASSET_LABEL}:{label_token}"
+    label_token = _check_token(
+        label,
+        allowed=set(ASSET_TYPES) | set(EVIDENCE_TYPES) | set(PLACEMENT_LABELS),
+        what="node label",
+    )
+    if placement:
+        extra = f"{PLACEMENT_LABEL}:{label_token}"
+    elif evidence:
+        extra = f"{EVIDENCE_LABEL}:{label_token}"
+    else:
+        extra = f"{ASSET_LABEL}:{label_token}"
     return (
         f"UNWIND $rows AS row\n"
         f"MERGE (n {{id: row.id}})\n"
@@ -208,9 +247,10 @@ def plan(export: Mapping[str, Any], *, loaded_at: str, batch_size: int = 500) ->
     by_label: dict[tuple[str, bool], list[dict[str, Any]]] = {}
     for node in export.get("nodes") or []:
         labels = [str(label) for label in (node.get("labels") or [])]
-        kind_label = next((label for label in labels if label.upper() not in {"ASSET", "EVIDENCE"}), "UNKNOWN")
-        is_evidence = any(label.upper() == "EVIDENCE" for label in labels)
-        by_label.setdefault((kind_label, is_evidence), []).append(
+        kind_label, family = _family(labels)
+        is_evidence = family == "EVIDENCE"
+        is_placement = family == "PLACEMENT"
+        by_label.setdefault((kind_label, is_evidence, is_placement), []).append(
             {
                 "id": str(node["id"]),
                 "properties": dict(node.get("properties") or {}),
@@ -219,13 +259,13 @@ def plan(export: Mapping[str, Any], *, loaded_at: str, batch_size: int = 500) ->
                 "loaded_at": loaded_at,
             }
         )
-    for (label, is_evidence), rows in sorted(by_label.items()):
+    for (label, is_evidence, is_placement), rows in sorted(by_label.items()):
         for batch in _batches(rows, batch_size):
             work.append(
                 {
                     "kind": "node",
                     "label": label,
-                    "cypher": node_statement(label, evidence=is_evidence),
+                    "cypher": node_statement(label, evidence=is_evidence, placement=is_placement),
                     "params": params(list(batch)),
                     "rows": len(batch),
                 }
@@ -439,9 +479,7 @@ def _expected_ids(export: Mapping[str, Any]) -> dict[str, set[str]]:
     by_label: dict[str, set[str]] = {}
     for node in export.get("nodes") or []:
         labels = [str(label) for label in (node.get("labels") or [])]
-        kind = next(
-            (label for label in labels if label.upper() not in {"ASSET", "EVIDENCE"}), "UNKNOWN"
-        )
+        kind, _family_name = _family(labels)
         by_label.setdefault(kind, set()).add(str(node["id"]))
     return by_label
 
@@ -530,7 +568,11 @@ def parity(
     session_kwargs = {"database": database} if database else {}
     with driver.session(**session_kwargs) as session:
         for label in sorted(expected_ids):
-            _check_token(label, allowed=set(ASSET_TYPES) | set(EVIDENCE_TYPES), what="node label")
+            _check_token(
+                label,
+                allowed=set(ASSET_TYPES) | set(EVIDENCE_TYPES) | set(PLACEMENT_LABELS),
+                what="node label",
+            )
             rows = session.run(NODE_IDS_QUERY, estate=estate, label=label)
             stored_ids[label] = {str(record["id"]) for record in rows}
 

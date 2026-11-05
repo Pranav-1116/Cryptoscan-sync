@@ -606,10 +606,126 @@ def test_graph_export_is_a_projection_with_identity_and_evidence(graph):
     assert export["schema"] == twin.GRAPH_EXPORT_SCHEMA
     assert export["counts"]["asset_nodes"] == len(graph.assets())
     assert export["counts"]["evidence_nodes"] == len(graph.evidence())
-    assert all(edge["properties"]["evidence_ids"] for edge in export["relationships"])
+    # every edge cites evidence, or says why it cannot: a placement edge derived from
+    # an assertion-only attribute names that instead of borrowing someone else's proof
+    assert all(
+        edge["properties"]["evidence_ids"] or edge["properties"].get("uncited_because")
+        for edge in export["relationships"]
+    )
     assert export["load_notes"]["not_source_of_truth"].startswith("this export is a projection")
     # an unresolved edge ships separately rather than as a relationship
     assert export["counts"]["unresolved"] == len(graph.unresolved_relationships())
+
+
+def _chart_payload() -> dict:
+    """Two assets with an asserted chart, one asset asserting none of it."""
+    return {
+        "estate": "Synthetic Bank",
+        "assets": [
+            {"ref": "api", "type": "APPLICATION", "name": "Payment API",
+             "environment": "production",
+             "attributes": {"organization": "Bank UAE PJSC", "department": "Payments",
+                            "region": "me-central-1", "data_center": "UAE DC1"}},
+            {"ref": "core", "type": "APPLICATION", "name": "Core Ledger",
+             "environment": "production",
+             "attributes": {"organization": "Bank UAE PJSC", "department": "Core Banking",
+                            "region": "me-central-1", "data_center": "UAE DC1"}},
+            {"ref": "loose", "type": "APPLICATION", "name": "legacy-batch"},
+        ],
+        "evidence": [
+            {"evidence_id": "ev-1", "source": "agent", "evidence_type": "RUNTIME_OBSERVED",
+             "target": "api", "layer": "APPLICATION", "facts": {"algorithm": "AES-256-GCM"}},
+        ],
+        "relationships": [],
+    }
+
+
+def test_the_graph_carries_the_organisation_chart_as_nodes_not_strings():
+    """§7 asks for Organization/Region/DataCenter nodes; a property answers one asset at a time."""
+    export = twin.graph_export(build_graph(_chart_payload()))
+
+    placement = {
+        node["properties"]["level"]: node
+        for node in export["nodes"] if "PLACEMENT" in node["labels"]
+    }
+    assert placement["ORGANIZATION"]["properties"]["name"] == "Bank UAE PJSC"
+    assert placement["DATA_CENTER"]["properties"]["name"] == "UAE DC1"
+    # five levels, six distinct nodes: the two assets sit in different departments
+    placement_nodes = [node for node in export["nodes"] if "PLACEMENT" in node["labels"]]
+    assert export["counts"]["placement_nodes"] == len(placement_nodes) == 6
+    assert len(placement) == 5
+
+    contains = [edge for edge in export["relationships"] if edge["type"] == "CONTAINS"]
+    # two placed assets, five asserted levels each; the unplaced asset is in no edge
+    assert len(contains) == 10
+    assert all(edge["from"].startswith("placement:") for edge in contains)
+
+
+def test_a_placement_level_nothing_asserts_has_no_node():
+    """The chart is never filled in from the level below it."""
+    export = twin.graph_export(build_graph(_chart_payload()))
+
+    levels = {node["labels"][1] for node in export["nodes"] if "PLACEMENT" in node["labels"]}
+    # no asset asserts a cloud account, so there is no CLOUD_ENVIRONMENT node
+    assert levels == {"ORGANIZATION", "DEPARTMENT", "REGION", "DATA_CENTER", "ENVIRONMENT"}
+
+
+def test_the_chart_edges_follow_the_asserted_hierarchy():
+    export = twin.graph_export(build_graph(_chart_payload()))
+
+    by_id = {node["id"]: node for node in export["nodes"]}
+    part_of = [edge for edge in export["relationships"] if edge["type"] == "PART_OF"]
+    assert part_of
+    for edge in part_of:
+        child = by_id[edge["from"]]["properties"]
+        parent = by_id[edge["to"]]["properties"]
+        assert (child["level"], parent["level"]) in {
+            ("DEPARTMENT", "ORGANIZATION"),
+            ("DATA_CENTER", "REGION"),
+            ("ENVIRONMENT", "DATA_CENTER"),
+        }
+
+
+def test_a_placement_edge_without_evidence_says_so_rather_than_borrowing_proof():
+    payload = _chart_payload()
+    payload["evidence"] = []
+    export = twin.graph_export(build_graph(payload))
+
+    contains = [edge for edge in export["relationships"] if edge["type"] == "CONTAINS"]
+    assert contains
+    assert all(
+        edge["properties"]["uncited_because"].startswith("the placed asset carries no evidence")
+        for edge in contains
+    )
+
+
+def test_the_specifications_twenty_two_graph_labels_all_resolve_to_an_emittable_type():
+    """§7 lists 22 node labels. "8 of 22" was the gap; this is the check that closes it."""
+    coverage = twin.graph_label_coverage()
+
+    assert coverage["specified"] == 22
+    assert coverage["available"] == 22
+    for row in coverage["labels"]:
+        assert row["available"], row
+        assert row["emitted_as"], row["spec_label"]
+
+    # the four placement levels are nodes now, not only asset properties
+    placement = {row["spec_label"] for row in coverage["labels"] if row["family"] == "PLACEMENT"}
+    assert placement == {"Organization", "Region", "DataCenter", "Environment"}
+
+    # names that differ between the specification and this build say so, rather than
+    # emitting a second spelling of the same thing
+    by_name = {row["spec_label"]: row["emitted_as"] for row in coverage["labels"]}
+    assert by_name["KMS"] == ["KMS_KEY"]
+    assert by_name["BusinessSystem"] == ["SYSTEM"]
+    assert set(by_name["NetworkDevice"]) == {"FIREWALL", "LOAD_BALANCER", "VPN"}
+
+
+def test_an_export_states_which_spec_label_each_build_label_maps_to():
+    export = twin.graph_export(build_graph(_chart_payload()))
+
+    assert export["label_coverage"]["DataCenter"] == ["DATA_CENTER"]
+    assert export["label_coverage"]["Evidence"]
 
 
 def test_graph_export_is_deterministic(graph):

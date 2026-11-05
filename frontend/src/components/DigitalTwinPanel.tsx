@@ -1563,7 +1563,15 @@ export default function DigitalTwinPanel() {
                 <Badge tone="violet">{exported.projection_id.slice(0, 12)}</Badge>
                 <Badge tone="slate">{exported.counts.asset_nodes} asset nodes</Badge>
                 <Badge tone="slate">{exported.counts.evidence_nodes} evidence nodes</Badge>
+                {(exported.counts.placement_nodes ?? 0) > 0 && (
+                  <Badge tone="slate">{exported.counts.placement_nodes} placement nodes</Badge>
+                )}
                 <Badge tone="cyan">{exported.counts.relationships} edges</Badge>
+                {exported.label_coverage && (
+                  <Badge tone="violet">
+                    {Object.keys(exported.label_coverage).length} spec labels covered
+                  </Badge>
+                )}
                 {exported.counts.unresolved > 0 && (
                   <Badge tone="amber">{exported.counts.unresolved} unresolved (shipped separately)</Badge>
                 )}

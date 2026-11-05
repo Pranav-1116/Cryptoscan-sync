@@ -7024,6 +7024,10 @@ export interface EstateTwinGraphExport {
   relationships: Array<{ type: string; from: string; to: string; properties: Record<string, unknown> }>;
   unresolved: Array<Record<string, unknown>>;
   load_notes: Record<string, unknown>;
+  /* the specification's 22 graph labels, each mapped to the label(s) this build
+     emits — served with every export so "the projection covers the spec" is read,
+     not taken on trust */
+  label_coverage?: Record<string, string[]>;
 }
 
 export const apiEstateTwinSnapshots = (): Promise<ApiResult<EstateTwinSnapshotList>> =>

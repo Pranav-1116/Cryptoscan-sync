@@ -47,6 +47,8 @@ from typing import Any, Iterable, Mapping, Sequence
 from shared_models.estate_graph import (
     ASSET_TYPES,
     BOM_KINDS,
+    EVIDENCE_TYPES,
+    PLACEMENT_LABELS,
     POLICY_VERSION,
     EstateGraph,
     build_graph,
@@ -3594,6 +3596,169 @@ def crypto_graph(graph: EstateGraph) -> dict[str, Any]:
 GRAPH_EXPORT_SCHEMA = "cryptoscan.estate-graph-export/1"
 
 
+def _placement_nodes(graph: EstateGraph) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The organisation chart and the sites, as nodes with ``CONTAINS`` edges.
+
+    Derived from asserted attributes only — the same rule the placement model uses —
+    so a graph query cannot reach a level the evidence never asserted. An asset with
+    no organisation contributes no ORGANIZATION node, which is why "the chart is
+    empty" reads as a collection gap rather than as a flat bank.
+    """
+    nodes: dict[str, dict[str, Any]] = {}
+    edges: dict[tuple[str, str], dict[str, Any]] = {}
+    parent: dict[str, str] = {}
+
+    def _node(level: str, name: str) -> str:
+        node_id = f"placement:{level.lower()}:{_canonical({'level': level, 'name': name})[:16]}"
+        if node_id not in nodes:
+            nodes[node_id] = {
+                "id": node_id,
+                "labels": ["PLACEMENT", level],
+                "properties": {"level": level, "name": name, "estate": graph.estate},
+            }
+        return node_id
+
+    def _edge(kind: str, start: str, end: str, evidence_ids: Sequence[str] = ()) -> None:
+        key = (kind, start, end)
+        if key not in edges:
+            edges[key] = {
+                "type": kind,
+                "from": start,
+                "to": end,
+                # a placement edge is established by the attribute that places the asset,
+                # so it cites that asset's evidence rather than appearing from nowhere
+                "properties": {"basis": "PLACEMENT_ATTRIBUTE", "evidence_ids": []},
+            }
+        properties = edges[key]["properties"]
+        for evidence_id in evidence_ids:
+            if evidence_id not in properties["evidence_ids"]:
+                properties["evidence_ids"].append(evidence_id)
+        if not properties["evidence_ids"]:
+            # an asset whose placement is asserted but which carries no evidence record
+            # of its own: the edge is real, its provenance is not. Saying so is the
+            # difference between a documented gap and an edge that looks sourced
+            properties["uncited_because"] = (
+                "the placed asset carries no evidence record; its placement attribute is assertion-only"
+            )
+        elif "uncited_because" in properties:
+            del properties["uncited_because"]
+
+    for asset in graph.assets():
+        asset_id = asset["asset_id"]
+        organization = _attribute(asset, _PLACEMENT_KEYS["ORGANIZATION"])
+        department = _attribute(asset, _PLACEMENT_KEYS["DEPARTMENT"])
+        region = _attribute(asset, _PLACEMENT_KEYS["REGION"])
+        data_center = _attribute(asset, _PLACEMENT_KEYS["DATA_CENTER"])
+        account = _attribute(asset, _PLACEMENT_KEYS["CLOUD_ENVIRONMENT"])
+        provider = _attribute(asset, _CLOUD_PROVIDER_KEYS).upper()
+        environment = _text(asset.get("environment"))
+        if data_center and not _is_site(data_center):
+            data_center = ""
+
+        hierarchy: list[tuple[str, str]] = []
+        if organization:
+            hierarchy.append(("ORGANIZATION", organization))
+        if department:
+            hierarchy.append(("DEPARTMENT", department))
+        if environment:
+            hierarchy.append(("ENVIRONMENT", environment))
+        if region:
+            hierarchy.append(("REGION", region))
+        if data_center:
+            hierarchy.append(("DATA_CENTER", data_center))
+        if provider or account:
+            hierarchy.append(
+                ("CLOUD_ENVIRONMENT", f"{provider or 'UNKNOWN_PROVIDER'}"
+                                       f"{':' + account if account else ''}")
+            )
+
+        ids = {level: _node(level, name) for level, name in hierarchy}
+        cites = [str(ref) for ref in (asset.get("evidence_refs") or [])]
+        for level, _name in hierarchy:
+            _edge("CONTAINS", ids[level], asset_id, cites)
+        # the chart's own shape, asserted or absent: a department is not placed under
+        # an organisation the evidence never named for any asset in it
+        if "DEPARTMENT" in ids and "ORGANIZATION" in ids:
+            parent.setdefault(ids["DEPARTMENT"], ids["ORGANIZATION"])
+        if "DATA_CENTER" in ids and "REGION" in ids:
+            parent.setdefault(ids["DATA_CENTER"], ids["REGION"])
+        if "ENVIRONMENT" in ids and "DATA_CENTER" in ids:
+            parent.setdefault(ids["ENVIRONMENT"], ids["DATA_CENTER"])
+
+    for child, ancestor in sorted(parent.items()):
+        _edge("PART_OF", child, ancestor)
+
+    return (
+        [nodes[key] for key in sorted(nodes)],
+        [edges[key] for key in sorted(edges)],
+    )
+
+
+#: The specification's §7 Neo4j vocabulary (§7, "Suggested Neo4j graph model"),
+#: mapped onto what this build emits. Kept as data so the claim "the projection
+#: covers the specification's labels" is checked rather than asserted in prose: a
+#: spec label whose target stops existing fails ``test_graph_export`` instead of
+#: quietly becoming a missing node type. Where the specification's name differs
+#: from this build's, the mapping says so instead of emitting a second spelling of
+#: the same thing.
+SPEC_GRAPH_LABELS: dict[str, tuple[str, tuple[str, ...]]] = {
+    # spec label: (family, this build's labels)
+    "Organization": ("PLACEMENT", ("ORGANIZATION",)),
+    "Region": ("PLACEMENT", ("REGION",)),
+    "DataCenter": ("PLACEMENT", ("DATA_CENTER",)),
+    "Environment": ("PLACEMENT", ("ENVIRONMENT",)),
+    "BusinessSystem": ("ASSET", ("SYSTEM",)),
+    "Application": ("ASSET", ("APPLICATION",)),
+    "Service": ("ASSET", ("SERVICE",)),
+    "Host": ("ASSET", ("HOST",)),
+    "Container": ("ASSET", ("CONTAINER",)),
+    "Package": ("ASSET", ("PACKAGE",)),
+    "Library": ("ASSET", ("LIBRARY",)),
+    "CryptoAsset": ("ASSET", ("CRYPTO_ASSET",)),
+    "Certificate": ("ASSET", ("CERTIFICATE",)),
+    "HSM": ("ASSET", ("HSM",)),
+    "KMS": ("ASSET", ("KMS_KEY",)),
+    "Hardware": ("ASSET", ("HARDWARE",)),
+    "NetworkDevice": ("ASSET", ("FIREWALL", "LOAD_BALANCER", "VPN")),
+    "NetworkEndpoint": ("ASSET", ("NETWORK_ENDPOINT",)),
+    "Vendor": ("ASSET", ("VENDOR",)),
+    "Product": ("ASSET", ("PRODUCT",)),
+    "Firmware": ("ASSET", ("FIRMWARE",)),
+    "Evidence": ("EVIDENCE", EVIDENCE_TYPES),
+}
+
+
+def graph_label_coverage() -> dict[str, Any]:
+    """Which of the specification's graph labels this build can emit, and as what."""
+    known = {
+        "ASSET": set(ASSET_TYPES),
+        "PLACEMENT": set(PLACEMENT_LABELS),
+        "EVIDENCE": set(EVIDENCE_TYPES),
+    }
+    rows = []
+    for spec_label, (family, emitted) in SPEC_GRAPH_LABELS.items():
+        missing = [label for label in emitted if label not in known[family]]
+        rows.append(
+            {
+                "spec_label": spec_label,
+                "family": family,
+                "emitted_as": list(emitted),
+                "available": not missing,
+                "missing": missing,
+            }
+        )
+    return {
+        "labels": rows,
+        "specified": len(rows),
+        "available": sum(1 for row in rows if row["available"]),
+        "note": (
+            "a placement level becomes a node only where evidence asserts it, so an "
+            "available label is a shape the export can produce, not a promise that this "
+            "estate has one"
+        ),
+    }
+
+
 def graph_export(graph: EstateGraph) -> dict[str, Any]:
     """Typed nodes and edges for loading into a graph database.
 
@@ -3688,24 +3853,38 @@ def graph_export(graph: EstateGraph) -> dict[str, Any]:
         for record in graph.evidence()
     ]
 
+    placement_nodes, placement_edges = _placement_nodes(graph)
+
     return {
         "schema": GRAPH_EXPORT_SCHEMA,
         "estate": graph.estate,
         "projection_id": graph.fingerprint(),
         "generated_at": _now(),
-        "nodes": nodes + evidence,
-        "relationships": relationships + supports,
+        "nodes": nodes + evidence + placement_nodes,
+        "relationships": relationships + supports + placement_edges,
         "unresolved": unresolved,
+        "label_coverage": {
+            row["spec_label"]: row["emitted_as"] for row in graph_label_coverage()["labels"]
+        },
         "counts": {
-            "nodes": len(nodes) + len(evidence),
+            "nodes": len(nodes) + len(evidence) + len(placement_nodes),
             "asset_nodes": len(nodes),
             "evidence_nodes": len(evidence),
+            "placement_nodes": len(placement_nodes),
             "relationships": len(relationships),
             "supports": len(supports),
+            "placement_edges": len(placement_edges),
             "unresolved": len(unresolved),
         },
         "load_notes": {
-            "node_identity": "asset nodes are keyed by the deterministic asset_id; evidence nodes by evidence_id",
+            "node_identity": (
+                "asset nodes are keyed by the deterministic asset_id; evidence nodes by evidence_id; "
+                "placement nodes by (level, asserted name) — never by position in a tree"
+            ),
+            "placement_levels_are_asserted_only": (
+                "a level with no asserting evidence has no node. The graph never fills the chart in "
+                "from the level below it"
+            ),
             "edge_identity": "an edge is (type, from, to) plus its basis — never a bare foreign key",
             "unresolved_edges_ship_separately": True,
             "not_source_of_truth": (
@@ -3757,6 +3936,7 @@ __all__ = [
     "SIMULATION_KINDS",
     "SIMULATION_SCHEMA",
     "SNAPSHOT_SCHEMA",
+    "SPEC_GRAPH_LABELS",
     "STRENGTH_ORDER",
     "TWIN_SCHEMA",
     "cascade",
@@ -3765,6 +3945,7 @@ __all__ = [
     "completeness",
     "crypto_graph",
     "graph_export",
+    "graph_label_coverage",
     "graph_from_snapshot",
     "impact",
     "investigate",
