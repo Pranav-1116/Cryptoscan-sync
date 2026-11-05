@@ -447,6 +447,16 @@ on the live twin would break the one contract the simulation engine keeps. What 
 print a zero it did not read — a failed call says the read failed, and an empty relationship family
 says the twin holds none, which is not the same as the estate having none.
 
+Step 3 of the walkthrough draws the twin's graph rather than tabulating it. The nodes are arranged in
+the specification's layers — organisation, region, data centre, environment, assets, evidence — and
+every line is a relationship the twin holds under its own ids, so selecting one asks `why` about
+exactly that subject/predicate/object and prints the evidence (type, collector, source, timestamp,
+hash) or the refusal. The layout is deterministic, so the same projection draws the same picture
+twice; a refused candidate is counted and never drawn, because an unproven relationship with a border
+reads as a fact; and the node cap is printed on the canvas, because a drawing that silently drops
+nodes reads as a complete estate. The older `/graph` page still draws the legacy eight-label
+projection for the existing dashboards — that is why the twin's picture lives on the walkthrough.
+
 On the Relationship Graph page, the edge-first panel lists the twin's own relationships and
 asks `why` about the one you select: the answer is the evidence (type, collector, source,
 timestamp, hash) or the refusal, and the two are never blended. It reads the twin's export rather

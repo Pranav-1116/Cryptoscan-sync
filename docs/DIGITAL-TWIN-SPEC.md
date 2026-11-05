@@ -661,7 +661,7 @@ does not find it first).
 | 6 | Payment-API walkthrough | SUPPORTED | `bank-environment/05-practical-bank-walkthrough.md`, `GET …/twin/why` | — |
 | 7 | Hybrid storage | PARTIAL | `EstateAssetRecord`, `estate_twin.graph_export` / `SPEC_GRAPH_LABELS`, `services/api/api/estate_graph_loader.py`, `services/api/api/estate_evidence_objects.py` | all 22 specification labels are emitted (asset types, evidence types, four placement levels); evidence objects have a content-addressed filesystem/S3 (MinIO) tier behind `GET/POST …/twin/artifacts`; the legacy `cypher_writes.py` projection is a narrower eight-label schema, the sink is off until `EVIDENCE_OBJECT_DIR` or `EVIDENCE_OBJECT_S3_BUCKET` names a store, and there is no Redis dependency |
 | 8 | Update lifecycle and asset states | SUPPORTED | `cbom_dependency.LIFECYCLE_STATES`, `transition_asset_lifecycle` | — |
-| 9 | Thirteen screens | SUPPORTED | `TwinWalkthrough.tsx` / `/twin-walkthrough`, `TwinEdgeExplorer.tsx`, `DigitalTwin.tsx` | in the specification's order as thirteen routes **and** as one walkthrough canvas that carries a single asset through all thirteen; the "why" action exists per edge and per step. Not a drawn canvas of its own: the walkthrough is ordered panels, and `/graph` still draws the legacy eight-label projection |
+| 9 | Thirteen screens | SUPPORTED | `TwinWalkthrough.tsx` / `/twin-walkthrough`, `TwinGraphCanvas.tsx`, `TwinEdgeExplorer.tsx`, `DigitalTwin.tsx` | in the specification's order as thirteen routes **and** as one walkthrough canvas that carries a single asset through all thirteen; the "why" action exists per step, per edge in the list, and on a **drawn canvas of the twin's own export** where a line is selectable. `/graph` still draws the legacy eight-label projection for the older dashboards |
 | 10 | What the twin cannot guarantee | SUPPORTED | `GET …/twin/completeness`, `GET …/twin/why` | — |
 | 11 | P0–P3 priorities | SUPPORTED | guide 94, "Status in this repository" | — |
 | 12 | Not another scanner or database | SUPPORTED | `estate_twin.graph_from_snapshot` | — |
@@ -715,6 +715,14 @@ asset, then step through all thirteen investigations in the order above. Each st
 twin endpoints the full screen reads and prints what it could not read as a failed read — a panel of
 zeros over an unread twin is a claim about an estate nobody looked at. It summarises; it does not
 replace the screens, and every step links to its own.
+
+Step 3 carries **a drawn canvas of the twin's own graph** (`TwinGraphCanvas.tsx`): the export's nodes
+in the specification's layers (organisation → region → data centre → environment → assets →
+evidence), each line a relationship the twin holds, and selecting one asks `GET …/twin/why` about
+that subject/predicate/object — the evidence, or the refusal. The layout is deterministic, so the
+same projection draws the same picture twice; refused candidates are counted rather than drawn; and
+the node cap is stated on the canvas, because a drawing that silently drops nodes reads as a
+complete estate.
 
 ## 14. What was missing, and what this change built
 
@@ -882,11 +890,11 @@ now exists (`estate_evidence_objects`, served at `…/twin/artifacts`), but no e
 repository names a bucket or a directory for it, so it reports itself unconfigured rather than
 pretending to store; Redis stays a deployment decision, since nothing in the twin needs a cache it
 can rebuild.
-(2) Re-pointing the legacy `cypher_writes` projection at the new export, and a drawn canvas of the
-twin's own graph: the thirteen investigations are thirteen routes *and* one walkthrough canvas, but
-that canvas is ordered panels rather than a picture, and `/graph` still draws the separate narrower
-legacy schema used by the older dashboards — so the edge explorer sits beside the drawn graph rather
-than inside it, and the legacy builder is left alone rather than half-migrated.
+(2) Re-pointing the legacy `cypher_writes` projection at the new export: `/graph` still draws the
+separate narrower eight-label schema used by the older dashboards, so a line there opens the legacy
+view. The twin now has a drawn canvas of its own (`TwinGraphCanvas`, step 3 of the walkthrough) whose
+lines ask the twin, which is why the legacy builder is left alone rather than half-migrated — two
+drawn graphs is a migration decision, not a missing capability.
 (3) Cross-record expressions and time-ordered migration windows — an expression reads one record's
 facts, and a `COMPOSITE` sequence has an order but no clock; a scheduler and a query engine would
 each let a scenario produce a value no evidence holds.

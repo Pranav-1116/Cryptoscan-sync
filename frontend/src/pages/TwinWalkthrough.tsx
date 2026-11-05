@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Panel, Badge } from "../components/ui.jsx";
+import TwinGraphCanvas from "../components/TwinGraphCanvas.jsx";
 import {
   apiEstateChanges, apiEstateIntel, apiEstateTwin, apiEstateTwinAsset, apiEstateTwinSearch,
   type EstateChangeFeed, type EstateCryptoIntel, type EstateTwinAssetView, type EstateTwinOverview,
@@ -284,6 +285,9 @@ export default function TwinWalkthrough() {
             )}
             {view && rows.length > 0 && <EdgeTable rows={rows} />}
             {viewError && <Empty>{viewError}</Empty>}
+            <div style={{ marginTop: 4 }}>
+              <TwinGraphCanvas />
+            </div>
           </div>
         );
       case "crypto":

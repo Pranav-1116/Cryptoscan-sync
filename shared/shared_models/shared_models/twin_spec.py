@@ -166,6 +166,7 @@ SECTIONS: tuple[dict[str, Any], ...] = (
         "s9-ui", "§9 the thirteen investigation screens", SUPPORTED,
         (
             "frontend/src/pages/TwinWalkthrough.tsx",
+            "frontend/src/components/TwinGraphCanvas.tsx",
             "frontend/src/components/TwinEdgeExplorer.tsx",
             "frontend/src/pages/DigitalTwin.tsx",
         ),
@@ -173,11 +174,14 @@ SECTIONS: tuple[dict[str, Any], ...] = (
             "all thirteen investigations exist as their own route, in the specification's "
             "order, and also run as one walkthrough canvas (/twin-walkthrough) that carries "
             "a single asset through all thirteen in sequence, reading the twin per step and "
-            "printing a failed read as a failed read. The 'why' action is built twice: "
-            "per edge in the Relationship Graph's edge-first explorer, and per step in the "
-            "walkthrough. What it is not: a drawn canvas of its own — the walkthrough is "
-            "ordered panels, and the drawn /graph still renders the legacy eight-label "
-            "projection, which is why its lines open the legacy view rather than twin evidence"
+            "printing a failed read as a failed read. The 'why' action is built three ways: "
+            "inline per step, per edge in the Relationship Graph's edge-first list, and on a "
+            "drawn canvas of the twin's *own* export (TwinGraphCanvas, step 3) where selecting "
+            "a line asks the twin about that subject/predicate/object and prints the evidence "
+            "or the refusal. That canvas is layered and deterministic, counts refused "
+            "candidates without drawing them, and states its own node cap. What remains: "
+            "/graph still draws the legacy eight-label projection, so its lines open the "
+            "legacy view — the twin's picture lives on the walkthrough, not on /graph"
         ),
     ),
     _row(

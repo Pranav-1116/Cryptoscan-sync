@@ -22,6 +22,7 @@ const ASSET = "/api/v1/estate/evidence/twin/assets/application%3Aaaa";
 const SEARCH = "/api/v1/estate/evidence/twin/search";
 const CHANGES = "/api/v1/estate/evidence/changes";
 const INTEL_ROUTE = "/api/v1/estate/evidence/twin/intel";
+const GRAPH = "/api/v1/estate/evidence/twin/graph";
 
 const ASSET_VIEW = {
   asset: { asset_id: "application:aaa", name: "Payment API", type: "APPLICATION",
@@ -108,6 +109,23 @@ const INTEL_DOC = {
   next_action: "", limits: [],
 };
 
+const GRAPH_DOC = {
+  schema: "cryptoscan.estate-graph-export/1",
+  projection_id: "d".repeat(32),
+  generated_at: "2026-11-05T00:00:00Z",
+  counts: { nodes: 3, asset_nodes: 2, evidence_nodes: 0, relationships: 1, unresolved: 1 },
+  nodes: [
+    { id: "application:aaa", labels: ["Asset", "APPLICATION"], properties: { name: "Payment API" } },
+    { id: "hsm:ccc", labels: ["Asset", "HSM"], properties: { name: "HSM-03" } },
+    { id: "placement:environment:eee", labels: ["PLACEMENT", "ENVIRONMENT"], properties: { name: "production" } },
+  ],
+  relationships: [
+    { type: "USES_HSM", from: "application:aaa", to: "hsm:ccc", properties: { evidence_ids: ["ev-1"] } },
+  ],
+  unresolved: [{ type: "UNRESOLVED", from: "application:aaa", to: "hsm:ccc", properties: {} }],
+  load_notes: {},
+};
+
 function routes() {
   return {
     [TWIN]: TWIN_OVERVIEW,
@@ -115,6 +133,7 @@ function routes() {
     [SEARCH]: { query: "payment", status: "FOUND", assets: [ASSET_VIEW.asset], artifacts: [] },
     [CHANGES]: CHANGES_FEED,
     [INTEL_ROUTE]: INTEL_DOC,
+    [GRAPH]: GRAPH_DOC,
   };
 }
 
