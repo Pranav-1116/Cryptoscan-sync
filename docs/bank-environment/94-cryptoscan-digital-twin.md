@@ -462,8 +462,14 @@ protocol its own evidence has observed against it: what negotiated below the flo
 is above it, which protocol values this build cannot rank, and which assets carry no handshake evidence
 at all. The last two are findings rather than compliance — an unrankable value is not a pass, and an
 asset nobody probed is not a clean one. The check is a `GET` and edits nothing; what it cannot answer
-is on screen next to the answer, starting with client acceptance, because a client that only offers an
-older protocol is not an asset the twin can see.
+is on screen next to the answer, starting with runtime client acceptance.
+
+Below the observed bucket sits a second one labelled **DECLARED**: what TLS configuration files
+allow, which is a different claim from what a handshake produced. An imported host snapshot is now a
+discovery plane of its own (`HOST`), so a config that still lists TLS 1.0 appears as "LB-07 still
+permits TLSv1.0", an asset that tops out below the floor appears beside the edges it would strand
+(and an empty edge list reads "nothing recorded on either side of it", not "nothing would break"),
+and a configuration the collector could only partly parse says so rather than reading as complete.
 
 On the Relationship Graph page, the edge-first panel lists the twin's own relationships and
 asks `why` about the one you select: the answer is the evidence (type, collector, source,

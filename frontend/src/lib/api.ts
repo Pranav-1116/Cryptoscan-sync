@@ -7481,6 +7481,7 @@ export interface EstateTwinProtocolFloor {
   above_floor?: EstateTwinProtocolFloorRow[];
   unrecognised?: EstateTwinProtocolFloorRow[];
   without_negotiated_evidence?: string[];
+  declared?: EstateTwinProtocolFloorDeclared;
   unresolved_targets?: string[];
   live_state_modified?: boolean;
   note?: string | null;
@@ -7488,6 +7489,33 @@ export interface EstateTwinProtocolFloor {
   limits?: string[];
   choices?: string[];
   detail?: string | null;
+}
+
+/** The DECLARED axis: what a TLS configuration *allows*, which is a different claim from
+ *  what a handshake produced. Kept in its own object so no client can merge the two. */
+export interface EstateTwinProtocolFloorDeclared {
+  basis: "DECLARED";
+  meaning: string;
+  counts: {
+    assets_with_declaration?: number;
+    declares_below_floor?: number;
+    declared_ceiling_below_floor?: number;
+    declared_without_a_rankable_floor?: number;
+    partially_parsed?: number;
+  };
+  declares_below_floor?: Array<EstateTwinProtocolFloorRow & {
+    declared?: string[]; declared_floor?: string | null; field?: string | null;
+    partially_parsed?: boolean;
+  }>;
+  declared_ceiling_below_floor?: Array<EstateTwinProtocolFloorRow & {
+    declared_ceiling?: string | null; edges?: string[]; position_ceiling?: string;
+  }>;
+  declared_without_a_rankable_floor?: Array<EstateTwinProtocolFloorRow & {
+    declared?: string[]; unrecognised?: string[];
+  }>;
+  partially_parsed?: Array<{
+    asset_id: string; asset_name?: string | null; evidence_id?: string | null; field?: string | null;
+  }>;
 }
 
 export const apiEstateTwinProtocolFloor = (

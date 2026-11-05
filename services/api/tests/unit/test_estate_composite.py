@@ -556,7 +556,124 @@ def test_the_api_serves_the_floor_check_and_refuses_an_unrankable_floor(api):
     assert body["schema"] == "cryptoscan.estate-twin-protocol-floor/1"
     assert body["status"] in {"AT_OR_ABOVE_FLOOR", "BELOW_FLOOR_PRESENT", "INSUFFICIENT_EVIDENCE"}
     assert body["live_state_modified"] is False
+    # the declared axis is served beside the negotiated one, never merged into it
+    assert body["declared"]["basis"] == "DECLARED"
+    assert "counts" in body["declared"]
 
     refused = http.get(f"{BASE}/twin/protocol-floor", params={"floor": "TLSv9.9"})
     assert refused.status_code == 422
     assert refused.json()["detail"]["error"] == "invalid_floor"
+
+
+# -- the declared axis: what a configuration allows, which is not a negotiation ------ #
+
+
+def _with_declarations(graph_payload, *records):
+    return build_graph({**graph_payload, "evidence": [*graph_payload["evidence"], *records]})
+
+
+def test_a_configuration_that_still_permits_an_older_protocol_is_a_declared_finding(graph):
+    payload = {
+        "evidence_id": "ev-cfg", "source": "host", "collector": "host",
+        "evidence_type": "CONFIGURED", "target": "lb", "layer": "NETWORK_TRANSPORT",
+        "facts": {"protocols": ["TLSv1.0", "TLSv1.2"]},
+        "observed_at": "2026-11-01T00:00:00Z",
+    }
+    result = twin.protocol_floor(_with_declarations(_payload(), payload), {"floor": "TLSv1.2"})
+
+    declared = result["declared"]
+    assert declared["counts"]["declares_below_floor"] == 1
+    row = declared["declares_below_floor"][0]
+    assert row["asset_name"] == "LB-07"
+    assert row["basis"] == "DECLARED"
+    assert row["position"] == "DECLARES_BELOW_FLOOR"
+    assert row["declared"] == ["TLSV1.0", "TLSV1.2"]
+    # and it is kept apart from the negotiated bucket: no handshake went below TLSv1.2
+    assert result["counts"]["below_floor"] == 0
+
+
+def test_a_declaration_below_the_floor_with_no_handshake_below_it_changes_the_verdict(graph):
+    payload = {
+        "evidence_id": "ev-cfg", "source": "host", "collector": "host",
+        "evidence_type": "CONFIGURED", "target": "lb", "layer": "NETWORK_TRANSPORT",
+        "facts": {"protocols": ["TLSv1.0", "TLSv1.2"]},
+        "observed_at": "2026-11-01T00:00:00Z",
+    }
+    graph_declared = _with_declarations(_payload(), payload)
+
+    assert twin.protocol_floor(graph_declared, {"floor": "TLSv1.2"})["status"] == "BELOW_FLOOR_DECLARED"
+    # at TLSv1.3 the observed handshake itself is below, so the measurement wins the status
+    assert twin.protocol_floor(graph_declared, {"floor": "TLSv1.3"})["status"] == "BELOW_FLOOR_PRESENT"
+
+
+def test_a_declared_ceiling_below_the_floor_names_the_edges_it_would_strand(graph):
+    payload = {
+        "evidence_id": "ev-old", "source": "host", "collector": "host",
+        "evidence_type": "CONFIGURED", "target": "host", "layer": "PLATFORM",
+        "facts": {"protocols": ["TLSv1.1"]},
+        "observed_at": "2026-11-01T00:00:00Z",
+    }
+    result = twin.protocol_floor(_with_declarations(_payload(), payload), {"floor": "TLSv1.2"})
+
+    ceiling = result["declared"]["declared_ceiling_below_floor"]
+    assert len(ceiling) == 1
+    assert ceiling[0]["asset_name"] == "payment-prod-01"
+    assert ceiling[0]["declared_ceiling"] == "TLSV1.1"
+    assert ceiling[0]["position_ceiling"] == "CEILING_BELOW_FLOOR"
+    # the host is served by the api; nothing in this estate reaches *out* from it
+    assert ceiling[0]["edges"] == []
+    assert "records nothing on that asset either way" in result["declared"]["meaning"]
+
+
+def test_a_minimum_version_with_no_enumerable_set_is_judged_on_the_minimum(graph):
+    payload = {
+        "evidence_id": "ev-min", "source": "cloud", "collector": "cloud",
+        "evidence_type": "CONFIGURED", "target": "pg", "layer": "STORAGE",
+        "facts": {"min_tls_version": "TLSv1.0"},
+        "observed_at": "2026-11-01T00:00:00Z",
+    }
+    result = twin.protocol_floor(_with_declarations(_payload(), payload), {"floor": "TLSv1.2"})
+
+    row = result["declared"]["declares_below_floor"][0]
+    assert row["asset_name"] == "PostgreSQL"
+    assert row["declared_floor"] == "TLSV1.0"
+    assert row["declared"] == []
+
+
+def test_a_declaration_with_no_rankable_protocol_is_not_filed_as_compliant(graph):
+    payload = {
+        "evidence_id": "ev-future", "source": "host", "collector": "host",
+        "evidence_type": "CONFIGURED", "target": "ossl", "layer": "APPLICATION",
+        "facts": {"protocols": ["TLS_FUTURE"]},
+        "observed_at": "2026-11-01T00:00:00Z",
+    }
+    result = twin.protocol_floor(_with_declarations(_payload(), payload), {"floor": "TLSv1.2"})
+
+    unrankable = result["declared"]["declared_without_a_rankable_floor"]
+    assert [row["asset_name"] for row in unrankable] == ["OpenSSL"]
+    assert unrankable[0]["unrecognised"] == ["TLS_FUTURE"]
+    assert all(row["asset_name"] != "OpenSSL" for row in result["declared"]["declares_below_floor"])
+
+
+def test_a_half_parsed_configuration_says_it_was_only_half_parsed(graph):
+    payload = {
+        "evidence_id": "ev-part", "source": "host", "collector": "host",
+        "evidence_type": "CONFIGURED", "target": "ossl", "layer": "APPLICATION",
+        "facts": {"protocols": ["TLSv1.2"], "unparsed_directives": True},
+        "observed_at": "2026-11-01T00:00:00Z",
+    }
+    result = twin.protocol_floor(_with_declarations(_payload(), payload), {"floor": "TLSv1.2"})
+
+    partial = result["declared"]["partially_parsed"]
+    assert [row["asset_name"] for row in partial] == ["OpenSSL"]
+    assert result["declared"]["counts"]["partially_parsed"] == 1
+
+
+def test_the_floor_check_states_that_a_declaration_is_not_a_handshake(graph):
+    result = twin.protocol_floor(graph, {"floor": "TLSv1.2"})
+
+    assert result["declared"]["basis"] == "DECLARED"
+    assert "It is not a negotiation" in result["declared"]["meaning"]
+    assert any("runtime client acceptance" in spot for spot in result["blind_spots"])
+    assert any("declarations are read from TLS configuration evidence only" in limit
+               for limit in result["limits"])

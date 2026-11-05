@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Panel, Badge } from "./ui.jsx";
+import type { EstateTwinProtocolFloorDeclared } from "../lib/api.js";
 import { apiEstateTwinProtocolFloor, type EstateTwinProtocolFloor } from "../lib/api.js";
 
 /* ─── A protocol floor, checked against observed handshakes ──────────────────
@@ -18,7 +19,10 @@ import { apiEstateTwinProtocolFloor, type EstateTwinProtocolFloor } from "../lib
 const CHOICES = ["TLSv1.0", "TLSv1.1", "TLSv1.2", "TLSv1.3"];
 
 const tone = (status: string) =>
-  status === "BELOW_FLOOR_PRESENT" ? "red" : status === "INSUFFICIENT_EVIDENCE" ? "amber" : "green";
+  status === "BELOW_FLOOR_PRESENT" ? "red"
+    : status === "BELOW_FLOOR_DECLARED" ? "amber"
+      : status === "INSUFFICIENT_EVIDENCE" ? "amber"
+        : "green";
 
 export default function ProtocolFloorPanel({ initialFloor = "TLSv1.2" }: { initialFloor?: string }) {
   const [floor, setFloor] = useState(initialFloor);
@@ -133,6 +137,8 @@ export default function ProtocolFloorPanel({ initialFloor = "TLSv1.2" }: { initi
             </div>
           )}
 
+          <DeclaredAxis declared={data.declared} floor={data.floor ?? ""} />
+
           {data.note && <div style={{ marginTop: 8, fontSize: 11, color: "var(--faint)" }}>{data.note}</div>}
 
           {(data.blind_spots ?? []).length > 0 && (
@@ -148,5 +154,96 @@ export default function ProtocolFloorPanel({ initialFloor = "TLSv1.2" }: { initi
         </>
       )}
     </Panel>
+  );
+}
+
+
+/* ─── The declared axis ──────────────────────────────────────────────────────
+   A TLS configuration that still lists TLSv1.0 is a finding, and it is not the
+   same finding as a handshake that negotiated TLSv1.0. They are drawn apart, with
+   the basis on the label, because an operator acting on one of them is doing a
+   different piece of work than acting on the other.
+
+   `edges: []` on a declared ceiling is printed as "nothing recorded on either side",
+   not as "nothing would break".
+──────────────────────────────────────────────────────────────────────────── */
+function DeclaredAxis({
+  declared, floor,
+}: { declared?: EstateTwinProtocolFloorDeclared; floor: string }) {
+  if (!declared || !declared.counts) return null;
+  const below = declared.declares_below_floor ?? [];
+  const ceiling = declared.declared_ceiling_below_floor ?? [];
+  const unrankable = declared.declared_without_a_rankable_floor ?? [];
+  const partial = declared.partially_parsed ?? [];
+  const total = (declared.counts.declares_below_floor ?? 0)
+    + (declared.counts.declared_ceiling_below_floor ?? 0)
+    + (declared.counts.declared_without_a_rankable_floor ?? 0);
+  if (total === 0 && partial.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 10, borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 6 }}>
+        <Badge tone="violet">DECLARED</Badge>
+        <span style={{ fontSize: 11, color: "var(--dim)" }}>
+          what configurations allow — not what a handshake produced
+        </span>
+      </div>
+
+      {below.length > 0 && (
+        <div style={{ fontSize: 11, color: "var(--dim)", lineHeight: 1.6 }}>
+          {below.slice(0, 10).map((row, index) => (
+            <div key={`${row.asset_id}-${index}`}>
+              <b>{row.asset_name ?? row.asset_id}</b> still permits{" "}
+              <span style={{ fontFamily: "var(--mono)", color: "var(--amber)" }}>
+                {(row.declared ?? []).length > 0
+                  ? (row.declared ?? []).join(", ")
+                  : row.declared_floor}
+              </span>
+              {row.partially_parsed && (
+                <span style={{ color: "var(--faint)" }}> (config only partly parsed — there may be more)</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {ceiling.length > 0 && (
+        <div style={{ marginTop: 6, fontSize: 11, color: "var(--dim)", lineHeight: 1.6 }}>
+          {ceiling.slice(0, 10).map((row, index) => (
+            <div key={`${row.asset_id}-${index}`}>
+              <b>{row.asset_name ?? row.asset_id}</b> cannot reach {floor} at all (tops out at{" "}
+              <span style={{ fontFamily: "var(--mono)", color: "var(--red)" }}>{row.declared_ceiling}</span>)
+              {": "}
+              {(row.edges ?? []).length > 0
+                ? <>strands <span style={{ fontFamily: "var(--mono)" }}>{(row.edges ?? []).join(", ")}</span></>
+                : <span style={{ color: "var(--faint)" }}>nothing recorded on either side of it</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {unrankable.length > 0 && (
+        <div style={{ marginTop: 6, fontSize: 11, color: "var(--dim)", lineHeight: 1.6 }}>
+          {unrankable.slice(0, 5).map((row, index) => (
+            <div key={`${row.asset_id}-${index}`}>
+              <b>{row.asset_name ?? row.asset_id}</b> declares{" "}
+              <span style={{ fontFamily: "var(--mono)" }}>{(row.unrecognised ?? []).join(", ")}</span> —
+              not a version this build can rank, so not compliant either
+            </div>
+          ))}
+        </div>
+      )}
+
+      {partial.length > 0 && (
+        <div style={{ marginTop: 6, fontSize: 11, color: "var(--faint)" }}>
+          {partial.length} configuration{partial.length === 1 ? "" : "s"} parsed only partly:{" "}
+          {partial.slice(0, 5).map((row) => row.asset_name ?? row.asset_id).join(", ")}
+        </div>
+      )}
+
+      <div style={{ marginTop: 6, fontSize: 10.5, color: "var(--faint)", lineHeight: 1.5 }}>
+        {declared.meaning}
+      </div>
+    </div>
   );
 }

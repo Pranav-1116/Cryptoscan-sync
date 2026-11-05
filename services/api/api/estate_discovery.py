@@ -60,7 +60,8 @@ COLLECTORS_VERSION = "estate-collectors/1"
 
 #: §13 discovery planes this repository can actually read today.
 PLANES: tuple[str, ...] = (
-    "NETWORK", "CLOUD", "KUBERNETES", "CMDB", "KMS", "HSM", "RUNTIME", "STATIC", "PKI", "HARDWARE", "VENDOR"
+    "NETWORK", "CLOUD", "KUBERNETES", "CMDB", "KMS", "HSM", "RUNTIME", "STATIC", "HOST", "PKI", "HARDWARE",
+    "VENDOR",
 )
 
 PLANE_DETAIL: dict[str, dict[str, str]] = {
@@ -108,6 +109,12 @@ PLANE_DETAIL: dict[str, dict[str, str]] = {
         "source": "static crypto asset inventory",
         "boms": "CBOM (APPLICATION layer), SBOM, TechBOM",
         "limitation": "a static hit proves the algorithm is present in code, not that it runs",
+    },
+    "HOST": {
+        "source": "TLS configuration files from stored host snapshot imports",
+        "boms": "CBOM (NETWORK_TRANSPORT, declared), TechBOM",
+        "limitation": "a configuration says what a service may negotiate, never what it did: no "
+                      "handshake is performed here, and a config with unreadable directives is partial",
     },
     "PKI": {
         "source": "certificate inventory",
@@ -497,6 +504,114 @@ def _software_plane(software: dict[str, Any]) -> tuple[list[dict[str, Any]], lis
     return assets, evidence, relationships
 
 
+def collect_host(db: Any, *, limit: int = 20) -> dict[str, Any]:
+    """Host TLS *configurations* imported from an approved host snapshot (spec 94 §9).
+
+    The host collector already reads ``ssl_protocols`` / ``ssl_ciphers`` and files the
+    result as a ``TLS_CONFIGURATION`` fact with ``local_basis="DECLARED"`` — it says what
+    a configuration allows, never what a handshake produced. Until this plane existed
+    that fact stayed in the host BOM and never reached the estate, which made every
+    "which client would a raised floor strand?" question unanswerable in the negative and
+    silently answerable in the positive.
+
+    So this plane joins it to the estate under its own basis: ``protocols`` and
+    ``cipher_suites`` as collected, and ``unparsed_directives`` verbatim, because a config
+    with directives this build could not parse declares *something*, not everything.
+    """
+    from sqlalchemy import func
+
+    from db.models.evidence_record import EvidenceRecord
+    from db.models.scan import Scan
+    from db.tenancy import current_tenant
+
+    tenant = current_tenant()
+    scans = (
+        db.query(Scan)
+        .filter(
+            Scan.tenant_id == tenant,
+            Scan.target_type == "HOST_SNAPSHOT_IMPORT",
+            Scan.status == "COMPLETED",
+        )
+        .order_by(func.coalesce(Scan.scan_end, Scan.scan_start).desc())
+        .limit(limit)
+        .all()
+    )
+    assets: dict[str, dict[str, Any]] = {}
+    evidence: list[dict[str, Any]] = []
+    configs = 0
+    for scan in scans:
+        records = (
+            db.query(EvidenceRecord)
+            .filter(EvidenceRecord.tenant_id == tenant, EvidenceRecord.scan_id == scan.id)
+            .all()
+        )
+        for record in records:
+            reference = (record.finding_data or {}).get("host_evidence") or {}
+            if reference.get("fact_kind") != "TLS_CONFIGURATION":
+                continue
+            host_id = str(reference.get("host_id") or "")
+            if not host_id:
+                continue
+            ref = f"host:{host_id}"
+            if ref not in assets:
+                assets[ref] = {
+                    "ref": ref,
+                    "type": "HOST",
+                    "name": host_id,
+                    "identity": {"host_id": host_id},
+                    "environment": reference.get("environment"),
+                    "source": "host_snapshot_import",
+                    "attributes": {
+                        "platform": scan.target_location,
+                        "approval_id": reference.get("approval_id"),
+                        "scan_id": scan.id,
+                        "host_identity_attested": False,
+                    },
+                }
+            protocols = [item for item in str(reference.get("configured_protocols") or "").split(",") if item]
+            ciphers = [item for item in str(reference.get("configured_cipher_suites") or "").split(",") if item]
+            configs += 1
+            evidence.append({
+                "source": "host_snapshot_import",
+                "collector": "host:tls-configuration",
+                "evidence_type": "CONFIGURED",
+                "target": ref,
+                "layer": "NETWORK_TRANSPORT",
+                "observed_at": _iso(reference.get("observed_at")),
+                "raw_reference": _iso(reference.get("input_id")),
+                "facts": {
+                    "protocols": protocols,
+                    "cipher_suites": ciphers,
+                    # the host collector sets this when a directive existed but could not
+                    # be read; carried through so a partial config never reads as complete
+                    "unparsed_directives": bool(reference.get("configured_directives_unparsed")),
+                    "declared_in": _iso(reference.get("input_id")),
+                    "approval_id": reference.get("approval_id"),
+                    "local_basis": "DECLARED",
+                    "layer_note": (
+                        "a TLS configuration file is what the service is allowed to negotiate, not "
+                        "what it did negotiate; no handshake was performed by this plane"
+                    ),
+                },
+            })
+    note = None
+    if not scans:
+        note = "no completed host snapshot import is stored (NOT_OBSERVED, not 'no TLS configuration')"
+    elif not configs:
+        note = (
+            "host snapshots are stored but no TLS configuration input was parsed, so this plane "
+            "has no declaration to offer — that is a collection gap, not a permissive config"
+        )
+    return {
+        "plane": "HOST",
+        "expected": len(scans),
+        "collected": len(evidence),
+        "assets": list(assets.values()),
+        "evidence": evidence,
+        "note": note,
+    }
+
+
 def collect_pki(db: Any, *, limit: int = 2000) -> dict[str, Any]:
     """Certificate inventory — public metadata only."""
     from db.repositories.certificate_repository import CertificateRepository
@@ -703,6 +818,7 @@ DEFAULT_COLLECTORS: dict[str, Callable[..., dict[str, Any]]] = {
     "KUBERNETES": collect_kubernetes_plane,
     "RUNTIME": collect_runtime,
     "STATIC": collect_static,
+    "HOST": collect_host,
     "PKI": collect_pki,
     "HARDWARE": collect_hardware,
     "VENDOR": collect_vendor,

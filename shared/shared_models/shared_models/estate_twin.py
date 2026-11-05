@@ -41,6 +41,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -171,6 +172,21 @@ PROTOCOL_FLOOR_RANKS: dict[str, int] = {
 PROTOCOL_FLOOR_CHOICES: tuple[str, ...] = (
     "SSLv3", "TLSv1.0", "TLSv1.1", "TLSv1.2", "TLSv1.3",
 )
+
+#: Where a *declaration* of protocol support lives in an evidence fact set. Two shapes,
+#: because collectors produce two: a **set** (a config that lists the protocols it
+#: allows — ``ssl_protocols TLSv1.2 TLSv1.3``) and a **minimum** (a policy that names the
+#: weakest protocol it will accept — ``min_tls_version``). Both are declarations: the
+#: host collector already marks that evidence ``local_basis="DECLARED"``.
+DECLARED_PROTOCOL_SET_FIELDS: tuple[str, ...] = ("protocols", "supported_protocols", "tls_versions")
+DECLARED_PROTOCOL_MIN_FIELDS: tuple[str, ...] = (
+    "min_tls_version", "min_protocol", "minimum_protocol_version", "protocol_floor",
+)
+
+#: Relationships that make one asset a *user* of another's endpoint. A declared ceiling
+#: below the floor only strands something if the thing reaches a service over the edge;
+#: without an edge the honest answer is "cannot reach the floor", not "will break".
+CLIENT_PREDICATES: frozenset[str] = frozenset({"connects_to", "routes_to", "depends_on"})
 
 #: §12 — strongest evidence first. Used to answer "how well is this described".
 STRENGTH_ORDER: tuple[str, ...] = (
@@ -1351,26 +1367,69 @@ def search(graph: EstateGraph, query: str, *, limit: int = MAX_LISTED) -> dict[s
 # --------------------------------------------------------------------------- #
 
 
+#: ``TLSv1.2``, ``TLS1.2``, ``TLS 1.2`` and ``tlsv1_2`` all name one rung, so the ladder
+#: key is built from the family and the version rather than from the spelling.
+_PROTOCOL_RUNG = re.compile(r"^(TLS|SSL)V?(\d+(?:[._]?\d+)*)$")
+
+
 def _protocol_key(value: Any) -> str | None:
     """Normalise a protocol string to a ladder key, or ``None`` when there is no version.
 
-    ``TLSv1.2``, ``TLS 1.2``, ``TLS1.2``, ``tlsv1_2`` and ``TLSV1.2`` all name the same
-    ladder rung — collectors spell it five ways and refusing four of them would report a
-    spelling as a protocol gap. ``TLS`` on its own carries no version, so it is not a rung.
+    Collectors spell one rung five ways, and refusing four of them would report a spelling
+    as a protocol gap. A value that is *not* a protocol version is echoed exactly as it was
+    collected — the unrecognised bucket must print the value an operator has to go and look
+    up, not a normalisation this build invented for it.
     """
-    text = _text(value).upper().replace(" ", "").replace("_", ".").replace("/", "")
+    text = " ".join(_text(value).upper().split())
     if not text:
         return None
-    if text.startswith("TLSV"):
-        return text
-    if text.startswith("TLS") and len(text) > 3:
-        return f"TLSV{text[3:]}"
-    if text.startswith("SSLV"):
-        return text
     if text in ("TLS", "SSL"):
         # a protocol named without a version is not a rung on the ladder
         return None
-    return text
+    match = _PROTOCOL_RUNG.fullmatch(text.replace(" ", ""))
+    if not match:
+        return text
+    family, version = match.groups()
+    return f"{family}V{version.replace('_', '.')}"
+
+
+def _declared_protocols(facts: Mapping[str, Any]) -> dict[str, Any] | None:
+    """What an evidence record *declares* about protocol support — or ``None``.
+
+    A declaration is not an observation. It says what a configuration allows, which is
+    why the caller reports it under its own basis: an endpoint declared to allow TLS 1.0
+    may or may not accept one, and an asset declared to top out at TLS 1.0 may be the one
+    a raised floor strands. Keeping the two apart is the whole point of the section.
+    """
+    keys: set[str] = set()
+    floor_key: str | None = None
+    source_field: str | None = None
+    for field in DECLARED_PROTOCOL_SET_FIELDS:
+        value = facts.get(field)
+        if isinstance(value, (list, tuple, set)):
+            resolved = {_protocol_key(item) for item in value} - {None}
+            if resolved:
+                keys |= resolved
+                source_field = source_field or field
+        elif isinstance(value, str) and value.strip():
+            resolved = {_protocol_key(item) for item in value.replace(",", " ").split()} - {None}
+            if resolved:
+                keys |= resolved
+                source_field = source_field or field
+    for field in DECLARED_PROTOCOL_MIN_FIELDS:
+        if floor_key is None and _text(facts.get(field)):
+            floor_key = _protocol_key(facts.get(field))
+            source_field = source_field or field
+    if not keys and floor_key is None:
+        return None
+    return {
+        "keys": keys,
+        "floor": floor_key,
+        "field": source_field,
+        # a config with directives this build could not parse declares *something*, not
+        # everything: the answer is partial and says so rather than reading as complete
+        "partial": bool(facts.get("unparsed_directives")),
+    }
 
 
 def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
@@ -1429,11 +1488,87 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
     unrecognised: list[dict[str, Any]] = []
     measured_assets: set[str] = set()
 
+    # the declared axis: what a config *allows*, which is a different claim from what a
+    # handshake produced. Collected in the same pass so the two never drift apart.
+    declares_below: list[dict[str, Any]] = []
+    declares_no_floor: list[dict[str, Any]] = []
+    declared_ceiling_below: list[dict[str, Any]] = []
+    declared_assets: set[str] = set()
+    declared_partial: list[str] = []
+
     for record in payload["evidence"]:
         target = str(record.get("target"))
         if target_refs and target not in target_refs:
             continue
         facts = record.get("facts") or {}
+        declared = _declared_protocols(facts)
+        if declared is not None:
+            declared_assets.add(target)
+            asset_declared = graph.asset(target) or {}
+            ranked = {
+                key: PROTOCOL_FLOOR_RANKS[key]
+                for key in declared["keys"] if key in PROTOCOL_FLOOR_RANKS
+            }
+            unrankable = sorted(declared["keys"] - set(ranked))
+            entry = {
+                "asset_id": target,
+                "asset_name": asset_declared.get("name"),
+                "asset_type": asset_declared.get("type"),
+                "evidence_id": record.get("evidence_id"),
+                "evidence_type": record.get("evidence_type"),
+                "collector": record.get("collector"),
+                "observed_at": record.get("observed_at"),
+                "declared": sorted(declared["keys"]),
+                "declared_floor": declared["floor"],
+                "field": declared["field"],
+                "basis": "DECLARED",
+                "partially_parsed": declared["partial"],
+            }
+            if unrankable:
+                entry["unrecognised"] = unrankable
+            if declared["partial"]:
+                declared_partial.append(
+                    {
+                        "asset_id": target,
+                        "asset_name": asset_declared.get("name"),
+                        "evidence_id": record.get("evidence_id"),
+                        "field": declared["field"],
+                    }
+                )
+            if ranked:
+                weakest = min(ranked.values())
+                strongest = max(ranked.values())
+                entry["declared_ceiling"] = next(
+                    key for key, rank in ranked.items() if rank == strongest
+                )
+                # the declaration still permits something weaker than the proposed floor
+                if weakest < floor_rank:
+                    entry["position"] = "DECLARES_BELOW_FLOOR"
+                    declares_below.append(entry)
+                # the declaration cannot reach the proposed floor at all
+                if strongest < floor_rank:
+                    entry["position_ceiling"] = "CEILING_BELOW_FLOOR"
+                    entry["edges"] = sorted(
+                        {
+                            f"{edge.get('predicate')} {edge.get('object')}"
+                            for edge in payload.get("relationships") or []
+                            if str(edge.get("subject")) == target
+                            and str(edge.get("predicate")) in CLIENT_PREDICATES
+                        }
+                    )
+                    declared_ceiling_below.append(entry)
+                if weakest >= floor_rank:
+                    entry.setdefault("position", "DECLARES_AT_OR_ABOVE_FLOOR")
+            elif declared["floor"]:
+                # a minimum with no enumerable set: judged on the minimum alone
+                rank = PROTOCOL_FLOOR_RANKS.get(declared["floor"])
+                if rank is not None and rank < floor_rank:
+                    entry["position"] = "DECLARES_BELOW_FLOOR"
+                    declares_below.append(entry)
+                elif rank is not None:
+                    entry.setdefault("position", "DECLARES_AT_OR_ABOVE_FLOOR")
+            if "position" not in entry:
+                declares_no_floor.append(entry)
         if "protocol" not in facts:
             # a fact set without a protocol says nothing about the floor. Library versions,
             # key sizes and certificates are other questions.
@@ -1476,6 +1611,10 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
         status = "INSUFFICIENT_EVIDENCE"
     elif below:
         status = "BELOW_FLOOR_PRESENT"
+    elif declares_below:
+        # no observed handshake is below the floor, but a configuration still permits one:
+        # the finding is real and its basis is DECLARED, which the section states
+        status = "BELOW_FLOOR_DECLARED"
     else:
         status = "AT_OR_ABOVE_FLOOR"
 
@@ -1488,6 +1627,13 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
         if records_seen
         else "no evidence record in this estate carries a negotiated protocol"
     )
+    declared_seen = len(declares_below) + len(declared_ceiling_below) + len(declares_no_floor)
+    if declared_seen:
+        counting += (
+            f"; {len(declares_below)} configuration declaration(s) still permit a protocol below "
+            f"{floor_raw} and {len(declared_ceiling_below)} top out below it — a declaration says "
+            "what a config allows, not what a handshake produced"
+        )
     return {
         "schema": PROTOCOL_FLOOR_SCHEMA,
         "status": status,
@@ -1504,23 +1650,50 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
             "assets_with_negotiated_evidence": len(measured_assets),
             "assets_without_negotiated_evidence": len(without_evidence),
             "assets_in_scope": len(all_assets),
+            "declares_below_floor": len(declares_below),
+            "declared_ceiling_below_floor": len(declared_ceiling_below),
         },
         "below_floor": below[:MAX_LISTED],
         "at_floor": at[:MAX_LISTED],
         "unrecognised": unrecognised[:MAX_LISTED],
         "above_floor": above[:MAX_LISTED],
         "without_negotiated_evidence": without_evidence[:MAX_LISTED],
+        "declared": {
+            "basis": "DECLARED",
+            "counts": {
+                "assets_with_declaration": len(declared_assets),
+                "declares_below_floor": len(declares_below),
+                "declared_ceiling_below_floor": len(declared_ceiling_below),
+                "declared_without_a_rankable_floor": len(declares_no_floor),
+                "partially_parsed": len(declared_partial),
+            },
+            "declares_below_floor": declares_below[:MAX_LISTED],
+            "declared_ceiling_below_floor": declared_ceiling_below[:MAX_LISTED],
+            "declared_without_a_rankable_floor": declares_no_floor[:MAX_LISTED],
+            "partially_parsed": declared_partial[:MAX_LISTED],
+            "meaning": (
+                "a declaration is what a TLS configuration allows or requires, read from "
+                "configuration evidence. It is not a negotiation: a config that permits TLS 1.0 "
+                "may never have accepted one. An asset whose declaration tops out below the floor "
+                "cannot take part at the floor at all — it strands whatever the edges listed "
+                "beside it say it serves or is served by, and 'edges: []' means this estate "
+                "records nothing on that asset either way, not that nothing is there"
+            ),
+        },
         "unresolved_targets": unresolved_targets,
         "live_state_modified": False,
         "note": (
-            f"{counting}. This is a check over handshakes the estate has already observed, "
-            "not a forecast: nothing is edited and no copy is made"
+            f"{counting}. This is a check over handshakes the estate has already observed and "
+            "configurations it has already read, not a forecast: nothing is edited and no copy "
+            "is made"
         ),
         "blind_spots": [
-            "client acceptance: a client that only offers an older protocol is not an asset, so "
-            "which clients would fail after the floor moves is not in this answer",
-            "enforcement: whether a policy floor is actually applied at the endpoint, the load "
-            "balancer and the load balancer's back end is configuration the twin does not read",
+            "runtime client acceptance: a declaration that an asset permits or requires a protocol "
+            "is reported, but what a client actually offers in a real handshake is not evidence "
+            "this build collects, so a client behaving differently from its configuration is "
+            "invisible here",
+            "enforcement: a declaration says what a configuration file allows, not whether that "
+            "configuration is loaded by the process serving the endpoint",
             "an asset with no negotiated protocol evidence is counted, not assumed compliant",
         ],
         "limits": [
@@ -1528,6 +1701,9 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
             "cipher, a shorter key, a missing extended master secret) is a different question",
             "one record per handshake: the same endpoint measured twice appears twice, which is "
             "deliberate — two observations that disagree are a conflict, not a vote",
+            "declarations are read from TLS configuration evidence only (a protocols list or a "
+            "minimum version); an asset whose configuration was never collected is not declared "
+            "compliant, it is absent from the declared section",
         ],
     }
 

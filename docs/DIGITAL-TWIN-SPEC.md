@@ -895,10 +895,29 @@ handshake evidence are counted in their own bucket too, because an asset nobody 
 compliant one.
 
 It is a `GET`, a check and not a scenario: no copy is made, no BOM is re-projected, nothing is
-stored, and `live_state_modified` is false by construction. Its `blind_spots` statement is the
-substance — client acceptance is the half it cannot answer, because a client that only offers an
-older protocol is not an asset — and the panel renders that list rather than letting silence read as
-safety. The check sits on step 5 of the walkthrough, under the endpoints it is about.
+stored, and `live_state_modified` is false by construction. The check sits on step 5 of the
+walkthrough, under the endpoints it is about.
+
+The second half is **declared**, and it is deliberately a separate object with its own basis label.
+A TLS configuration file says what a service *may* negotiate; a handshake says what it *did*. The
+host collector has read `ssl_protocols` / `ssl_ciphers` for some time and filed the result as a
+`TLS_CONFIGURATION` fact with `local_basis="DECLARED"` — but that fact never left the host BOM, so
+"which declarations still permit TLS 1.0?" was unanswerable in the negative and silently answerable
+in the positive. A twelfth discovery plane (`HOST`) now joins stored host snapshot imports into the
+estate as `CONFIGURED` evidence, and the floor check reports, beside the observed bucket:
+
+- **declares below floor** — a configuration that still lists a protocol weaker than the floor;
+- **declared ceiling below floor** — an asset that cannot reach the floor at all, listed with the
+  edges it would strand. `edges: []` prints as *"nothing recorded on either side of it"*, never as
+  "nothing would break", because an absence of records is not an absence of risk;
+- **declared without a rankable floor** — a declared protocol this build cannot rank, which is a
+  finding, not a pass;
+- **partly parsed** — a configuration with directives the collector could not follow. That fact was
+  being dropped at the finding boundary (`configured_directives_unparsed` is now carried), and a
+  half-read config that reads as complete is the same error as a zero that means "failed".
+
+`blind_spots` now leads with the residue: runtime client acceptance. A declaration is what a config
+allows; what a client actually offers in a handshake is still not evidence this estate collects.
 
 **Built — a migration ordered across time, from stored evidence.** A migration is not only a
 sequence, it is a sequence spread over readings: "retire TLS 1.0 on what the estate showed in Q2,

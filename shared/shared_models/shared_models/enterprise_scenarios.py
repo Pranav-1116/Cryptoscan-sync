@@ -89,18 +89,19 @@ SCENARIOS: tuple[dict, ...] = (
         "TLS_DOWNGRADE", "TLS downgrade", PARTIAL,
         covered_by=((AGILITY, "protocol_deprecation"), (TWIN, "DISABLE_PROTOCOL")),
         cannot=(
-            "client acceptance: a client that only offers an older protocol is not an asset, so "
-            "which clients would fail after the floor moves is not computable",
-            "enforcement: whether the floor is actually applied at the endpoint, the load balancer "
-            "and its back end is configuration the twin does not read",
+            "runtime client acceptance: what a client offers in a real handshake is not evidence "
+            "the estate collects, so a client behaving differently from its configuration is not "
+            "visible",
+            "enforcement: whether a configuration is loaded by the process serving the endpoint",
         ),
-        requires=("per-client protocol offers",),
+        requires=("per-client runtime protocol offers",),
         note=(
             "raises or lowers a protocol floor over collected facts; it does not re-negotiate. The "
-            "floor itself is checked against observed handshakes by GET "
-            "/estate/evidence/twin/protocol-floor, which reports what negotiated below the floor, "
-            "what it cannot rank and which assets carry no handshake evidence — the last two are "
-            "findings, not compliance"
+            "floor itself is checked by GET /estate/evidence/twin/protocol-floor, which reports "
+            "what negotiated below the floor, what it cannot rank, which assets carry no handshake "
+            "evidence and — on a separate DECLARED axis — which configurations still permit a "
+            "protocol below the floor, which cannot reach it at all, and which edges that would "
+            "strand. Unrecognised and uncollected are findings, not compliance"
         ),
     ),
     _scenario(

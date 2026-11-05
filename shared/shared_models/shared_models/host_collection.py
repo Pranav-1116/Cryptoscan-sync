@@ -446,6 +446,10 @@ class HostEvidenceRef(Strict):
         default="", max_length=40, pattern=r"^(TLSv1(?:\.[123])?(?:,TLSv1(?:\.[123])?)*)?$"
     )
     configured_cipher_suites: str = Field(default="", max_length=256, pattern=r"^[A-Z0-9,_-]*$")
+    #: The collector saw a directive it could not read (``include``, a multi-line block, an
+    #: unknown protocol token). Without this the fact that a configuration was only *partly*
+    #: understood is dropped at the finding boundary, and a partial config reads as complete.
+    configured_directives_unparsed: bool = False
     signature_hash: SignatureHash = "UNKNOWN"
     curve: Curve = "UNKNOWN"
     certificate_signature_oid: SignatureOid = "UNKNOWN"
@@ -480,6 +484,7 @@ def snapshot_findings(snapshot: HostSnapshot, approval_id: str, system_id: str):
                 fact_kind=fact.kind if fact else "RECEIPT",
                 configured_protocols=",".join(fact.protocols) if fact else "",
                 configured_cipher_suites=",".join(fact.cipher_suites) if fact else "",
+                configured_directives_unparsed=bool(fact.unparsed_directives) if fact else False,
                 signature_hash=fact.signature_hash if fact else "UNKNOWN",
                 certificate_signature_oid=fact.certificate_signature_oid if fact else "UNKNOWN",
                 curve=fact.curve if fact else "UNKNOWN",
