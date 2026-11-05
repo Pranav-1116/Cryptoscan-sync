@@ -106,6 +106,7 @@ export const CAPABILITIES_JSON = {
   "tenancy": "ga",
   "timeline": "ga",
   "trust": "ga",
+  "twin-walkthrough": "ga",
   "vbom": "ga",
   "vendor": "ga",
   "vendor-due-diligence": "ga",
@@ -461,6 +462,10 @@ export const CAPABILITY_LIMITS = {
   "trust": {
     "area": "Governance",
     "limit": "Trust-score surface; scoring inputs still being defined."
+  },
+  "twin-walkthrough": {
+    "area": "Intelligence",
+    "limit": "The specification's thirteen investigations on one canvas: pick an asset, then step through coverage, identity, relationships, crypto facts, network, hardware/HSM, vendors, evidence records, observation dates, drift, blast radius, the facts a scenario would read and PQC exposure. Every step reads the twin the full screen reads, a failed read is printed as a failed read rather than a zero, and nothing is written or simulated from the canvas."
   },
   "vbom": {
     "area": "Intelligence",

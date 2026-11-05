@@ -137,6 +137,7 @@ export const PRIMARY_SECTIONS: NavSection[] = [
         children: [
           { to: "/digital-twin", label: "Replica & scenarios", icon: Stack },
           { to: "/estate-twin", label: "Twin chain", icon: Graph },
+          { to: "/twin-walkthrough", label: "Thirteen-step walkthrough", icon: Graph },
         ],
       },
       {

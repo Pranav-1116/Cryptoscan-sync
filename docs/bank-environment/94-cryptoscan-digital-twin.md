@@ -436,6 +436,17 @@ listed as blind spots, and the radius is published as an upper bound. All ten
 registered scenarios now have a model; one computes end to end, nine compute part of
 the mechanism and say which part.
 
+The thirteen screens also run as one walkthrough at `/twin-walkthrough`. Pick an asset on step 2 and
+steps 1–13 read the same twin the individual screens read, in the specification's order: coverage,
+identity, relationships, cryptographic facts, network neighbours, hardware and key custody, vendors,
+the evidence records with collector/source/hash, observation dates, the change events that name the
+asset, what a change would reach, the facts a scenario would read, and the quantum-vulnerable
+algorithms recorded for it. Each step links to the full screen it summarises, and the run is handed
+over rather than performed: the walkthrough never executes a scenario, because a what-if that acted
+on the live twin would break the one contract the simulation engine keeps. What it will not do is
+print a zero it did not read — a failed call says the read failed, and an empty relationship family
+says the twin holds none, which is not the same as the estate having none.
+
 On the Relationship Graph page, the edge-first panel lists the twin's own relationships and
 asks `why` about the one you select: the answer is the evidence (type, collector, source,
 timestamp, hash) or the refusal, and the two are never blended. It reads the twin's export rather

@@ -661,7 +661,7 @@ does not find it first).
 | 6 | Payment-API walkthrough | SUPPORTED | `bank-environment/05-practical-bank-walkthrough.md`, `GET …/twin/why` | — |
 | 7 | Hybrid storage | PARTIAL | `EstateAssetRecord`, `estate_twin.graph_export` / `SPEC_GRAPH_LABELS`, `services/api/api/estate_graph_loader.py`, `services/api/api/estate_evidence_objects.py` | all 22 specification labels are emitted (asset types, evidence types, four placement levels); evidence objects have a content-addressed filesystem/S3 (MinIO) tier behind `GET/POST …/twin/artifacts`; the legacy `cypher_writes.py` projection is a narrower eight-label schema, the sink is off until `EVIDENCE_OBJECT_DIR` or `EVIDENCE_OBJECT_S3_BUCKET` names a store, and there is no Redis dependency |
 | 8 | Update lifecycle and asset states | SUPPORTED | `cbom_dependency.LIFECYCLE_STATES`, `transition_asset_lifecycle` | — |
-| 9 | Thirteen screens | PARTIAL | `DigitalTwin.tsx`, `Graph.tsx`, `TwinEdgeExplorer.tsx` | all thirteen investigations have their own route and an edge can be selected and asked about; what is absent is the single thirteen-screen walkthrough in one canvas |
+| 9 | Thirteen screens | SUPPORTED | `TwinWalkthrough.tsx` / `/twin-walkthrough`, `TwinEdgeExplorer.tsx`, `DigitalTwin.tsx` | in the specification's order as thirteen routes **and** as one walkthrough canvas that carries a single asset through all thirteen; the "why" action exists per edge and per step. Not a drawn canvas of its own: the walkthrough is ordered panels, and `/graph` still draws the legacy eight-label projection |
 | 10 | What the twin cannot guarantee | SUPPORTED | `GET …/twin/completeness`, `GET …/twin/why` | — |
 | 11 | P0–P3 priorities | SUPPORTED | guide 94, "Status in this repository" | — |
 | 12 | Not another scanner or database | SUPPORTED | `estate_twin.graph_from_snapshot` | — |
@@ -710,10 +710,17 @@ All eighteen specification names resolve to a build predicate — `CONTAINS`→`
 | Simulation Lab | `/simulation` | `Simulation.tsx` |
 | PQC Impact | `/pqc` | `Pqc.tsx` |
 
+The thirteen also run as **one walkthrough** at `/twin-walkthrough` (`TwinWalkthrough.tsx`): pick an
+asset, then step through all thirteen investigations in the order above. Each step reads the same
+twin endpoints the full screen reads and prints what it could not read as a failed read — a panel of
+zeros over an unread twin is a claim about an estate nobody looked at. It summarises; it does not
+replace the screens, and every step links to its own.
+
 ## 14. What was missing, and what this change built
 
 The audit produced four gaps (§13, rows marked PARTIAL). Three are deliberate boundaries with
-a stated cost; one was a genuine omission and is now built.
+a stated cost; one was a genuine omission and is now built. Each gap has since been closed where it
+was closeable — the register is the record, not this paragraph.
 
 **Built — Layer 1, the organisation chart.** The twin placed assets under region, data centre,
 cloud account, environment and business system, but had no ORGANIZATION or DEPARTMENT level, so
@@ -849,6 +856,21 @@ pinning — which is why the radius is published as a *superset* of a correct PK
 one. `TRUST_COMPROMISE` moves from `ABSENT` to `PARTIAL`; all ten registered scenarios now have
 a model, nine of them partial.
 
+**Built — the thirteen-screen walkthrough, on one canvas.** Thirteen screens existed and no
+walkthrough did: an investigator who wanted an asset's history, its drift, its blast radius and its
+PQC exposure read three screens and remembered the id. `/twin-walkthrough` is the specification's
+canvas — one selected asset, thirteen steps in the specification's order, each step answered from
+the twin's own endpoints (asset view, overview and coverage, the change feed, crypto intel) and each
+step linking to the full screen it summarises.
+
+The honesty rules are the substance. A failed read prints the failure (`that is not 'the estate
+holds nothing'`), never a zero. A relationship family with no members prints a gap in the *twin's
+evidence* — "the twin records no HSM relationship" — not a property of the estate, because an
+application can use crypto without a key store the estate can see. A truncated blast radius says it
+was truncated. And nothing on the canvas writes: the simulation step shows the facts a scenario
+would read and hands the run to `/simulation`, where the copy-and-project contract lives, because a
+walkthrough that quietly ran a scenario against the live twin would be the one thing §7 forbids.
+
 **Built — §9's most important action, for an edge.** The asset investigation lists each edge as
 a button: selecting one asks `GET …/twin/why` about *that* subject/predicate/object and renders
 the answer inline — evidence type, collector, source, timestamp and hash — or the reason the
@@ -860,11 +882,11 @@ now exists (`estate_evidence_objects`, served at `…/twin/artifacts`), but no e
 repository names a bucket or a directory for it, so it reports itself unconfigured rather than
 pretending to store; Redis stays a deployment decision, since nothing in the twin needs a cache it
 can rebuild.
-(2) The specification's single thirteen-screen walkthrough in one canvas, and re-pointing the
-legacy `cypher_writes` projection at the new export: the thirteen investigations are thirteen
-routes, the curated dependency graph is a separate narrower schema used by the older dashboards,
-and the twin's loader is the supported path — so the legacy builder is left alone rather than
-half-migrated, and the edge explorer sits beside the drawn graph rather than inside it.
+(2) Re-pointing the legacy `cypher_writes` projection at the new export, and a drawn canvas of the
+twin's own graph: the thirteen investigations are thirteen routes *and* one walkthrough canvas, but
+that canvas is ordered panels rather than a picture, and `/graph` still draws the separate narrower
+legacy schema used by the older dashboards — so the edge explorer sits beside the drawn graph rather
+than inside it, and the legacy builder is left alone rather than half-migrated.
 (3) Cross-record expressions and time-ordered migration windows — an expression reads one record's
 facts, and a `COMPOSITE` sequence has an order but no clock; a scheduler and a query engine would
 each let a scenario produce a value no evidence holds.

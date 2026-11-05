@@ -104,6 +104,7 @@ const Simulation = lazy(() => import("./pages/Simulation"));
 const DigitalTwin = lazy(() => import("./pages/DigitalTwin"));
 const CollectorDepth = lazy(() => import("./pages/CollectorDepth"));
 const EstateTwin = lazy(() => import("./pages/EstateTwin"));
+const TwinWalkthrough = lazy(() => import("./pages/TwinWalkthrough"));
 
 function PublicEntry({ children, resetKey }: { children: React.ReactNode; resetKey: string }) {
   return (
@@ -250,6 +251,7 @@ function RoutedPages() {
       <Route path="/simulation" element={<Simulation />} />
       <Route path="/digital-twin" element={<DigitalTwin />} />
       <Route path="/estate-twin" element={<EstateTwin />} />
+      <Route path="/twin-walkthrough" element={<TwinWalkthrough />} />
       <Route path="*" element={<Navigate to="/command-center" replace />} />            </Routes>
           </Suspense>
         </motion.div>

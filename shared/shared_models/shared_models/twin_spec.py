@@ -163,18 +163,21 @@ SECTIONS: tuple[dict[str, Any], ...] = (
         ),
     ),
     _row(
-        "s9-ui", "§9 the thirteen investigation screens", PARTIAL,
-        ("frontend/src/pages/DigitalTwin.tsx", "frontend/src/pages/EstateTwin.tsx"),
-        gap=(
-            "all thirteen investigations exist as their own route, and an edge can now be "
-            "selected and asked about — the Relationship Graph carries an edge-first "
-            "explorer over the twin's own export, answering 'why' with the collector, "
-            "source, timestamp and hash, or naming the refusal. What is not built: the "
-            "specification's single thirteen-screen walkthrough in one canvas. The views "
-            "are thirteen routes and the curated dependency graph on /graph is drawn from "
-            "a separate legacy projection, so clicking a line on *that* canvas does not "
-            "open twin evidence — the edge explorer beside it does, from the twin's own "
-            "edges"
+        "s9-ui", "§9 the thirteen investigation screens", SUPPORTED,
+        (
+            "frontend/src/pages/TwinWalkthrough.tsx",
+            "frontend/src/components/TwinEdgeExplorer.tsx",
+            "frontend/src/pages/DigitalTwin.tsx",
+        ),
+        note=(
+            "all thirteen investigations exist as their own route, in the specification's "
+            "order, and also run as one walkthrough canvas (/twin-walkthrough) that carries "
+            "a single asset through all thirteen in sequence, reading the twin per step and "
+            "printing a failed read as a failed read. The 'why' action is built twice: "
+            "per edge in the Relationship Graph's edge-first explorer, and per step in the "
+            "walkthrough. What it is not: a drawn canvas of its own — the walkthrough is "
+            "ordered panels, and the drawn /graph still renders the legacy eight-label "
+            "projection, which is why its lines open the legacy view rather than twin evidence"
         ),
     ),
     _row(

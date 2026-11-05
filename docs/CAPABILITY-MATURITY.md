@@ -4,7 +4,7 @@
 > `scripts/gen_capability_maturity.py`. Served live at
 > `GET /api/v1/platform/capabilities`.
 
-**91 shipped surfaces, all supported.** The navigation carries no maturity
+**92 shipped surfaces, all supported.** The navigation carries no maturity
 badges: a product's sidebar is not the place to negotiate what is proven. What
 used to be a `beta` or `preview` label is now the **stated limit** column below,
 which is the part that actually told an operator something. A support statement
@@ -101,6 +101,7 @@ role-guarded actions.
 | `/sbom` | Intelligence | A versioned software projection over available evidence; deployments and missing component versions remain unproven. |
 | `/security-intelligence` | Intelligence | Cross-scanner identity resolution + profiles; roadmap in SECURITY-INTELLIGENCE-ROADMAP.md. |
 | `/simulation` | Intelligence | What-if workspace over the estate twin with two families and thirteen question kinds: seven built-in scenarios that edit an evidence fact on a copy (replace, retire, disable a protocol, upgrade, remove a component, resize a key, replace everything Shor-vulnerable), a custom scenario authored as a bounded expression, a COMPOSITE sequence of up to five of those applied in order to one copy, and four cascades that walk a failure outward from seeds (asset unavailable, crypto compromise, algorithm breaks everywhere, a CA or PKI issuer compromised), each previewed before it runs so nothing is read as a finding before it is known to reach something, each re-projecting or explicitly not re-projecting the six BOMs, each reporting the live projection id unchanged, and each stored quarantined against the evidence state it was computed from; scenarios change evidence facts and cascades travel established edges only — neither models configuration, traffic, redundancy, approvals or a deployment plan. This is not a generic enterprise simulation engine: nine of the ten registered scenarios model only part of the mechanism and each says which part it cannot see. |
+| `/twin-walkthrough` | Intelligence | The specification's thirteen investigations on one canvas: pick an asset, then step through coverage, identity, relationships, crypto facts, network, hardware/HSM, vendors, evidence records, observation dates, drift, blast radius, the facts a scenario would read and PQC exposure. Every step reads the twin the full screen reads, a failed read is printed as a failed read rather than a zero, and nothing is written or simulated from the canvas. |
 | `/vbom` | Intelligence | A supplier projection from retained evidence and declarations, not independent supplier validation. |
 | `/what-if` | Intelligence | Scenario simulation over the inventory; scenarios are fixed templates today, and a question that is not one of them is answered as not modelled rather than approximated. |
 | `/reports` | Output | JSON/HTML/PDF reports and schedules over the evidence chain. |
