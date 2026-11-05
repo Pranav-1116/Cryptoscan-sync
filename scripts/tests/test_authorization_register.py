@@ -52,10 +52,11 @@ MIN_PERMISSION_GATED = 71
 # 17: the five tenant-scoped routes of the VBOM/control surface — a question asked of one bank
 # entity's evidence is answered inside that entity's tenant role, not by a platform role.
 MIN_TENANT_ROLE_GATED = 17
-# 302: 298 are the operator surface, 4 are the VBOM POSTs (a question, not a change) and 1 is the
-# machine-only snapshot intake. Each is recorded with its reason in
+# 303: 298 are the operator surface, 4 are the VBOM POSTs (a question, not a change), 1 is the
+# machine-only snapshot intake and 1 archives an evidence record the twin already holds into the
+# content-addressed tier. Each is recorded with its reason in
 # `102-authenticated-only-writes.json`.
-MAX_SESSION_ONLY_WRITES = 302
+MAX_SESSION_ONLY_WRITES = 303
 
 
 @pytest.fixture(scope="module")

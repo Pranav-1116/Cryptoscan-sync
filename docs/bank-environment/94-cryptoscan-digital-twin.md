@@ -449,6 +449,18 @@ what is left" behaves the way it reads — and each step's matched evidence is r
 step that matched nothing (which is a fact about the estate, not an error). Branching, loops and a
 clock are refused rather than approximated.
 
+An evidence record can also be archived as an object outside PostgreSQL. `POST
+…/estate/evidence/twin/artifacts?evidence_id=` takes the record from the twin — never from the
+request body, because an archive that stores what it is sent is an upload endpoint — and writes it
+once under its content address, to a filesystem directory or to an S3-compatible bucket such as
+MinIO. The address is the sha256 of what the record asserts, excluding `observed_at` when that is
+the build clock (the value is archived inside the object; it is only the address it is left out of),
+so two reads of the same stored discovery resolve to the same object. Nothing is ever overwritten —
+`O_EXCL` on a filesystem, `If-None-Match: *` on S3 — and a read re-hashes what it gets back and
+refuses an address whose content changed. With no store configured the tier says so: `GET …/twin/artifacts`
+reports it unconfigured and `POST` refuses with 409, because "no tier is configured" and "this
+evidence has no artefact" are different answers.
+
 The live twin is read-only to the simulation, by construction: the simulation
 operates on a snapshot copy, and the live projection id must be unchanged
 afterwards.

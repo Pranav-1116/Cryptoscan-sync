@@ -92,11 +92,16 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # 302: POST /api/v1/security-controls/snapshots — a collector submits a snapshot. The route
     # refuses a user token outright, so there is no role to require: the credential kind is the
     # gate.
+    # 303: POST /api/v1/estate/evidence/twin/artifacts — archives one evidence record the twin
+    # already holds into the content-addressed tier. The record is taken from the twin, not from
+    # the request body, and the store never overwrites an address, so this adds no content the
+    # operator was not already entitled to read. The rest of /api/v1/estate is the same operator
+    # surface.
     # 297: POST /api/v1/ops/alerts/alertmanager — guide 117. Alertmanager has no
     # session and no role: the credential is the shared webhook token checked in
     # the handler, because a rule that fires must not be refused with 401.
-    assert len(rows) <= 302, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 302. "
+    assert len(rows) <= 303, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 303. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

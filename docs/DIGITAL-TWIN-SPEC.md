@@ -484,7 +484,9 @@ Hybrid architecture:
 - **Neo4j** — relationship graph: graph projections of assets, dependencies, network paths,
   cryptographic relationships and vendor relationships for traversal and impact analysis.
 - **MinIO** — evidence objects: protected evidence artifacts, configuration exports and
-  reports; PostgreSQL stores identifiers, hashes and metadata.
+  reports; PostgreSQL stores identifiers, hashes and metadata. Built as a sink rather than a
+  dependency: `services/api/api/estate_evidence_objects.py` writes a record to a filesystem
+  directory or to an S3-compatible bucket (MinIO included) under its content address.
 - **Redis** — caching, short-lived state, locks, coordination. Never permanent twin truth.
 
 ### Suggested Neo4j graph model
@@ -657,7 +659,7 @@ does not find it first).
 | 4 | The eight layers | PARTIAL | `estate_twin.placement_model` | layer 7's expression language is bounded: no arithmetic, joins or temporal operators |
 | 5 | Six BOMs are projections | SUPPORTED | `estate_graph.BOM_KINDS`, `…/boms/{kind}/export` | — |
 | 6 | Payment-API walkthrough | SUPPORTED | `bank-environment/05-practical-bank-walkthrough.md`, `GET …/twin/why` | — |
-| 7 | Hybrid storage | PARTIAL | `EstateAssetRecord`, `estate_twin.graph_export` / `SPEC_GRAPH_LABELS`, `services/api/api/estate_graph_loader.py` | all 22 specification labels are emitted (asset types, evidence types, four placement levels); the legacy `cypher_writes.py` projection is a narrower eight-label schema; evidence objects stay in PostgreSQL, no MinIO tier, no Redis dependency |
+| 7 | Hybrid storage | PARTIAL | `EstateAssetRecord`, `estate_twin.graph_export` / `SPEC_GRAPH_LABELS`, `services/api/api/estate_graph_loader.py`, `services/api/api/estate_evidence_objects.py` | all 22 specification labels are emitted (asset types, evidence types, four placement levels); evidence objects have a content-addressed filesystem/S3 (MinIO) tier behind `GET/POST …/twin/artifacts`; the legacy `cypher_writes.py` projection is a narrower eight-label schema, the sink is off until `EVIDENCE_OBJECT_DIR` or `EVIDENCE_OBJECT_S3_BUCKET` names a store, and there is no Redis dependency |
 | 8 | Update lifecycle and asset states | SUPPORTED | `cbom_dependency.LIFECYCLE_STATES`, `transition_asset_lifecycle` | — |
 | 9 | Thirteen screens | PARTIAL | `DigitalTwin.tsx`, `Graph.tsx`, `TwinEdgeExplorer.tsx` | all thirteen investigations have their own route and an edge can be selected and asked about; what is absent is the single thirteen-screen walkthrough in one canvas |
 | 10 | What the twin cannot guarantee | SUPPORTED | `GET …/twin/completeness`, `GET …/twin/why` | — |
@@ -779,6 +781,26 @@ a test. Where the names differ, the mapping says so instead of emitting a second
 (`EstatePlacement` for the chart, alongside `EstateAsset` and `EstateEvidence`) with the kind label
 validated against the vocabulary, so a placement node can never arrive as an untyped asset.
 
+**Built — §7's object store, as a tier with an honest "off".** Evidence objects were content
+hashes in PostgreSQL and nothing else, which made §7's MinIO line a deployment intention. There is
+now a real object tier: `canonical_bytes` and `content_address` key a record by the sha256 of what
+it *asserts*, `store` writes it once under `ab/cd/<digest>.json` to either a filesystem directory or
+an S3-compatible bucket (MinIO's API is S3), and `fetch` re-hashes what comes back and refuses an
+address whose content changed. Two properties are deliberate. The address excludes `observed_at`
+when it is the build clock — the same exclusion `EstateGraph.fingerprint` already documents,
+because hashing the clock would give the same stored discovery a new address on every read; the
+value is still archived inside the object and the wrapper names the exclusion. And a write never
+overwrites: filesystem uses `O_EXCL`, S3 is signed with `If-None-Match: *`, so the second store of
+the same record reports `already_stored` and leaves the first object alone.
+
+The sink is configured, not assumed: `EVIDENCE_OBJECT_DIR`, else `EVIDENCE_OBJECT_S3_*` (reusing
+`ANCHOR_EXPORT_S3_*` when those are the ones set). With neither, `GET …/twin/artifacts` says the
+tier is unconfigured and `POST` refuses with 409 — because "no artefact exists" and "no tier is
+configured" are different answers and only one of them is about the evidence. Reads of an address
+nothing stored return 404 `not_stored` with the same wording. `POST` archives the record the twin
+already holds, named by `evidence_id`, never a body the caller supplies: an archive that stores
+whatever it is sent is an upload endpoint with an evidence endpoint's name.
+
 **Built — `COMPOSITE`, an ordered sequence of changes (`COMPOSITE`).** A migration is rarely one
 edit: "retire TLS 1.0, then replace RSA on what is left, then resize the surviving keys" is three
 scenarios, and running them separately leaves the operator reconciling three BOM diffs computed
@@ -833,9 +855,11 @@ the answer inline — evidence type, collector, source, timestamp and hash — o
 edge was refused. Previously "why" was reachable per asset and as a route, but no edge could be
 selected.
 
-**Not built, and why.** (1) A MinIO evidence tier and a Redis dependency — evidence objects are
-content-addressed rows in PostgreSQL; adding two stateful services to a bank deployment to hold
-what is already hash-chained is a decision for the deployment, not a gap in the model.
+**Not built, and why.** (1) A Redis dependency, and switching the object tier on — the MinIO/S3 tier itself
+now exists (`estate_evidence_objects`, served at `…/twin/artifacts`), but no environment in this
+repository names a bucket or a directory for it, so it reports itself unconfigured rather than
+pretending to store; Redis stays a deployment decision, since nothing in the twin needs a cache it
+can rebuild.
 (2) The specification's single thirteen-screen walkthrough in one canvas, and re-pointing the
 legacy `cypher_writes` projection at the new export: the thirteen investigations are thirteen
 routes, the curated dependency graph is a separate narrower schema used by the older dashboards,

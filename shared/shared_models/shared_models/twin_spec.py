@@ -132,17 +132,22 @@ SECTIONS: tuple[dict[str, Any], ...] = (
         (
             "services/database/db/models/estate_catalog.py:EstateAssetRecord",
             "services/graph_engine/graph_engine/builders/cypher_writes.py",
+            "services/api/api/estate_evidence_objects.py",
         ),
         gap=(
             "the twin's own graph export now covers the specification's 22 node labels — "
             "asset types, evidence types and the four placement levels that used to be "
             "asset properties only (SPEC_GRAPH_LABELS, graph_label_coverage) — and the "
             "loader writes each family under its own label with a validated kind label. "
-            "What is still true: the legacy cypher_writes projection in graph_engine is a "
-            "separate, narrower eight-label schema used by the older dashboards, and "
-            "evidence objects are stored in PostgreSQL with content hashes rather than in "
-            "a MinIO/S3 tier, with no Redis dependency — the estate graph is rebuilt in "
-            "process, Redis is optional and the graph store is rebuildable"
+            "Evidence objects now have the object tier §7 asks for: estate_evidence_objects "
+            "addresses a record by the sha256 of what it asserts, stores it once to a "
+            "filesystem directory or an S3-compatible (MinIO) bucket and re-hashes it on "
+            "read, over GET/POST …/twin/artifacts. What is still true: the tier reports "
+            "itself unconfigured until EVIDENCE_OBJECT_DIR or EVIDENCE_OBJECT_S3_BUCKET "
+            "names a store (refusing a write with 409 rather than pretending), the legacy "
+            "cypher_writes projection in graph_engine is a separate, narrower eight-label "
+            "schema used by the older dashboards, and there is no Redis dependency — the "
+            "estate graph is rebuilt in process, so a cache is optional and rebuildable"
         ),
     ),
     _row(

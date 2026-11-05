@@ -43,6 +43,7 @@ from api import (
     estate_change_feed,
     estate_discovery,
     estate_drift,
+    estate_evidence_objects,
     estate_graph_loader,
     estate_schedule,
     estate_simulation,
@@ -1630,6 +1631,119 @@ def estate_twin_graph_export(
     """
     run = _latest_run(db)
     return {"run_id": run.id, **estate_twin.graph_export(_graph_from_run(run))}
+
+
+# -- the evidence object tier (spec 94 §7) ---------------------------------- #
+# PostgreSQL holds the evidence record and its hash; the object tier holds the artefact.
+# The two are read together and never confused: a record with no archived object is a
+# tier gap, and the routes say so rather than returning an empty artifact list.
+
+
+class EvidenceArtifactStatusOut(BaseModel):
+    schema_: str = Field(alias="schema")
+    configured: bool
+    sink: str | None = None
+    detail: dict[str, Any] | None = None
+    reason: str | None = None
+    note: str
+
+    model_config = {"populate_by_name": True}
+
+
+class EvidenceArtifactStoreOut(BaseModel):
+    schema_: str = Field(alias="schema")
+    sink: str
+    bytes: int
+    address: str
+    verified: bool
+    stored: bool
+    already_stored: bool
+    location: str
+    digest: str
+    note: str | None = None
+    etag: str | None = None
+    object_version: str | None = None
+    evidence_id: str
+
+    model_config = {"populate_by_name": True}
+
+
+class EvidenceArtifactOut(BaseModel):
+    schema_: str = Field(alias="schema")
+    sink: str
+    address: str
+    location: str
+    verified: bool
+    bytes: int
+    record: dict[str, Any]
+
+    model_config = {"populate_by_name": True}
+
+
+@router.get("/twin/artifacts", response_model=EvidenceArtifactStatusOut)
+def estate_twin_artifact_status(
+    user: str = Depends(get_current_user),
+):
+    """Which object tier holds this estate's artefacts — and what its absence means."""
+    return estate_evidence_objects.tier_status()
+
+
+@router.post("/twin/artifacts", response_model=EvidenceArtifactStoreOut)
+def estate_twin_artifact_store(
+    evidence_id: str = Query(description="the evidence record to archive, by id"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Archive one evidence record by content address. Idempotent; never destructive.
+
+    The record comes from the twin, not from the request body: an archive that stores
+    whatever the caller sent is an upload endpoint wearing an evidence endpoint's name.
+    """
+    run = _latest_run(db)
+    graph = _graph_from_run(run)
+    record = next(
+        (item for item in graph.evidence() if str(item.get("evidence_id")) == evidence_id),
+        None,
+    )
+    if record is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "no_such_evidence",
+                "reason": (
+                    f"the twin holds no evidence record {evidence_id!r}. That is not 'it has no "
+                    "artefact': the record itself is not in this projection"
+                ),
+            },
+        )
+    try:
+        result = estate_evidence_objects.store(record)
+    except estate_evidence_objects.EvidenceObjectError as exc:
+        raise HTTPException(
+            status_code=409 if exc.code == "not_configured" else 502,
+            detail={"error": exc.code, "reason": exc.reason, **exc.detail},
+        ) from exc
+    return {**result, "evidence_id": evidence_id}
+
+
+@router.get("/twin/artifacts/{digest}", response_model=EvidenceArtifactOut)
+def estate_twin_artifact_read(
+    digest: str,
+    user: str = Depends(get_current_user),
+):
+    """Read an artefact back and refuse it if the bytes are not what the digest names."""
+    try:
+        return estate_evidence_objects.fetch(digest)
+    except estate_evidence_objects.EvidenceObjectError as exc:
+        status = {
+            "not_configured": 409,
+            "not_stored": 404,
+            "invalid_digest": 422,
+            "integrity_mismatch": 502,
+        }.get(exc.code, 502)
+        raise HTTPException(
+            status_code=status, detail={"error": exc.code, "reason": exc.reason, **exc.detail}
+        ) from exc
 
 
 # -- the simulation workspace ---------------------------------------------- #
