@@ -952,6 +952,7 @@
     "POST /api/v1/network-scans/",
     "POST /api/v1/network/alerts/dispatch",
     "POST /api/v1/network/cloud-correlate",
+    "POST /api/v1/network/crypto-client-offers",
     "POST /api/v1/network/crypto-correlate",
     "POST /api/v1/network/crypto-estate-risk",
     "POST /api/v1/network/crypto-evidence/anchor",

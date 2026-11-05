@@ -526,6 +526,80 @@ def test_an_asset_with_no_handshake_evidence_is_counted_rather_than_assumed_comp
     assert result["blind_spots"]
 
 
+# -- an offer is not a negotiation ------------------------------------------ #
+#
+# The floor's client axis reads what connecting clients *offered* at an approved probe.
+# Two rules keep it honest: an offer never satisfies the negotiated buckets (or every
+# floor check would be answerable from a config), and a client the estate knows exists
+# but has never been seen offering is published as unseen, not as compliant.
+
+
+def _client_offer_payload(**over):
+    payload = _payload()
+    payload["evidence"] = [*payload["evidence"], {
+        "evidence_id": "ev-offer", "source": "sensor", "collector": "network:client-offer",
+        "evidence_type": "NETWORK_PASSIVE_OBSERVED", "target": "api", "layer": "NETWORK_TRANSPORT",
+        "facts": {"offered_versions": ["TLSv1.0", "TLSv1.2"], "client_hello": {"sni": "payments.bank"}},
+    }]
+    payload.update(over)
+    return payload
+
+
+def test_a_client_that_offers_below_the_floor_is_its_own_finding(graph):
+    result = twin.protocol_floor(build_graph(_client_offer_payload()), {"floor": "TLSv1.2"})
+
+    # no handshake and no declaration is below the floor, but a real client offered one
+    assert result["status"] == "BELOW_FLOOR_OFFERED"
+    assert result["counts"]["below_floor"] == 0
+    assert result["counts"]["clients_offering_below_floor"] == 1
+    entry = result["client_offers"]["clients_offering_below_floor"][0]
+    assert entry["offers_below_floor"] == ["TLSv1.0"]
+    assert entry["offers_at_floor"] == ["TLSv1.2"]
+    assert entry["sni"] == "payments.bank"
+    assert entry["basis"] == "OBSERVED"
+
+
+def test_an_offer_never_satisfies_the_negotiated_bucket(graph):
+    result = twin.protocol_floor(build_graph(_client_offer_payload()), {"floor": "TLSv1.3"})
+
+    # the offer below TLSv1.3 does not appear among negotiated records — it is not one
+    assert all(row.get("negotiated") != "TLSv1.0" for row in result["below_floor"])
+    assert result["counts"]["protocol_records"] == 2  # the estate's two real handshakes
+    assert result["counts"]["client_offer_records"] == 1
+    assert result["client_offers"]["counts"]["offer_records"] == 1
+
+
+def test_a_client_the_estate_knows_but_never_sees_is_listed_as_unseen(graph):
+    payload = _client_offer_payload()
+    offer_graph = build_graph(payload)
+    # `lb` routes_to `api` (a client predicate) and no probe has ever seen `lb` offer
+    lb_id = next(asset["asset_id"] for asset in offer_graph.assets() if asset["name"] == "LB-07")
+    result = twin.protocol_floor(offer_graph, {"floor": "TLSv1.2"})
+
+    unseen = result["client_offers"]["clients_without_offer_evidence"]
+    assert lb_id in unseen
+    assert "not" in result["client_offers"]["meaning"] and "compliant" in result["client_offers"]["meaning"]
+
+
+def test_an_unrecognised_offered_value_is_echoed_never_renamed():
+    payload = _client_offer_payload()
+    payload["evidence"][-1]["facts"]["offered_versions"] = ["0x1234"]
+    result = twin.protocol_floor(build_graph(payload), {"floor": "TLSv1.2"})
+
+    assert result["client_offers"]["counts"]["unrecognised"] == 1
+    assert result["client_offers"]["unrecognised"][0]["unrecognised"] == ["0x1234"]
+    # and it never lands in the at-or-above list
+    assert result["client_offers"]["clients_offering_at_or_above_floor"] == []
+
+
+def test_the_floor_names_how_client_acceptance_is_covered(graph):
+    result = twin.protocol_floor(graph, {"floor": "TLSv1.2"})
+
+    blind = result["blind_spots"][0]
+    assert "connected to an approved" in blind
+    assert "unseen is not compliant" in blind
+
+
 def test_the_floor_must_be_a_version_this_build_can_rank(graph):
     missing = twin.protocol_floor(graph, {})
     assert missing["status"] == "INVALID_SCENARIO"

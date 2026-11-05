@@ -1065,6 +1065,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/network/crypto-client-offers",
+      "reason": "operator surface: network inventory and discovery runs"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/network/crypto-correlate",
       "reason": "operator surface: network inventory and discovery runs"
     },

@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 858 |
+| session | 859 |
 | role | 342 |
 | permission | 74 |
 | tenant-role | 17 |
 
-**1291** operations; **304** of them change state with nothing but the session gate — the exact list, with the policy
+**1292** operations; **305** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -28,7 +28,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | Area | Session-only writes |
 |---|---|
 | `assurance` | 46 |
-| `network` | 31 |
+| `network` | 32 |
 | `collection` | 27 |
 | `estate` | 26 |
 | `cbom` | 15 |
@@ -282,6 +282,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/network-scans/` | `api.routers.network_scans.trigger_network_scan` |
 | POST | `/api/v1/network/alerts/dispatch` | `api.routers.network.dispatch_expiry_alerts` |
 | POST | `/api/v1/network/cloud-correlate` | `api.routers.network.network_cloud_correlate` |
+| POST | `/api/v1/network/crypto-client-offers` | `api.routers.network.network_crypto_client_offers` |
 | POST | `/api/v1/network/crypto-correlate` | `api.routers.network.network_crypto_correlate` |
 | POST | `/api/v1/network/crypto-estate-risk` | `api.routers.network.network_crypto_estate_risk` |
 | POST | `/api/v1/network/crypto-evidence/anchor/verify` | `api.routers.network.network_crypto_evidence_anchor_verify` |

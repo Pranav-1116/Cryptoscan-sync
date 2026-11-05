@@ -105,8 +105,12 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # 5000 claims, far past any query string) and stores none of it: the route returns the
     # measurement and `live_state_modified` is false. It cannot be a GET without inventing a
     # length limit on the bank's own inventory, so it joins the operator surface by method.
-    assert len(rows) <= 304, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 304. "
+    # 305: POST /api/v1/network/crypto-client-offers — a probe or sensor submits observed
+    # ClientHello offers, a batch whose whole point is that it is larger than a URL. It stores
+    # handshake metadata under the passive path's fail-closed rule and opens no connection of
+    # its own; the /api/v1/estate operator surface carries the same reason by prefix.
+    assert len(rows) <= 305, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 305. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

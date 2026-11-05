@@ -136,6 +136,62 @@ class OfflineContainerCollector(OfflineOciMetadataCollector):
         }
 
 
+class ApprovedTlsClientOfferCollector:
+    """Explicit operator-run candidate only; observes the ClientHellos that arrive.
+
+    Where the session probe dials out and records what a server selected, this binds one
+    approved numeric endpoint and records what connecting clients offer. It is the
+    collector behind the protocol floor's runtime client-acceptance axis, and it completes
+    no handshakes: an offer is never a negotiation.
+    """
+
+    def validate_scope(self, target: TargetSpec) -> None:
+        from datetime import datetime, timezone
+        from shared_models.tls_client_offer import KIND, OPERATION, client_offer_resource, endpoint
+
+        if (
+            target.collection_method != "network"
+            or target.allowed_operations != [OPERATION]
+            or not target.manifest
+            or target.manifest.platform != "linux"
+            or not sys.platform.startswith("linux")
+            or target.credential_ref is not None
+            or target.environment != target.manifest.environment
+            or len(target.manifest.inputs) != 1
+            or target.manifest.inputs[0].kind != KIND
+            or target.manifest.inputs[0].input_id in target.exclusions
+            or not target.not_before <= datetime.now(timezone.utc) < target.manifest.expires_at
+        ):
+            raise ValueError("Exact single-endpoint client-offer observation approval required")
+        address, port = client_offer_resource(target.manifest.inputs[0].path)
+        if target.address != endpoint(address, port):
+            raise ValueError("Target address must bind the approved numeric observation endpoint")
+
+    def collect(self, target: TargetSpec):
+        from inventory.tls_client_offer import probe_client_offers
+
+        self.validate_scope(target)
+        from shared_models.host_collection import digest
+
+        reviewed = digest(target)
+
+        def approved_probe(item, limit, charge, expires):
+            return probe_client_offers(item, limit, charge, expires, reviewed_target_sha256=reviewed)
+
+        return collect(target.manifest, network_session=approved_probe)
+
+    def health(self):
+        return {
+            "collector": "approved-tls-client-offer/candidate-v1",
+            "server_execution": False,
+            "production_execution_qualified": False,
+            "active_probe": True,
+            "inbound_observation": True,
+            "handshake_completed": False,
+            "platform_supported": sys.platform.startswith("linux"),
+        }
+
+
 class ApprovedTlsSessionCollector:
     """Explicit operator-run candidate only; no HTTP dispatch or production admission."""
 

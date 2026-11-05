@@ -7463,25 +7463,35 @@ export interface EstateTwinProtocolFloorRow {
   asset_id: string; asset_name?: string | null; asset_type?: string | null;
   evidence_id?: string | null; evidence_type?: string | null;
   collector?: string | null; observed_at?: string | null;
-  negotiated?: unknown; position?: "BELOW_FLOOR" | "AT_FLOOR" | "ABOVE_FLOOR" | "UNRECOGNISED";
+  negotiated?: unknown;
+  position?: "BELOW_FLOOR" | "AT_FLOOR" | "ABOVE_FLOOR" | "UNRECOGNISED" | "CONFLICT"
+    | "OFFERS_BELOW_FLOOR" | "OFFERS_AT_OR_ABOVE_FLOOR";
+  field?: string | null;
+  stated?: Record<string, string>;
 }
 
 export interface EstateTwinProtocolFloor {
   schema: string;
-  status: "BELOW_FLOOR_PRESENT" | "AT_OR_ABOVE_FLOOR" | "INSUFFICIENT_EVIDENCE" | "INVALID_SCENARIO";
+  status: "BELOW_FLOOR_PRESENT" | "BELOW_FLOOR_DECLARED" | "BELOW_FLOOR_OFFERED" | "AT_OR_ABOVE_FLOOR"
+    | "UNRANKED_EVIDENCE_ONLY" | "INSUFFICIENT_EVIDENCE" | "INVALID_SCENARIO";
   floor?: string | null; floor_rank?: number | null; projection_id?: string | null;
   counts?: {
     below_floor?: number; at_floor?: number; above_floor?: number; unrecognised?: number;
+    conflicts?: number; unranked_records?: number;
     protocol_records?: number; assets_below_floor?: number;
     assets_with_negotiated_evidence?: number; assets_without_negotiated_evidence?: number;
     assets_in_scope?: number;
+    client_offer_records?: number; clients_with_offer_evidence?: number;
+    clients_offering_below_floor?: number;
   };
   below_floor?: EstateTwinProtocolFloorRow[];
   at_floor?: EstateTwinProtocolFloorRow[];
   above_floor?: EstateTwinProtocolFloorRow[];
   unrecognised?: EstateTwinProtocolFloorRow[];
+  conflicts?: EstateTwinProtocolFloorRow[];
   without_negotiated_evidence?: string[];
   declared?: EstateTwinProtocolFloorDeclared;
+  client_offers?: EstateTwinProtocolFloorClientOffers;
   unresolved_targets?: string[];
   live_state_modified?: boolean;
   note?: string | null;
@@ -7584,6 +7594,29 @@ export const apiEstateTwinGroundTruth = (
   body: EstateGroundTruthDeclaration,
 ): Promise<ApiResult<EstateGroundTruthMeasurement>> =>
   _rsPost<EstateGroundTruthMeasurement>("/api/v1/estate/evidence/twin/ground-truth", body);
+
+/** The client-offer axis: what connecting clients *offered* at an approved probe.
+ *  An offer is runtime acceptance evidence — stronger than a declaration — but it is
+ *  not a negotiation: nothing here completed a handshake. */
+export interface EstateTwinProtocolFloorClientOffers {
+  basis: "OBSERVED";
+  meaning: string;
+  counts: {
+    offer_records?: number;
+    clients_with_offer_evidence?: number;
+    clients_offering_below_floor?: number;
+    clients_offering_at_or_above_floor?: number;
+    unrecognised?: number;
+    clients_without_offer_evidence?: number;
+  };
+  clients_offering_below_floor?: Array<EstateTwinProtocolFloorRow & {
+    offered?: string[]; offers_below_floor?: string[]; offers_at_floor?: string[];
+    offers_above_floor?: string[]; sni?: string | null;
+  }>;
+  clients_offering_at_or_above_floor?: Array<EstateTwinProtocolFloorRow & { offered?: string[] }>;
+  unrecognised?: Array<EstateTwinProtocolFloorRow & { unrecognised?: string[] }>;
+  clients_without_offer_evidence?: string[];
+}
 
 export const apiEstateTwinProtocolFloor = (
   floor: string,

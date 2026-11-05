@@ -24,6 +24,7 @@ Kind = Literal[
     "NETWORK_TLS_SESSION",
     "NETWORK_TLS13_KEY_SHARE",
     "NETWORK_TLS13_HYBRID",
+    "NETWORK_TLS_CLIENT_OFFER",
     "OCI_IMAGE_METADATA",
     "OCI_IMAGE_CONTENT",
     "OCI_RUNTIME_PROCESS",
@@ -67,6 +68,7 @@ from shared_models.windows_cng import WindowsCngFact
 from shared_models.windows_tpm import WindowsTpmFact
 from shared_models.oci_image import OciImageFact
 from shared_models.tls_session import TlsSessionFact
+from shared_models.tls_client_offer import TlsClientOfferFact
 from shared_models.tls_key_share import TlsKeyShareFact
 from shared_models.tls_hybrid import TlsHybridFact
 from shared_models.oci_content import OciContentFact, OciRuntimeFact
@@ -229,6 +231,7 @@ class HostReceipt(Strict):
         | WindowsTpmFact
         | OciImageFact
         | TlsSessionFact
+        | TlsClientOfferFact
         | TlsKeyShareFact
         | TlsHybridFact
         | OciContentFact
@@ -306,6 +309,7 @@ class HostSnapshot(Strict):
         kinds = {
             "PUBLIC_CERTIFICATE": "CERTIFICATE",
             "NETWORK_TLS_SESSION": "NETWORK_TLS_SESSION",
+            "NETWORK_TLS_CLIENT_OFFER": "NETWORK_TLS_CLIENT_OFFER",
             "NETWORK_TLS13_KEY_SHARE": "NETWORK_TLS13_KEY_SHARE",
             "NETWORK_TLS13_HYBRID": "NETWORK_TLS13_HYBRID",
             "OCI_IMAGE_METADATA": "OCI_IMAGE_METADATA",

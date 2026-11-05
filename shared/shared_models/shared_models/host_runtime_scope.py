@@ -21,6 +21,10 @@ def resource(kind, path):
         from shared_models.tls_key_share import key_share_resource
 
         return key_share_resource(path)
+    if kind == "NETWORK_TLS_CLIENT_OFFER":
+        from shared_models.tls_client_offer import client_offer_resource
+
+        return client_offer_resource(path)
     if kind == "NETWORK_TLS_SESSION":
         from shared_models.tls_session import tls_resource
 
@@ -92,6 +96,11 @@ def validate_runtime_facts(item, facts):
             raise ValueError("Key-share fact outside exact approved scope")
         return
 
+    if item.kind == "NETWORK_TLS_CLIENT_OFFER":
+        from shared_models.tls_client_offer import validate_offer
+
+        validate_offer(item, facts)
+        return
     if item.kind == "NETWORK_TLS_SESSION":
         from shared_models.tls_session import validate_session
 

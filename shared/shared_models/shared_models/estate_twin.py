@@ -1432,6 +1432,46 @@ def _declared_protocols(facts: Mapping[str, Any]) -> dict[str, Any] | None:
     }
 
 
+def _negotiated_protocol(facts: Mapping[str, Any]) -> dict[str, Any] | None:
+    """What one evidence record says was *negotiated* — or ``None`` when it says nothing.
+
+    Collectors record the negotiated protocol in two shapes: a version in ``protocol``
+    (engine-level facts) and a bare family in ``protocol`` with the version in
+    ``tls_version`` (network evidence records). Ranking only ``protocol`` read the real
+    collector shape as "TLS" — an unrankable spelling — and a TLSv1.0 endpoint would
+    have been *published as unrankable* instead of below the floor. The version-bearing
+    field is what gets ranked, and the field it came from is kept on the entry.
+
+    When both fields name a rankable version and they disagree, the record contradicts
+    itself: neither value is ranked, and both are published. Picking one would turn a
+    conflict into a fact.
+    """
+    protocol_raw = facts.get("protocol")
+    version_raw = facts.get("tls_version")
+    protocol_text = _text(protocol_raw)
+    version_text = _text(version_raw)
+    if not protocol_text and not version_text:
+        return None
+    protocol_key = _protocol_key(protocol_raw) if protocol_text else None
+    version_key = _protocol_key(version_raw) if version_text else None
+    if protocol_key and version_key and protocol_key != version_key:
+        return {
+            "value": None,
+            "field": "protocol+tls_version",
+            "key": None,
+            "conflict": {"protocol": protocol_text, "tls_version": version_text},
+        }
+    if protocol_key:
+        return {"value": protocol_text, "field": "protocol", "key": protocol_key, "conflict": None}
+    if version_key:
+        # the version-bearing field wins over a bare family ("TLS") or an absent protocol
+        return {"value": version_text, "field": "tls_version", "key": version_key, "conflict": None}
+    # neither value ranks: echo the one claiming to be the version, else the protocol
+    value = version_text if (version_text and not protocol_text) else protocol_text
+    field = "tls_version" if (version_text and not protocol_text) else "protocol"
+    return {"value": value, "field": field, "key": None, "conflict": None}
+
+
 def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
     """§7/§9 — if the accepted protocol floor were X, what is already below it?
 
@@ -1486,7 +1526,18 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
     at: list[dict[str, Any]] = []
     above: list[dict[str, Any]] = []
     unrecognised: list[dict[str, Any]] = []
+    conflicts: list[dict[str, Any]] = []
     measured_assets: set[str] = set()
+
+    # the client axis: what connecting clients *offered* at an approved probe. An offer
+    # is not a negotiation, so these never enter the measured buckets above — they answer
+    # a different question ("would this client still speak below the floor?") and are
+    # reported under their own basis.
+    client_entries: list[dict[str, Any]] = []
+    client_below: list[dict[str, Any]] = []
+    client_at: list[dict[str, Any]] = []
+    client_unrecognised: list[dict[str, Any]] = []
+    offer_clients: set[str] = set()
 
     # the declared axis: what a config *allows*, which is a different claim from what a
     # handshake produced. Collected in the same pass so the two never drift apart.
@@ -1501,6 +1552,52 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
         if target_refs and target not in target_refs:
             continue
         facts = record.get("facts") or {}
+        offered_values = facts.get("offered_versions")
+        if isinstance(offered_values, (list, tuple)) and offered_values:
+            offer_clients.add(target)
+            asset = graph.asset(target) or {}
+            per = {"below": [], "at": [], "above": [], "unrecognised": []}
+            for value in offered_values:
+                rank = PROTOCOL_FLOOR_RANKS.get(_protocol_key(value) or "")
+                text = _text(value)
+                if rank is None:
+                    per["unrecognised"].append(text)
+                elif rank < floor_rank:
+                    per["below"].append(text)
+                elif rank == floor_rank:
+                    per["at"].append(text)
+                else:
+                    per["above"].append(text)
+            entry = {
+                "asset_id": target,
+                "asset_name": asset.get("name"),
+                "asset_type": asset.get("type"),
+                "evidence_id": record.get("evidence_id"),
+                "evidence_type": record.get("evidence_type"),
+                "collector": record.get("collector"),
+                "observed_at": record.get("observed_at"),
+                "basis": "OBSERVED",
+                "offered": [_text(value) for value in offered_values],
+                "offers_below_floor": per["below"],
+                "offers_at_floor": per["at"],
+                "offers_above_floor": per["above"],
+                "unrecognised": per["unrecognised"],
+            }
+            hello_facts = facts.get("client_hello") or {}
+            if isinstance(hello_facts, Mapping) and hello_facts.get("sni"):
+                entry["sni"] = hello_facts.get("sni")
+            if per["below"]:
+                entry["position"] = "OFFERS_BELOW_FLOOR"
+                client_below.append(entry)
+            elif per["unrecognised"] and not per["at"] and not per["above"]:
+                entry["position"] = "UNRECOGNISED"
+                client_unrecognised.append(entry)
+            else:
+                entry["position"] = "OFFERS_AT_OR_ABOVE_FLOOR"
+                client_at.append(entry)
+            client_entries.append(entry)
+            # an offer is not a negotiation: it must never satisfy the measured axis
+            continue
         declared = _declared_protocols(facts)
         if declared is not None:
             declared_assets.add(target)
@@ -1569,12 +1666,12 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
                     entry.setdefault("position", "DECLARES_AT_OR_ABOVE_FLOOR")
             if "position" not in entry:
                 declares_no_floor.append(entry)
-        if "protocol" not in facts:
+        negotiated_info = _negotiated_protocol(facts)
+        if negotiated_info is None:
             # a fact set without a protocol says nothing about the floor. Library versions,
             # key sizes and certificates are other questions.
             continue
         measured_assets.add(target)
-        negotiated = facts.get("protocol")
         asset = graph.asset(target) or {}
         entry = {
             "asset_id": target,
@@ -1584,9 +1681,15 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
             "evidence_type": record.get("evidence_type"),
             "collector": record.get("collector"),
             "observed_at": record.get("observed_at"),
-            "negotiated": negotiated,
+            "negotiated": negotiated_info["value"],
+            "field": negotiated_info["field"],
         }
-        rank = PROTOCOL_FLOOR_RANKS.get(_protocol_key(negotiated) or "")
+        if negotiated_info["conflict"] is not None:
+            entry["position"] = "CONFLICT"
+            entry["stated"] = negotiated_info["conflict"]
+            conflicts.append(entry)
+            continue
+        rank = PROTOCOL_FLOOR_RANKS.get(negotiated_info["key"] or "")
         if rank is None:
             entry["position"] = "UNRECOGNISED"
             unrecognised.append(entry)
@@ -1607,7 +1710,9 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
         all_assets &= target_refs
     without_evidence = sorted(all_assets - measured_assets)
 
-    if not measured_assets and not unrecognised:
+    ranked_records = len(below) + len(at) + len(above)
+    unranked_anywhere = bool(unrecognised or conflicts or client_unrecognised)
+    if not measured_assets and not unrecognised and not conflicts and not client_entries:
         status = "INSUFFICIENT_EVIDENCE"
     elif below:
         status = "BELOW_FLOOR_PRESENT"
@@ -1615,10 +1720,34 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
         # no observed handshake is below the floor, but a configuration still permits one:
         # the finding is real and its basis is DECLARED, which the section states
         status = "BELOW_FLOOR_DECLARED"
-    else:
+    elif client_below:
+        # no handshake and no declaration is below the floor, but a real client offered
+        # one at runtime. An offer is not a negotiation — the status names the basis
+        status = "BELOW_FLOOR_OFFERED"
+    elif ranked_records:
         status = "AT_OR_ABOVE_FLOOR"
+    elif unranked_anywhere:
+        # protocol evidence exists but not one value in it could be ranked against this
+        # floor. That is not "at or above the floor": "I do not know this value" is not
+        # "this is fine"
+        status = "UNRANKED_EVIDENCE_ONLY"
+    else:
+        # offers were seen and every one ranked at or above, but no handshake was ever
+        # negotiated in this estate: the question asked about handshakes stays unanswered
+        status = "INSUFFICIENT_EVIDENCE"
 
-    records_seen = len(below) + len(at) + len(above) + len(unrecognised)
+    # clients the estate *knows* exist (they hold a client-predicate edge) but that no
+    # probe has ever seen offer anything: unseen is reported, never read as compliant
+    client_edge_subjects = {
+        str(edge.get("subject"))
+        for edge in payload.get("relationships") or []
+        if str(edge.get("predicate")) in CLIENT_PREDICATES
+    }
+    if target_refs:
+        client_edge_subjects &= target_refs
+    without_offer = sorted(client_edge_subjects - offer_clients)
+
+    records_seen = len(below) + len(at) + len(above) + len(unrecognised) + len(conflicts)
     below_assets = {entry["asset_id"] for entry in below}
     counting = (
         f"{len(below)} of {records_seen} observed handshake record(s) negotiated a protocol below "
@@ -1627,6 +1756,19 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
         if records_seen
         else "no evidence record in this estate carries a negotiated protocol"
     )
+    if client_entries:
+        counting += (
+            f"; {len(client_below)} client observation(s) recorded an offer below {floor_raw} "
+            f"across {len(client_entries)} ClientHello offer record(s) — an offer is what a "
+            "client put on the wire at an approved probe, not a negotiation, so these are "
+            "reported under client_offers and never counted as handshakes"
+        )
+    if unrecognised or conflicts:
+        counting += (
+            f"; {len(unrecognised)} record(s) name a protocol value this build cannot rank and "
+            f"{len(conflicts)} state two different negotiated versions and contradict themselves — "
+            "all of them are published as findings here, never as compliance"
+        )
     declared_seen = len(declares_below) + len(declared_ceiling_below) + len(declares_no_floor)
     if declared_seen:
         counting += (
@@ -1645,6 +1787,8 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
             "at_floor": len(at),
             "above_floor": len(above),
             "unrecognised": len(unrecognised),
+            "conflicts": len(conflicts),
+            "unranked_records": len(unrecognised) + len(conflicts),
             "protocol_records": records_seen,
             "assets_below_floor": len(below_assets),
             "assets_with_negotiated_evidence": len(measured_assets),
@@ -1652,10 +1796,14 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
             "assets_in_scope": len(all_assets),
             "declares_below_floor": len(declares_below),
             "declared_ceiling_below_floor": len(declared_ceiling_below),
+            "client_offer_records": len(client_entries),
+            "clients_with_offer_evidence": len(offer_clients),
+            "clients_offering_below_floor": len(client_below),
         },
         "below_floor": below[:MAX_LISTED],
         "at_floor": at[:MAX_LISTED],
         "unrecognised": unrecognised[:MAX_LISTED],
+        "conflicts": conflicts[:MAX_LISTED],
         "above_floor": above[:MAX_LISTED],
         "without_negotiated_evidence": without_evidence[:MAX_LISTED],
         "declared": {
@@ -1680,6 +1828,31 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
                 "records nothing on that asset either way, not that nothing is there"
             ),
         },
+        "client_offers": {
+            "basis": "OBSERVED",
+            "counts": {
+                "offer_records": len(client_entries),
+                "clients_with_offer_evidence": len(offer_clients),
+                "clients_offering_below_floor": len(client_below),
+                "clients_offering_at_or_above_floor": len(client_at),
+                "unrecognised": len(client_unrecognised),
+                "clients_without_offer_evidence": len(without_offer),
+            },
+            "clients_offering_below_floor": client_below[:MAX_LISTED],
+            "clients_offering_at_or_above_floor": client_at[:MAX_LISTED],
+            "unrecognised": client_unrecognised[:MAX_LISTED],
+            "clients_without_offer_evidence": without_offer[:MAX_LISTED],
+            "meaning": (
+                "an offer is what a client put on the wire in one ClientHello at one approved "
+                "probe endpoint during one bounded window. It is runtime acceptance evidence — "
+                "stronger than a configuration declaration — but it is not a negotiation and not "
+                "a use: nothing here completed a handshake. A client listed under "
+                "clients_without_offer_evidence is known to this estate as a client of some "
+                "endpoint and has never been seen offering anything; it is unseen, which is not "
+                "the same as compliant. A client this estate does not know about at all cannot "
+                "be listed, and that is the boundary of this axis"
+            ),
+        },
         "unresolved_targets": unresolved_targets,
         "live_state_modified": False,
         "note": (
@@ -1688,10 +1861,11 @@ def protocol_floor(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str,
             "is made"
         ),
         "blind_spots": [
-            "runtime client acceptance: a declaration that an asset permits or requires a protocol "
-            "is reported, but what a client actually offers in a real handshake is not evidence "
-            "this build collects, so a client behaving differently from its configuration is "
-            "invisible here",
+            "runtime client acceptance is covered only for clients that connected to an approved "
+            "offer probe during a bounded window (see client_offers): a client that never connected "
+            "to the probe has no offer evidence here and is listed as unseen where the estate knows "
+            "it exists — unseen is not compliant, and a client the estate does not know about at "
+            "all cannot be listed",
             "enforcement: a declaration says what a configuration file allows, not whether that "
             "configuration is loaded by the process serving the endpoint",
             "an asset with no negotiated protocol evidence is counted, not assumed compliant",

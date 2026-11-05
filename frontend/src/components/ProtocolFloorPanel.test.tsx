@@ -148,3 +148,91 @@ it("gives a declaration that permits an older protocol its own verdict", async (
   // and it is still not an empty result
   expect(screen.getAllByText("LB-07").length).toBeGreaterThanOrEqual(1);
 });
+
+
+/* ─── the client-offer axis ─────────────────────────────────────────────────
+   What a client offered at runtime is stronger than a declaration and still not
+   a negotiation. These tests pin that the panel draws it on its own label, and
+   that a client nobody has seen is printed as unseen — silence is never a pass. */
+
+function offerDoc(overrides: Record<string, unknown> = {}) {
+  return doc({
+    status: "BELOW_FLOOR_OFFERED",
+    client_offers: {
+      basis: "OBSERVED",
+      meaning: "an offer is what a client put on the wire in one ClientHello at one approved probe",
+      counts: {
+        offer_records: 2, clients_with_offer_evidence: 1, clients_offering_below_floor: 1,
+        clients_offering_at_or_above_floor: 1, unrecognised: 1, clients_without_offer_evidence: 1,
+      },
+      clients_offering_below_floor: [{
+        asset_id: "application:xyz", asset_name: "Batch Settlement", evidence_id: "ev-off-1",
+        basis: "OBSERVED", offered: ["TLSv1.0", "TLSv1.2"], offers_below_floor: ["TLSv1.0"],
+        offers_at_floor: ["TLSv1.2"], sni: "payments.bank.example", position: "OFFERS_BELOW_FLOOR",
+      }],
+      clients_offering_at_or_above_floor: [{
+        asset_id: "application:xyz", asset_name: "Batch Settlement", evidence_id: "ev-off-2",
+        offered: ["TLSv1.3"], position: "OFFERS_AT_OR_ABOVE_FLOOR",
+      }],
+      unrecognised: [{
+        asset_id: "application:xyz", asset_name: "Batch Settlement", evidence_id: "ev-off-3",
+        unrecognised: ["0x1234"], position: "UNRECOGNISED",
+      }],
+      clients_without_offer_evidence: ["load_balancer:ddd"],
+    },
+    ...overrides,
+  });
+}
+
+it("draws a below-floor client offer on its own label, not as a handshake", async () => {
+  mockFetch({ [FLOOR]: offerDoc() });
+  render(<ProtocolFloorPanel />);
+  await waitFor(() => expect(screen.getByText("BELOW_FLOOR_OFFERED")).toBeInTheDocument());
+
+  expect(screen.getByText("CLIENT OFFERS · OBSERVED")).toBeInTheDocument();
+  expect(screen.getByText(/it would negotiate below TLSv1\.2 if the other side offered it/)).toBeInTheDocument();
+  expect(screen.getByText(/not a completed handshake/)).toBeInTheDocument();
+  // and it never appears among the negotiated rows
+  expect(screen.getByText("3 handshake records")).toBeInTheDocument();
+});
+
+it("lists a client nobody has seen as unseen, never as compliant", async () => {
+  mockFetch({ [FLOOR]: offerDoc() });
+  render(<ProtocolFloorPanel />);
+  await waitFor(() => expect(screen.getByText(/never seen offering anything/)).toBeInTheDocument());
+
+  expect(screen.getByText("load_balancer:ddd")).toBeInTheDocument();
+  expect(screen.getAllByText(/unseen is not compliant/).length).toBeGreaterThanOrEqual(1);
+});
+
+it("says no offer evidence is unknown, not a pass", async () => {
+  mockFetch({ [FLOOR]: doc({ status: "AT_OR_ABOVE_FLOOR" }) });
+  render(<ProtocolFloorPanel />);
+  await waitFor(() => expect(screen.getByText("AT_OR_ABOVE_FLOOR")).toBeInTheDocument());
+
+  expect(screen.getByText(/No client offer evidence/)).toBeInTheDocument();
+  expect(screen.getByText(/unknown — not compliant/)).toBeInTheDocument();
+});
+
+it("prints an unrankable offer value verbatim and calls it unrankable", async () => {
+  mockFetch({ [FLOOR]: offerDoc() });
+  render(<ProtocolFloorPanel />);
+  await waitFor(() => expect(screen.getByText("0x1234")).toBeInTheDocument());
+
+  expect(screen.getByText(/Unrankable is not compliant/)).toBeInTheDocument();
+});
+
+it("will not choose between two negotiated versions a record cannot agree on", async () => {
+  mockFetch({ [FLOOR]: doc({
+    status: "UNRANKED_EVIDENCE_ONLY",
+    conflicts: [{
+      asset_id: "lb:bbb", asset_name: "LB-07", evidence_id: "ev-x", negotiated: null,
+      position: "CONFLICT", stated: { protocol: "TLSv1.2", tls_version: "TLSv1.0" },
+    }],
+  }) });
+  render(<ProtocolFloorPanel />);
+  await waitFor(() => expect(screen.getByText("UNRANKED_EVIDENCE_ONLY")).toBeInTheDocument());
+
+  expect(screen.getByText(/states two different negotiated/)).toBeInTheDocument();
+  expect(screen.getByText(/Neither is ranked: a record that contradicts itself/)).toBeInTheDocument();
+});

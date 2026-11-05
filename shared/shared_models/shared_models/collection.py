@@ -36,9 +36,9 @@ class TargetSpec(Strict):
     collection_method: Method
     address: str = Field(min_length=1, max_length=1024, pattern=r"^[^\x00-\x1f\x7f]+$")
     credential_ref: str | None = Field(default=None, max_length=200, pattern=r"^vault://[A-Za-z0-9_./-]+$")
-    allowed_operations: list[Literal["READ_APPROVED_METADATA", "OBSERVE_APPROVED_TLS_SESSION"]] = Field(
-        min_length=1, max_length=1
-    )
+    allowed_operations: list[
+        Literal["READ_APPROVED_METADATA", "OBSERVE_APPROVED_TLS_SESSION", "OBSERVE_APPROVED_CLIENT_HELLO"]
+    ] = Field(min_length=1, max_length=1)
     read_only: Literal[True] = True
     not_before: datetime
     manifest: HostManifest | None = None

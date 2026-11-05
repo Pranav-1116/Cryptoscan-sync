@@ -14,6 +14,7 @@
             "NETWORK_TLS_SESSION",
             "NETWORK_TLS13_KEY_SHARE",
             "NETWORK_TLS13_HYBRID",
+            "NETWORK_TLS_CLIENT_OFFER",
             "OCI_IMAGE_METADATA",
             "OCI_IMAGE_CONTENT",
             "OCI_RUNTIME_PROCESS",
@@ -143,7 +144,8 @@
       "items": {
         "enum": [
           "READ_APPROVED_METADATA",
-          "OBSERVE_APPROVED_TLS_SESSION"
+          "OBSERVE_APPROVED_TLS_SESSION",
+          "OBSERVE_APPROVED_CLIENT_HELLO"
         ],
         "type": "string"
       },

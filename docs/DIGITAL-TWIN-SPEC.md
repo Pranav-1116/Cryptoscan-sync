@@ -945,8 +945,38 @@ estate as `CONFIGURED` evidence, and the floor check reports, beside the observe
   being dropped at the finding boundary (`configured_directives_unparsed` is now carried), and a
   half-read config that reads as complete is the same error as a zero that means "failed".
 
-`blind_spots` now leads with the residue: runtime client acceptance. A declaration is what a config
-allows; what a client actually offers in a handshake is still not evidence this estate collects.
+**Built — the client side of the handshake: what clients actually offer.** The blind spot this
+section led with was runtime client acceptance — a declaration says what a config allows, but what a
+client puts on the wire was not evidence this estate collected. It now is. A bounded inbound probe
+binds one approved numeric endpoint and records the ClientHellos that arrive (`NETWORK_TLS_CLIENT_OFFER`,
+sealed like every other probe fact, with `handshake_completed` a sealed `False` — the probe sends no
+ServerHello), and sensors can submit the same observations through
+`POST /network/crypto-client-offers` under the passive path's fail-closed rule: anything that looks
+like captured content refuses the whole batch.
+
+Three rules keep the axis honest. **An offer is never a negotiation** — the records carry
+`handshake_role: CLIENT_HELLO_OFFER` and no `tls_version`, so they cannot satisfy a floor's measured
+bucket; the client axis reports them under `basis: OBSERVED` and the status names the basis
+(`BELOW_FLOOR_OFFERED`). **A value the parser cannot name is echoed as its codepoint**, GREASE decoys
+(RFC 8701) are dropped with a count rather than treated as offers, and an offer whose versions are
+all GREASE is refused, not filed. **A client the estate knows exists and has never been seen
+offering anything is published as unseen** — it holds a client-predicate edge (`connects_to`,
+`routes_to`, `depends_on`) and no offer record — and unseen is printed as unseen, never as compliant.
+
+The estate keys a client by its address, not its ephemeral port: two connections from one client are
+one asset with two offer records, never two assets.
+
+**Built — the negotiated field, read where collectors actually put it.** Real network evidence
+records the negotiated version in `tls_version` beside a family-level `protocol: "TLS"`; ranking only
+`protocol` read that shape as an unrankable spelling and reported a TLSv1.0 endpoint as *at or above
+the floor* — the exact "I do not know this value" ≠ "this is fine" failure. The floor now ranks the
+version-bearing field (and records which field it read on each entry), and a record that states two
+different negotiated versions is published under `conflicts` with both values, neither ranked. A
+status was added for the case the old ladder misread outright: when protocol evidence exists but
+nothing in it can be ranked, the status is `UNRANKED_EVIDENCE_ONLY`, never `AT_OR_ABOVE_FLOOR`.
+
+`blind_spots` now leads with what is *still* unseen: clients that never connect to an approved offer
+probe, and an estate that cannot enumerate its client population cannot list what it has never seen.
 
 **Built — a migration ordered across time, from stored evidence.** A migration is not only a
 sequence, it is a sequence spread over readings: "retire TLS 1.0 on what the estate showed in Q2,

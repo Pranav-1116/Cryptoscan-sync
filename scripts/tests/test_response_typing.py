@@ -74,7 +74,11 @@ def test_the_inventory_does_not_claim_routes_that_are_now_typed(untyped, recorde
 #: (validated by `cbom.cyclonedx16`) and the CEF branch returns `text/plain` lines. A
 #: `response_model` here would publish an `application/json` contract for a route that returns
 #: SIEM lines, which is worse than an honest gap.
-MAX_UNTYPED_OPERATIONS = 1157
+#: 1158: POST /api/v1/network/crypto-client-offers. ClientHello offer ingest, shape-owned by the
+#: network-evidence record schema (cryptoscan.network-evidence/1) shared with the rest of the
+#: observation-intake family (crypto-observe, crypto-passive), which is recorded untyped for the
+#: same reason: the records are validated by their builders, not by a response model.
+MAX_UNTYPED_OPERATIONS = 1158
 
 
 def test_the_untyped_surface_does_not_grow(untyped, recorded):

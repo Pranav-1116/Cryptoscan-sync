@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { Panel, Badge } from "./ui.jsx";
-import type { EstateTwinProtocolFloorDeclared } from "../lib/api.js";
+import type { EstateTwinProtocolFloorDeclared, EstateTwinProtocolFloorClientOffers } from "../lib/api.js";
 import { apiEstateTwinProtocolFloor, type EstateTwinProtocolFloor } from "../lib/api.js";
 
 /* ─── A protocol floor, checked against observed handshakes ──────────────────
    The question is an operator's, not an engineer's: "if we only accepted TLS 1.2
-   from Friday, what is already below it?" The twin can answer the half it holds
-   evidence for — the protocols endpoints actually negotiated — and must not answer
-   the half it cannot see: a client that only offers TLS 1.0 is not an asset.
+   from Friday, what is already below it?" Three axes answer it, on three labels,
+   because acting on each is different work: what endpoints *negotiated*, what
+   configurations still *permit* (declared), and what clients *offered* at runtime
+   (client offers). An offer is not a negotiation, and a declaration is not either.
 
-   So the panel has three published buckets, never two:
+   So the panel has published buckets, never two:
      below / at-or-above  the finding, from evidence
      unrecognised         a protocol value this build cannot rank — not compliance
      no evidence          assets with no handshake evidence — not compliance either
@@ -19,9 +20,9 @@ import { apiEstateTwinProtocolFloor, type EstateTwinProtocolFloor } from "../lib
 const CHOICES = ["TLSv1.0", "TLSv1.1", "TLSv1.2", "TLSv1.3"];
 
 const tone = (status: string) =>
-  status === "BELOW_FLOOR_PRESENT" ? "red"
-    : status === "BELOW_FLOOR_DECLARED" ? "amber"
-      : status === "INSUFFICIENT_EVIDENCE" ? "amber"
+  status === "BELOW_FLOOR_PRESENT" || status === "BELOW_FLOOR_OFFERED" ? "red"
+    : status === "BELOW_FLOOR_DECLARED" || status === "UNRANKED_EVIDENCE_ONLY"
+      || status === "INSUFFICIENT_EVIDENCE" ? "amber"
         : "green";
 
 export default function ProtocolFloorPanel({ initialFloor = "TLSv1.2" }: { initialFloor?: string }) {
@@ -137,7 +138,21 @@ export default function ProtocolFloorPanel({ initialFloor = "TLSv1.2" }: { initi
             </div>
           )}
 
+          {(data.conflicts ?? []).length > 0 && (
+            <div style={{ marginTop: 8, fontSize: 11, color: "var(--red)", lineHeight: 1.5 }}>
+              {(data.conflicts ?? []).map((row) => (
+                <div key={`${row.asset_id}-${row.evidence_id}`}>
+                  <b>{row.asset_name ?? row.asset_id}</b> states two different negotiated
+                  versions ({Object.entries(row.stated ?? {}).map(([field, value]) => `${field}=${value}`).join(", ")}).
+                  Neither is ranked: a record that contradicts itself is a finding, not a choice.
+                </div>
+              ))}
+            </div>
+          )}
+
           <DeclaredAxis declared={data.declared} floor={data.floor ?? ""} />
+
+          <ClientOfferAxis offers={data.client_offers} floor={data.floor ?? ""} />
 
           {data.note && <div style={{ marginTop: 8, fontSize: 11, color: "var(--faint)" }}>{data.note}</div>}
 
@@ -154,6 +169,82 @@ export default function ProtocolFloorPanel({ initialFloor = "TLSv1.2" }: { initi
         </>
       )}
     </Panel>
+  );
+}
+
+
+/* ─── The client-offer axis ─────────────────────────────────────────────────
+   What a client actually offered in a real ClientHello is runtime acceptance:
+   stronger than a configuration declaration, and still not a negotiation — the
+   probe sent no ServerHello, so nothing here "used" anything. Drawn on its own
+   label for the same reason the declared axis is: an operator closing an offer
+   gap (make the client stop offering TLSv1.0) is doing different work from an
+   operator closing a negotiated one (the server just accepted TLSv1.0).
+
+   A client the estate knows exists and has never been seen offering anything is
+   printed as unseen. Unseen is not compliant.
+──────────────────────────────────────────────────────────────────────────── */
+function ClientOfferAxis({
+  offers,
+  floor,
+}: {
+  offers?: EstateTwinProtocolFloorClientOffers;
+  floor: string;
+}) {
+  if (!offers || (offers.counts.offer_records ?? 0) === 0) {
+    return (
+      <div style={{ marginTop: 8, fontSize: 11, color: "var(--faint)", lineHeight: 1.5 }}>
+        No client offer evidence: no probe has observed a ClientHello here, so what the
+        estate's clients would accept is unknown — not compliant.
+      </div>
+    );
+  }
+  const below = offers.clients_offering_below_floor ?? [];
+  const unseen = offers.clients_without_offer_evidence ?? [];
+  return (
+    <div style={{ marginTop: 10, borderTop: "1px dashed var(--line)", paddingTop: 8 }}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        <Badge tone="violet">CLIENT OFFERS · OBSERVED</Badge>
+        <Badge tone="slate">{offers.counts.offer_records} offer record(s)</Badge>
+        {below.length > 0 && (
+          <Badge tone="red">{below.length} client(s) offer below {floor}</Badge>
+        )}
+        {(offers.counts.unrecognised ?? 0) > 0 && (
+          <Badge tone="amber">{offers.counts.unrecognised} unrankable offer(s)</Badge>
+        )}
+        {unseen.length > 0 && (
+          <Badge tone="amber">{unseen.length} client(s) never seen</Badge>
+        )}
+      </div>
+      {below.map((row, index) => (
+        <div key={`${row.asset_id}-${row.evidence_id}-${index}`} style={{ fontSize: 11, lineHeight: 1.6 }}>
+          <b>{row.asset_name ?? row.asset_id}</b> offered{" "}
+          <span style={{ fontFamily: "var(--mono)", color: "var(--red)" }}>
+            {(row.offers_below_floor ?? []).join(", ")}
+          </span>
+          {row.sni ? <> toward <span style={{ fontFamily: "var(--mono)" }}>{row.sni}</span></> : null}
+          {" "}— it would negotiate below {floor} if the other side offered it. That is what it
+          put on the wire, not a completed handshake.
+        </div>
+      ))}
+      {(offers.unrecognised ?? []).map((row, index) => (
+        <div key={`${row.asset_id}-${row.evidence_id}-${index}`} style={{ fontSize: 11, color: "var(--dim)", lineHeight: 1.6 }}>
+          <b>{row.asset_name ?? row.asset_id}</b> offered{" "}
+          <span style={{ fontFamily: "var(--mono)" }}>{(row.unrecognised ?? []).join(", ")}</span>,
+          which this build cannot rank. Unrankable is not compliant.
+        </div>
+      ))}
+      {unseen.length > 0 && (
+        <div style={{ fontSize: 10.5, color: "var(--faint)", lineHeight: 1.5, marginTop: 4 }}>
+          never seen offering anything (known as clients, unseen by any probe):{" "}
+          <span style={{ fontFamily: "var(--mono)" }}>{unseen.slice(0, 8).join(", ")}</span>
+          {unseen.length > 8 ? ` … +${unseen.length - 8}` : ""} — unseen is not compliant
+        </div>
+      )}
+      <div style={{ marginTop: 4, fontSize: 10.5, color: "var(--faint)", lineHeight: 1.5 }}>
+        {offers.meaning}
+      </div>
+    </div>
   );
 }
 

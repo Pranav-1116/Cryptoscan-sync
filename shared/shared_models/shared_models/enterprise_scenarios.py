@@ -89,19 +89,23 @@ SCENARIOS: tuple[dict, ...] = (
         "TLS_DOWNGRADE", "TLS downgrade", PARTIAL,
         covered_by=((AGILITY, "protocol_deprecation"), (TWIN, "DISABLE_PROTOCOL")),
         cannot=(
-            "runtime client acceptance: what a client offers in a real handshake is not evidence "
-            "the estate collects, so a client behaving differently from its configuration is not "
-            "visible",
+            "clients that never connect to an approved offer probe: their runtime acceptance stays "
+            "unseen, and an estate that cannot enumerate its client population cannot list what it "
+            "has never seen — unseen is reported as unseen, never as compliant",
             "enforcement: whether a configuration is loaded by the process serving the endpoint",
         ),
-        requires=("per-client runtime protocol offers",),
+        requires=("per-client runtime protocol offers, for the clients that were observed",),
         note=(
             "raises or lowers a protocol floor over collected facts; it does not re-negotiate. The "
             "floor itself is checked by GET /estate/evidence/twin/protocol-floor, which reports "
             "what negotiated below the floor, what it cannot rank, which assets carry no handshake "
             "evidence and — on a separate DECLARED axis — which configurations still permit a "
-            "protocol below the floor, which cannot reach it at all, and which edges that would "
-            "strand. Unrecognised and uncollected are findings, not compliance"
+            "protocol below the floor. It also carries a CLIENT OFFERS axis (observed at an "
+            "approved probe or sensor via POST /network/crypto-client-offers): which clients put a "
+            "protocol below the floor on the wire, which clients the estate knows but has never "
+            "seen offer anything, and which offered values this build cannot rank. An offer is "
+            "runtime acceptance evidence and is never counted as a negotiation. Unrecognised and "
+            "uncollected are findings, not compliance"
         ),
     ),
     _scenario(

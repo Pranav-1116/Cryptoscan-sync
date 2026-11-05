@@ -462,7 +462,7 @@ protocol its own evidence has observed against it: what negotiated below the flo
 is above it, which protocol values this build cannot rank, and which assets carry no handshake evidence
 at all. The last two are findings rather than compliance — an unrankable value is not a pass, and an
 asset nobody probed is not a clean one. The check is a `GET` and edits nothing; what it cannot answer
-is on screen next to the answer, starting with runtime client acceptance.
+is on screen next to the answer, and what it can now answer includes the client side.
 
 Below the observed bucket sits a second one labelled **DECLARED**: what TLS configuration files
 allow, which is a different claim from what a handshake produced. An imported host snapshot is now a
@@ -470,6 +470,14 @@ discovery plane of its own (`HOST`), so a config that still lists TLS 1.0 appear
 permits TLSv1.0", an asset that tops out below the floor appears beside the edges it would strand
 (and an empty edge list reads "nothing recorded on either side of it", not "nothing would break"),
 and a configuration the collector could only partly parse says so rather than reading as complete.
+
+Beside the declared bucket sits one labelled **CLIENT OFFERS · OBSERVED**: what connecting clients
+actually put on the wire at an approved probe or sensor. A client that offers something below the
+floor would negotiate below it if the other side offered it — runtime acceptance, which is stronger
+than a declaration and still not a negotiation (nothing completed a handshake). Clients the estate
+knows exist — they hold a client edge — but that no probe has ever seen offer anything are listed as
+unseen, and unseen is printed as unseen, never as compliant. A record that states two different
+negotiated versions is published as a contradiction with neither value ranked.
 
 Step 13 also carries the declared population. Every coverage number here is attempted against planned
 per collector, which answers a different question from "did we find the bank's 120 servers". So the

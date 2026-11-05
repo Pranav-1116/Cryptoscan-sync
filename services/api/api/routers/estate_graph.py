@@ -1759,8 +1759,10 @@ class ProtocolFloorOut(BaseModel):
     at_floor: list[dict[str, Any]] | None = None
     above_floor: list[dict[str, Any]] | None = None
     unrecognised: list[dict[str, Any]] | None = None
+    conflicts: list[dict[str, Any]] | None = None
     without_negotiated_evidence: list[str] | None = None
     declared: dict[str, Any] | None = None
+    client_offers: dict[str, Any] | None = None
     unresolved_targets: list[str] | None = None
     live_state_modified: bool | None = None
     note: str | None = None

@@ -167,8 +167,8 @@ def collect_network(db: Any, *, limit: int = 5) -> dict[str, Any]:
     from db.repositories.scan_run_repository import ScanRunRepository
     from db.tenancy import current_tenant
 
-    kinds = ("crypto-observe", "crypto-probe", "crypto-passive", "crypto-watch", "ipsec-observe",
-             "message-layer", "device-inventory")
+    kinds = ("crypto-observe", "crypto-probe", "crypto-passive", "crypto-watch", "crypto-client-offer",
+             "ipsec-observe", "message-layer", "device-inventory")
     assets: list[dict[str, Any]] = []
     evidence: list[dict[str, Any]] = []
     seen: set[str] = set()
@@ -187,6 +187,57 @@ def collect_network(db: Any, *, limit: int = 5) -> dict[str, Any]:
                 if not endpoint:
                     continue
                 target = record.get("target") or {}
+                if record.get("handshake_role") == "CLIENT_HELLO_OFFER":
+                    # an offer targets the *client*, and the client's transport identity is
+                    # its address — not its ephemeral port, which would mint a new asset per
+                    # connection. The port stays on the evidence record for traceability
+                    client_ip = str(target.get("ip_address") or endpoint.split(":")[0])
+                    offer_ref = f"network:{client_ip}"
+                    assets.append({
+                        "ref": offer_ref,
+                        "type": "NETWORK_ENDPOINT",
+                        "name": client_ip,
+                        "identity": {"ip_address": client_ip},
+                        "location": client_ip,
+                        "source": "network_scanner",
+                        "attributes": {
+                            "role": "TLS_CLIENT",
+                            "evidence_type": record.get("evidence_type"),
+                            "observation_status": record.get("observation_status"),
+                            "limitations": list(record.get("limitations") or []),
+                        },
+                    })
+                    hello = record.get("client_offer") or {}
+                    evidence.append({
+                        "source": "network_scanner",
+                        "collector": "network:client-offer",
+                        "evidence_type": str(record.get("evidence_type") or "UNKNOWN").upper(),
+                        "target": offer_ref,
+                        "layer": "NETWORK_TRANSPORT",
+                        "observed_at": _iso(record.get("observed_at")),
+                        "facts": {
+                            # no `protocol` and no `tls_version` on purpose: an offer must
+                            # never satisfy a protocol floor's negotiated bucket
+                            "offered_versions": list(record.get("offered_versions") or []),
+                            "offered_cipher_suites": list(record.get("offered_cipher_suites") or []),
+                            "offered_groups": list(record.get("offered_groups") or []),
+                            "offered_signature_algorithms": list(record.get("offered_signature_algorithms") or []),
+                            "alpn": list(record.get("alpn") or []),
+                            "grease_values_seen": record.get("grease_values_seen"),
+                            "versions_field": record.get("versions_field"),
+                            "client_transport": endpoint,
+                            "client_hello": {
+                                "sni": hello.get("sni"),
+                                "probe_endpoint": hello.get("probe_endpoint"),
+                            },
+                            "network_evidence_id": record.get("evidence_id"),
+                            "layer_note": (
+                                "a client offer is runtime acceptance evidence, not a negotiation "
+                                "and not a use"
+                            ),
+                        },
+                    })
+                    continue
                 assets.append({
                     "ref": f"network:{endpoint}",
                     "type": "NETWORK_ENDPOINT",

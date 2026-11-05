@@ -730,3 +730,162 @@ def build_passive_evidence(
         },
     }
     return record
+
+
+#: A ClientHello *offer* observation: what a client put on the wire, recorded by a
+#: sensor or probe that saw the client side of a handshake. Fail-closed like the
+#: passive path — anything that looks like captured content refuses the whole batch.
+CLIENT_OFFER_ALLOWED_FIELDS = frozenset(
+    {
+        "timestamp",
+        "client_ip",
+        "client_port",
+        "client_name",
+        "probe_endpoint",
+        "sni",
+        "offered_versions",
+        "offered_cipher_suites",
+        "offered_groups",
+        "offered_signature_algorithms",
+        "alpn",
+        "grease_values_seen",
+        "versions_field",
+        "sensor_id",
+        "capture_point",
+    }
+)
+
+MAX_OFFER_LIST = 64
+
+
+def validate_client_offer_observation(observation: dict[str, Any]) -> None:
+    """Reject unknown or content-bearing fields before anything is stored."""
+    if not isinstance(observation, dict):
+        raise PassiveObservationRejected("observation must be an object")
+    for field in observation:
+        lowered = str(field).lower()
+        if any(token in lowered for token in FORBIDDEN_FIELD_TOKENS):
+            raise PassiveObservationRejected(
+                f"field '{field}' looks like captured content — client-offer mode stores handshake metadata only"
+            )
+        if lowered not in CLIENT_OFFER_ALLOWED_FIELDS:
+            raise PassiveObservationRejected(
+                f"field '{field}' is not an allowed client-offer metadata field"
+            )
+
+
+def _offer_list(observation: dict[str, Any], field: str, *, required: bool) -> list[str] | None:
+    value = observation.get(field)
+    if value is None:
+        if required:
+            raise PassiveObservationRejected(f"{field} is required — an offer records what was offered")
+        return None
+    if (
+        not isinstance(value, list)
+        or not value
+        and required
+        or len(value) > MAX_OFFER_LIST
+        or any(not isinstance(item, str) or not item or len(item) > 64 for item in value)
+    ):
+        raise PassiveObservationRejected(f"{field} must be a bounded list of wire values")
+    return list(value)
+
+
+def build_client_offer_evidence(
+    observation: dict[str, Any],
+    *,
+    scanner_version: "str" = "network-client-offer-v1.0",
+    scope_revision: str | None = None,
+    scope_name: str | None = None,
+    received_at: str | None = None,
+) -> dict[str, Any]:
+    """One §24 evidence record from one observed ClientHello.
+
+    The target is the **client**, because the record answers "what would this client
+    speak", and an offer is never dressed up as a negotiation: ``tls_version`` and
+    ``cipher_suite`` stay empty (nothing was negotiated), the marker
+    ``handshake_role: CLIENT_HELLO_OFFER`` keeps it out of every negotiated bucket, and
+    the limitations say so on the record itself.
+    """
+    validate_client_offer_observation(observation)
+    client_ip = str(observation.get("client_ip") or "")
+    if not client_ip:
+        raise PassiveObservationRejected("client_ip is required — an offer records who offered it")
+    client_port = observation.get("client_port")
+    if not isinstance(client_port, int) or isinstance(client_port, bool) or not 1 <= client_port <= 65535:
+        if client_port is not None:
+            raise PassiveObservationRejected("client_port must be a TCP port number when given")
+        client_port = None
+    endpoint = f"{client_ip}:{client_port}" if client_port is not None else client_ip
+    versions = _offer_list(observation, "offered_versions", required=True)
+    suites = _offer_list(observation, "offered_cipher_suites", required=False)
+    grease = observation.get("grease_values_seen")
+    if grease is not None and (not isinstance(grease, int) or isinstance(grease, bool) or grease < 0):
+        raise PassiveObservationRejected("grease_values_seen must be a non-negative count")
+    versions_field = observation.get("versions_field")
+    if versions_field not in (None, "supported_versions", "legacy_version"):
+        raise PassiveObservationRejected("versions_field must name where the offer was read from")
+
+    record: dict[str, Any] = {
+        "schema": SCHEMA,
+        "evidence_type": "NETWORK_PASSIVE_OBSERVED",
+        "handshake_role": "CLIENT_HELLO_OFFER",
+        "evidence_id": f"ev-{uuid.uuid4().hex}",
+        "target": {
+            "endpoint": endpoint,
+            "host": observation.get("client_name") or client_ip,
+            "port": client_port,
+            "ip_address": client_ip,
+        },
+        "protocol": "TLS",
+        "observation_status": "CLIENT_OFFER_SEEN",
+        # nothing was negotiated: these stay empty on purpose, and an empty tls_version
+        # can never satisfy a floor's measured bucket
+        "tls_version": None,
+        "cipher_suite": None,
+        "offered_versions": versions,
+        "offered_cipher_suites": suites,
+        "offered_groups": _offer_list(observation, "offered_groups", required=False),
+        "offered_signature_algorithms": _offer_list(observation, "offered_signature_algorithms", required=False),
+        "alpn": _offer_list(observation, "alpn", required=False),
+        "grease_values_seen": grease,
+        "versions_field": versions_field,
+        "decomposition": {},
+        "certificate": {
+            "fingerprint_sha256": None,
+            "subject": None,
+            "issuer": None,
+            "not_before": None,
+            "not_after": None,
+            "public_key_algorithm": None,
+            "public_key_bits": None,
+            "curve": None,
+            "signature_algorithm": None,
+            "san_count": None,
+        },
+        "certificate_chain": {"length": None, "structural_status": None, "trust_status": None, "completeness": None},
+        "mutual_tls": "UNKNOWN",
+        "mtls_evidence": "NOT_PROBED",
+        "policy_issues": [],
+        "algorithm_verdict": {},
+        "observed_at": str(observation.get("timestamp") or received_at or _now()),
+        "scanner_version": scanner_version,
+        "scope_revision": scope_revision,
+        "scope_name": scope_name,
+        "confidence": "MEDIUM",
+        "limitations": [
+            "an offer is what a client put on the wire in one ClientHello — not a negotiation, "
+            "not a completed handshake and not a use",
+            "this covers only clients that connected to the observation point; a client never "
+            "seen here is NOT_OBSERVED, never assumed compliant",
+            "GREASE decoy values are dropped by the parser and counted, not treated as offers",
+        ],
+        "client_offer": {
+            "probe_endpoint": observation.get("probe_endpoint"),
+            "sni": observation.get("sni"),
+            "sensor_id": observation.get("sensor_id"),
+            "capture_point": observation.get("capture_point"),
+            "received_at": received_at or _now(),
+        },
+    }
+    return record

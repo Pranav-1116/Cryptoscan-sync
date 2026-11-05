@@ -1830,6 +1830,98 @@ def network_crypto_passive(
     }
 
 
+class ClientOfferObservationBatch(BaseModel):
+    observations: list[dict[str, Any]] = Field(default_factory=list, min_length=1, max_length=500)
+    inventory_id: str = Field(default="default", max_length=160)
+    scope_name: str | None = Field(default=None, max_length=120)
+
+
+@router.post("/network/crypto-client-offers")
+def network_crypto_client_offers(
+    body: ClientOfferObservationBatch,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Ingest observed ClientHello *offers* — the client side of a handshake (§7/§24).
+
+    A probe endpoint or sensor submits what each connecting client offered: versions,
+    cipher suites, groups, SNI — never payload, never key material, and never a
+    negotiation. The fail-closed rule of the passive path applies verbatim: anything
+    that looks like captured content refuses the whole batch. Every record is stored
+    with ``handshake_role: CLIENT_HELLO_OFFER``, so a floor check can never read an
+    offer as a completed handshake, and a client that never connected is NOT_OBSERVED —
+    not compliant.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+
+    from network_scanner.inventory.network_evidence import (
+        PassiveObservationRejected,
+        build_client_offer_evidence,
+        summarize,
+    )
+
+    scope = _load_crypto_scope(db, body.inventory_id)
+    received_at = _dt.now(_tz.utc).isoformat()
+    try:
+        evidence = [
+            build_client_offer_evidence(
+                observation,
+                scope_revision=str((scope or {}).get("saved_at") or "") or None,
+                scope_name=body.scope_name or (scope or {}).get("name"),
+                received_at=received_at,
+            )
+            for observation in body.observations
+        ]
+    except PassiveObservationRejected as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "client_offer_observation_rejected", "reason": str(exc)},
+        ) from exc
+
+    summary = summarize(evidence)
+    with network_run(
+        db,
+        user=user,
+        target=f"client-offer:{len(evidence)} observations",
+        admission={
+            "schema": "cryptoscan.network-admission/1",
+            "decision": "PASSIVE_INGEST",
+            "protocol": "TLS",
+            "active": False,
+            # offers are observed at a probe or sensor; ingest opens no connection itself
+            "checked_targets": 0,
+        },
+        kind="crypto-client-offer",
+        profile={"source": "client_offer_probe", "count": len(evidence)},
+    ) as run:
+        stored = persist_network(
+            db,
+            {"network_evidence": evidence, "network_evidence_summary": summary},
+            run,
+            kind="crypto-client-offer",
+            collection_metadata={
+                "source": "CLIENT_OFFER_PROBE",
+                "evidence_schema": "cryptoscan.network-evidence/1",
+                "active_packets": 0,
+            },
+        )
+        run.succeed(coverage={"protocol": "client-offer", "observed": summary["observed"]})
+    return {
+        "model": "cryptoscan.network-client-offer-ingest/1",
+        "scan_id": stored["job_id"],
+        "run_id": stored["run_id"],
+        "stored": len(evidence),
+        "evidence": evidence,
+        "summary": summary,
+        "active_packets": 0,
+        "evidence_chain": stored.get("evidence_chain"),
+        "note": (
+            "an offer is what a client put on the wire, not a negotiation and not a use; this "
+            "covers only clients that connected to the observation point — absence is NOT_OBSERVED"
+        ),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Declared / imported scope candidates (spec 67 §4) — declarations, not probes
 # ---------------------------------------------------------------------------
