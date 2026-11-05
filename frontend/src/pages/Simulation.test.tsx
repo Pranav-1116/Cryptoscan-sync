@@ -532,3 +532,61 @@ describe("simulation workspace", () => {
       (call) => String(call[0]).includes(`${BASE}/catalog`)).length).toBeGreaterThan(1));
   });
 });
+
+/* An `as_of` step is matched against a stored snapshot, so the only ids that can
+   resolve are the ones this tenant holds. The console lists them and copies the id;
+   it never splices one into the steps JSON, because that field is parsed before it is
+   sent and a half-typed array plus an injected id is a syntax error, not a plan. */
+describe("as-of steps in a COMPOSITE sequence", () => {
+  const compositeCatalog = {
+    ...catalog,
+    kinds: [
+      ...kinds,
+      {
+        kind: "COMPOSITE", mode: "SCENARIO", name: "A sequence of changes",
+        question: "If these changes were applied in order, what does the estate look like after the last one?",
+        inputs: ["steps"], optional: ["targets"], step_fields: ["as_of"],
+        answers: ["the BOM diff of the whole sequence"], does_not_answer: ["a clock"],
+      },
+    ],
+  };
+
+  const snapshots = {
+    model: "cryptoscan.estate-twin-snapshots/1", persisted: true, count: 1, note: "",
+    snapshots: [{
+      id: "row-1", snapshot_id: "twin:q2", projection_id: "p".repeat(32),
+      estate: "Synthetic Bank", scope: "production", assets: 8, evidence: 12, relationships: 4,
+      unresolved_relationships: 0, completeness_percent: 70, observations: 1,
+      first_seen_at: "2026-04-01T00:00:00Z", last_seen_at: "2026-04-01T00:00:00Z",
+      captured_by: "tester", note: "q2 baseline",
+    }],
+  };
+
+  it("lists the stored snapshots an as_of step could name", async () => {
+    mockFetch({
+      [`${BASE}/catalog`]: compositeCatalog, [`${BASE}/runs`]: emptyHistory,
+      "/api/v1/estate/evidence/twin/snapshots": snapshots,
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    fireEvent.click(screen.getByRole("button", { name: /A sequence of changes/ }));
+
+    expect(await screen.findByRole("button", { name: "twin:q2" })).toBeInTheDocument();
+    expect(screen.getByText(/matched against that snapshot's evidence/)).toBeInTheDocument();
+  });
+
+  it("says a tenant with no snapshot cannot name one, and never invents a date", async () => {
+    mockFetch({
+      [`${BASE}/catalog`]: compositeCatalog, [`${BASE}/runs`]: emptyHistory,
+      "/api/v1/estate/evidence/twin/snapshots": { ...snapshots, count: 0, snapshots: [] },
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    fireEvent.click(screen.getByRole("button", { name: /A sequence of changes/ }));
+
+    expect(await screen.findByText(/this tenant holds no stored snapshot/)).toBeInTheDocument();
+    expect(screen.getByText(/a date is not a snapshot/)).toBeInTheDocument();
+  });
+});

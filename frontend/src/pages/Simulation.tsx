@@ -20,11 +20,11 @@ import { IconTarget, IconSecurity } from "../components/icons";
 import EstateDiscoveryCta from "../components/EstateDiscoveryCta";
 import {
   apiSimulationCatalog, apiSimulationPlan, apiSimulationRun, apiSimulationRuns,
-  LiveBadge, ApiResult,
+  apiEstateTwinSnapshots, LiveBadge, ApiResult,
 } from "../lib/api.js";
 import type {
   SimulationCatalog, SimulationPreview, SimulationRun, SimulationRuns, SimulationScenario,
-  SimulationPreset, SimulationWave,
+  SimulationPreset, SimulationWave, EstateTwinSnapshotSummary,
 } from "../lib/api.js";
 
 const FIELD_LABEL: Record<string, string> = {
@@ -163,6 +163,9 @@ export default function Simulation() {
   const [result, setResult] = useState<{ key: string; data: SimulationRun } | null>(null);
   const [resultError, setResultError] = useState<string | null>(null);
   const [history, setHistory] = useState<SimulationRuns | null>(null);
+  const [snapshots, setSnapshots] = useState<EstateTwinSnapshotSummary[] | null>(null);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+  const [copiedSnapshot, setCopiedSnapshot] = useState<string | null>(null);
   const [busy, setBusy] = useState<"plan" | "run" | null>(null);
 
   const loadCatalog = useCallback(async () => {
@@ -179,7 +182,27 @@ export default function Simulation() {
     if (response.ok && response.data) setHistory(response.data);
   }, []);
 
+  /* A COMPOSITE step may name a stored snapshot with `as_of`. The ids are opaque and a
+     typed guess is a 404, so the console lists the snapshots this tenant actually holds
+     and offers them as chips — the only ids that can resolve are the ones on screen. */
+  const loadSnapshots = useCallback(async () => {
+    const response = await apiEstateTwinSnapshots();
+    setSnapshots(response.ok ? response.data?.snapshots ?? [] : null);
+    if (!response.ok) {
+      setSnapshotError("the snapshot list could not be read — that is not 'no snapshots exist'");
+    }
+  }, []);
+
   useEffect(() => { void loadHistory(); }, [loadHistory]);
+  useEffect(() => { void loadSnapshots(); }, [loadSnapshots]);
+
+  /* A snapshot id is opaque, so the chip copies it rather than editing the JSON: the
+     steps field is parsed before it is sent, and splicing an id into a half-typed array
+     would turn a valid plan into a syntax error. */
+  const copySnapshotId = (identifier: string) => {
+    setCopiedSnapshot(identifier);
+    void navigator.clipboard?.writeText(identifier).catch(() => undefined);
+  };
 
   const kinds = catalog?.data?.kinds ?? [];
   const modes = catalog?.data?.modes ?? [];
@@ -577,6 +600,48 @@ export default function Simulation() {
                       <span style={{ display: "block", fontSize: 10.5, color: "var(--amber)", marginTop: 3 }}>
                         {jsonFieldError[name]}
                       </span>
+                    )}
+                    {name === "steps" && (
+                      <div style={{ marginTop: 6 }}>
+                        <div style={{ fontSize: 10.5, color: "var(--faint)", lineHeight: 1.5 }}>
+                          A step may carry <code>as_of</code> with one of these ids. The step is then
+                          matched against that snapshot&apos;s evidence, while its change lands on the
+                          estate as it stands — a plan written in Q2, judged on Q2&apos;s evidence.
+                          A step without <code>as_of</code> reads today.
+                        </div>
+                        {snapshotError && (
+                          <div style={{ fontSize: 10.5, color: "var(--amber)", marginTop: 4 }}>{snapshotError}</div>
+                        )}
+                        {snapshots === null && !snapshotError && (
+                          <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 4 }}>reading stored snapshots…</div>
+                        )}
+                        {snapshots !== null && snapshots.length === 0 && (
+                          <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 4 }}>
+                            this tenant holds no stored snapshot, so no step can name one yet. Capture
+                            a baseline on the twin chain screen first — a date is not a snapshot.
+                          </div>
+                        )}
+                        {snapshots !== null && snapshots.length > 0 && (
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5, alignItems: "center" }}>
+                            {snapshots.slice(0, 6).map((snapshot) => (
+                              <button
+                                key={snapshot.id}
+                                type="button"
+                                title={`${snapshot.assets} assets · ${snapshot.evidence} evidence records · ${snapshot.note ?? "no note"}`}
+                                onClick={() => copySnapshotId(snapshot.snapshot_id)}
+                                style={{ ...chipStyle(false), fontSize: 10.5 }}
+                              >
+                                {snapshot.snapshot_id}
+                              </button>
+                            ))}
+                            {copiedSnapshot && (
+                              <span style={{ fontSize: 10.5, color: "var(--green)" }}>
+                                copied {copiedSnapshot} — paste it as <code>as_of</code> in a step
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     )}
                     <datalist id={listId}>
                       {[...new Set(values.map((item) => item.value))].map((value) => (

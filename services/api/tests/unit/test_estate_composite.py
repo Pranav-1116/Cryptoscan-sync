@@ -43,6 +43,13 @@ def graph():
     return build_graph(_payload())
 
 
+def _payload_with_extra_evidence(*records: dict) -> dict:
+    """``_payload()`` plus evidence today's estate no longer holds."""
+    payload = _payload()
+    payload["evidence"] = [*payload["evidence"], *records]
+    return payload
+
+
 def _discover(http) -> dict:
     created = http.post(f"{BASE}/discover", json=_payload())
     assert created.status_code == 200, created.text
@@ -291,3 +298,173 @@ def test_the_workspace_carries_a_custom_expression_to_the_engine(api):
     body = response.json()
     assert body["status"] == "SIMULATED", body.get("detail")
     assert body["effects"][0]["before"]["algorithm"] == "AES-128-GCM"
+
+
+# -- an ordered migration across time, from stored snapshots ---------------- #
+#
+# "Apply step 1 to today's estate, then step 2 to the Q2 snapshot" is a real migration
+# shape, and the only honest way to model it is to evaluate each step against *stored
+# evidence*. There is still no clock: the step names a captured snapshot, and a step
+# whose snapshot cannot be found is refused rather than quietly evaluated against today.
+
+
+def test_an_as_of_step_is_matched_against_its_snapshot_and_applied_to_the_estate(graph):
+    # the snapshot holds a record today's estate does not: TLSv1.1 on the load balancer
+    historical = build_graph(_payload_with_extra_evidence(
+        {"evidence_id": "ev-old", "source": "agent", "evidence_type": "RUNTIME_OBSERVED",
+         "target": "lb", "layer": "NETWORK_TRANSPORT",
+         "facts": {"protocol": "TLSv1.1"}}
+    ))
+    result = twin.simulate(
+        graph,
+        {"kind": "COMPOSITE", "steps": [
+            {"kind": "REPLACE_ALGORITHM", "from": "AES-128-GCM", "to": "AES-256-GCM"},
+            {"kind": "DISABLE_PROTOCOL", "from": "TLSv1.1", "as_of": "twin:q2"},
+        ]},
+        as_of_graphs={"twin:q2": historical},
+    )
+
+    assert result["status"] == "SIMULATED"
+    steps = {row["step"]: row for row in result["steps"]}
+    assert steps[1]["as_of"] is None
+    # step 2 matches the snapshot's TLSv1.1 record, which today's estate no longer holds
+    assert steps[2]["as_of"] == "twin:q2"
+    assert steps[2]["evaluated_against_snapshot"] is True
+    assert steps[2]["not_in_current_estate"] == 1
+    assert steps[2]["matched_evidence"] == 0
+    # and the copy is untouched by a record that has left: retired, never resurrected
+    assert result["as_of"]["not_in_current_estate"] == 1
+    assert "never resurrected" in result["as_of"]["meaning"]
+
+
+def test_an_as_of_step_that_still_exists_edits_todays_record(graph):
+    # the snapshot recorded AES-128-GCM on the load balancer; today's estate still does,
+    # so the plan is evaluated against the snapshot and the edit lands on today's record
+    historical = build_graph(_payload())
+    result = twin.simulate(
+        graph,
+        {"kind": "COMPOSITE", "steps": [
+            {"kind": "REPLACE_ALGORITHM", "from": "AES-128-GCM", "to": "AES-256-GCM",
+             "as_of": "twin:q2"},
+        ]},
+        as_of_graphs={"twin:q2": historical},
+    )
+
+    assert result["status"] == "SIMULATED"
+    assert result["steps"][0]["matched_from_snapshot"] == 1
+    effect = next(item for item in result["effects"] if item["step"] == 1)
+    assert effect["evaluated_against"] == "twin:q2"
+    assert effect["before"]["algorithm"] == "AES-128-GCM"
+    assert effect["after"]["algorithm"] == "AES-256-GCM"
+    assert result["as_of"]["snapshots"] == ["twin:q2"]
+
+
+def test_an_as_of_naming_a_snapshot_this_run_does_not_hold_is_refused(graph):
+    result = twin.simulate(
+        graph,
+        {"kind": "COMPOSITE", "steps": [
+            {"kind": "RETIRE_ALGORITHM", "from": "AES-256-GCM", "as_of": "twin:never-captured"},
+        ]},
+        as_of_graphs={},
+    )
+
+    assert result["status"] == "UNKNOWN_SNAPSHOT"
+    assert result["unknown_as_of"] == [{"step": 1, "as_of": "twin:never-captured"}]
+    assert "not 'the estate looked the same then'" in result["detail"]
+    # nothing was applied, and the refusal says why in terms of the evidence
+    assert result["live_state_modified"] is False
+
+
+def test_as_of_must_name_a_snapshot_and_not_a_date(graph):
+    result = twin.simulate(
+        graph,
+        {"kind": "COMPOSITE", "steps": [
+            {"kind": "RETIRE_ALGORITHM", "from": "AES-256-GCM", "as_of": "2026-06-30"},
+        ]},
+        as_of_graphs={},
+    )
+
+    # a date is not evidence: it is refused as unresolvable, not evaluated as if it were
+    assert result["status"] == "UNKNOWN_SNAPSHOT"
+
+    malformed = twin.simulate(
+        graph,
+        {"kind": "COMPOSITE", "steps": [
+            {"kind": "RETIRE_ALGORITHM", "from": "AES-256-GCM", "as_of": 20260630},
+        ]},
+    )
+    assert malformed["status"] == "INVALID_SCENARIO"
+    assert "a date is not evidence" in malformed["detail"]
+
+
+def test_the_preview_counts_an_as_of_step_against_its_snapshot(graph):
+    historical = build_graph(_payload_with_extra_evidence(
+        {"evidence_id": "ev-old", "source": "agent", "evidence_type": "RUNTIME_OBSERVED",
+         "target": "lb", "layer": "NETWORK_TRANSPORT", "facts": {"protocol": "TLSv1.1"}}
+    ))
+    result = twin.preview(
+        graph,
+        {"kind": "COMPOSITE", "steps": [
+            {"kind": "DISABLE_PROTOCOL", "from": "TLSv1.1", "as_of": "twin:q2"},
+        ]},
+        as_of_graphs={"twin:q2": historical},
+    )
+
+    assert result["status"] == "WOULD_NOT_MATCH"
+    assert result["steps"][0]["evaluated_against_snapshot"] is True
+    assert result["steps"][0]["not_in_current_estate"] == 1
+    assert result["as_of"]["snapshots"] == ["twin:q2"]
+    assert "a step with 'as_of' reads its snapshot" in result["note"]
+    assert "describe an estate that no longer exists" in result["note"]
+
+
+def test_the_api_resolves_as_of_against_stored_snapshots(api):
+    http, _session = api
+    _discover(http)
+    captured = http.post(f"{BASE}/twin/snapshots", json={"note": "q2 baseline"})
+    assert captured.status_code == 201, captured.text
+    identifier = captured.json()["snapshot"]["snapshot_id"]
+
+    run = http.post(f"{BASE}/simulation/run", json={
+        "kind": "COMPOSITE",
+        "steps": [
+            {"kind": "REPLACE_ALGORITHM", "from": "AES-128-GCM", "to": "AES-256-GCM"},
+            {"kind": "RETIRE_ALGORITHM", "from": "AES-256-GCM", "as_of": identifier},
+        ],
+    })
+
+    assert run.status_code == 200, run.text
+    body = run.json()
+    assert body["status"] == "SIMULATED"
+    assert body["as_of"]["snapshots"] == [identifier]
+    assert body["steps"][1]["as_of"] == identifier
+
+
+def test_the_api_refuses_an_as_of_this_tenant_has_never_captured(api):
+    http, _session = api
+    _discover(http)
+
+    run = http.post(f"{BASE}/simulation/run", json={
+        "kind": "COMPOSITE",
+        "steps": [{"kind": "RETIRE_ALGORITHM", "from": "AES-256-GCM", "as_of": "twin:not-captured"}],
+    })
+
+    assert run.status_code == 404, run.text
+    detail = run.json()["detail"]
+    assert detail["error"] == "unknown_snapshot"
+    assert detail["missing"] == ["twin:not-captured"]
+    assert "not 'the estate looked the same then'" in detail["reason"]
+
+
+def test_the_plan_route_resolves_the_same_snapshots(api):
+    http, _session = api
+    _discover(http)
+    identifier = http.post(f"{BASE}/twin/snapshots", json={}).json()["snapshot"]["snapshot_id"]
+
+    plan = http.post(f"{BASE}/simulation/plan", json={
+        "kind": "COMPOSITE",
+        "steps": [{"kind": "RETIRE_ALGORITHM", "from": "AES-256-GCM", "as_of": identifier}],
+    })
+
+    assert plan.status_code == 200, plan.text
+    assert plan.json()["as_of"]["snapshots"] == [identifier]

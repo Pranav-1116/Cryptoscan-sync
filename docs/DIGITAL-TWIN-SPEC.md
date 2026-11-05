@@ -885,6 +885,24 @@ the answer inline — evidence type, collector, source, timestamp and hash — o
 edge was refused. Previously "why" was reachable per asset and as a route, but no edge could be
 selected.
 
+**Built — a migration ordered across time, from stored evidence.** A migration is not only a
+sequence, it is a sequence spread over readings: "retire TLS 1.0 on what the estate showed in Q2,
+then replace RSA on what survives". `COMPOSITE` now lets a step name a stored twin snapshot with
+`as_of`. The step is *matched* against the evidence that snapshot recorded — the facts the plan was
+written against — and the change is applied to the copy of the estate as it stands now, so a record
+that has since left the estate is counted as `not_in_current_estate` and is never resurrected into
+the copy. Each step reports `evaluated_against_snapshot`, `evidence_in_snapshot` and
+`not_in_current_estate`, and a step that matches only records the estate has since dropped says
+exactly that: the plan still describes the snapshot, it no longer describes today.
+
+There is still no clock, and the refusal is the point. `as_of` takes a *stored snapshot id*; a
+date, an integer, or an id this tenant never captured is refused (`UNKNOWN_SNAPSHOT`) rather than
+quietly evaluated against today — a run that silently ignored an unresolvable `as_of` would answer a
+different question than the one that was asked, which is the most expensive way to be wrong. The API
+resolves the snapshots (the engine never learns about the database), the preview counts each step
+against the evidence it reads, and the workspace lists the ids this tenant actually holds so a step
+can name one instead of guessing.
+
 **Not built, and why.** (1) A Redis dependency, and switching the object tier on — the MinIO/S3 tier itself
 now exists (`estate_evidence_objects`, served at `…/twin/artifacts`), but no environment in this
 repository names a bucket or a directory for it, so it reports itself unconfigured rather than
@@ -895,9 +913,11 @@ separate narrower eight-label schema used by the older dashboards, so a line the
 view. The twin now has a drawn canvas of its own (`TwinGraphCanvas`, step 3 of the walkthrough) whose
 lines ask the twin, which is why the legacy builder is left alone rather than half-migrated — two
 drawn graphs is a migration decision, not a missing capability.
-(3) Cross-record expressions and time-ordered migration windows — an expression reads one record's
-facts, and a `COMPOSITE` sequence has an order but no clock; a scheduler and a query engine would
-each let a scenario produce a value no evidence holds.
+(3) Cross-record expressions — an expression reads one record's facts, so it cannot compute a value
+from another asset, another record or the clock. Time *is* modelled, but as evidence rather than as
+a clock: a `COMPOSITE` step may carry `as_of` with a **stored snapshot** id, and the step is then
+matched against the evidence that snapshot recorded while its change lands on the estate as it stands
+(see §14's paragraph). A date is refused, because a date is not evidence.
 
 ## Sources
 

@@ -295,7 +295,7 @@ def test_the_workspace_never_returns_a_result_that_moved_the_estate(api, monkeyp
     _discover(http)
     from api import estate_simulation
 
-    def lying_run(graph, scenario):  # noqa: ANN001
+    def lying_run(graph, scenario, **kwargs):  # noqa: ANN001, ANN003
         return {"status": "SIMULATED", "live_state_modified": True, "base_projection_id": "x"}
 
     monkeypatch.setattr(estate_simulation, "run", lying_run)

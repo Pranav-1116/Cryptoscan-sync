@@ -163,14 +163,20 @@ KIND_CATALOG: dict[str, dict[str, Any]] = {
         "question": "If these changes were applied in order, what does the estate look like after the last one?",
         "inputs": ["steps"],
         "optional": ["targets"],
+        "step_fields": ["as_of"],
         "answers": [
             "each step applied to the same copy, in the order given, with the evidence each step matched",
             "the BOM diff of the whole sequence rather than one diff per step to reconcile by hand",
             "the blast radius anchored on the first step's selector and the last step's target",
+            "a step may name a stored snapshot with 'as_of': it is then matched against the evidence "
+            "that snapshot recorded, while the edit still lands on the estate as it stands — a plan "
+            "written in Q2 is judged on Q2's evidence, and a record that has since left the estate is "
+            "counted as not_in_current_estate rather than resurrected into the copy",
         ],
         "does_not_answer": [
             "branching, loops or a clock: the sequence is a fixed list of at most 5 primitive "
-            "scenarios, applied once, in order",
+            "scenarios, applied once, in order. 'as_of' names a *stored snapshot*, never a date — a "
+            "date is not evidence",
             "intermediate BOM diffs — only the state after the last step is projected, because a "
             "half-migrated estate is not a deployment anyone asked about",
             "a cascade inside a sequence: a failure propagating through a copy has no BOM diff to "
@@ -501,17 +507,32 @@ def mode_of(kind: str) -> str:
     return str(KIND_CATALOG.get(str(kind or "").upper(), {}).get("mode") or "SCENARIO")
 
 
-def plan(graph: Any, scenario: Mapping[str, Any]) -> dict[str, Any]:
-    """Would this selector match anything? Answered before the run, from the live twin."""
-    result = estate_twin.preview(graph, scenario)
+def plan(
+    graph: Any,
+    scenario: Mapping[str, Any],
+    *,
+    as_of_graphs: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Would this selector match anything? Answered before the run, from the live twin.
+
+    ``as_of_graphs`` is passed through untouched: a ``COMPOSITE`` step that names a
+    stored snapshot is previewed against that snapshot, and the caller — which is the
+    only layer that can read the snapshot table — decides which ids resolve.
+    """
+    result = estate_twin.preview(graph, scenario, as_of_graphs=as_of_graphs)
     return {**result, "workspace": SCHEMA, "mode": mode_of(str(scenario.get("kind") or ""))}
 
 
-def run(graph: Any, scenario: Mapping[str, Any]) -> dict[str, Any]:
+def run(
+    graph: Any,
+    scenario: Mapping[str, Any],
+    *,
+    as_of_graphs: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """Apply the scenario to a copy and return the answer the engine produced.
 
     Deliberately a thin call: the engine owns the copy, the re-projection and the
     before/after projection check, and this module must not grow a second opinion.
     """
-    result = estate_twin.simulate(graph, scenario)
+    result = estate_twin.simulate(graph, scenario, as_of_graphs=as_of_graphs)
     return {**result, "workspace": SCHEMA, "mode": mode_of(str(scenario.get("kind") or ""))}

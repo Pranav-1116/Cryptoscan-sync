@@ -24,7 +24,7 @@ routes live under ``/estate/evidence`` so the two never shadow each other.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
@@ -1481,7 +1481,9 @@ def estate_twin_simulate(
     }
     if estate_simulation.mode_of(body.kind) == "CASCADE":
         scenario["depth"] = body.depth
-    result = estate_twin.simulate(graph, scenario)
+    as_of = _resolve_as_of(db, scenario)
+    _refuse_unknown_as_of(as_of["missing"])
+    result = estate_twin.simulate(graph, scenario, as_of_graphs=as_of["graphs"])
     response: dict[str, Any] = {"run_id": run.id, **result}
     if body.persist:
         if result.get("status") != "SIMULATED":
@@ -1827,6 +1829,50 @@ def _scenario_payload(body: SimulationRunRequest) -> dict[str, Any]:
     return payload
 
 
+def _resolve_as_of(db: Session, scenario: Mapping[str, Any]) -> dict[str, Any]:
+    """Rebuild every snapshot a ``COMPOSITE`` step names with ``as_of``.
+
+    The engine matches such a step against the snapshot's evidence, so it needs the
+    graph — and this is the only layer that can read the snapshot table. An id that
+    matches no stored snapshot for this tenant is collected, not skipped: a run that
+    silently fell back to today's evidence would answer a different question than the
+    one the operator asked.
+    """
+    steps = scenario.get("steps") or []
+    wanted = sorted({
+        str(step.get("as_of")).strip()
+        for step in steps
+        if isinstance(step, Mapping) and str(step.get("as_of") or "").strip()
+    })
+    resolved: dict[str, Any] = {}
+    missing: list[str] = []
+    for identifier in wanted:
+        row = estate_twin_store.get_snapshot(db, identifier, tenant_id=current_tenant())
+        if row is None:
+            missing.append(identifier)
+            continue
+        resolved[identifier] = estate_twin_store.graph_from_row(row)
+    return {"graphs": resolved, "missing": missing}
+
+
+def _refuse_unknown_as_of(missing: list[str]) -> None:
+    if not missing:
+        return
+    raise HTTPException(
+        status_code=404,
+        detail={
+            "error": "unknown_snapshot",
+            "reason": (
+                f"no twin snapshot matches {', '.join(repr(item) for item in missing)} for this "
+                "tenant. An 'as_of' step is matched against a captured snapshot, so a run that "
+                "cannot find one is not 'the estate looked the same then' — capture it with POST "
+                "/estate/evidence/twin/snapshots, or drop 'as_of' to use the estate as it stands"
+            ),
+            "missing": missing,
+        },
+    )
+
+
 @router.get("/simulation/catalog")
 def simulation_catalog(
     user: str = Depends(get_current_user),
@@ -1849,7 +1895,10 @@ def simulation_plan(
 ):
     """Would this scenario match anything? Answered before the copy is made."""
     run = _latest_run(db)
-    result = estate_simulation.plan(_graph_from_run(run), _scenario_payload(body))
+    scenario = _scenario_payload(body)
+    as_of = _resolve_as_of(db, scenario)
+    _refuse_unknown_as_of(as_of["missing"])
+    result = estate_simulation.plan(_graph_from_run(run), scenario, as_of_graphs=as_of["graphs"])
     if result.get("status") == "INVALID_SCENARIO":
         raise HTTPException(
             status_code=422,
@@ -1873,13 +1922,15 @@ def simulation_run(
     run = _latest_run(db)
     graph = _graph_from_run(run)
     scenario = _scenario_payload(body)
-    preview = estate_simulation.plan(graph, scenario)
+    as_of = _resolve_as_of(db, scenario)
+    _refuse_unknown_as_of(as_of["missing"])
+    preview = estate_simulation.plan(graph, scenario, as_of_graphs=as_of["graphs"])
     if preview.get("status") == "INVALID_SCENARIO":
         raise HTTPException(
             status_code=422,
             detail={"error": "invalid_scenario", "reason": preview.get("detail"), **preview},
         )
-    result = estate_simulation.run(graph, scenario)
+    result = estate_simulation.run(graph, scenario, as_of_graphs=as_of["graphs"])
     if result.get("live_state_modified"):
         raise HTTPException(
             status_code=500,

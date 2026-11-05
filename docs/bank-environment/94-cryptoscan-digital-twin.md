@@ -470,6 +470,14 @@ what is left" behaves the way it reads — and each step's matched evidence is r
 step that matched nothing (which is a fact about the estate, not an error). Branching, loops and a
 clock are refused rather than approximated.
 
+A step may also name a stored twin snapshot with `as_of`. The step is then matched against the
+evidence that snapshot recorded — the facts the plan was written against — while its change lands on
+the copy of the estate as it stands today, so "retire what Q2 showed, then migrate what survives" is
+modelled without pretending the estate is still Q2. A matched record that has since left the estate is
+counted as `not_in_current_estate` and never resurrected into the copy. `as_of` takes a snapshot id,
+never a date: a date, or an id this tenant never captured, is refused — a run that quietly fell back
+to today's evidence would answer a different question than the one that was asked.
+
 An evidence record can also be archived as an object outside PostgreSQL. `POST
 …/estate/evidence/twin/artifacts?evidence_id=` takes the record from the twin — never from the
 request body, because an archive that stores what it is sent is an upload endpoint — and writes it

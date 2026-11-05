@@ -951,8 +951,10 @@ def test_the_specification_conformance_route_serves_the_register(api):
     assert body["schema"] == "cryptoscan.digital-twin-spec-conformance/1"
     assert body["coverage"]["relationship_types_mapped"] == 18
     assert body["coverage"]["screens"] == 13
+    # s9-ui left this set when the thirteen-screen walkthrough and the drawn canvas of
+    # the twin's own graph were built: the register only lists what is still partial.
     assert {gap["id"] for gap in body["gaps"]} == {
-        "s4-eight-layers", "s7-storage", "s9-ui", "layer-7-simulation",
+        "s4-eight-layers", "s7-storage", "layer-7-simulation",
     }
     # the register does not need a discovered estate: it describes the build, not a bank
     assert body["spec"].endswith("DIGITAL-TWIN-SPEC.md")

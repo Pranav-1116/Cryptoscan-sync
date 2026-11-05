@@ -186,7 +186,9 @@ SCENARIOS: tuple[dict, ...] = (
             "from another asset, another record or the clock",
             "branching, looping or a clock across steps: COMPOSITE applies a fixed list of at most "
             "five primitive scenarios once, in order, so a sequence with a condition between its "
-            "steps is still refused rather than approximated",
+            "steps is still refused rather than approximated. A step may name a stored snapshot "
+            "with 'as_of' and is then matched against that snapshot's evidence — time is evidence "
+            "here, not a clock the engine reads",
             "a provenance edit: evidence id, source, collector, evidence type and timestamps are "
             "refused, so a custom scenario cannot make a fact look better sourced than it is",
         ),

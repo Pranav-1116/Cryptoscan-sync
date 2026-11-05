@@ -128,6 +128,19 @@ COMPOSITE_KIND = "COMPOSITE"
 MAX_COMPOSITE_STEPS = 5
 COMPOSITE_STEP_KINDS: tuple[str, ...] = SCENARIO_KINDS
 
+#: A ``COMPOSITE`` step may name a stored twin snapshot with ``as_of``. The step then
+#: *matches* against the evidence as that snapshot recorded it — the facts the operator
+#: wrote the step against — and the change is applied to the single working copy of the
+#: estate as it stands now. That is the difference between a migration plan and a
+#: fiction: a plan reviewed in Q2 is evaluated against Q2's evidence, but a run today
+#: edits today's records, and a record that has since been retired is counted
+#: (``not_in_current_estate``) rather than resurrected into the copy. There is still no
+#: clock: ``as_of`` names a *stored snapshot*, and an id that names no stored snapshot is
+#: refused, because "the estate looked like this then" is a claim only a captured
+#: snapshot can support.
+COMPOSITE_AS_OF_FIELD = "as_of"
+MAX_AS_OF_LENGTH = 120
+
 SIMULATION_KINDS: tuple[str, ...] = SCENARIO_KINDS + CASCADE_KINDS + (COMPOSITE_KIND,)
 
 #: §12 — strongest evidence first. Used to answer "how well is this described".
@@ -1636,6 +1649,22 @@ def _composite_refusal(steps: Any) -> dict[str, Any] | None:
                     f"{', '.join(COMPOSITE_STEP_KINDS)}. Cascades and composites do not nest"
                 ),
             }
+        as_of = step.get(COMPOSITE_AS_OF_FIELD)
+        if as_of is not None:
+            if not isinstance(as_of, str) or not _text(as_of):
+                return {
+                    "status": "INVALID_SCENARIO",
+                    "detail": (
+                        f"step {index} names an 'as_of' that is not a snapshot id. 'as_of' must be "
+                        "the id of a *stored* twin snapshot — a step is not evaluated against a "
+                        "date, because a date is not evidence"
+                    ),
+                }
+            if len(_text(as_of)) > MAX_AS_OF_LENGTH:
+                return {
+                    "status": "INVALID_SCENARIO",
+                    "detail": f"step {index} has an 'as_of' longer than {MAX_AS_OF_LENGTH} characters",
+                }
         refusal = _scenario_refusal(step_kind, step)
         if refusal:
             return {
@@ -1643,6 +1672,38 @@ def _composite_refusal(steps: Any) -> dict[str, Any] | None:
                 "detail": f"step {index} ({step_kind}): {refusal.get('detail')}",
             }
     return None
+
+
+def _composite_as_of_refusal(
+    steps: list[Mapping[str, Any]], as_of_graphs: Mapping[str, Any] | None
+) -> dict[str, Any] | None:
+    """Which ``as_of`` step names a snapshot this build does not hold.
+
+    Resolved before anything is applied, because a run that quietly ignored an unknown
+    ``as_of`` would answer about today's evidence while the operator believed it answered
+    about the snapshot they named — the most expensive way to be wrong.
+    """
+    available = set((as_of_graphs or {}).keys())
+    missing = [
+        {"step": index, "as_of": _text(step.get(COMPOSITE_AS_OF_FIELD))}
+        for index, step in enumerate(steps, start=1)
+        if _text(step.get(COMPOSITE_AS_OF_FIELD))
+        and _text(step.get(COMPOSITE_AS_OF_FIELD)) not in available
+    ]
+    if not missing:
+        return None
+    return {
+        "status": "UNKNOWN_SNAPSHOT",
+        "detail": (
+            "step "
+            + ", ".join(f"{row['step']} (as_of {row['as_of']!r})" for row in missing)
+            + " names a twin snapshot this run does not hold. That is not 'the estate looked the "
+            "same then': an as-of step is evaluated against a captured snapshot, so the snapshot "
+            "has to exist. Capture it with POST /estate/evidence/twin/snapshots, or drop 'as_of' "
+            "to evaluate the step against the estate as it stands now"
+        ),
+        "unknown_as_of": missing,
+    }
 
 
 def _custom_refusal(expression: Any, *, depth: int = 0) -> dict[str, Any] | None:
@@ -1942,27 +2003,55 @@ def _scenario_refusal(kind: str, scenario: Mapping[str, Any]) -> dict[str, Any] 
 
 
 def _apply_composite(
-    graph: EstateGraph, payload: dict[str, Any], steps: list[Mapping[str, Any]]
-) -> tuple[int, set[str], list[dict[str, Any]], list[dict[str, Any]]]:
+    graph: EstateGraph,
+    payload: dict[str, Any],
+    steps: list[Mapping[str, Any]],
+    as_of_graphs: Mapping[str, EstateGraph] | None = None,
+) -> tuple[int, set[str], list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     """Apply the steps to one copy, in order, and report each one.
 
     Order is the point: a step sees the facts the previous step wrote, so "retire
     TLS 1.0, then replace RSA on what is left" behaves the way an operator reads it.
     A step that matches nothing is reported as such and does not abort the sequence —
     that is a fact about the estate, not an error.
+
+    A step that names ``as_of`` *matches* against that stored snapshot's evidence and
+    applies its edit to the copy: the plan is judged on the evidence it was written
+    against, the change lands on the estate that exists. A matched record the copy no
+    longer holds is counted as ``not_in_current_estate`` — retired, not resurrected.
     """
     matched_total = 0
     affected: set[str] = set()
     effects: list[dict[str, Any]] = []
     report: list[dict[str, Any]] = []
+    as_of_graphs = as_of_graphs or {}
+    copy_by_evidence_id = {str(record.get("evidence_id")): record for record in payload["evidence"]}
+    as_of_used: set[str] = set()
+    from_snapshot = 0
+    not_in_current = 0
 
     for index, step in enumerate(steps, start=1):
         step_kind = _text(step.get("kind")).upper()
         step_source = _text(step.get("from"))
         step_target = _text(step.get("to"))
-        refs = {_resolve(graph, ref) for ref in step.get("targets") or [] if _resolve(graph, ref)}
+        as_of_id = _text(step.get(COMPOSITE_AS_OF_FIELD)) or None
+        as_of_graph = as_of_graphs.get(as_of_id) if as_of_id else None
+        # the records this step is judged against: the snapshot's, or the copy's own
+        considered = (
+            snapshot(as_of_graph)["payload"]["evidence"] if as_of_graph is not None
+            else payload["evidence"]
+        )
+        if as_of_id:
+            as_of_used.add(as_of_id)
+        refs = (
+            {_resolve(as_of_graph if as_of_graph is not None else graph, ref)
+             for ref in step.get("targets") or []}
+            - {None}
+        )
         step_matched = 0
-        for record in payload["evidence"]:
+        step_from_snapshot = 0
+        step_not_current = 0
+        for record in considered:
             if refs and str(record.get("target")) not in refs:
                 continue
             facts = record.get("facts") or {}
@@ -1974,60 +2063,125 @@ def _apply_composite(
                 )
             if not hit:
                 continue
-            before = copy.deepcopy(facts)
-            facts.update(updates)
+            target_record = record if as_of_graph is None else copy_by_evidence_id.get(
+                str(record.get("evidence_id"))
+            )
+            if target_record is None:
+                # matched against the snapshot, absent from the estate this run applies to
+                step_not_current += 1
+                not_in_current += 1
+                continue
+            target_facts = target_record.get("facts") or {}
+            before = copy.deepcopy(target_facts)
+            target_facts.update(updates)
+            target_record["facts"] = target_facts
             step_matched += 1
             matched_total += 1
-            affected.add(str(record.get("target")))
-            effects.append(
+            if as_of_graph is not None:
+                step_from_snapshot += 1
+                from_snapshot += 1
+            affected.add(str(target_record.get("target")))
+            effect = {
+                "step": index,
+                "step_kind": step_kind,
+                "evidence_id": target_record.get("evidence_id"),
+                "asset_id": target_record.get("target"),
+                "asset_name": (graph.asset(str(target_record.get("target"))) or {}).get("name"),
+                "layer": target_record.get("layer"),
+                "evidence_type": target_record.get("evidence_type"),
+                "before": before,
+                "after": copy.deepcopy(target_facts),
+            }
+            if as_of_graph is not None:
+                # the facts the *step* was judged on, when they are not the ones applied to
+                effect["evaluated_against"] = as_of_id
+                if facts != before:
+                    effect["facts_at_as_of"] = copy.deepcopy(facts)
+            effects.append(effect)
+        step_report = {
+            "step": index,
+            "kind": step_kind,
+            "matched_evidence": step_matched,
+            "matched_nothing": step_matched == 0,
+            "targets": list(step.get("targets") or []),
+            "from": step_source or None,
+            "to": step_target or None,
+            "as_of": as_of_id,
+        }
+        if as_of_id:
+            step_report.update(
                 {
-                    "step": index,
-                    "step_kind": step_kind,
-                    "evidence_id": record.get("evidence_id"),
-                    "asset_id": record.get("target"),
-                    "asset_name": (graph.asset(str(record.get("target"))) or {}).get("name"),
-                    "layer": record.get("layer"),
-                    "evidence_type": record.get("evidence_type"),
-                    "before": before,
-                    "after": copy.deepcopy(facts),
+                    "evaluated_against_snapshot": True,
+                    "evidence_in_snapshot": len(considered),
+                    "matched_from_snapshot": step_from_snapshot,
+                    "not_in_current_estate": step_not_current,
                 }
             )
-        report.append(
-            {
-                "step": index,
-                "kind": step_kind,
-                "matched_evidence": step_matched,
-                "matched_nothing": step_matched == 0,
-                "targets": list(step.get("targets") or []),
-                "from": step_source or None,
-                "to": step_target or None,
-            }
+            if step_matched == 0 and step_not_current:
+                step_report["matched_nothing_because"] = (
+                    "every record this step matches in the snapshot has since left the estate. "
+                    "The plan still describes the snapshot; it no longer describes today"
+                )
+        report.append(step_report)
+
+    as_of_summary: dict[str, Any] = {
+        "snapshots": sorted(as_of_used),
+        "steps_with_as_of": sum(1 for step in steps if _text(step.get(COMPOSITE_AS_OF_FIELD))),
+        "matched_from_snapshot": from_snapshot,
+        "not_in_current_estate": not_in_current,
+    }
+    if as_of_used:
+        as_of_summary["meaning"] = (
+            "these steps were matched against the evidence their snapshot recorded and applied to "
+            "the estate as it stands now; a matched record that has since left the estate is "
+            "counted, never resurrected into the copy"
         )
-    return matched_total, affected, effects, report
+    return matched_total, affected, effects, report, as_of_summary
 
 
 def _composite_preview(
-    graph: EstateGraph, scenario: Mapping[str, Any], base_projection: str
+    graph: EstateGraph,
+    scenario: Mapping[str, Any],
+    base_projection: str,
+    as_of_graphs: Mapping[str, EstateGraph] | None = None,
 ) -> dict[str, Any]:
-    """Would each step match anything? Counted against the *current* evidence.
+    """Would each step match anything? Counted against the evidence each step reads.
 
-    The honest limit is stated in ``note``: the steps are previewed independently,
-    because the copies that later steps will see do not exist until the run. A preview
-    is a spelling check, and pretending otherwise would be a cheaper simulation —
-    which is the thing this function is explicitly not.
+    A step that names ``as_of`` is counted against that stored snapshot — the evidence
+    the operator wrote the step against — and not against today's. The honest limit is
+    stated in ``note``: the steps are previewed independently, because the copies that
+    later steps will see do not exist until the run. A preview is a spelling check, and
+    pretending otherwise would be a cheaper simulation — which is the thing this
+    function is explicitly not.
     """
     payload = snapshot(graph)["payload"]
     steps = list(scenario.get("steps") or [])
+    copy_by_evidence_id = {str(record.get("evidence_id")): record for record in payload["evidence"]}
     report: list[dict[str, Any]] = []
     affected: set[str] = set()
     total = 0
+    as_of_used: set[str] = set()
+    not_in_current = 0
     for index, step in enumerate(steps, start=1):
         step_kind = _text(step.get("kind")).upper()
         step_source = _text(step.get("from"))
         step_target = _text(step.get("to"))
-        refs = {_resolve(graph, ref) for ref in step.get("targets") or [] if _resolve(graph, ref)}
+        as_of_id = _text(step.get(COMPOSITE_AS_OF_FIELD)) or None
+        as_of_graph = (as_of_graphs or {}).get(as_of_id) if as_of_id else None
+        if as_of_id:
+            as_of_used.add(as_of_id)
+        considered = (
+            snapshot(as_of_graph)["payload"]["evidence"] if as_of_graph is not None
+            else payload["evidence"]
+        )
+        refs = (
+            {_resolve(as_of_graph if as_of_graph is not None else graph, ref)
+             for ref in step.get("targets") or []}
+            - {None}
+        )
         matched = 0
-        for record in payload["evidence"]:
+        step_not_current = 0
+        for record in considered:
             if refs and str(record.get("target")) not in refs:
                 continue
             facts = record.get("facts") or {}
@@ -2039,20 +2193,36 @@ def _composite_preview(
                 )
             if not hit:
                 continue
+            if as_of_graph is not None:
+                current = copy_by_evidence_id.get(str(record.get("evidence_id")))
+                if current is None:
+                    step_not_current += 1
+                    not_in_current += 1
+                    continue
+                affected.add(str(current.get("target")))
+            else:
+                affected.add(str(record.get("target")))
             matched += 1
-            affected.add(str(record.get("target")))
         total += matched
-        report.append(
-            {
-                "step": index,
-                "kind": step_kind,
-                "matched_evidence": matched,
-                "matched_nothing": matched == 0,
-                "targets": list(step.get("targets") or []),
-                "from": step_source or None,
-                "to": step_target or None,
-            }
-        )
+        step_report = {
+            "step": index,
+            "kind": step_kind,
+            "matched_evidence": matched,
+            "matched_nothing": matched == 0,
+            "targets": list(step.get("targets") or []),
+            "from": step_source or None,
+            "to": step_target or None,
+            "as_of": as_of_id,
+        }
+        if as_of_id:
+            step_report.update(
+                {
+                    "evaluated_against_snapshot": True,
+                    "evidence_in_snapshot": len(considered),
+                    "not_in_current_estate": step_not_current,
+                }
+            )
+        report.append(step_report)
     empty = [row["step"] for row in report if row["matched_nothing"]]
     return {
         "schema": SIMULATION_PREVIEW_SCHEMA,
@@ -2067,26 +2237,60 @@ def _composite_preview(
         "affected_asset_count": len(affected),
         "steps": report,
         "steps_matching_nothing": empty,
+        **(
+            {
+                "as_of": {
+                    "snapshots": sorted(as_of_used),
+                    "steps_with_as_of": sum(
+                        1 for step in steps if _text(step.get(COMPOSITE_AS_OF_FIELD))
+                    ),
+                    "not_in_current_estate": not_in_current,
+                    "meaning": (
+                        "these steps are counted against the evidence their snapshot recorded. A "
+                        "matched record that has since left the estate is counted, not applied"
+                    ),
+                }
+            }
+            if as_of_used
+            else {}
+        ),
         "note": (
-            f"{total} evidence record(s) match these {len(steps)} step(s) against the evidence as it "
-            "stands now. Later steps are previewed against that same evidence, not against the copy "
-            "the earlier steps produce, so a run can match more than this preview counts"
+            f"{total} evidence record(s) match these {len(steps)} step(s) against the evidence each "
+            "step reads — a step with 'as_of' reads its snapshot, a step without reads today's. Later "
+            "steps are previewed against that same evidence, not against the copy the earlier steps "
+            "produce, so a run can match more than this preview counts"
             if total
             else (
-                "no step matches any evidence record. That is not 'no impact': the estate may not "
-                "describe the artefact, or it may live in a source that was never collected"
+                (
+                    "no step matches any evidence record read by this preview, and "
+                    f"{not_in_current} record(s) matched only in a snapshot have since left the "
+                    "estate. That is not 'no impact': a step with 'as_of' reads its snapshot, so a "
+                    "plan can describe an estate that no longer exists — which is precisely what "
+                    "the count reports"
+                )
+                if as_of_used
+                else (
+                    "no step matches any evidence record. That is not 'no impact': the estate may "
+                    "not describe the artefact, or it may live in a source that was never collected"
+                )
             )
         ),
         "limits": [
-            "steps are previewed independently against the live evidence; the run applies them in "
-            "order to one copy, so a later step can match records an earlier step changed",
+            "steps are previewed independently against the live evidence (or, for an 'as_of' step, "
+            "against its snapshot); the run applies them in order to one copy, so a later step can "
+            "match records an earlier step changed",
             "a preview counts the evidence records each step would touch; it does not project the six "
             "BOMs or compute the blast radius — those need the simulation",
         ],
     }
 
 
-def preview(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
+def preview(
+    graph: EstateGraph,
+    scenario: Mapping[str, Any],
+    *,
+    as_of_graphs: Mapping[str, EstateGraph] | None = None,
+) -> dict[str, Any]:
     """What a scenario *would* touch — cheaply, without building a copy.
 
     The question this answers is the one that wastes an operator's time: "did I type
@@ -2103,6 +2307,8 @@ def preview(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
     if kind in CASCADE_KINDS:
         return cascade_preview(graph, scenario)
     refusal = _scenario_refusal(kind, scenario)
+    if not refusal and kind == COMPOSITE_KIND:
+        refusal = _composite_as_of_refusal(list(scenario.get("steps") or []), as_of_graphs)
     base_projection = graph.fingerprint()
     if refusal:
         return {
@@ -2115,7 +2321,7 @@ def preview(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
         }
 
     if kind == COMPOSITE_KIND:
-        return _composite_preview(graph, scenario, base_projection)
+        return _composite_preview(graph, scenario, base_projection, as_of_graphs)
 
     source = _text(scenario.get("from"))
     target = _text(scenario.get("to"))
@@ -2219,6 +2425,7 @@ def _simulation_result(
     source: str,
     target: str,
     steps_report: list[dict[str, Any]] | None = None,
+    as_of: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Everything a simulation reports once the edits are on the copy.
 
@@ -2226,7 +2433,9 @@ def _simulation_result(
     one-step scenario are measured the same way: the same BOM re-projection, the same
     live-projection assertion, the same blind spots.
     """
-    extra = {"steps": steps_report} if steps_report is not None else {}
+    extra: dict[str, Any] = {"steps": steps_report} if steps_report is not None else {}
+    if as_of and as_of.get("snapshots"):
+        extra["as_of"] = dict(as_of)
 
     if matched == 0:
         return {
@@ -2338,13 +2547,24 @@ def _simulation_result(
     }
 
 
-def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
+def simulate(
+    graph: EstateGraph,
+    scenario: Mapping[str, Any],
+    *,
+    as_of_graphs: Mapping[str, EstateGraph] | None = None,
+) -> dict[str, Any]:
     """§15–§17 — ask "what if" on a copy of the twin.
 
     The live graph is only ever *read*. The scenario is applied to the snapshot
     payload, a new graph is built from it, and the six BOMs are re-projected from
     that graph. The live projection id is captured before and after, so
     "simulation changed nothing" is a checked assertion rather than a promise.
+
+    ``as_of_graphs`` maps a snapshot id to the graph rebuilt from that stored
+    snapshot. Only ``COMPOSITE`` steps read it, and only the steps that name an
+    ``as_of``: the caller resolves the snapshots so this module never learns about the
+    database, and an ``as_of`` the mapping does not hold is refused rather than
+    ignored.
     """
     scenario = dict(scenario or {})
     kind = _text(scenario.get("kind")).upper()
@@ -2357,6 +2577,18 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
             "kind": kind or None,
             **refusal,
         }
+    if kind == COMPOSITE_KIND:
+        as_of_refusal = _composite_as_of_refusal(
+            list(scenario.get("steps") or []), as_of_graphs
+        )
+        if as_of_refusal:
+            return {
+                "schema": SIMULATION_SCHEMA,
+                "kind": kind,
+                "scenario": scenario,
+                "live_state_modified": False,
+                **as_of_refusal,
+            }
 
     live_projection_before = graph.fingerprint()
     base_snapshot = snapshot(graph)
@@ -2364,7 +2596,9 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
 
     if kind == COMPOSITE_KIND:
         steps = list(scenario.get("steps") or [])
-        matched, affected, effects, steps_report = _apply_composite(graph, payload, steps)
+        matched, affected, effects, steps_report, as_of_summary = _apply_composite(
+            graph, payload, steps, as_of_graphs
+        )
         first = steps[0] if steps else {}
         last = steps[-1] if steps else {}
         return _simulation_result(
@@ -2383,6 +2617,7 @@ def simulate(graph: EstateGraph, scenario: Mapping[str, Any]) -> dict[str, Any]:
             source=_text(first.get("from")),
             target=_text(last.get("to")),
             steps_report=steps_report,
+            as_of=as_of_summary,
         )
 
     source = _text(scenario.get("from"))
