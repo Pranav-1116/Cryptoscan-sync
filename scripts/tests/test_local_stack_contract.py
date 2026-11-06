@@ -12,7 +12,8 @@ SCRIPT = ROOT / "scripts" / "run_local_stack.sh"
 def _env(tmp_path):
     env = os.environ.copy()
     for key in ("LOCAL_DB_PASS_FILE", "LOCAL_APP_PASS_FILE", "LOCAL_SECRET_KEY", "LOCAL_WEBHOOK_SECRET",
-                "LOCAL_EVIDENCE_REQUIRED", "SBOM_S3_ENDPOINT", "SBOM_S3_BUCKET",
+                "LOCAL_EVIDENCE_REQUIRED", "LOCAL_TWIN_OBJECT_TIER",
+                "SBOM_S3_ENDPOINT", "SBOM_S3_BUCKET",
                 "SBOM_S3_ACCESS_KEY_FILE", "SBOM_S3_SECRET_KEY_FILE"):
         env.pop(key, None)
     env["LOCAL_RUN_DIR"] = str(tmp_path / "never-created")
@@ -41,6 +42,24 @@ def test_required_minio_evidence_does_not_silently_fall_back_to_disk(tmp_path):
                             capture_output=True, text=True, timeout=10)
     assert result.returncode == 2
     assert "SBOM_S3_ENDPOINT" in result.stderr
+    assert not (tmp_path / "never-created").exists()
+
+
+def test_twin_object_tier_cannot_be_enabled_without_bank_s3(tmp_path):
+    password_file = tmp_path / "test-only-password"
+    password_file.write_text("test-only-not-a-real-password")
+    password_file.chmod(0o600)
+    app_file = tmp_path / "test-only-app-password"
+    app_file.write_text("test-only-not-a-real-app-password")
+    app_file.chmod(0o600)
+    env = _env(tmp_path)
+    env.update({"LOCAL_DB_PASS_FILE": str(password_file), "LOCAL_APP_PASS_FILE": str(app_file),
+                "LOCAL_SECRET_KEY": "s" * 40, "LOCAL_WEBHOOK_SECRET": "w" * 40,
+                "LOCAL_EVIDENCE_REQUIRED": "0", "LOCAL_TWIN_OBJECT_TIER": "1"})
+    result = subprocess.run(["bash", str(SCRIPT), "up"], cwd=ROOT, env=env,
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 2
+    assert "requires the bank-owned S3 evidence backend" in result.stderr
     assert not (tmp_path / "never-created").exists()
 
 

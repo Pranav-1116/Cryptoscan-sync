@@ -1206,6 +1206,45 @@ def why(
                 }
         return {"schema": WHY_SCHEMA, "status": "NO_SUCH_EVIDENCE", "evidence_id": evidence_id}
 
+    # The graph export also contains evidence→asset and asserted placement edges.
+    # Their endpoints are not both assets, so the asset-only resolver below cannot
+    # explain a line the console actually draws.
+    if (subject is not None and obj is not None and predicate is not None
+            and (graph.asset(str(subject)) is None or graph.asset(str(obj)) is None)):
+        exported = graph_export(graph)
+        edges = [edge for edge in exported["relationships"]
+                 if edge["from"] == str(subject) and edge["to"] == str(obj)
+                 and edge["type"].lower() == _text(predicate).lower()]
+        if edges:
+            nodes = {node["id"]: node for node in exported["nodes"]}
+            records = {str(record["evidence_id"]): record for record in graph.evidence()}
+            matches = []
+            for edge in edges[:MAX_LISTED]:
+                props = edge["properties"]
+                citations = [records[key] for key in props.get("evidence_ids") or [] if key in records]
+                matches.append({
+                    "edge": {"subject": edge["from"],
+                             "subject_name": (nodes.get(edge["from"], {}).get("properties") or {}).get("name"),
+                             "predicate": edge["type"].lower(), "object": edge["to"],
+                             "object_name": (nodes.get(edge["to"], {}).get("properties") or {}).get("name"),
+                             "basis": props.get("basis") or ("EVIDENCE_RECORD" if edge["type"] == "SUPPORTS" else None),
+                             "confidence": props.get("confidence")},
+                    "answer": props.get("uncited_because") or
+                              f"this {edge['type']} edge cites {len(citations)} retained evidence record(s)",
+                    "evidence": [{"evidence_id": record["evidence_id"],
+                                  "evidence_type": record["evidence_type"],
+                                  "collector": record.get("collector"), "source": record.get("source"),
+                                  "observed_at": record.get("observed_at"),
+                                  "confidence": record.get("confidence"), "hash": _record_hash(record),
+                                  "facts": record.get("facts")}
+                                 for record in citations],
+                })
+            uncited = next((edge["properties"].get("uncited_because") for edge in edges
+                            if edge["properties"].get("uncited_because")), None)
+            return {"schema": WHY_SCHEMA, "status": "ASSERTED_UNCITED" if uncited else "ESTABLISHED",
+                    "matches": matches, "detail": uncited,
+                    "note": "export edges cite actual evidence or name why the placement remains assertion-only"}
+
     source = _resolve(graph, subject) if subject is not None else None
     target = _resolve(graph, obj) if obj is not None else None
     verb = _text(predicate).lower() or None

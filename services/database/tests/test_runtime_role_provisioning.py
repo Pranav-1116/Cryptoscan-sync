@@ -88,6 +88,14 @@ def test_verification_measures_the_flags_that_decide_whether_rls_binds():
     # FORCE, not just ENABLE: the table owner is exempt otherwise.
     assert "relforcerowsecurity" in facts["tables_rls_forced"]["sql"]
     assert facts["tables_rls_enabled"]["expect"] == "all"
+    assert "a.attname = 'tenant_id'" in facts["tables_rls_enabled"]["sql"]
+    assert "a.attname = 'tenant_id'" in facts["tables_rls_forced"]["sql"]
+    assert facts["has_connect"]["sql"] == (
+        "SELECT has_database_privilege('cryptoscan_app', current_database(), 'CONNECT')")
+    assert facts["has_schema_usage"]["sql"] == (
+        "SELECT has_schema_privilege('cryptoscan_app', 'public', 'USAGE')")
+    assert provision.verification_queries("cryptoscan_app", schema="bank")[7]["sql"] == (
+        "SELECT has_schema_privilege('cryptoscan_app', 'bank', 'USAGE')")
     assert facts["policies_present"]["expect"] == "more-than-zero"
 
 
@@ -104,11 +112,13 @@ def test_verification_insists_the_measuring_connection_is_the_runtime_identity()
                              "role": "cryptoscan_app"}) is False
 
 
-def test_forced_rls_must_cover_every_table_not_the_convenient_ones():
+def test_forced_rls_must_cover_every_tenant_table_not_the_convenient_ones():
     assert provision._fails({"fact": "tables_rls_forced", "expect": "all",
                              "observed": {"missing": 3, "total": 120}}) is True
     assert provision._fails({"fact": "tables_rls_forced", "expect": "all",
                              "observed": {"missing": 0, "total": 120}}) is False
+    assert provision._fails({"fact": "tables_rls_forced", "expect": "all",
+                             "observed": {"missing": 0, "total": 0}}) is True
 
 
 # --------------------------------------------------------------------------- #

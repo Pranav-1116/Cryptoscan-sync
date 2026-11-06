@@ -58,12 +58,19 @@ of the incident.
 - [ ] **A measured PITR drill** — at least one restore to a chosen past timestamp, with the
       resulting row counts and the timestamp recorded. Until this exists, RPO is a target, not a
       measurement.
-- [ ] **The restore drill is scheduled** — `scripts/restore_drill.py` runs weekly in
-      `.github/workflows/restore-drill.yml` and files `restore-drill-history.jsonl`. In the
-      bank's environment, point it at the bank's backup directory and recovery database, and
-      keep the receipts with the other audit evidence.
+- [ ] **The restore drill is scheduled** — the checked-in
+      `.github/workflows/restore-drill.yml` defines a weekly disposable-CI drill using
+      `scripts/restore_drill.py`. Confirm a real scheduled run on the default branch and retain
+      its receipt; a checked-in YAML file is not a completed run. The bank separately schedules
+      the same drill against its own backup directory and isolated recovery database and keeps
+      its receipts with the other audit evidence.
 - [ ] **Backup encryption keys are escrowed** — the archive is Fernet-encrypted and the manifest
       is HMAC-signed; a lost key means an unreadable backup. Escrow is the bank's job.
+
+Set `PG_BIN` to the bank's reviewed PostgreSQL client directory matching the source/server
+major version (the disposable CI job uses PostgreSQL 16). A generic `pg_wrapper` may choose a
+newer client whose archive format or session settings the recovery server cannot accept; that
+failure is a red drill, not permission to ignore `pg_restore` errors.
 
 What each drill proves, stated narrowly: a passing `restore_drill.py` run proves *this archive*
 restored into *this recovery database* and that the measured tables came back. It does not prove

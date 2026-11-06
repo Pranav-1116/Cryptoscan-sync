@@ -137,6 +137,7 @@ def test_not_completed_and_changed_original_cannot_be_reported_as_covered(assure
 def test_every_input_kind_has_exactly_one_surface():
     kinds = [k for values in SURFACES.values() for k in values]
     assert len(kinds) == len(set(kinds)) and set(kinds) == set(get_args(Kind))
+    assert "NETWORK_TLS_CLIENT_OFFER" in SURFACES["network_listeners"]
 
 
 @pytest.mark.parametrize("status", ["DENIED", "UNSUPPORTED", "INVALID", "BUDGET_EXCEEDED", "UNAVAILABLE"])

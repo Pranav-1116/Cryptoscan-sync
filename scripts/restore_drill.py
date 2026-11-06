@@ -123,8 +123,8 @@ def _manifest_facts(manifest: Mapping[str, Any]) -> dict[str, Any]:
 
 #: Enough to tell "the database came back" from "an empty database came back". Not a
 #: completeness claim: a table absent from this list is simply not measured here.
-MEASURED_TABLES = ("alembic_version", "users", "tenants", "assets", "cbom_documents",
-                   "audit_logs", "security_control_observations")
+MEASURED_TABLES = ("alembic_version", "users", "tenants", "estate_assets",
+                   "cbom_snapshots", "audit_log", "security_control_snapshots")
 
 _COUNT_SQL = ("SELECT count(*) FROM information_schema.tables "
               "WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'")
@@ -142,10 +142,18 @@ def measure(dsn: str, *, connect: Callable[[str], Any] | None = None) -> dict[st
             facts["table_count"] = int(connection.scalar(text(_COUNT_SQL)) or 0)
             for table in MEASURED_TABLES:
                 try:
+                    if connection.dialect.name == "postgresql" and connection.scalar(
+                            text("SELECT to_regclass(:table)"), {"table": table}) is None:
+                        facts["missing_tables"].append(table)
+                        continue
                     facts["tables"][table] = int(
                         connection.execute(text(f'SELECT count(*) FROM "{table}"')).scalar() or 0)
-                except Exception:  # noqa: BLE001 - an absent table is a fact, not a failure
-                    facts["missing_tables"].append(table)
+                except Exception as exc:  # noqa: BLE001 - distinguish unavailable from absent
+                    if connection.dialect.name == "postgresql":
+                        facts["errors"].append(f"{table} count not measured: {exc.__class__.__name__}")
+                        connection.rollback()
+                    else:
+                        facts["missing_tables"].append(table)
             try:
                 facts["revision"] = connection.scalar(text("SELECT version_num FROM alembic_version"))
             except Exception:  # noqa: BLE001 - pre-migration or absent table
@@ -159,8 +167,8 @@ def measure(dsn: str, *, connect: Callable[[str], Any] | None = None) -> dict[st
     finally:
         try:
             engine.dispose()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001 — cleanup failure is a measured gap
+            facts["errors"].append(f"database connection cleanup failed: {type(exc).__name__}")
     facts["verdict"] = _verdict(facts)
     return facts
 
@@ -172,9 +180,24 @@ def _verdict(facts: Mapping[str, Any]) -> str:
         return "RESTORED_EMPTY"
     if facts.get("missing_tables") and len(facts["missing_tables"]) == len(MEASURED_TABLES):
         return "RESTORED_WITHOUT_APPLICATION_TABLES"
-    if facts.get("errors"):
+    if facts.get("missing_tables") or facts.get("errors"):
         return "RESTORED_PARTIALLY_MEASURED"
+    if not any(count for table, count in (facts.get("tables") or {}).items()
+               if table != "alembic_version"):
+        return "RESTORED_EMPTY"
     return "RESTORED_AND_MEASURED"
+
+
+def compare_measurements(source: Mapping[str, Any], target: Mapping[str, Any]) -> dict[str, Any]:
+    """A restored schema is not a restored estate if its recorded rows differ."""
+    mismatches = []
+    if source.get("revision") != target.get("revision"):
+        mismatches.append("schema_revision")
+    for table in MEASURED_TABLES:
+        if source.get("tables", {}).get(table) != target.get("tables", {}).get(table):
+            mismatches.append(table)
+    return {"verdict": "MATCH" if not mismatches else "MISMATCH", "mismatches": mismatches,
+            "source_revision": source.get("revision"), "target_revision": target.get("revision")}
 
 
 # --------------------------------------------------------------------------- #
@@ -256,9 +279,12 @@ def _pg_env(dsn: str) -> dict[str, str] | None:
 
 def _pg_backend(source_dsn: str, target_dsn: str, *, pg_bin: str = "") -> Any:
     """A backend that dumps from the source and restores into the *target* DSN."""
+    from sqlalchemy.engine import make_url
+
     from governance import backup as bk
     from governance import backup_jobs as bj
 
+    target = make_url(target_dsn)
     runner = bj.subprocess_runner(env=_pg_env(target_dsn))
     prefix = f"{pg_bin.rstrip('/')}/" if pg_bin else ""
 
@@ -271,13 +297,16 @@ def _pg_backend(source_dsn: str, target_dsn: str, *, pg_bin: str = "") -> Any:
             raise bk.BackupError("the drill consumes an existing archive; it never re-dumps")
 
         def restore(self, database_id: str, payload: bytes) -> dict[str, Any]:
-            argv = [f"{prefix}pg_restore", "-d", target_dsn, "--clean", "--if-exists",
-                    "--no-owner", "--no-privileges"]
+            argv = [f"{prefix}pg_restore", "-h", target.host or "localhost",
+                    "-p", str(target.port or 5432), "-U", target.username or "postgres",
+                    "--clean", "--if-exists", "--no-owner", "--no-privileges",
+                    "-d", target.database]
             self.calls.append(argv)
             result = runner(argv, stdin=payload)
             code = getattr(result, "returncode", 0)
             if code != 0:
-                raise bk.BackupError(f"pg_restore failed (rc={code})")
+                detail = (result.stderr or b"").decode("utf-8", "replace")[:300]
+                raise bk.BackupError(f"pg_restore failed (rc={code}): {detail}")
             return {"tool": "pg_restore", "database_id": database_id, "bytes": len(payload),
                     "target": "the designated recovery database"}
 
@@ -316,19 +345,26 @@ def run(*, source_dsn: str, target_dsn: str, storage: Any, database_id: str,
         encryption_key: bytes, signing_secret: str, backend: Any = None,
         connect: Callable[[str], Any] | None = None) -> dict[str, Any]:
     """Plan, restore into the recovery database, measure it, and return the receipt."""
-    from governance import backup as bk
+    from governance import backup_jobs as bj
 
     started = time.monotonic()
     manifests = [m for m in storage.list_manifests() if m.get("database_id") == database_id]
     decision = plan(source_dsn=source_dsn, target_dsn=target_dsn, manifests=manifests,
                     storage_key=storage_key, point_in_time=point_in_time)
+    source_measurement = measure(source_dsn, connect=connect)
+    if source_measurement["verdict"] != "RESTORED_AND_MEASURED":
+        raise DrillRefused("source database is not completely measurable or holds no reviewable rows")
     backend = backend or _pg_backend(source_dsn, target_dsn,
                                      pg_bin=os.environ.get("PG_BIN", ""))
-    restored = bk.restore_from_storage(
+    restored = bj.restore_from_storage(
         backend=backend, storage=storage, database_id=database_id,
         encryption_key=encryption_key, signing_secret=signing_secret,
         storage_key=storage_key, target_point_in_time=point_in_time)
     measurement = measure(target_dsn, connect=connect)
+    comparison = compare_measurements(source_measurement, measurement)
+    measurement["source_comparison"] = comparison
+    if comparison["verdict"] != "MATCH":
+        measurement["verdict"] = "RESTORED_MISMATCH"
     return receipt(decision=decision, restored=restored, measurement=measurement,
                    duration_seconds=time.monotonic() - started)
 
@@ -410,7 +446,7 @@ def _encryption_key(value: str) -> bytes:
         raise DrillRefused("BACKUP_ENCRYPTION_KEY is not valid base64") from exc
     if len(raw) != 32:
         raise DrillRefused("BACKUP_ENCRYPTION_KEY must decode to 32 bytes (a Fernet key)")
-    return raw
+    return base64.urlsafe_b64encode(raw)
 
 
 def _emit(record: dict[str, Any], args: argparse.Namespace) -> None:

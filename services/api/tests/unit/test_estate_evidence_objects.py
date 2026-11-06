@@ -10,14 +10,13 @@ shares it.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
+from pathlib import Path
 
 import pytest
 
 from api import estate_evidence_objects as tier
-from shared_models.estate_graph import build_graph
 
 import test_network_protocol_safety as shared_api
 
@@ -174,6 +173,50 @@ def test_the_s3_write_asks_the_store_not_to_overwrite():
     assert store.objects[url] == tier.canonical_bytes(RECORD)
 
 
+def test_s3_store_refuses_success_without_exact_byte_readback():
+    class WrongRead(_Store):
+        def __call__(self, url, method, headers, body, timeout):
+            if method == "GET":
+                return 200, b"different bytes", {}
+            return super().__call__(url, method, headers, body, timeout)
+
+    with pytest.raises(tier.EvidenceObjectError) as caught:
+        tier.store(RECORD, transport=WrongRead(), config=_s3_config())
+    assert caught.value.code == "integrity_mismatch"
+
+
+def test_a_conflicting_s3_retry_must_verify_the_retained_object():
+    store = _Store()
+    tier.store(RECORD, transport=store, config=_s3_config())
+    store.objects[next(iter(store.objects))] = b"corrupted retained bytes"
+    with pytest.raises(tier.EvidenceObjectError) as caught:
+        tier.store(RECORD, transport=store, config=_s3_config())
+    assert caught.value.code == "integrity_mismatch"
+
+
+def test_a_corrupt_filesystem_retry_is_not_called_idempotent(tmp_path):
+    config = {"sink": tier.SINK_FILESYSTEM, "directory": str(tmp_path)}
+    first = tier.store(RECORD, config=config)
+    retained = Path(first["location"])
+    retained.chmod(0o600)  # simulate a privileged actor changing an append-only object
+    retained.write_bytes(b"corrupted retained bytes")
+    with pytest.raises(tier.EvidenceObjectError) as caught:
+        tier.store(RECORD, config=config)
+    assert caught.value.code == "integrity_mismatch"
+
+
+def test_mutated_object_wrapper_is_not_a_valid_archive():
+    store = _Store()
+    digest = tier.store(RECORD, transport=store, config=_s3_config())["address"]
+    key = next(iter(store.objects))
+    wrapper = json.loads(store.objects[key])
+    wrapper["address"] = "0" * 64
+    store.objects[key] = json.dumps(wrapper).encode()
+    with pytest.raises(tier.EvidenceObjectError) as caught:
+        tier.fetch(digest, transport=store, config=_s3_config())
+    assert caught.value.code == "integrity_mismatch"
+
+
 def test_a_store_that_refuses_is_reported_not_swallowed():
     def refusing(url, method, headers, body, timeout):
         return 503, b"bucket unavailable", {}
@@ -236,7 +279,65 @@ def test_the_tier_falls_back_to_the_bucket_this_deployment_already_uses():
 
     assert config["sink"] == tier.SINK_S3
     assert config["bucket"] == "bank-evidence"
-    assert config["prefix"] == "cryptoscan/evidence"
+    assert config["prefix"] == "tenants"
+    assert tier.scoped_config(config, "bank-a")["prefix"] == "tenants/bank-a/evidence"
+
+
+def test_production_s3_requires_file_credentials_and_https(tmp_path):
+    access = tmp_path / "access"
+    secret = tmp_path / "secret"
+    ca = tmp_path / "bank-ca.pem"
+    access.write_text("test-only-access")
+    secret.write_text("test-only-secret")
+    ca.write_text("test-only CA placeholder; no TLS socket opened")
+    env = {"ENVIRONMENT": "production", "EVIDENCE_OBJECT_S3_BUCKET": "bank-evidence",
+           "EVIDENCE_OBJECT_S3_CA_BUNDLE": str(ca),
+           "EVIDENCE_OBJECT_S3_ENDPOINT": "https://minio.bank.internal",
+           "EVIDENCE_OBJECT_S3_ACCESS_KEY_FILE": str(access),
+           "EVIDENCE_OBJECT_S3_SECRET_KEY_FILE": str(secret)}
+    config = tier.tier_config(env)
+    assert config["access_key"] == "test-only-access"
+    assert "test-only-secret" not in json.dumps(tier.tier_status(env))
+    with pytest.raises(tier.EvidenceObjectError, match="credential files"):
+        tier.tier_config({**env, "EVIDENCE_OBJECT_S3_SESSION_TOKEN": "inline-test-token"})
+    session_file = tmp_path / "session"
+    session_file.write_text("test-only-session-token")
+    assert tier.tier_config({**env, "EVIDENCE_OBJECT_S3_SESSION_TOKEN_FILE": str(session_file)})[
+        "session_token"] == "test-only-session-token"
+    with pytest.raises(tier.EvidenceObjectError, match="bank-trusted CA"):
+        tier.tier_config({key: value for key, value in env.items()
+                          if key != "EVIDENCE_OBJECT_S3_CA_BUNDLE"})
+    with pytest.raises(tier.EvidenceObjectError, match="credential files"):
+        tier.tier_config({"ENVIRONMENT": "production", "EVIDENCE_OBJECT_S3_BUCKET": "bank-evidence",
+                          "EVIDENCE_OBJECT_S3_ACCESS_KEY": "raw", "EVIDENCE_OBJECT_S3_SECRET_KEY": "raw"})
+    env["EVIDENCE_OBJECT_S3_ENDPOINT"] = "http://127.0.0.1:55900"
+    with pytest.raises(tier.EvidenceObjectError, match="HTTPS"):
+        tier.tier_config(env)
+    env["EVIDENCE_OBJECT_S3_ENDPOINT"] = "http://minio.bank.internal"
+    env["ENVIRONMENT"] = "development"
+    with pytest.raises(tier.EvidenceObjectError, match="HTTPS"):
+        tier.tier_config(env)
+    env["EVIDENCE_OBJECT_S3_ENDPOINT"] = "https://minio.bank.internal"
+    env["ENVIRONMENT"] = "production"
+    link = tmp_path / "linked-secret"
+    link.symlink_to(secret)
+    env["EVIDENCE_OBJECT_S3_SECRET_KEY_FILE"] = str(link)
+    with pytest.raises(tier.EvidenceObjectError, match="unsafe"):
+        tier.tier_config(env)
+
+
+def test_environment_loaded_from_settings_still_requires_file_credentials(monkeypatch):
+    from shared_config import environment as platform_environment
+
+    monkeypatch.setattr(platform_environment, "environment_name", lambda *args, **kwargs: "production")
+    monkeypatch.delenv("EVIDENCE_OBJECT_DIR", raising=False)
+    monkeypatch.setenv("EVIDENCE_OBJECT_S3_BUCKET", "bank-evidence")
+    monkeypatch.setenv("EVIDENCE_OBJECT_S3_ACCESS_KEY", "inline-test-only")
+    monkeypatch.setenv("EVIDENCE_OBJECT_S3_SECRET_KEY", "inline-test-only")
+    monkeypatch.delenv("EVIDENCE_OBJECT_S3_ACCESS_KEY_FILE", raising=False)
+    monkeypatch.delenv("EVIDENCE_OBJECT_S3_SECRET_KEY_FILE", raising=False)
+    with pytest.raises(tier.EvidenceObjectError, match="credential files"):
+        tier.tier_config()
 
 
 def test_its_own_variables_win_over_the_shared_bucket():
@@ -325,6 +426,7 @@ def test_the_route_archives_a_record_from_the_twin_not_from_the_request(api, mon
     assert body["verified"] is True
     assert body["address"].startswith("sha256:")
     assert body["evidence_id"] == "ev-1"
+    assert body["run_id"]
 
     # the same record archives to the same address, and a second store never rewrites
     second = http.post(f"{BASE}/twin/artifacts", params={"evidence_id": "ev-1"})
@@ -364,8 +466,54 @@ def test_the_route_reports_a_missing_object_as_a_tier_gap(api, monkeypatch, tmp_
     http, _session = api
     _discover(http)
     monkeypatch.setenv("EVIDENCE_OBJECT_DIR", str(tmp_path))
+    archived = http.post(f"{BASE}/twin/artifacts", params={"evidence_id": "ev-1"}).json()
+    Path(archived["location"]).unlink()  # only this test's previously archived object
 
-    response = http.get(f"{BASE}/twin/artifacts/{'c' * 64}")
+    response = http.get(f"{BASE}/twin/artifacts/{archived['address']}")
 
     assert response.status_code == 404
     assert response.json()["detail"]["error"] == "not_stored"
+
+
+def test_historical_artifact_requires_its_original_tenant_scoped_run(api, monkeypatch, tmp_path):
+    http, _session = api
+    _discover(http)
+    monkeypatch.setenv("EVIDENCE_OBJECT_DIR", str(tmp_path))
+    archived = http.post(f"{BASE}/twin/artifacts", params={"evidence_id": "ev-1"}).json()
+    changed = _payload()
+    changed["evidence"][0]["evidence_id"] = "ev-2"
+    changed["evidence"][0]["facts"] = {"algorithm": "ML-KEM"}
+    assert http.post(f"{BASE}/discover", json=changed).status_code == 200
+
+    current = http.get(f"{BASE}/twin/artifacts/{archived['address']}")
+    historical = http.get(f"{BASE}/twin/artifacts/{archived['address']}",
+                          params={"run_id": archived["run_id"]})
+    assert current.status_code == 404
+    assert historical.status_code == 200
+    assert historical.json()["record"]["evidence_id"] == "ev-1"
+    assert http.get(f"{BASE}/twin/artifacts/{archived['address']}",
+                    params={"run_id": "not-a-stored-run"}).status_code == 404
+
+
+def test_the_route_never_reads_an_object_not_cited_by_this_twin(api, monkeypatch, tmp_path):
+    http, _session = api
+    _discover(http)
+    monkeypatch.setenv("EVIDENCE_OBJECT_DIR", str(tmp_path))
+    alien = tier.store({**RECORD, "evidence_id": "ev-unrelated"}, config={
+        "sink": tier.SINK_FILESYSTEM, "directory": str(tmp_path / "tenants" / "platform")})
+
+    response = http.get(f"{BASE}/twin/artifacts/{alien['address']}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["error"] == "no_such_evidence_for_tenant"
+
+
+def test_tenant_scoping_keeps_identical_addresses_in_separate_object_locations(tmp_path):
+    primary = tier.scoped_config({"sink": tier.SINK_FILESYSTEM, "directory": str(tmp_path)}, "tenant-a")
+    secondary = tier.scoped_config({"sink": tier.SINK_FILESYSTEM, "directory": str(tmp_path)}, "tenant-b")
+    first = tier.store(RECORD, config=primary)
+    assert tier.fetch(first["address"], config=primary)["verified"] is True
+    with pytest.raises(tier.EvidenceObjectError) as caught:
+        tier.fetch(first["address"], config=secondary)
+    assert caught.value.code == "not_stored"
+    assert "tenants/tenant-a" in first["location"]

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Generate the two scheduled-evidence workflows this repository cannot push by itself.
+"""Generate and check the repository's two scheduled-evidence workflows.
 
 `scripts/restore_drill.py` (guide 184) and `scripts/accuracy_ground_truth.py` (guide 185) are the
-evidence. Neither runs unless something schedules it, and the schedule has to live in
-`.github/workflows/` — the one path the build token used for these guides cannot write to
-(GitHub rejects a push that touches a workflow file without the `workflows` permission).
+evidence. Neither runs unless something schedules it, and the schedule lives in
+`.github/workflows/`; publishing workflow changes needs a GitHub identity with the required
+permission. Files in a branch are not evidence that a scheduled run occurred.
 
-So the workflows are generated here: committed, diffable, and covered by
+The workflows are generated here: committed, diffable, and covered by
 `scripts/tests/test_pending_workflows.py`, which asserts the properties that make them meaningful
 rather than a golden string — the schedule, the recovery database, the gate command, the artifact
 that survives a failure, and the absence of `|| true`.
@@ -61,6 +61,8 @@ name: Restore drill
 on:
   schedule:
     - cron: "{schedule}"
+  push:
+    branches: ['arena/bb4b80dd-cryproscan']
   workflow_dispatch:
     inputs:
       reason:
@@ -92,6 +94,8 @@ jobs:
           --health-timeout 5s --health-retries 20
     env:
       PGPASSWORD: drill
+      PG_BIN: /usr/lib/postgresql/16/bin
+      CRYPTOSCAN_CI_DISPOSABLE_DB: "1"
       DATABASE_URL: postgresql://drill:drill@localhost:5432/cryptoscan
       # The drill refuses a target that is not named like a recovery database and a target equal
       # to the source. Both refusals are exercised by this job's configuration.
@@ -102,22 +106,23 @@ jobs:
       BACKUP_SIGNING_SECRET: "{signing_secret}"
       PYTHONPATH: "{pythonpath}"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
       - name: Install
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest
-          sudo apt-get update && sudo apt-get install -y postgresql-client
+          python -m pip install -r requirements.txt -c requirements.lock.txt
+          sudo apt-get update && sudo apt-get install -y postgresql-client-16
       - name: Build a disposable estate and an empty recovery database
         run: |
           psql "$DATABASE_URL" -c "CREATE DATABASE restore_drill"
           bash scripts/run_migrations.sh
           # Rows the drill can compare. Without them every count is zero on both sides, a restore
           # that produced nothing compares equal to the source, and the drill passes on nothing.
-          python scripts/restore_drill_seed.py --database-url "$DATABASE_URL"
+          python scripts/restore_drill_seed.py
       - name: Take a backup, restore it, measure what came back
         run: |
           python scripts/restore_drill.py \\
@@ -128,7 +133,7 @@ jobs:
             --history .drill-history.jsonl
       - name: Upload the receipt and the chain
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: restore-drill-receipt
           path: |
@@ -151,6 +156,8 @@ name: Accuracy gate
 on:
   schedule:
     - cron: "{schedule}"
+  push:
+    branches: ['arena/bb4b80dd-cryproscan']
   workflow_dispatch:
   pull_request:
     paths:
@@ -170,14 +177,15 @@ jobs:
     env:
       PYTHONPATH: "{pythonpath}"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.11"
       - name: Install
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt pytest
+          python -m pip install -r requirements.txt -c requirements.lock.txt
       - name: The published targets, with no regression against the committed baseline
         run: |
           python scripts/accuracy_ground_truth.py \\
@@ -197,7 +205,7 @@ jobs:
         run: python -m pytest scripts/tests/test_accuracy_ground_truth.py services/cbom/tests/test_accuracy.py services/cbom/tests/test_facts.py -q
       - name: Upload the report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: accuracy-report
           path: |
@@ -242,8 +250,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--write", action="store_true",
-                        help=f"write to {WORKFLOW_DIR.relative_to(ROOT)} (needs a token with "
-                             "`workflows` permission)")
+                        help=f"write to {WORKFLOW_DIR.relative_to(ROOT)} "
+                             "(publication may need workflow-write permission)")
     parser.add_argument("--into", default=None,
                         help="write the files into this directory instead (e.g. .pending)")
     parser.add_argument("--stdout", action="store_true", help="print both workflows")

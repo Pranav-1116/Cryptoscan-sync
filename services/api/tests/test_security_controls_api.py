@@ -159,6 +159,20 @@ def test_the_chain_verifies_and_a_deleted_row_is_visible(writer):
     assert writer.get("/api/security-controls/verify").json()["verified"] is True
 
 
+def test_a_changed_snapshot_body_is_detected_even_when_links_remain_intact(writer, session):
+    from db.models.security_control import SecurityControlSnapshot
+
+    for index in range(2):
+        assert writer.post("/api/security-controls/snapshots",
+                           json=body(f"sha256:{index:016d}")).status_code == 200
+    row = session.query(SecurityControlSnapshot).order_by(SecurityControlSnapshot.sequence).first()
+    row.controls = ["REWRITTEN"]
+    session.commit()
+    result = writer.get("/api/security-controls/verify").json()
+    assert result["verified"] is False
+    assert any(problem["code"] == "ENTRY_HASH_MISMATCH" for problem in result["problems"])
+
+
 # --------------------------------------------------------------------------- #
 # a finding is a claim
 # --------------------------------------------------------------------------- #

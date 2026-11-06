@@ -59,6 +59,21 @@ def test_the_answer_carries_its_provenance():
     assert env.describe(environ={"ENVIRONMENT": "prod"})["is_production"] is True
 
 
+def test_unreadable_platform_settings_cannot_silently_enable_development(monkeypatch):
+    from api.config import settings as api_settings
+
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+
+    def unavailable():
+        raise RuntimeError("test-only settings failure")
+
+    monkeypatch.setattr(api_settings, "get_settings", unavailable)
+    found = env.detect()
+    assert found["effective"] == "production"
+    assert found["recognised"] is False
+    assert found["source"] == "api.config.settings"
+
+
 def test_an_explicit_settings_object_outranks_the_environment_map():
     class Fake:
         ENVIRONMENT = "staging"

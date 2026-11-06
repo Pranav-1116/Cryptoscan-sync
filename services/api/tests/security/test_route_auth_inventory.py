@@ -71,6 +71,7 @@ INLINE_AUTH_MARKERS = (
     "_token_from_request(",
     "get_session(",  # session-token validation raising its own 401
     "verify_webhook(",  # signature-verified ingestion (webhook routers)
+    "_service_identity(",  # security-control snapshots require an agent or machine credential
 )
 
 

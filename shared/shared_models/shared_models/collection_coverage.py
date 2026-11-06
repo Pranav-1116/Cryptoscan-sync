@@ -37,6 +37,7 @@ SURFACES = {
         "NETWORK_TLS_SESSION",
         "NETWORK_TLS13_KEY_SHARE",
         "NETWORK_TLS13_HYBRID",
+        "NETWORK_TLS_CLIENT_OFFER",  # observed offer, never a negotiated session
     },
     "hardware_metadata": {"LINUX_HARDWARE", "WINDOWS_TPM_DEVICE_INFO"},
 }

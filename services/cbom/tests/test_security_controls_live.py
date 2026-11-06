@@ -58,6 +58,33 @@ def test_unreachable_is_a_state_not_an_exception():
     assert result.reason
 
 
+def test_unreadable_success_response_is_bad_response_not_an_empty_success():
+    class Response:
+        status_code = 200
+        headers = {}
+
+        def json(self):
+            raise ValueError("test-only invalid JSON")
+
+        @property
+        def text(self):
+            raise OSError("test-only unreadable body")
+
+    class Client:
+        def request(self, *args, **kwargs):
+            return Response()
+
+        def close(self):
+            pass
+
+    device = sc.HttpTransport(base_url="https://device.bank.invalid", max_retries=0,
+                              _client_factory=Client)
+    result = device.get("/api/status")
+    assert result.state == "BAD_RESPONSE"
+    assert result.ok is False
+    assert "unreadable" in result.reason
+
+
 def test_recorded_transport_reports_a_missing_route():
     result = sc.RecordedTransport({}).get("/x")
     assert result.state == "BAD_RESPONSE"

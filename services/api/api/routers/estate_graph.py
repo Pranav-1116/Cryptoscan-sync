@@ -1666,6 +1666,7 @@ class EvidenceArtifactStoreOut(BaseModel):
     etag: str | None = None
     object_version: str | None = None
     evidence_id: str
+    run_id: str
 
     model_config = {"populate_by_name": True}
 
@@ -1719,23 +1720,43 @@ def estate_twin_artifact_store(
             },
         )
     try:
-        result = estate_evidence_objects.store(record)
+        config = estate_evidence_objects.scoped_config(
+            estate_evidence_objects.tier_config(), current_tenant())
+        result = estate_evidence_objects.store(record, config=config)
     except estate_evidence_objects.EvidenceObjectError as exc:
         raise HTTPException(
             status_code=409 if exc.code == "not_configured" else 502,
             detail={"error": exc.code, "reason": exc.reason, **exc.detail},
         ) from exc
-    return {**result, "evidence_id": evidence_id}
+    return {**result, "evidence_id": evidence_id, "run_id": run.id}
 
 
 @router.get("/twin/artifacts/{digest}", response_model=EvidenceArtifactOut)
 def estate_twin_artifact_read(
     digest: str,
+    run_id: str | None = Query(default=None, description="stored discovery run that cites this historical object"),
     user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
 ):
-    """Read an artefact back and refuse it if the bytes are not what the digest names."""
+    """Read only evidence cited by this tenant's current or named stored twin."""
+    address = digest.removeprefix("sha256:").lower()
+    if len(address) != 64 or any(char not in "0123456789abcdef" for char in address):
+        raise HTTPException(422, detail={"error": "invalid_digest", "reason": "expected a sha256 address"})
+    if run_id is None:
+        run = _latest_run(db)
+    else:
+        run = ScanRunRepository(db).get_run(run_id, owner=current_tenant())
+        if run is None or run.target_kind != RUN_KIND:
+            raise HTTPException(404, detail={"error": "no_such_estate_run_for_tenant"})
+    graph = _graph_from_run(run)
+    if not any(estate_evidence_objects.content_address(record) == address
+               for record in graph.evidence()):
+        raise HTTPException(404, detail={"error": "no_such_evidence_for_tenant",
+                                         "reason": "the selected tenant twin does not cite this object"})
     try:
-        return estate_evidence_objects.fetch(digest)
+        config = estate_evidence_objects.scoped_config(
+            estate_evidence_objects.tier_config(), current_tenant())
+        return estate_evidence_objects.fetch(address, config=config)
     except estate_evidence_objects.EvidenceObjectError as exc:
         status = {
             "not_configured": 409,

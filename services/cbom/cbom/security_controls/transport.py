@@ -314,7 +314,13 @@ class HttpTransport:
                                        state=BAD_RESPONSE, attempts=attempts,
                                        reason=f"HTTP {status}",
                                        elapsed_ms=int((time.monotonic() - started) * 1000))
-            body = _json_or_text(response)
+            try:
+                body = _json_or_text(response)
+            except ValueError as exc:
+                return TransportResult(url=url, method=verb, status=status, state=BAD_RESPONSE,
+                                       attempts=attempts,
+                                       reason=f"device response body is unreadable: {type(exc).__name__}",
+                                       elapsed_ms=int((time.monotonic() - started) * 1000))
             return TransportResult(url=url, method=verb, status=status, state=OK, body=body,
                                    attempts=attempts, link=_header(response, "link"),
                                    elapsed_ms=int((time.monotonic() - started) * 1000))
@@ -428,8 +434,8 @@ def _json_or_text(response: Any) -> Any:
     except Exception:  # noqa: BLE001 — a device may answer XML or plain text
         try:
             return response.text
-        except Exception:  # noqa: BLE001
-            return None
+        except Exception as exc:  # noqa: BLE001 — neither JSON nor text could be read
+            raise ValueError("device response body is neither readable JSON nor text") from exc
 
 
 def _rows_of(body: Any) -> list[Any]:

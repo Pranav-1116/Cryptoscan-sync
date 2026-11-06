@@ -106,6 +106,13 @@ def check() -> None:
             worker = services["worker"]
             if any(api["environment"].get(key) != worker["environment"].get(key) for key in s3_names):
                 raise RuntimeError("production S3: API and worker artifact backends differ")
+            evidence_fields = ("ENDPOINT", "BUCKET", "REGION", "ACCESS_KEY_FILE",
+                               "SECRET_KEY_FILE", "CA_BUNDLE")
+            for name in ("api", "worker"):
+                env = services[name]["environment"]
+                if any(env.get(f"EVIDENCE_OBJECT_S3_{field}") != env.get(f"SBOM_S3_{field}")
+                       for field in evidence_fields) or env.get("EVIDENCE_OBJECT_S3_PREFIX") != "tenants":
+                    raise RuntimeError(f"production S3: {name} twin evidence tier differs from BOM storage")
             for name in ("api", "worker"):
                 service = services[name]
                 for key in ("SBOM_S3_ACCESS_KEY_FILE", "SBOM_S3_SECRET_KEY_FILE", "SBOM_S3_CA_BUNDLE"):

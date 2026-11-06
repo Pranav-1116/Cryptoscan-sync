@@ -195,9 +195,9 @@ export default function TwinEdgeExplorer() {
           {asking && <div className="faint" style={{ fontSize: 9.5, marginTop: 6 }}>asking the twin…</div>}
 
           <div className="faint" style={{ fontSize: 9.5, marginTop: 8, lineHeight: 1.5 }}>
-            Every edge here carries the evidence ids its basis cites. A refused candidate is not
-            drawn as an edge: {exported.counts.unresolved ?? 0} of them ship separately, because
-            drawing an unproven relationship as a line is an assumption with a border.
+            An edge cites evidence ids when they exist; assertion-only placement edges state why
+            they are uncited. Refused candidates are not drawn: {exported.counts.unresolved ?? 0}
+            ship separately instead of becoming relationships without proof.
           </div>
         </>
       )}

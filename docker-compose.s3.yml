@@ -12,6 +12,15 @@ services:
       SBOM_S3_ACCESS_KEY_FILE: /run/secrets/sbom-s3-access
       SBOM_S3_SECRET_KEY_FILE: /run/secrets/sbom-s3-secret
       SBOM_S3_CA_BUNDLE: /run/secrets/sbom-s3-ca.pem
+      # The twin archive uses the same scoped identity and bank bucket, but
+      # object keys are tenant-prefixed; no root credentials enter a workload.
+      EVIDENCE_OBJECT_S3_ENDPOINT: ${SBOM_S3_ENDPOINT:?set the bank-owned HTTPS endpoint}
+      EVIDENCE_OBJECT_S3_BUCKET: ${SBOM_S3_BUCKET:?set the versioned artifact bucket}
+      EVIDENCE_OBJECT_S3_REGION: ${SBOM_S3_REGION:-us-east-1}
+      EVIDENCE_OBJECT_S3_ACCESS_KEY_FILE: /run/secrets/sbom-s3-access
+      EVIDENCE_OBJECT_S3_SECRET_KEY_FILE: /run/secrets/sbom-s3-secret
+      EVIDENCE_OBJECT_S3_CA_BUNDLE: /run/secrets/sbom-s3-ca.pem
+      EVIDENCE_OBJECT_S3_PREFIX: tenants
       SBOM_STORAGE_BACKUP_DIR: ${SBOM_STORAGE_BACKUP_DIR:?declare a separately operated backup target}
       SBOM_RETENTION_DAYS: ${SBOM_RETENTION_DAYS:?declare an approved retention period}
     volumes: &sbom-s3-mounts

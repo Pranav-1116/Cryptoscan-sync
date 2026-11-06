@@ -13,14 +13,12 @@ clients are all above the floor.
 """
 
 from datetime import datetime, timezone
-import hashlib
 import json
 import socket
 import time
 
 from shared_models.tls_client_offer import (
     HELLO_LIMIT,
-    KIND,
     MAX_OFFERS,
     TlsClientOfferFact,
     WIRE_LIMIT,

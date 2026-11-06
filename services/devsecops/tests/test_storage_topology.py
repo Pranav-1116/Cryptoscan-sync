@@ -195,6 +195,18 @@ def test_reading_and_deleting_go_through_the_healthy_site():
     assert store.list_manifests() == []
 
 
+def test_failed_replica_list_cannot_be_reported_as_no_manifests():
+    class FailedList(_Memory):
+        def list_manifests(self):
+            raise OSError("test-only replica unavailable")
+
+    store = ReplicatedStore(sites=(PRIMARY, REPLICA_OTHER_REGION),
+                            backends={"primary": _Memory(), "dr": FailedList()})
+    with pytest.raises(IOError, match="manifest listing was incomplete"):
+        store.list_manifests()
+    assert ReplicatedStore(sites=(PRIMARY,), backends={"primary": _Memory()}).list_manifests() == []
+
+
 def test_an_unconfigured_backend_is_a_failed_site_not_a_silent_success():
     store = ReplicatedStore(sites=(PRIMARY,), backends={})
     with pytest.raises(IOError, match="below the quorum"):

@@ -6854,7 +6854,7 @@ export interface EstateTwinWhyEdge {
 
 export interface EstateTwinWhy {
   schema: string;
-  status: "ESTABLISHED" | "NOT_ESTABLISHED" | "NO_SUCH_RELATIONSHIP" | "UNKNOWN_ASSET"
+  status: "ESTABLISHED" | "ASSERTED_UNCITED" | "NOT_ESTABLISHED" | "NO_SUCH_RELATIONSHIP" | "UNKNOWN_ASSET"
     | "EVIDENCE" | "NO_SUCH_EVIDENCE";
   matches?: EstateTwinWhyEdge[];
   refused?: Array<{ subject?: string; predicate?: string; object?: string; reason?: string }>;

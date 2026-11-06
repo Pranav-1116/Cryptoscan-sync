@@ -38,7 +38,13 @@ The core launcher starts PostgreSQL, Redis, API, worker, and console, not all
 requires `SBOM_S3_ENDPOINT`, `SBOM_S3_BUCKET`, and separate **non-root** access/
 secret credential-file paths. The launcher requires a probed S3 bucket by
 default; `LOCAL_EVIDENCE_REQUIRED=0` explicitly opts into core-only local
-startup without a verified S3 evidence store. The local machine has limited free memory and
+startup without a verified S3 evidence store. `LOCAL_TWIN_OBJECT_TIER=1` opts the
+Twin's archived evidence into the same scoped bucket and credential files; keys
+are separated under `tenants/<tenant>/evidence/`, and an archive read requires
+the current tenant's retained Twin to cite its digest. Historical reads must
+supply the `run_id` returned by archival, which is resolved within the same
+tenant; there is no independently queryable archive index yet. The local
+machine has limited free memory and
 heavy swap use: Neo4j, OpenSearch, Kafka, Grafana and monitoring must be staged,
 not silently launched as a memory-exhausting bundle. `tools` distinguishes
 running services from unconfigured or unverified integrations. Existing volumes
@@ -155,7 +161,10 @@ operator's Compose invocation. Configure the six `SBOM_S3_*` host-path/endpoint
 variables in `.env.production.example` with a restricted artifact identity,
 never the object-store root identity; supply a trusted bank CA. The overlay
 mounts credential files read-only into only the API and worker. Both processes
-must address the same bucket. The loopback-only MinIO used for local tests is
+must address the same bucket. The Twin archive uses the same bank CA and
+file-backed identity, with tenant-prefixed keys; this is optional archival of
+already retained evidence, not a second source of cryptographic facts. The
+loopback-only MinIO used for local tests is
 not reachable from the Compose network as `127.0.0.1` and must not be passed off
 as the production endpoint. A configured backup path and retention period satisfy
 only configuration checks: actual independent backup, Object Lock and restore
@@ -194,6 +203,11 @@ curl -s -H "Authorization: Bearer ${CRYPTOSCAN_SESSION_TOKEN:?}" \
 This cadence reads **persisted evidence**. It does not clone source, probe a network,
 contact a cloud/HSM, or authorize any new collection. Acquire evidence through its
 separately approved collector before treating a scheduled projection as coverage.
+The STATIC plane reads indexed assets and bounded, retained evidence from the
+newest 20 completed scans when the controlled worker did not write an asset
+index. Failed or tombstoned rows do not become Twin facts; an exceeded scan or
+row budget is `PARTIAL`, not complete coverage. Static presence never proves
+runtime cryptographic use.
 The operator CLI uses the bank-owned HTTPS control plane; schedule mutations
 require a current human session with monitor-management authority. The daemon
 runs on a bank server with database access. Deletion is refused because it

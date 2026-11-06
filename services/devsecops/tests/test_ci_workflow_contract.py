@@ -408,6 +408,16 @@ def test_production_s3_overlay_refuses_divergent_worker_and_writable_secret_moun
     with pytest.raises(RuntimeError, match="read-only SBOM_S3_SECRET_KEY_FILE"):
         compose.check()
 
+    def wrong_evidence_bucket(*overlays, **kwargs):
+        services = render(*overlays, **kwargs)
+        if "docker-compose.s3.yml" in overlays:
+            services["api"]["environment"]["EVIDENCE_OBJECT_S3_BUCKET"] = "another-bucket"
+        return services
+
+    monkeypatch.setattr(compose, "render", wrong_evidence_bucket)
+    with pytest.raises(RuntimeError, match="twin evidence tier differs"):
+        compose.check()
+
 
 def test_frontend_ci_uses_frozen_installs_and_coverage_without_unapproved_audit():
     steps = _workflow("ci.yml")["jobs"]["frontend"]["steps"]

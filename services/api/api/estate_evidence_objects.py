@@ -29,10 +29,12 @@ Configuration (first match wins, and the anchor-export sink is reused so a deplo
 configures one object store rather than two):
 
 * ``EVIDENCE_OBJECT_DIR`` — an append-only directory (a mounted WORM volume, an NFS export)
-* ``EVIDENCE_OBJECT_S3_BUCKET`` + ``EVIDENCE_OBJECT_S3_ACCESS_KEY`` +
-  ``EVIDENCE_OBJECT_S3_SECRET_KEY``, optionally ``EVIDENCE_OBJECT_S3_REGION``,
-  ``EVIDENCE_OBJECT_S3_ENDPOINT`` (MinIO/Ceph), ``EVIDENCE_OBJECT_S3_PREFIX``,
-  ``EVIDENCE_OBJECT_S3_SESSION_TOKEN``
+* ``EVIDENCE_OBJECT_S3_BUCKET`` + ``EVIDENCE_OBJECT_S3_ACCESS_KEY_FILE`` +
+  ``EVIDENCE_OBJECT_S3_SECRET_KEY_FILE`` (required in production), optionally
+  ``EVIDENCE_OBJECT_S3_REGION``, ``EVIDENCE_OBJECT_S3_ENDPOINT`` (MinIO/Ceph),
+  ``EVIDENCE_OBJECT_S3_PREFIX``, ``EVIDENCE_OBJECT_S3_SESSION_TOKEN_FILE``. The
+  default key prefix is ``tenants/<tenant>/evidence``. Legacy inline credentials
+  remain development-only.
 * the same values under ``ANCHOR_EXPORT_S3_*``, reusing the bucket this deployment already
   has for anchor receipts
 """
@@ -42,14 +44,17 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from api.security.aws_sigv4 import sigv4_headers
 
 SCHEMA = "cryptoscan.evidence-object-tier/1"
+MAX_OBJECT_BYTES = 64 * 1024 * 1024
 
 SINK_FILESYSTEM = "FILESYSTEM"
 SINK_S3 = "S3"
@@ -71,16 +76,37 @@ class EvidenceObjectError(RuntimeError):
 def _default_transport(url: str, method: str, headers: Mapping[str, str], body: bytes | None,
                        timeout: float) -> tuple[int, bytes, Mapping[str, str]]:
     request = urllib.request.Request(url, data=body, headers=dict(headers), method=method.upper())
+    ca_bundle = (os.environ.get("EVIDENCE_OBJECT_S3_CA_BUNDLE") or
+                 os.environ.get("SBOM_S3_CA_BUNDLE") or "").strip()
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return int(response.status), response.read(), dict(response.headers)
+        context = ssl.create_default_context(cafile=ca_bundle or None) if url.startswith("https://") else None
+    except OSError as exc:
+        raise EvidenceObjectError("invalid_endpoint", "bank evidence CA bundle could not be loaded") from exc
+    try:
+        with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+            return int(response.status), response.read(MAX_OBJECT_BYTES + 1), dict(response.headers)
     except urllib.error.HTTPError as exc:
-        return int(exc.code), exc.read() or b"", dict(exc.headers)
+        return int(exc.code), exc.read(4096) or b"", dict(exc.headers)
+    except (urllib.error.URLError, OSError) as exc:
+        raise EvidenceObjectError("transport_unavailable", "bank evidence store is unreachable") from exc
 
 
 # --------------------------------------------------------------------------- #
 # configuration
 # --------------------------------------------------------------------------- #
+def _credential_file(path: str) -> str:
+    file = Path(path)
+    try:
+        if not file.is_absolute() or file.is_symlink() or not file.is_file() or not 0 < file.stat().st_size <= 512:
+            raise EvidenceObjectError("invalid_credential", "bank evidence credential file is absent or unsafe")
+        value = file.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError) as exc:
+        raise EvidenceObjectError("invalid_credential", "bank evidence credential file cannot be read") from exc
+    if not value or "\n" in value or "\r" in value:
+        raise EvidenceObjectError("invalid_credential", "bank evidence credential file is malformed")
+    return value
+
+
 def tier_config(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
     """The configured sink, or raise. A tier with no sink is not an empty tier."""
     env = dict(os.environ if environ is None else environ)
@@ -93,11 +119,37 @@ def tier_config(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
         return (env.get(f"EVIDENCE_OBJECT_{name}") or env.get(f"ANCHOR_EXPORT_{name}") or default).strip()
 
     bucket = _pick("S3_BUCKET")
-    access_key = _pick("S3_ACCESS_KEY")
-    secret_key = _pick("S3_SECRET_KEY")
+    access_file = _pick("S3_ACCESS_KEY_FILE")
+    secret_file = _pick("S3_SECRET_KEY_FILE")
+    session_file = _pick("S3_SESSION_TOKEN_FILE")
+    inline_session = _pick("S3_SESSION_TOKEN")
+    from shared_config import environment as platform_environment
+
+    effective = (platform_environment.environment_name() if environ is None else
+                 platform_environment.environment_name(environ=env))
+    production = effective == "production"
+    ca_bundle = (env.get("EVIDENCE_OBJECT_S3_CA_BUNDLE") or env.get("SBOM_S3_CA_BUNDLE") or "").strip()
+    if production and bucket and (not access_file or not secret_file or (inline_session and not session_file)):
+        raise EvidenceObjectError("invalid_credential", "production evidence S3 needs credential files")
+    if production and bucket and (not ca_bundle or not Path(ca_bundle).is_absolute()
+                                  or not Path(ca_bundle).is_file()):
+        raise EvidenceObjectError("invalid_endpoint", "production evidence S3 needs a bank-trusted CA bundle")
+    access_key = _credential_file(access_file) if access_file else _pick("S3_ACCESS_KEY")
+    secret_key = _credential_file(secret_file) if secret_file else _pick("S3_SECRET_KEY")
+    session_token = _credential_file(session_file) if session_file else inline_session or None
     if bucket and access_key and secret_key:
         region = _pick("S3_REGION", "us-east-1")
         endpoint = (_pick("S3_ENDPOINT") or f"https://s3.{region}.amazonaws.com").rstrip("/")
+        try:
+            parsed = urllib.parse.urlsplit(endpoint)
+            _ = parsed.port
+        except ValueError as exc:
+            raise EvidenceObjectError("invalid_endpoint", "bank evidence endpoint is malformed") from exc
+        local = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+        if (not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment
+                or parsed.path not in {"", "/"} or (parsed.scheme != "https" and not (
+                    local and effective in {"development", "test"}))):
+            raise EvidenceObjectError("invalid_endpoint", "bank evidence S3 needs HTTPS; HTTP is local-only")
         return {
             "sink": SINK_S3,
             "bucket": bucket,
@@ -105,8 +157,9 @@ def tier_config(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
             "endpoint": endpoint,
             "access_key": access_key,
             "secret_key": secret_key,
-            "session_token": _pick("S3_SESSION_TOKEN") or None,
-            "prefix": (env.get("EVIDENCE_OBJECT_S3_PREFIX") or "cryptoscan/evidence").strip("/"),
+            "session_token": session_token,
+            "ca_bundle": ca_bundle or None,
+            "prefix": (env.get("EVIDENCE_OBJECT_S3_PREFIX") or "tenants").strip("/"),
         }
 
     raise EvidenceObjectError(
@@ -115,6 +168,25 @@ def tier_config(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
         "EVIDENCE_OBJECT_S3_* triple, or the ANCHOR_EXPORT_S3_* bucket this deployment "
         "already uses. Evidence that was never archived is a tier gap, not a missing finding",
     )
+
+
+def scoped_config(config: Mapping[str, Any], tenant_id: str | None) -> dict[str, Any]:
+    """Keep identical evidence addresses in separate tenant storage namespaces."""
+    tenant = str(tenant_id or "platform")
+    if not tenant or len(tenant) > 80 or any(
+            character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+            for character in tenant):
+        raise EvidenceObjectError("invalid_tenant", "evidence object tenant scope is invalid")
+    scoped = dict(config)
+    if scoped["sink"] == SINK_FILESYSTEM:
+        scoped["directory"] = os.path.join(str(scoped["directory"]), "tenants", tenant)
+    elif scoped["sink"] == SINK_S3:
+        prefix = str(scoped.get("prefix") or "").strip("/")
+        scoped["prefix"] = (f"tenants/{tenant}/evidence" if prefix == "tenants" else
+                            "/".join(part for part in (prefix, "tenants", tenant) if part))
+    else:
+        raise EvidenceObjectError("not_configured", "unknown evidence object sink")
+    return scoped
 
 
 def tier_status(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
@@ -142,8 +214,8 @@ def tier_status(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
         "sink": config["sink"],
         "detail": detail,
         "note": (
-            "the address of an object is the sha256 of its own bytes; a read that returns "
-            "different bytes is refused"
+            "the address hashes asserted content but excludes the build-time observed_at clock; "
+            "a new write requires exact-byte readback, and an existing key is verified before retry"
         ),
     }
 
@@ -205,16 +277,26 @@ def _store_filesystem(body: bytes, digest: str, config: Mapping[str, Any]) -> di
         # O_EXCL is the whole point: a duplicate is a no-op, never a rewrite
         descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o444)
     except FileExistsError:
+        existing = _read_filesystem(digest, config)["body"]
+        if not _verify(existing, digest):
+            raise EvidenceObjectError("integrity_mismatch", "the existing evidence object is corrupt")
         return {
             "stored": False,
             "already_stored": True,
             "location": path,
             "digest": digest,
-            "note": "the sink already holds these bytes; an archive never rewrites evidence",
+            "retained_bytes": len(existing),
+            "note": "the sink already holds this addressed content; its original clock is retained",
         }
     with os.fdopen(descriptor, "wb") as handle:
         handle.write(body)
-    return {"stored": True, "already_stored": False, "location": path, "digest": digest}
+        handle.flush()
+        os.fsync(handle.fileno())
+    existing = _read_filesystem(digest, config)["body"]
+    if existing != body:
+        raise EvidenceObjectError("integrity_mismatch", "filesystem write failed exact-byte readback")
+    return {"stored": True, "already_stored": False, "location": path, "digest": digest,
+            "retained_bytes": len(existing)}
 
 
 def _store_s3(body: bytes, digest: str, config: Mapping[str, Any],
@@ -234,12 +316,16 @@ def _store_s3(body: bytes, digest: str, config: Mapping[str, Any],
     sender = transport or _default_transport
     status, response_body, response_headers = sender(url, "PUT", headers, body, timeout)
     if status in {409, 412}:
+        existing = _read_s3(digest, config, transport, timeout)["body"]
+        if not _verify(existing, digest):
+            raise EvidenceObjectError("integrity_mismatch", "the existing evidence object is corrupt")
         return {
             "stored": False,
             "already_stored": True,
             "location": url,
             "digest": digest,
-            "note": "the sink already holds these bytes; an archive never rewrites evidence",
+            "retained_bytes": len(existing),
+            "note": "the sink already holds this addressed content; its original clock is retained",
         }
     if status >= 300:
         raise EvidenceObjectError(
@@ -248,11 +334,15 @@ def _store_s3(body: bytes, digest: str, config: Mapping[str, Any],
             detail={"location": url, "status": status,
                     "body": response_body[:400].decode("utf-8", "replace")},
         )
+    returned = _read_s3(digest, config, transport, timeout)["body"]
+    if returned != body:
+        raise EvidenceObjectError("integrity_mismatch", "object write failed exact-byte readback")
     return {
         "stored": True,
         "already_stored": False,
         "location": url,
         "digest": digest,
+        "retained_bytes": len(returned),
         "etag": response_headers.get("ETag") or response_headers.get("etag"),
         "object_version": (response_headers.get("x-amz-version-id")
                            or response_headers.get("X-Amz-Version-Id")),
@@ -262,15 +352,21 @@ def _store_s3(body: bytes, digest: str, config: Mapping[str, Any],
 def _read_filesystem(digest: str, config: Mapping[str, Any]) -> dict[str, Any]:
     path = os.path.join(str(config["directory"]), digest[:2], digest[2:4], f"{digest}.json")
     try:
-        with open(path, "rb") as handle:
-            return {"body": handle.read(), "location": path}
-    except FileNotFoundError:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        with os.fdopen(descriptor, "rb") as handle:
+            body = handle.read(MAX_OBJECT_BYTES + 1)
+    except FileNotFoundError as exc:
         raise EvidenceObjectError(
             "not_stored",
             "no object with that digest is in the tier. That is a tier gap, not 'this "
             "evidence has no artefact': the record may not have been archived yet",
             detail={"digest": digest},
-        )
+        ) from exc
+    except OSError as exc:
+        raise EvidenceObjectError("read_failed", "the evidence object could not be opened safely") from exc
+    if len(body) > MAX_OBJECT_BYTES:
+        raise EvidenceObjectError("read_failed", "evidence object exceeds the bounded read")
+    return {"body": body, "location": path}
 
 
 def _read_s3(digest: str, config: Mapping[str, Any], transport: Transport | None,
@@ -299,6 +395,8 @@ def _read_s3(digest: str, config: Mapping[str, Any], transport: Transport | None
             f"the object store refused the read: HTTP {status}",
             detail={"digest": digest, "location": url, "status": status},
         )
+    if len(body) > MAX_OBJECT_BYTES:
+        raise EvidenceObjectError("read_failed", "evidence object exceeds the bounded read")
     return {"body": body, "location": url}
 
 
@@ -310,6 +408,8 @@ def store(record: Mapping[str, Any], *, transport: Transport | None = None,
     """Archive one evidence record by content address. Idempotent, never destructive."""
     resolved = dict(config or tier_config())
     body = canonical_bytes(record)
+    if len(body) > MAX_OBJECT_BYTES:
+        raise EvidenceObjectError("store_failed", "evidence object exceeds the bounded write")
     digest = content_address(record)
     if resolved["sink"] == SINK_FILESYSTEM:
         result = _store_filesystem(body, digest, resolved)
@@ -320,9 +420,9 @@ def store(record: Mapping[str, Any], *, transport: Transport | None = None,
     return {
         "schema": SCHEMA,
         "sink": resolved["sink"],
-        "bytes": len(body),
+        "bytes": result.pop("retained_bytes"),
         "address": f"sha256:{digest}",
-        "verified": _verify(body, digest),
+        "verified": True,
         "address_excludes": list(ADDRESS_EXCLUDED),
         **result,
     }
@@ -381,8 +481,16 @@ def _actual_address(body: bytes) -> str | None:
 
 
 def _verify(body: bytes, digest: str) -> bool:
-    """An object is intact when the content it carries still hashes to its address."""
-    return _actual_address(body) == digest
+    """Require the expected envelope as well as the addressed content."""
+    try:
+        wrapper = json.loads(body)
+        return (isinstance(wrapper, dict) and wrapper.get("schema") == OBJECT_SCHEMA
+                and wrapper.get("address") == digest
+                and wrapper.get("address_excludes") == list(ADDRESS_EXCLUDED)
+                and isinstance(wrapper.get("content"), dict)
+                and content_address(wrapper["content"]) == digest)
+    except (json.JSONDecodeError, TypeError, ValueError, KeyError):
+        return False
 
 
 __all__ = [

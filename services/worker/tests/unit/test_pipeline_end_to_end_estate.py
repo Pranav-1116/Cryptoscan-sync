@@ -55,6 +55,39 @@ def _run(runner, db, tmp_path, target: Path, job_id: str) -> str:
 
 
 @pytest.mark.timeout(180)
+def test_real_pipeline_scan_projects_six_boms_then_simulates_a_copy(tmp_path, test_db):
+    from api import estate_discovery
+    from shared_models import estate_twin
+    from shared_models.estate_graph import build_graph, BOM_KINDS
+    from db.repositories.scan_run_repository import ScanRunRepository
+
+    source = _source_repo(tmp_path)
+    scan_id = _run(PipelineRunner(), test_db, tmp_path, source, "job-twin")
+    scan = test_db.get(Scan, scan_id)
+    assert scan.status == "COMPLETED", scan.error_message
+    assert test_db.execute(select(EvidenceRecord).where(EvidenceRecord.scan_id == scan_id)).scalars().first()
+
+    report = estate_discovery.run(test_db, planes=["STATIC"], persist=True, include_boms=True)
+    assert report["run_id"]
+    assert set(report["boms"]) == set(BOM_KINDS)
+    assert {item["projection_id"] for item in report["boms"].values()} == {report["projection_id"]}
+    stored = ScanRunRepository(test_db).get_run(report["run_id"], owner=None)
+    graph = build_graph(stored.result["estate_discovery"])
+    before = graph.fingerprint()
+    algorithms = {record.get("facts", {}).get("algorithm") for record in graph.evidence()}
+    algorithms.discard(None)
+    assert algorithms
+    result = estate_twin.simulate(graph, {"kind": "REPLACE_ALGORITHM",
+                                          "from": sorted(algorithms)[0], "to": "ML-KEM"})
+    assert result["status"] == "SIMULATED"
+    assert result["bom_changes"] is True
+    assert result["bom_diff"]
+    assert result["live_state_modified"] is False
+    assert graph.fingerprint() == before
+
+
+
+@pytest.mark.timeout(180)
 def test_estate_pipeline_source_then_key_inventory(tmp_path, test_db, monkeypatch):
     monkeypatch.setenv("CRYPTOSCAN_KEY_INVENTORY", "1")
     runner = PipelineRunner()

@@ -10,7 +10,6 @@ import pytest
 
 from shared_models.tls_client_offer import (
     KIND,
-    TlsClientOfferFact,
     client_offer_resource,
     endpoint,
     is_grease,

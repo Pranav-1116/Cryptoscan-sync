@@ -250,13 +250,17 @@ class ReplicatedStore:
         raise FileNotFoundError(f"{key} is not readable from any site ({'; '.join(errors)})")
 
     def list_manifests(self) -> list[dict[str, Any]]:
+        errors: list[str] = []
         for site in self.sites:
             try:
                 rows = self.backend(site.name).list_manifests()
-            except Exception:  # noqa: BLE001
+            except Exception as exc:  # noqa: BLE001 — a failed site cannot be an empty manifest set
+                errors.append(f"{site.name}: {type(exc).__name__}")
                 continue
             if rows:
                 return rows
+        if errors:
+            raise IOError(f"manifest listing was incomplete ({'; '.join(errors)})")
         return []
 
     def delete(self, key: str) -> dict[str, Any]:

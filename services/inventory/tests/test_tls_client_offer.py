@@ -9,7 +9,6 @@ on the wire is refused rather than half-parsed.
 """
 
 from datetime import datetime, timedelta, timezone
-import hashlib
 import socket
 import threading
 import time

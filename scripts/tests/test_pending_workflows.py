@@ -79,6 +79,7 @@ def test_each_workflow_is_generated_and_scheduled(name):
         generator.DRILL_SCHEDULE if name == "restore-drill.yml"
         else generator.ACCURACY_SCHEDULE)
     assert "workflow_dispatch" in triggers(document)
+    assert triggers(document)["push"]["branches"] == ["arena/bb4b80dd-cryproscan"]
 
 
 @pytest.mark.parametrize("name", ["restore-drill.yml", "accuracy-gate.yml"])
@@ -113,7 +114,9 @@ def test_the_drill_backs_up_and_restores_in_the_same_run(drill):
 
 def test_the_drill_seeds_rows_before_measuring_them(drill):
     body = commands(drill)
-    assert "restore_drill_seed.py" in body
+    assert (ROOT / "scripts" / "restore_drill_seed.py").is_file()
+    assert env(drill)["CRYPTOSCAN_CI_DISPOSABLE_DB"] == "1"
+    assert "python scripts/restore_drill_seed.py" in body
     assert body.index("restore_drill_seed.py") < body.index("--create-backup")
 
 
@@ -137,6 +140,8 @@ def test_the_published_key_is_a_real_fernet_key_protecting_nothing(drill):
 def test_the_estate_is_a_disposable_postgres_container(drill):
     assert "postgres" in drill["jobs"]["drill"]["services"]
     assert "@localhost" in env(drill)["DATABASE_URL"]
+    assert env(drill)["PG_BIN"] == "/usr/lib/postgresql/16/bin"
+    assert "postgresql-client-16" in commands(drill)
 
 
 # --------------------------------------------------------------------------- #
@@ -190,3 +195,16 @@ def test_writing_stages_both_files_where_a_reviewer_can_read_them(tmp_path, caps
 def test_the_target_directory_is_the_one_github_reads():
     assert generator.WORKFLOW_DIR.name == "workflows"
     assert generator.WORKFLOW_DIR.parent.name == ".github"
+    for name, body in generator.rendered().items():
+        assert (generator.WORKFLOW_DIR / name).read_text() == body
+
+
+def test_installed_workflows_pin_actions_and_do_not_keep_checkout_credentials():
+    for name in generator.WORKFLOWS:
+        document = yaml.safe_load((generator.WORKFLOW_DIR / name).read_text())
+        for step in steps(document):
+            action = str(step.get("uses") or "")
+            if action:
+                assert len(action.rsplit("@", 1)[-1]) == 40, action
+            if action.startswith("actions/checkout@"):
+                assert step["with"]["persist-credentials"] is False

@@ -416,6 +416,43 @@ def test_a_section_larger_than_the_cap_is_truncated_and_says_so():
     assert "clean audit of a rule nobody could see" in truncated["reason"]
 
 
+def test_truncated_success_is_partial_even_when_every_section_answered():
+    class OneSection(sc.drivers.BaseDriver):
+        endpoints = {"rules": "/rules"}
+
+    driver = OneSection(sc.RecordedTransport({
+        "/rules": {"results": [{"id": i} for i in range(20)]},
+    }), max_rows=5)
+    read = driver.fetch()
+    assert read["health"]["state"] == "PARTIAL_READ"
+    assert read["health"]["partial"] is True
+    assert read["health"]["coverage"]["sections_read"] == 1
+    assert read["health"]["coverage"]["complete"] is False
+    assert read["health"]["truncated"]["rules"]["rows_dropped"] == 15
+
+
+def test_memory_refusal_is_partial_and_does_not_count_as_a_retained_read(monkeypatch):
+    class OneSection(sc.drivers.BaseDriver):
+        endpoints = {"rules": "/rules"}
+
+    monkeypatch.setattr(sc.drivers, "MAX_SNAPSHOT_BYTES", 5)
+    read = OneSection(sc.RecordedTransport({"/rules": {"results": [{"id": 1}]}})).fetch()
+    assert read["health"]["state"] == "PARTIAL_READ"
+    assert read["health"]["coverage"]["sections_read"] == 0
+    assert read["health"]["coverage"]["failed"] == ["rules"]
+    assert read["health"]["coverage"]["complete"] is False
+
+
+def test_a_successful_empty_section_is_measured_not_unread():
+    class OneSection(sc.drivers.BaseDriver):
+        endpoints = {"rules": "/rules"}
+
+    read = OneSection(sc.RecordedTransport({"/rules": {"results": []}})).fetch()
+    assert read["health"]["state"] == "OK"
+    assert read["health"]["coverage"]["sections_read"] == 1
+    assert read["health"]["coverage"]["complete"] is True
+
+
 def test_the_snapshot_ceiling_is_reported_before_it_is_hit():
     snapshot = sc.live_snapshot("FIREWALL", "fortigate", sc.RecordedTransport({}),
                                 system="FW-01")

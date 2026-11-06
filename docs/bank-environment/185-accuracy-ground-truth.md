@@ -159,14 +159,13 @@ cannot become last quarter's.
 Artifacts: `185-accuracy-ground-truth.json` (machine) and `185-accuracy-dashboard.md` (the tables
 above, written by the harness that computes them).
 
-The gate's schedule is generated alongside the restore drill's, because it is the same problem:
-`.github/workflows/` cannot be pushed by the token this build has. `scripts/pending_workflows.py`
-renders both `restore-drill.yml` (guide 184) and `accuracy-gate.yml` — weekly, plus on any pull
-request that touches the accuracy modules — and `scripts/tests/test_pending_workflows.py` asserts
-that the scheduled gate compares against the committed baseline, that it fails if the shortcut
-ever starts passing, and that neither job can go green with a failed restore behind it. The files
-are staged in `.pending/`; `python scripts/pending_workflows.py --write` puts them where GitHub
-reads them.
+`scripts/pending_workflows.py` renders the checked-in `restore-drill.yml` (guide 184) and
+`accuracy-gate.yml` in `.github/workflows/`. The first is a weekly disposable restore drill; the
+second runs weekly and on accuracy-related pull requests. They are independent workflows, not a
+combined release gate. `scripts/tests/test_pending_workflows.py` checks their generated content
+and on-disk parity. A scheduled workflow fires only after publication on the repository's default
+branch; a local YAML check is not an observed GitHub run, and neither workflow qualifies a bank
+restore or accuracy figure.
 
 ## 6. What is built here, and what is honestly not
 

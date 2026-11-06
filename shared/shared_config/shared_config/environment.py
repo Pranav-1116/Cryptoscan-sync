@@ -42,6 +42,7 @@ came to exist.
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, Mapping
 
@@ -116,8 +117,12 @@ def detect(settings: Any = None, *, environ: Mapping[str, str] | None = None) ->
         if raw is not None:
             canonical = normalise(raw)
             return _result(raw, canonical, source)
-    except Exception:  # noqa: BLE001 — a worker, a script or a test may have no API settings
-        pass
+    except Exception as exc:  # noqa: BLE001 — never turn unreadable settings into development
+        logging.getLogger(__name__).warning(
+            "api_environment_settings_unavailable", extra={"error_type": type(exc).__name__})
+        raw = os.environ.get("ENVIRONMENT")
+        if not raw:
+            return _result("unreadable API settings", None, "api.config.settings")
 
     raw = os.environ.get("ENVIRONMENT")
     if raw:

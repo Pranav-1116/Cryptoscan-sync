@@ -377,7 +377,7 @@ def collect_runtime(db: Any, *, limit: int = 5) -> dict[str, Any]:
 
 
 def collect_static(db: Any, *, page_size: int = 500) -> dict[str, Any]:
-    """Read the static crypto asset inventory (algorithm present in code)."""
+    """Read static assets and retained scan facts not yet indexed as assets."""
     from db.repositories.asset_repository import AssetRepository
 
     repository = AssetRepository(db)
@@ -417,6 +417,12 @@ def collect_static(db: Any, *, page_size: int = 500) -> dict[str, Any]:
                 "layer_note": "a static hit proves the algorithm is present in code, not that it is used at runtime",
             },
         })
+    # A controlled scan deliberately does not run the legacy asset-writing
+    # consumers. Its committed evidence is still a read-only Twin input; never
+    # infer runtime use from a static scanner row or hide a bounded page.
+    raw_assets, raw_evidence, raw_total, raw_note, raw_truncated = _unindexed_static_evidence(db, limit=page_size)
+    assets.extend(raw_assets)
+    evidence.extend(raw_evidence)
     # The software half of the same plane: the packages and crypto libraries the
     # newest completed scan's manifest/lockfile pass declared. Without them the
     # SBOM projection of this graph stayed empty even after a scan had found the
@@ -438,15 +444,79 @@ def collect_static(db: Any, *, page_size: int = 500) -> dict[str, Any]:
             f"({software.get('target')})"
         )
         status_note = f"{status_note}; {summary}" if status_note else summary
+    if raw_note:
+        status_note = f"{status_note}; {raw_note}" if status_note else raw_note
     return {
         "plane": "STATIC",
-        "expected": int(total),
-        "collected": len(rows),
+        "expected": int(total) + raw_total,
+        "collected": len(rows) + len(raw_evidence),
+        "truncated": raw_truncated or len(rows) < int(total),
         "assets": assets,
         "evidence": evidence,
         "relationships": software_edges,
         "note": status_note,
     }
+
+
+def _unindexed_static_evidence(db: Any, *, limit: int) -> tuple[list[dict], list[dict], int, str | None, bool]:
+    """Project committed scanner evidence that the controlled worker did not deduplicate."""
+    from sqlalchemy import func, select
+
+    from db.models.crypto_asset_evidence import CryptoAssetEvidence
+    from db.models.evidence_record import EvidenceRecord
+    from db.repositories.scan_repository import ScanRepository
+    from db.tenancy import current_tenant
+
+    owner = current_tenant()
+    scans, scan_total = ScanRepository(db).list_scans(
+        status="COMPLETED", owner=owner, page_size=20)
+    if not scans:
+        return [], [], 0, None, False
+    scan_by_id = {scan.id: scan for scan in scans}
+    linked = select(CryptoAssetEvidence.id).where(
+        CryptoAssetEvidence.evidence_id == EvidenceRecord.id,
+        CryptoAssetEvidence.tenant_id == owner,
+    ).exists()
+    conditions = (
+        EvidenceRecord.tenant_id == owner,
+        EvidenceRecord.scan_id.in_(scan_by_id),
+        EvidenceRecord.deleted_at.is_(None),
+        ~linked,
+    )
+    total = int(db.execute(select(func.count()).select_from(EvidenceRecord).where(*conditions)).scalar() or 0)
+    rows = db.execute(
+        select(EvidenceRecord).where(*conditions)
+        .order_by(EvidenceRecord.created_at.desc(), EvidenceRecord.id.desc())
+        .limit(max(1, min(limit, 500)))
+    ).scalars().all()
+    assets: list[dict] = []
+    evidence: list[dict] = []
+    for row in rows:
+        ref = f"static:scan-evidence:{row.id}"
+        scan = scan_by_id[row.scan_id]
+        assets.append({
+            "ref": ref, "type": "APPLICATION", "name": row.file_path,
+            "identity": {"name": scan.target_location, "evidence_id": row.id},
+            "location": row.file_path, "source": "retained_static_scan",
+            "attributes": {"algorithm": row.algorithm, "scan_id": row.scan_id},
+        })
+        evidence.append({
+            "evidence_id": row.id, "source": "static_scanner",
+            "collector": "static:retained-scan-evidence", "evidence_type": "STATIC_OBSERVED",
+            "target": ref, "layer": "APPLICATION", "observed_at": _iso(row.created_at),
+            "facts": {"algorithm": row.algorithm, "key_size": row.key_size,
+                      "mode": row.mode, "purpose": row.purpose, "confidence": row.confidence,
+                      "file_path": row.file_path, "line_number": row.line_number,
+                      "scan_id": row.scan_id, "source_content_hash": row.content_hash,
+                      "usage_state_hint": "STATIC_PRESENCE_ONLY",
+                      "layer_note": "a retained scanner hit proves presence in source, not runtime use"},
+        })
+    notes = []
+    if total:
+        notes.append(f"{len(rows)} of {total} unindexed static evidence row(s) read from completed scans")
+    if scan_total > len(scans):
+        notes.append(f"only the newest {len(scans)} of {scan_total} completed scans were inspected")
+    return assets, evidence, total, "; ".join(notes) or None, (total > len(rows) or scan_total > len(scans))
 
 
 def _software_plane(software: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
@@ -948,7 +1018,9 @@ def _collect(plane: str, collector: Callable[..., dict[str, Any]], db: Any, **kw
         }
     expected = int(result.get("expected") or 0)
     collected = int(result.get("collected") or 0)
-    if expected and collected >= expected:
+    if result.get("truncated"):
+        status = "PARTIAL"
+    elif expected and collected >= expected:
         status = "COMPLETE"
     elif collected:
         status = "PARTIAL"
@@ -961,16 +1033,18 @@ def _collect(plane: str, collector: Callable[..., dict[str, Any]], db: Any, **kw
         "status": status,
         "expected": expected,
         "collected": collected,
+        "truncated": bool(result.get("truncated")),
         "assets": list(result.get("assets") or []),
         "evidence": list(result.get("evidence") or []),
         "relationships": list(result.get("relationships") or []),
         "reason": result.get("note") if status == "PARTIAL" else None,
         "note": result.get("note"),
         "impact": (
-            None if status == "COMPLETE" else (
-                f"{plane} is PARTIAL: {collected} of {expected} targets were collected, so the remainder is "
-                f"NOT_OBSERVED and {PLANE_DETAIL[plane]['boms']} under-report"
-            )
+            None if status == "COMPLETE" else
+            f"{plane} read was bounded: {result.get('note')}; {PLANE_DETAIL[plane]['boms']} may under-report"
+            if result.get("truncated") else
+            f"{plane} is PARTIAL: {collected} of {expected} targets were collected, so the remainder is "
+            f"NOT_OBSERVED and {PLANE_DETAIL[plane]['boms']} under-report"
         ),
     }
 

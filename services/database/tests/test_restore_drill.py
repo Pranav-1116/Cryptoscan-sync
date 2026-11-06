@@ -75,6 +75,35 @@ def test_a_named_backup_that_does_not_exist_is_a_refusal_not_the_newest_backup()
 # the plan itself
 # --------------------------------------------------------------------------- #
 
+def test_pg_restore_uses_connection_flags_not_a_password_bearing_dsn(monkeypatch):
+    from governance import backup_jobs
+
+    captured = []
+
+    def runner(*, env):
+        def run(argv, *, stdin=None):
+            captured.append((argv, stdin))
+            return backup_jobs.CommandResult(0, b"", b"")
+        return run
+
+    monkeypatch.setattr(backup_jobs, "subprocess_runner", runner)
+    backend = drill._pg_backend(SOURCE, TARGET)
+    backend.restore("cryptoscan_drill", b"test-only-archive")
+    argv, _ = captured[0]
+    assert "target-password" not in " ".join(argv)
+    assert argv[argv.index("-d") + 1] == "cryptoscan_drill"
+    assert argv[argv.index("-U") + 1] == "drill"
+
+
+def test_ci_key_is_passed_to_fernet_in_its_encoded_form():
+    from cryptography.fernet import Fernet
+    from scripts.pending_workflows import CI_ONLY_ENCRYPTION_KEY
+
+    key = drill._encryption_key(CI_ONLY_ENCRYPTION_KEY)
+    Fernet(key)
+    assert key.decode() == CI_ONLY_ENCRYPTION_KEY
+
+
 def test_the_plan_picks_the_newest_backup_and_never_carries_a_password():
     older = dict(MANIFEST, created_at="2026-10-01T00:00:00+00:00", backup_id="older")
     decision = drill.plan(source_dsn=SOURCE, target_dsn=TARGET, manifests=[older, MANIFEST])
@@ -85,6 +114,32 @@ def test_the_plan_picks_the_newest_backup_and_never_carries_a_password():
     assert decision["target"] == {"driver": "postgresql", "host": "recovery.internal",
                                  "port": 5432, "database": "cryptoscan_drill",
                                  "username": "drill", "has_password": True}
+
+
+def test_run_uses_the_real_backup_storage_restore_path(monkeypatch):
+    from governance import backup_jobs
+
+    class Store:
+        def list_manifests(self):
+            return [MANIFEST]
+
+    restored = []
+
+    def restore_from_storage(**kwargs):
+        restored.append(kwargs["database_id"])
+        return {"restored": True}
+
+    monkeypatch.setattr(backup_jobs, "restore_from_storage", restore_from_storage)
+    monkeypatch.setattr(drill, "measure", lambda dsn, connect=None: {
+        "revision": "0133", "verdict": "RESTORED_AND_MEASURED",
+        "tables": {"users": 1, "tenants": 1},
+    })
+    outcome = drill.run(source_dsn=SOURCE, target_dsn=TARGET, storage=Store(),
+                        database_id="cryptoscan", encryption_key=b"test-only",
+                        signing_secret="test-only", backend=object())
+    assert restored == ["cryptoscan"]
+    assert outcome["result"] == "RESTORED_AND_MEASURED"
+    assert outcome["measurement"]["source_comparison"]["verdict"] == "MATCH"
 
 
 # --------------------------------------------------------------------------- #
@@ -187,11 +242,61 @@ def test_measurement_reports_an_absent_table_as_a_fact_and_never_raises():
             pass
 
     facts = drill.measure(TARGET, connect=lambda dsn: Engine())
-    assert facts["verdict"] == "RESTORED_AND_MEASURED"
+    assert facts["verdict"] == "RESTORED_PARTIALLY_MEASURED"
     assert facts["revision"] == "0133"
     assert facts["tables"]["users"] == 7
     assert "tenants" in facts["missing_tables"]
     assert facts["rls"]["supported"] is False
+
+
+def test_a_schema_without_seeded_rows_is_not_a_successful_restore():
+    facts = {"measured": True, "table_count": 172, "missing_tables": [], "errors": [],
+             "tables": {table: 0 for table in drill.MEASURED_TABLES}}
+    assert drill._verdict(facts) == "RESTORED_EMPTY"
+
+
+def test_a_restore_with_missing_rows_or_a_different_revision_does_not_match():
+    source = {"revision": "0133", "tables": {"users": 1, "tenants": 1}}
+    target = {"revision": "0132", "tables": {"users": 0, "tenants": 1}}
+    result = drill.compare_measurements(source, target)
+    assert result["verdict"] == "MISMATCH"
+    assert result["mismatches"] == ["schema_revision", "users"]
+    assert drill.compare_measurements(source, source)["verdict"] == "MATCH"
+
+
+def test_cleanup_failure_cannot_be_reported_as_a_fully_measured_restore():
+    from types import SimpleNamespace
+
+    class Connection:
+        dialect = SimpleNamespace(name="sqlite")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def scalar(self, statement):
+            sql = str(statement)
+            if "information_schema" in sql:
+                return 8
+            if "current_schema" in sql:
+                return "public"
+            return "0133"
+
+        def execute(self, statement):
+            return SimpleNamespace(scalar=lambda: 1)
+
+    class Engine:
+        def connect(self):
+            return Connection()
+
+        def dispose(self):
+            raise OSError("test-only close failure")
+
+    measured = drill.measure(TARGET, connect=lambda _: Engine())
+    assert measured["verdict"] == "RESTORED_PARTIALLY_MEASURED"
+    assert "cleanup failed: OSError" in measured["errors"][0]
 
 
 def test_a_database_with_no_application_tables_is_not_reported_as_recovered():

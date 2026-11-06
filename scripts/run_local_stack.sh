@@ -188,6 +188,23 @@ PY
       return 2
     fi
     log "S3 versioning and exact-byte probe verified; backup/site qualification remains separate"
+    if [[ "${LOCAL_TWIN_OBJECT_TIER:-0}" == "1" ]]; then
+      export EVIDENCE_OBJECT_S3_ENDPOINT="$SBOM_S3_ENDPOINT"
+      export EVIDENCE_OBJECT_S3_BUCKET="$SBOM_S3_BUCKET"
+      export EVIDENCE_OBJECT_S3_REGION="${SBOM_S3_REGION:-us-east-1}"
+      export EVIDENCE_OBJECT_S3_ACCESS_KEY_FILE="$SBOM_S3_ACCESS_KEY_FILE"
+      export EVIDENCE_OBJECT_S3_SECRET_KEY_FILE="$SBOM_S3_SECRET_KEY_FILE"
+      export EVIDENCE_OBJECT_S3_PREFIX=tenants
+      if ! PYTHONPATH="$(pypath)" ENVIRONMENT=development "$PY" -c \
+          'import sys; from api.estate_evidence_objects import tier_status; sys.exit(0 if tier_status()["configured"] else 1)' >/dev/null; then
+        log "FATAL: the tenant-scoped twin object tier is not configured"
+        return 2
+      fi
+      log "tenant-scoped twin object tier configured; archive only approved retained evidence"
+    fi
+  elif [[ "${LOCAL_TWIN_OBJECT_TIER:-0}" == "1" ]]; then
+    log "FATAL: LOCAL_TWIN_OBJECT_TIER=1 requires the bank-owned S3 evidence backend"
+    return 2
   fi
   mkdir -p "$RUN"
 

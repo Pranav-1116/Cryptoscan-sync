@@ -481,6 +481,24 @@ def test_api_twin_why_and_search(api):
     assert http.get("/api/v1/estate/evidence/twin/why").status_code == 422
 
 
+def test_exported_graph_lines_resolve_through_the_same_why_api_as_the_canvas(api):
+    http, _session = api
+    _discover(http)
+    exported = http.get("/api/v1/estate/evidence/twin/graph").json()
+    for edge in exported["relationships"]:
+        if edge["type"] not in {"SUPPORTS", "CONTAINS", "PART_OF"}:
+            continue
+        response = http.get("/api/v1/estate/evidence/twin/why", params={
+            "subject": edge["from"], "predicate": edge["type"].lower(), "object": edge["to"]})
+        assert response.status_code == 200, response.text
+        answer = response.json()
+        assert answer["status"] in {"ESTABLISHED", "ASSERTED_UNCITED"}, (edge, answer)
+        if answer["status"] == "ASSERTED_UNCITED":
+            assert answer["detail"]
+        else:
+            assert answer["matches"][0]["evidence"]
+
+
 def test_api_twin_impact_and_simulate(api):
     http, _session = api
     _discover(http)
@@ -659,6 +677,28 @@ def test_the_graph_carries_the_organisation_chart_as_nodes_not_strings():
     # two placed assets, five asserted levels each; the unplaced asset is in no edge
     assert len(contains) == 10
     assert all(edge["from"].startswith("placement:") for edge in contains)
+
+
+def test_every_exported_evidence_or_placement_line_has_a_truthful_why_answer():
+    graph = build_graph(_chart_payload())
+    exported = twin.graph_export(graph)
+    support = next(edge for edge in exported["relationships"] if edge["type"] == "SUPPORTS")
+    why_support = twin.why(graph, subject=support["from"], predicate=support["type"],
+                           obj=support["to"])
+    assert why_support["status"] == "ESTABLISHED"
+    assert why_support["matches"][0]["evidence"][0]["evidence_id"] == "ev-1"
+
+    cited = next(edge for edge in exported["relationships"]
+                 if edge["type"] == "CONTAINS" and edge["properties"]["evidence_ids"])
+    why_cited = twin.why(graph, subject=cited["from"], predicate=cited["type"], obj=cited["to"])
+    assert why_cited["status"] == "ESTABLISHED"
+    assert why_cited["matches"][0]["evidence"][0]["evidence_id"] == "ev-1"
+
+    asserted = next(edge for edge in exported["relationships"] if edge["type"] == "PART_OF")
+    why_asserted = twin.why(graph, subject=asserted["from"], predicate=asserted["type"],
+                            obj=asserted["to"])
+    assert why_asserted["status"] == "ASSERTED_UNCITED"
+    assert "assertion-only" in why_asserted["detail"]
 
 
 def test_a_placement_level_nothing_asserts_has_no_node():

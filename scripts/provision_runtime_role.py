@@ -96,8 +96,8 @@ def statements(role: str, database: str, *, schema: str = "public") -> list[dict
 
 #: What ``verify`` measures. Each query is read-only and returns one row per fact, so a
 #: failure names what is wrong instead of printing a boolean.
-def verification_queries(role: str) -> list[dict[str, str]]:
-    _validate(role, "cryptoscan", "public")
+def verification_queries(role: str, *, schema: str = "public") -> list[dict[str, str]]:
+    _validate(role, "cryptoscan", schema)
     return [
         {"fact": "role_exists", "expect": "true",
          "sql": f"SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}')",
@@ -118,26 +118,29 @@ def verification_queries(role: str) -> list[dict[str, str]]:
          "sql": f"SELECT rolreplication FROM pg_roles WHERE rolname = '{role}'",
          "why": "not needed by the application"},
         {"fact": "has_connect", "expect": "true",
-         "sql": ("SELECT has_database_privilege(current_database(), "
-                 f"'{role}', 'CONNECT')"),
+         "sql": (f"SELECT has_database_privilege('{role}', current_database(), 'CONNECT')"),
          "why": "the runtime must be able to reach the database"},
         {"fact": "has_schema_usage", "expect": "true",
-         "sql": f"SELECT has_schema_privilege('public', '{role}', 'USAGE')",
+         "sql": f"SELECT has_schema_privilege('{role}', '{schema}', 'USAGE')",
          "why": "without USAGE the table grants are inert"},
         {"fact": "tables_rls_enabled", "expect": "all",
          "sql": ("SELECT count(*) FILTER (WHERE NOT c.relrowsecurity) AS missing, "
                  "count(*) AS total FROM pg_class c "
                  "JOIN pg_namespace n ON n.oid = c.relnamespace "
-                 "WHERE n.nspname = current_schema() AND c.relkind = 'r'"),
-         "why": "RLS must be enabled on every table, not the convenient ones"},
+                 f"WHERE n.nspname = '{schema}' AND c.relkind = 'r' "
+                 "AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid "
+                 "AND a.attname = 'tenant_id' AND NOT a.attisdropped)"),
+         "why": "RLS must be enabled on every tenant-owned table"},
         {"fact": "tables_rls_forced", "expect": "all",
          "sql": ("SELECT count(*) FILTER (WHERE NOT c.relforcerowsecurity) AS missing, "
                  "count(*) AS total FROM pg_class c "
                  "JOIN pg_namespace n ON n.oid = c.relnamespace "
-                 "WHERE n.nspname = current_schema() AND c.relkind = 'r'"),
-         "why": "FORCE ROW LEVEL SECURITY also binds the table owner"},
+                 f"WHERE n.nspname = '{schema}' AND c.relkind = 'r' "
+                 "AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid "
+                 "AND a.attname = 'tenant_id' AND NOT a.attisdropped)"),
+         "why": "FORCE ROW LEVEL SECURITY must bind every tenant-owned table"},
         {"fact": "policies_present", "expect": "more-than-zero",
-         "sql": "SELECT count(*) FROM pg_policies WHERE schemaname = current_schema()",
+         "sql": f"SELECT count(*) FROM pg_policies WHERE schemaname = '{schema}'",
          "why": "enabled RLS with no policy denies everything, which is not the design"},
         {"fact": "measures_this_role", "expect": "runtime",
          "sql": "SELECT current_user",
@@ -218,7 +221,7 @@ def main(argv: list[str] | None = None) -> int:
               f"for {args.role}. This proves the SQL ran, not that RLS binds: run `verify`.")
         return 0
 
-    queries = verification_queries(args.role)
+    queries = verification_queries(args.role, schema=args.schema)
     rows = run_sql(dsn, [q["sql"] for q in queries])
     observations = []
     for query, result in zip(queries, rows):
@@ -249,8 +252,9 @@ def _fails(observation: dict[str, Any]) -> bool:
         # the verification connection must be the runtime identity, not the migration owner
         return str(value) != str(observation.get("role"))
     if expect == "all":
-        missing = observed.get("missing") if isinstance(observed, dict) else None
-        return bool(missing)
+        if not isinstance(observed, dict):
+            return True
+        return not observed.get("total") or bool(observed.get("missing"))
     if expect == "more-than-zero":
         return not value
     return False

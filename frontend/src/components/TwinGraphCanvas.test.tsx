@@ -98,11 +98,40 @@ it("prints a refusal as a refusal, and never as 'no evidence'", async () => {
   });
   render(<TwinGraphCanvas />);
 
-  fireEvent.click(await screen.findByRole("button", { name: "supports: ev-1 → Payment API" }));
+  fireEvent.click(await screen.findByRole("button", { name: "uses_hsm: Payment API → HSM-03" }));
 
   await waitFor(() => expect(screen.getByText("NOT_ESTABLISHED")).toBeInTheDocument());
   expect(screen.getByText(/no evidence asserts this relationship/)).toBeInTheDocument();
   expect(screen.getByText(/not the same as .*no evidence exists/)).toBeInTheDocument();
+});
+
+it("shows the cited evidence behind a real SUPPORTS line", async () => {
+  mockFetch({ [GRAPH]: doc(), [WHY]: {
+    schema: "cryptoscan.estate-twin-why/1", status: "ESTABLISHED",
+    matches: [{ edge: { subject: "ev-1", predicate: "supports", object: "application:aaa" },
+      evidence: [{ evidence_id: "ev-1", evidence_type: "RUNTIME_OBSERVED", collector: "bank-collector",
+        source: "stored-receipt", hash: "a".repeat(64) }] }],
+  } });
+  render(<TwinGraphCanvas />);
+  fireEvent.click(await screen.findByRole("button", { name: "supports: ev-1 → Payment API" }));
+  await waitFor(() => expect(screen.getByText("ESTABLISHED")).toBeInTheDocument());
+  expect(screen.getByText("RUNTIME_OBSERVED")).toBeInTheDocument();
+  expect(screen.getByText("stored-receipt")).toBeInTheDocument();
+});
+
+it("labels an uncited placement line as assertion-only rather than verified evidence", async () => {
+  const graph = doc({ relationships: [
+    { type: "CONTAINS", from: "placement:environment:eee", to: "application:aaa",
+      properties: { evidence_ids: [], uncited_because: "placement assertion has no retained evidence" } },
+  ] });
+  mockFetch({ [GRAPH]: graph, [WHY]: {
+    schema: "cryptoscan.estate-twin-why/1", status: "ASSERTED_UNCITED",
+    detail: "placement assertion has no retained evidence", matches: [],
+  } });
+  render(<TwinGraphCanvas />);
+  fireEvent.click(await screen.findByRole("button", { name: "contains: production → Payment API" }));
+  await waitFor(() => expect(screen.getByText("ASSERTED_UNCITED")).toBeInTheDocument());
+  expect(screen.getByText(/placement assertion has no retained evidence/)).toBeInTheDocument();
 });
 
 it("says the drawing is truncated rather than implying it is the whole estate", async () => {

@@ -193,6 +193,7 @@ class BaseDriver:
         holds it — and the section is named in ``unchanged_sections`` so the omission is
         visible rather than inferred.
         """
+        self.reads = []
         sections: dict[str, list[dict[str, Any]]] = {}
         states: list[str] = []
         unchanged: list[str] = []
@@ -201,7 +202,7 @@ class BaseDriver:
         budget = MAX_SNAPSHOT_BYTES
         for section, path in self.endpoints.items():
             rows, result = self._read(path, params=self.params.get(section))
-            states.append(result.state)
+            section_state = result.state
             cap = min(MAX_ROWS_PER_SECTION, self.max_rows or MAX_ROWS_PER_SECTION)
             dropped = 0
             if len(rows) > cap:
@@ -214,14 +215,20 @@ class BaseDriver:
                                            "the count dropped is recorded because a partial "
                                            "section that looks whole is a clean audit of a "
                                            "rule nobody could see")}
+                if section_state == OK:
+                    section_state = PARTIAL_READ
             size = len(_canonical_rows(rows).encode("utf-8")) if rows else 0
             if size > budget:
                 truncated.setdefault(section, {})["memory_refused"] = True
-                self.reads.append(SectionRead(section=section, path=path, state=result.state,
+                if section_state == OK:
+                    section_state = PARTIAL_READ
+                states.append(section_state)
+                self.reads.append(SectionRead(section=section, path=path, state=section_state,
                                               rows=0, reason="snapshot memory budget reached"))
                 continue
+            states.append(section_state)
             budget -= size
-            self.reads.append(SectionRead(section=section, path=path, state=result.state,
+            self.reads.append(SectionRead(section=section, path=path, state=section_state,
                                           rows=len(rows), reason=result.reason))
             if result.ok and rows:
                 ordered = _sorted_rows(rows)
@@ -254,10 +261,11 @@ class BaseDriver:
                 "partial": state == PARTIAL_READ,
                 "sections": [read.as_dict() for read in self.reads],
                 "failed_sections": [read.section for read in self.reads
-                                    if read.state not in {OK, PARTIAL_READ}],
+                                    if read.state not in {OK, PARTIAL_READ}
+                                    or read.reason == "snapshot memory budget reached"],
                 "detail": _detail(state, self.reads),
                 # -- scale, in three parts -------------------------------------- #
-                "coverage": self._coverage(state, sections, unchanged),
+                "coverage": self._coverage(state, unchanged),
                 "section_digests": dict(sorted(digests.items())),
                 "unchanged_sections": sorted(unchanged),
                 "truncated": truncated,
@@ -267,12 +275,13 @@ class BaseDriver:
             },
         }
 
-    def _coverage(self, state: str, sections: Mapping[str, Any],
-                  unchanged: list[str]) -> dict[str, Any]:
+    def _coverage(self, state: str, unchanged: list[str]) -> dict[str, Any]:
         """Sections read versus sections the dialect declares — per device, not per estate."""
         declared = len(self.endpoints)
-        read = len(sections) + len(unchanged)
-        failed = [read.section for read in self.reads if read.state not in {OK, PARTIAL_READ}]
+        read = sum(1 for item in self.reads if item.state in {OK, PARTIAL_READ}
+                   and item.reason != "snapshot memory budget reached")
+        failed = [item.section for item in self.reads if item.state not in {OK, PARTIAL_READ}
+                  or item.reason == "snapshot memory budget reached"]
         return {
             "sections_declared": declared,
             "sections_read": read,
@@ -280,7 +289,7 @@ class BaseDriver:
             "sections_unchanged": len(unchanged),
             "failed": failed,
             "fraction": round(read / declared, 3) if declared else 0.0,
-            "complete": bool(declared) and read == declared,
+            "complete": bool(declared) and read == declared and state == OK,
             "state": state,
         }
 

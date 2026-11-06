@@ -377,6 +377,10 @@ def verify_chain(
         if row.previous_hash != previous:
             problems.append({"code": "CHAIN_BROKEN", "at": row.digest,
                              "found_previous": row.previous_hash})
+        computed = _entry_hash(row)
+        if row.entry_hash != computed:
+            problems.append({"code": "ENTRY_HASH_MISMATCH", "at": row.digest,
+                             "sequence": row.sequence})
         previous = row.entry_hash
     return {"tenant": current_tenant(), "snapshots": len(rows), "verified": not problems,
             "problems": problems, "head": previous}
