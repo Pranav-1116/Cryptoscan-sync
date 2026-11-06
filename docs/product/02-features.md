@@ -81,10 +81,11 @@ extracted is reported as a finding of type *unknown* with a reason
   cited to firmware documentation; 68 vendor plugins across 16 categories.
 - **Payment.** HSM key inventory, TR-39-style ceremony provenance, dual
   custody, PCI attributes and ISO 20022 message cryptography.
-- **Runtime · Vendors · CMDB.** Host agents (eBPF / `LD_PRELOAD` adapters)
-  report which libraries are actually loaded; vendor questionnaires and
-  CBOMs feed a 0–100 vendor risk score; a ServiceNow-style CMDB resolves
-  systems and owners.
+- **Runtime · Vendors · CMDB.** Runtime findings report which libraries are
+  actually loaded — ingested from a bank's own eBPF/mesh agents, or posted by
+  this repository's `LD_PRELOAD` tracer (ADR-012; no kernel/eBPF crypto agent
+  ships); vendor questionnaires and CBOMs feed a 0–100 vendor risk score; a
+  ServiceNow-style CMDB resolves systems and owners.
 
 The result of all eleven is **one inventory**: a key seen by the cloud
 collector and by code scanning is one `crypto_assets` row with two evidence
@@ -107,7 +108,7 @@ deterministic; an unreachable target is reported as unreachable._
 | **Telecom** | 5GC / EPC / IMS / roaming verdicts, SEPP PQC readiness, per-carrier packs, closed-network ingest | `/telecom` · `telecom` · `telecom_scanner` | beta |
 | **Hardware** | HSM / TPM / firmware registry, quantum-resistant flags with firmware-cited provenance; 68 vendor plugins across 16 categories | `/hardware`, `/catalog` · `hardware` · `universal_crypto`, `universal_vendor` | beta |
 | **Payment** | HSM key inventory, TR-39-style ceremony provenance, dual custody, PCI attributes, ISO 20022 | Banking · `payment-crypto` · `payment_crypto` | GA |
-| **Runtime hosts** | agent-reported findings from live hosts (eBPF / LD_PRELOAD adapters) | `/runtime`, `/live-environment` · `runtime` · `runtime` | beta |
+| **Runtime hosts** | agent-reported findings from live hosts (a bank's eBPF/mesh agents, ingested; the shipped adapter is `LD_PRELOAD`) | `/runtime`, `/live-environment` · `runtime` · `runtime` | beta |
 | **Vendors** | vendor questionnaires, vendor CBOMs and documents → 0–100 vendor crypto risk | `/vendor` · `vendors` · `vendor_intel` | GA |
 | **CMDB import** | ServiceNow-style CMDB resolution into systems | `/cmdb` · `cmdb` · `inventory` | beta |
 
@@ -503,7 +504,7 @@ production.
 | Real-time | SSE `/api/v1/events/stream` with `Last-Event-ID` resume; WebSocket; Redis federation across nodes | `/live-stream` · `events`, `stream`, `ws` · `eventstream` | GA |
 | Observability | Prometheus `/metrics`, `/health`, `/readyz` with drain semantics, structured logs, trace middleware, Grafana dashboard | `/system-health` · `observability` | GA |
 | GraphQL | typed read API over the same repositories | — · `graphql` | beta |
-| Backup, restore, PITR, DR | `db_backup.sh` with sha256 manifest and retention, restore and PITR drills with recorded results, region failover drills | `/resilience` · `scripts/db_*.sh`, `docs/runbooks/dr-recovery.md` | GA (scripts) / beta (page) |
+| Backup, restore, PITR, DR | `db_backup.sh` with sha256 manifest and retention, restore and PITR drills with recorded results, region failover drills | `/resilience` · `scripts/db_*.sh`, `docs/runbooks/dr-recovery.md` | GA (backup/restore scripts) / beta (page) — PITR and region failover drills are same-process code drills, not site qualifications (their scope: `docs/region-failover.md`, `docs/pitr-drill.md`) |
 | Air-gap mode | JWKS from file, feed import, no phone-home; air-gap install guide | admin guide | GA |
 | Security posture of the platform itself | headers, rate limits, audit chain verification, pen-test findings tracker | `/security-center`, `/security` · `security`, `pentest` | GA / beta |
 | Staging without Docker | embedded PostgreSQL + Redis + api/worker/monitor with production guards | `deploy/staging/staging-up.sh` | GA |

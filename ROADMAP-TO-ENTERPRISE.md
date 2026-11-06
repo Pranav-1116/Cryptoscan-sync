@@ -117,9 +117,9 @@ caught, costs you trust in everything else you said.
 
 | Claim | Reality | Action |
 |---|---|---|
-| "eBPF runtime agent" | No kernel code exists anywhere in the repo. The `scanner_id` default is fixed, but `docs/README.md` and `PLATFORM-STATUS.md` still reference "eBPF/mesh agents" | Delete the references, or say "LD_PRELOAD tracer", which is real and works |
-| SOC2 CC9.3/9.4 region failover **PASS** | `scripts/region_drills.py:39` simulates a region pair with two temp *directories* in one process; the containerised drill is recorded SKIPPED | Already downgraded in the doc. Either run a real two-Postgres drill or leave it ⚠️ |
-| "Precision / Recall / F1 = 100%" | Scored against 842 fixtures written here and tuned against wave by wave | Never quote it externally. Quote the external validation instead |
+| "eBPF runtime agent" | There is no kernel *crypto* agent anywhere in the repo — `deploy/ebpf/execve_trace.py` traces execve for the AI boundary, not crypto, and the `scanner_id` default is neutral | **Deleted 2026-11-06.** The surfaces now name the `LD_PRELOAD` tracer (ADR-012) and negate the eBPF agent; every eBPF mention on a product surface must match an approved shape or `scripts/tests/test_claim_hygiene.py` fails |
+| SOC2 CC9.3/9.4 region failover **PASS** | `scripts/region_drills.py` simulates a region pair with two temp *directories* in one process; the containerised drill is recorded SKIPPED | **Scoped 2026-11-06.** The drill reports print "PASS — same-process code drill (see Scope; not a site qualification)" and the scope travels beside the verdict; the SOC2 mapping stays ⚠️. Enforced by `scripts/tests/test_region_drill_reports.py` + `test_claim_hygiene.py`. The only upgrade path remains a real two-Postgres drill |
+| "Precision / Recall / F1 = 100%" | Scored against fixtures written here and tuned against wave by wave | **Held deleted 2026-11-06.** No surface quotes it; `scripts/tests/test_claim_hygiene.py` fails on the claim shape and requires every perfect-score quote to carry its corpus caveat on the same line. External quotes use `docs/accuracy/EXTERNAL-VALIDATION.md` with its blind/corpus scope |
 
 ### 1.4 Make the parity and CI gates mandatory
 

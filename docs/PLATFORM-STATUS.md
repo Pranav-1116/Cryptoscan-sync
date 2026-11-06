@@ -424,7 +424,7 @@ classifiers — `AES-256-ECB` → `HIGH` (registry DISALLOWED), `MD5` → `HIGH`
 broken), `AES-128-CBC` → `MEDIUM` (Grover), an unresolvable name →
 `BIN-DYNAMIC-UNIDENTIFIED-CIPHER` (`LOW`) instead of a false all-clear. `--submit` /
 `submit: true` posts to `POST /scans/runtime-findings`, so binary runtime crypto sits in the
-same inventory, verdicts and SSE stream as the eBPF/mesh agents; the ingest now judges a bare
+same inventory, verdicts and SSE stream as any runtime agent feed (a bank's mesh/agent postings, or the shipped `LD_PRELOAD` tracer — no eBPF crypto agent ships); the ingest now judges a bare
 crypto call by its own algorithm (previously only TLS suites were judged) and the runtime
 dedup key includes the algorithm and mode, so two ciphers from one process are two rows.
 New `POST /devsecops/binary/dynamic` (dry run 200, or 403 with every refusal when
@@ -1176,8 +1176,8 @@ API load-test tool. Migration 0030. See `docs/user-guide/payment-crypto.md`.
 
 **Scale/observability/DR/compliance (current round)** — multi-region event
 log replication (HMAC-verified, seq-continuous, failback-converging; drill
-`docs/region-failover.md`), PITR snapshot+replay to any epoch
-(`docs/pitr-drill.md`), platform self-observability (W3C trace-context +
+`docs/region-failover.md` — a same-process code drill, scope in the report), PITR snapshot+replay to any epoch
+(`docs/pitr-drill.md`, same scope rule), platform self-observability (W3C trace-context +
 Prometheus `/ops/*`: metrics, traces, SLO burn, self-alerts, capacity
 forecast — `docs/round-scalability-observability.md`), signed registry
 webhook live burn (`docs/registry-webhook-burn.md`), compliance evidence

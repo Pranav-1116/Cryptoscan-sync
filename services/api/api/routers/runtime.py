@@ -33,9 +33,10 @@ class RuntimeFindingsBody(BaseModel):
     # them; the caller names itself. The default used to be
     # "ebpf-runtime-agent-v1.0", which made every unattributed batch look as
     # though it came from an eBPF agent this project ships. It does not — there
-    # is no kernel code in the repository. What does exist is the LD_PRELOAD
-    # tracer in services/runtime (cshim/cryptoscan_trace.c), and it names
-    # itself. Keep this neutral so the inventory never over-claims its source.
+    # is no kernel *crypto* agent in the repository (`deploy/ebpf/execve_trace.py`
+    # traces execve for the AI boundary, not crypto). What does exist is the
+    # LD_PRELOAD tracer in services/runtime (cshim/cryptoscan_trace.c), and it
+    # names itself. Keep this neutral so the inventory never over-claims its source.
     scanner_id: str = "runtime-agent-unspecified"
     # Batch cap — agents stream continuously, so a single request must never be
     # allowed to ingest an unbounded array (resource-exhaustion / DoS, OWASP A04).

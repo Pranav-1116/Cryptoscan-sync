@@ -133,6 +133,70 @@ def pitr_drill(root: Path) -> list[dict]:
     return checks
 
 
+#: What every generated report must carry. The drills exercise real replication,
+#: promotion and recovery code — but the two "regions" are two temporary
+#: directories inside one process on one machine. A bare "PASS" would let a
+#: reader assume a two-site failover (or even SOC 2 CC9.3/9.4) qualification
+#: this repository has never earned (roadmap phase 1.3, claim 2): the scope
+#: must travel beside the verdict, and a verdict never stands alone.
+SCOPE_BLOCKS = {
+    "Region failover": [
+        "**Scope — what this drill is, and is not.** The two regions are two",
+        "temporary directories inside one process on one machine. This exercises",
+        "the replication, promotion and convergence code end to end; it is **not**",
+        "a two-site failover, **not** a two-Postgres-instance DR drill, **not** a",
+        "measured RPO/RTO, and **not** SOC 2 CC9.3/9.4 evidence. A bank runs the",
+        "real drill against its own sites and keeps those receipts.",
+    ],
+    "Point-in-time platform recovery": [
+        "**Scope — what this drill is, and is not.** This is platform-event",
+        "recovery — snapshot + verified replay of the signed event log — in one",
+        "process. It is **not** PostgreSQL WAL PITR, **not** a bank backup",
+        "restore, **not** a measured RPO/RTO, and **not** SOC 2 evidence. The",
+        "bank-side restore drill is `scripts/restore_drill.py` against its own",
+        "backups and recovery database.",
+    ],
+}
+
+
+def build_report(name: str, results: list[dict], *, ok: bool, ran_at: str) -> str:
+    """Render one drill's report, with its scope beside its verdict."""
+    lines = [
+        f"# {name} drill",
+        "",
+        f"Ran {ran_at} — executable proof (`scripts/region_drills.py`), "
+        f"temporary regions, real bus code.",
+        "",
+        *SCOPE_BLOCKS[name],
+        "",
+        "| Check | Result |",
+        "|---|---|",
+    ]
+    for r in results:
+        lines.append(f"| {r['check']} | {'✅ PASS' if r['ok'] else '❌ ' + r['detail']} |")
+    if name.startswith("Region"):
+        lines += [
+            "",
+            "Model: one **write primary** per topic; replicas receive HMAC-",
+            "verified shipments (tampered lines never ship, sequence gaps abort);",
+            "promotion continues the replicated sequence; the returning old",
+            "primary converges as a replica. API read-replicas are designed to sit",
+            "behind a load balancer against any replica dir — not exercised here.",
+        ]
+    else:
+        lines += [
+            "",
+            "Model: consistent DB snapshot (SQLite online backup in this drill) +",
+            "append-only signed event logs. Recovery to point T = snapshot +",
+            "verified replay of events in (snapshot, T]. The recovered stream",
+            "continues with correct sequence numbering.",
+        ]
+    verdict = ("PASS — same-process code drill (see Scope; not a site qualification)"
+               if ok else "FAIL — a check above did not hold")
+    lines += ["", f"**Verdict: {verdict}**", ""]
+    return "\n".join(lines)
+
+
 def main() -> int:
     root = Path(tempfile.mkdtemp(prefix="region-drills-"))
     all_ok = True
@@ -143,38 +207,10 @@ def main() -> int:
         results = fn(root)
         ok = all(r["ok"] for r in results)
         all_ok &= ok
-        lines = [
-            f"# {name} drill",
-            "",
-            f"Ran {datetime.now(timezone.utc).isoformat()} — executable proof "
-            f"(`scripts/region_drills.py`), temporary regions, real bus code.",
-            "",
-            "| Check | Result |",
-            "|---|---|",
-        ]
-        for r in results:
-            lines.append(f"| {r['check']} | {'✅ PASS' if r['ok'] else '❌ ' + r['detail']} |")
-        if name.startswith("Region"):
-            lines += [
-                "",
-                "Model: one **write primary** per topic; replicas receive HMAC-",
-                "verified shipments (tampered lines never ship, sequence gaps abort);",
-                "promotion continues the replicated sequence; the returning old",
-                "primary converges as a replica. API read-replicas scale behind a",
-                "load balancer against any replica dir.",
-            ]
-        else:
-            lines += [
-                "",
-                "Model: consistent DB snapshot (SQLite online backup in this drill) +",
-                "append-only signed event logs. Recovery to point T = snapshot +",
-                "verified replay of events in (snapshot, T]. The recovered stream",
-                "continues with correct sequence numbering. PostgreSQL *physical*",
-                "recovery to a point in time needs a bank-operated base backup and",
-                "WAL archive and is out of scope for this drill.",
-            ]
-        lines += ["", f"**Verdict: {'PASS' if ok else 'FAIL'}**", ""]
-        doc.write_text("\n".join(lines), encoding="utf-8")
+        doc.write_text(
+            build_report(name, results, ok=ok,
+                         ran_at=datetime.now(timezone.utc).isoformat()),
+            encoding="utf-8")
         print(f"{name}: {'PASS' if ok else 'FAIL'} -> {doc.name}")
     shutil.rmtree(root, ignore_errors=True)
     return 0 if all_ok else 1

@@ -47,7 +47,7 @@ customer banks evidence *their* CBUAE/PCI posture — that is a separate use.)
 | CC7.2 remediation | ✅ | Finding lifecycle service (`remediation/`), drift alerts (`drift/alerts/`) |
 | CC7.3/7.3.1 vulnerability management | 🟡 | Dependabot config + SCA/dependency graph + `security_scan.sh` exist; **cadence + triage SLAs documented** in the Vulnerability Management Policy, and pen-test findings **ingest into the platform** (`POST /api/v1/pentest/findings` → severity-banded, deduped, tracked to closure). Missing: **the third-party pen test itself** (see §5) |
 | CC7.5 operations monitoring | ✅ | Metrics/observability/trace middlewares, `/health` + `/healthz`, burn-in harness (`scripts/burn_in.py`) |
-| CC7.6 backup | ✅ | Scheduled backup service with sweep (`governance/backup_schedule.py`), backup + PITR **drills with recorded results** (`docs/backup-drill.md`, `docs/pitr-drill.md`), restore verification script (`scripts/restore_evidence.py`) |
+| CC7.6 backup | ✅ | Scheduled backup service with sweep (`governance/backup_schedule.py`), backup + PITR **drills with recorded results** (`docs/backup-drill.md`; `docs/pitr-drill.md` is the same-process platform-event PITR — snapshot+replay, **not** PostgreSQL WAL PITR), restore verification script (`scripts/restore_evidence.py`) |
 
 ## 3. CC8 — Change management (a genuine strength)
 

@@ -1,12 +1,13 @@
 # Point-in-time platform recovery drill
 
-> **Scope.** This proves *platform* recovery: a consistent snapshot plus verified
-> replay of the signed event log to a chosen point. It is **not** PostgreSQL WAL
-> point-in-time recovery, which needs a bank-operated physical base backup and WAL
-> archive (see `docs/runbooks/dr-recovery.md`); the governance backup API refuses a
-> requested PIT on a `pg_dump` artifact rather than reporting one.
+Ran 2026-11-06T12:53:34.083531+00:00 — executable proof (`scripts/region_drills.py`), temporary regions, real bus code.
 
-Ran 2026-09-17T08:09:44.709455+00:00 — executable proof (`scripts/region_drills.py`), temporary regions, real bus code.
+**Scope — what this drill is, and is not.** This is platform-event
+recovery — snapshot + verified replay of the signed event log — in one
+process. It is **not** PostgreSQL WAL PITR, **not** a bank backup
+restore, **not** a measured RPO/RTO, and **not** SOC 2 evidence. The
+bank-side restore drill is `scripts/restore_drill.py` against its own
+backups and recovery database.
 
 | Check | Result |
 |---|---|
@@ -16,10 +17,8 @@ Ran 2026-09-17T08:09:44.709455+00:00 — executable proof (`scripts/region_drill
 | database restored to snapshot point | ✅ PASS |
 
 Model: consistent DB snapshot (SQLite online backup in this drill) +
-append-only signed event logs. Recovery to point T = snapshot + verified
-replay of events in (snapshot, T]. The recovered stream continues with
-correct sequence numbering. Database *physical* recovery of the PostgreSQL
-cluster to a point in time is a separate, bank-operated workflow and is out
-of scope here.
+append-only signed event logs. Recovery to point T = snapshot +
+verified replay of events in (snapshot, T]. The recovered stream
+continues with correct sequence numbering.
 
-**Verdict: PASS**
+**Verdict: PASS — same-process code drill (see Scope; not a site qualification)**

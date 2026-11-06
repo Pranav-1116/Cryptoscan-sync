@@ -1,6 +1,13 @@
 # Region failover drill
 
-Ran 2026-09-17T08:09:44.692940+00:00 — executable proof (`scripts/region_drills.py`), temporary regions, real bus code.
+Ran 2026-11-06T12:53:34.070913+00:00 — executable proof (`scripts/region_drills.py`), temporary regions, real bus code.
+
+**Scope — what this drill is, and is not.** The two regions are two
+temporary directories inside one process on one machine. This exercises
+the replication, promotion and convergence code end to end; it is **not**
+a two-site failover, **not** a two-Postgres-instance DR drill, **not** a
+measured RPO/RTO, and **not** SOC 2 CC9.3/9.4 evidence. A bank runs the
+real drill against its own sites and keeps those receipts.
 
 | Check | Result |
 |---|---|
@@ -13,7 +20,7 @@ Ran 2026-09-17T08:09:44.692940+00:00 — executable proof (`scripts/region_drill
 Model: one **write primary** per topic; replicas receive HMAC-
 verified shipments (tampered lines never ship, sequence gaps abort);
 promotion continues the replicated sequence; the returning old
-primary converges as a replica. API read-replicas scale behind a
-load balancer against any replica dir.
+primary converges as a replica. API read-replicas are designed to sit
+behind a load balancer against any replica dir — not exercised here.
 
-**Verdict: PASS**
+**Verdict: PASS — same-process code drill (see Scope; not a site qualification)**
