@@ -415,6 +415,12 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_host_list)
     app.add_middleware(LoggingMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1024)  # W59-60: compress bulky JSON payloads
+    # Outside GZip: the ETag hashes exactly the representation served (gzip and
+    # identity get different tags). Conditional GET lets polling dashboards
+    # revalidate with headers only — 304 instead of re-downloading BOM/twin JSON.
+    from api.middleware.conditional_get import ConditionalGetMiddleware
+
+    app.add_middleware(ConditionalGetMiddleware, max_body=2 * 1024 * 1024)
     app.add_middleware(RequestIDMiddleware)
     # Machine identity for the ingest surface. Inert unless
     # CRYPTOSCAN_REQUIRE_AGENT_IDENTITY is set, and scoped to /api/v1/ingestion.

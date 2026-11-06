@@ -38,6 +38,10 @@ from api.security.client_ip import client_ip
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
+#: Days after a session's expiry its row survives for incident review before the
+#: login-time purge may hard-delete it.
+SESSION_PURGE_GRACE_DAYS = 30
+
 
 class LoginRequest(BaseModel):
     username: str = Field(..., min_length=1)
@@ -203,6 +207,24 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
             db.rollback()
         except Exception as rollback_exc:
             logger.exception("auth_session_rollback_failed", extra={"error_type": type(rollback_exc).__name__})
+
+    # Opportunistic storage sweep: long-dead session rows are purged at login
+    # (the cadence at which they are created). 30 days past expiry is the
+    # incident-review window; revoked-but-unexpired rows are kept. A purge
+    # failure never blocks a login — it is storage hygiene, not auth.
+    try:
+        removed = _user_repo(db).purge_expired_sessions(
+            expired_before=datetime.now(timezone.utc) - timedelta(days=SESSION_PURGE_GRACE_DAYS)
+        )
+        if removed:
+            db.commit()
+            logger.info("auth_sessions_purged", extra={"removed": removed})
+    except Exception as exc:
+        logger.warning("auth_session_purge_failed", extra={"error_type": type(exc).__name__})
+        try:
+            db.rollback()
+        except Exception as rollback_exc:
+            logger.warning("auth_session_purge_rollback_failed", extra={"error_type": type(rollback_exc).__name__})
 
     response.set_cookie(
         key="cryptoscan_session",

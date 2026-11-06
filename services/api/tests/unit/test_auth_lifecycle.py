@@ -134,3 +134,43 @@ def test_admin_can_view_audit_trail(sqlite_app):
     assert audit.status_code == 200
     actions = {e["action"] for e in audit.json()["events"]}
     assert "auth.login" in actions
+
+
+def test_login_purges_long_dead_session_rows_but_keeps_live_ones(sqlite_app):
+    """The storage sweep: rows dead past the grace window go at login; live rows stay.
+
+    ``user_sessions`` grew without bound before this — every login added a row
+    and nothing ever deleted one. The sweep runs at login (the cadence that
+    creates rows) and must never touch a session that could still authenticate
+    or one still inside the incident-review window.
+    """
+    client, _ = sqlite_app
+    from datetime import datetime, timedelta, timezone
+
+    from db.connection.session import SessionLocal
+    from db.repositories.user_repository import UserRepository
+
+    now = datetime.now(timezone.utc)
+    with SessionLocal() as s:
+        repo = UserRepository(s)
+        repo.create_session("dead-token-60d", "admin", now - timedelta(days=60))
+        repo.create_session("grace-token-1d", "admin", now - timedelta(days=1))
+        live = repo.create_session("live-token", "admin", now + timedelta(days=1))
+        repo.revoke_session("live-token")  # revoked-but-unexpired: revocation checks still read it
+        s.commit()
+
+    login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "cryptoscan"})
+    assert login.status_code == 200, login.text  # the sweep must never block a login
+
+    with SessionLocal() as s:
+        repo = UserRepository(s)
+        assert repo.get_session("dead-token-60d") is None, "a 60-day-dead row survived the login sweep"
+        assert repo.get_session("grace-token-1d") is not None, "the 30-day review window was pruned early"
+        kept = repo.get_session("live-token")
+        assert kept is not None and kept.revoked_at is not None, "revoked-but-unexpired rows must survive"
+        # An explicit tighter cutoff removes the reviewed-and-aged row, and is idempotent.
+        assert repo.purge_expired_sessions(expired_before=now) == 1
+        assert repo.get_session("grace-token-1d") is None
+        assert repo.get_session("live-token") is not None, "an unexpired row must survive any expiry-based purge"
+        assert repo.purge_expired_sessions(expired_before=now) == 0
+        s.commit()

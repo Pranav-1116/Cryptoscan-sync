@@ -6,7 +6,7 @@ import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from db.models.user import AuditLog, User, UserSession, VALID_ROLES
@@ -472,6 +472,27 @@ class UserRepository:
         return self.session.execute(
             select(UserSession).where(UserSession.token_hash == token_hash(token))
         ).scalar_one_or_none()
+
+    def purge_expired_sessions(self, *, expired_before: datetime) -> int:
+        """Hard-delete session rows whose ``expires_at`` is older than the cutoff.
+
+        ``user_sessions`` is the revocation and inventory store: a row must live
+        until its token can no longer authenticate (``expires_at``) and long
+        enough afterwards for incident review.  Nothing deleted rows before this
+        sweep existed — every login added one and the table grew without bound.
+        Revoked-but-unexpired rows are deliberately untouched: revocation checks
+        still read them.  Returns the number of rows removed.
+        """
+        # synchronize_session="fetch": the ORM's default 'evaluate' compares
+        # Python-side datetimes and SQLite hands back naive ones — a naive row
+        # against an aware cutoff raises TypeError. 'fetch' resolves matches in
+        # SQL (both dialects) and drops them from the session cleanly.
+        result = self.session.execute(
+            delete(UserSession).where(UserSession.expires_at < expired_before),
+            execution_options={"synchronize_session": "fetch"},
+        )
+        self.session.flush()
+        return int(result.rowcount or 0)
 
     def revoke_session(self, token: str) -> bool:
         row = self.get_session(token)
