@@ -82,3 +82,36 @@ def test_an_unauthenticated_caller_cannot_trade_a_tag_for_a_304(client):
                            headers={"If-None-Match": etag, "Authorization": "Bearer revoked-or-garbage"})
     assert anonymous.status_code in (401, 403), anonymous.text
     assert anonymous.status_code != 304
+
+
+def test_a_stream_is_never_held_back_for_hashing():
+    """Regression: buffering a stream to compute an ETag deadlocks its reader.
+
+    An SSE (or any non-JSON) response must reach the wire chunk by chunk the
+    moment it starts — even when the client asked with a plain Accept header
+    and even before the stream ends.  A stream that never terminates would
+    otherwise never be forwarded at all.
+    """
+    import asyncio
+
+    from api.middleware.conditional_get import ConditionalGetMiddleware
+
+    async def streaming_app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200,
+                    "headers": [(b"content-type", b"text/event-stream; charset=utf-8")]})
+        await send({"type": "http.response.body", "body": b"event: tick\n\n", "more_body": True})
+        # No terminating chunk: the stream is still open. The reader must have
+        # the first event anyway.
+
+    sent = []
+
+    async def sink(message):
+        sent.append(message)
+
+    scope = {"type": "http", "method": "GET", "headers": [],
+             "path": "/api/v1/events/stream", "query_string": b"", "scheme": "http", "server": ("t", 80)}
+    asyncio.run(ConditionalGetMiddleware(streaming_app)(scope, None, sink))
+
+    assert any(m.get("body") == b"event: tick\n\n" for m in sent), (
+        "the first stream chunk must be forwarded while the stream is still open"
+    )

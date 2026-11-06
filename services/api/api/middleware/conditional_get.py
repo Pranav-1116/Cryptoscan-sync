@@ -12,8 +12,11 @@ Design boundaries (deliberate):
 * ``application/json`` bodies only, and only up to ``max_body`` bytes.  Bigger
   bodies stream through untouched — a hash is not worth buffering a large
   export for, and the export routes already manage their own caching.
-* Streams (``text/event-stream``) and binary downloads pass through unbuffered:
-  the first response chunk decides, and nothing is held back for hashing.
+* Eligibility is decided from the *response* content type at response start:
+  anything that is not a 200 JSON body (SSE streams, downloads, redirects)
+  is forwarded immediately, chunk by chunk.  A stream requested with a plain
+  ``Accept`` header must never be held back — buffering an event stream
+  deadlocks the client until the stream ends, and an SSE stream never ends.
 * The ETag covers the representation actually served (post-gzip, when the
   client asked for gzip), so the validator is per-representation correct and
   ``Vary: Accept-Encoding`` is always set alongside it.
@@ -44,11 +47,6 @@ class ConditionalGetMiddleware:
 
         request_headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
         if_none_match = request_headers.get("if-none-match", "").strip()
-        accept = request_headers.get("accept", "")
-        # Streaming and negotiation cases keep their own transport semantics.
-        if "text/event-stream" in accept:
-            await self.app(scope, receive, send)
-            return
 
         state = {"status": 0, "headers": None, "chunks": [], "size": 0, "abandoned": False}
 
@@ -56,6 +54,15 @@ class ConditionalGetMiddleware:
             if message["type"] == "http.response.start":
                 state["status"] = message["status"]
                 state["headers"] = list(message.get("headers", []))
+                # The response, not the request, says what this is. A stream
+                # (SSE) requested with a plain Accept header must never be held
+                # back for hashing: buffering it deadlocks the client until the
+                # stream ends — for SSE, never. Only bounded JSON 200s are
+                # candidates; everything else streams through untouched.
+                content_type = (self._header(state["headers"], "content-type") or "").lower()
+                if state["status"] != 200 or "application/json" not in content_type:
+                    state["abandoned"] = True
+                    await send(message)
                 return
             if message["type"] == "http.response.body":
                 if state["abandoned"]:
