@@ -6,7 +6,9 @@ ONLY their own randomly named database and minimal audit table. Read parity
 uses the migrated app schema, always rolls back. No credentials in artifacts.
 """
 import concurrent.futures
+import importlib.util
 import os
+from pathlib import Path
 import threading
 import time
 import uuid
@@ -22,7 +24,25 @@ from db.models.crypto_asset import CryptoAsset
 from db.models.user import AuditLog
 from db.repositories.user_repository import UserRepository, verify_audit_chain
 from shared_models.import_provenance import is_import, is_legacy_import
-from test_import_provenance import CASES
+
+
+def _cases() -> list:
+    """Load the sibling module by path.
+
+    ``--import-mode=importlib`` (pytest.ini) never puts a test directory on
+    ``sys.path``, so a bare ``from test_import_provenance import CASES`` fails at
+    collection and takes the whole suite down with it. The api suite dodges this
+    by having its unit directory exported on PYTHONPATH in ci.yml; this file must
+    not depend on how it is invoked.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "test_import_provenance", Path(__file__).with_name("test_import_provenance.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.CASES
+
+
+CASES = _cases()
 
 URL = os.environ.get("CRYPTOSCAN_PROVENANCE_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(not URL, reason="explicit owned disposable PostgreSQL URL required")
