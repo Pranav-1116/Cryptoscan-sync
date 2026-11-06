@@ -1,7 +1,8 @@
-"""The labeled-calibration endpoint must not scan 842 files to answer a GET.
+"""The labeled-calibration endpoint must not scan the whole labelled corpus to answer a GET.
 
 `GET /api/v1/findings/detectors/labeled-calibration` ran the whole labeled
-accuracy corpus inside the request — the production scanner over 842 files, plus
+accuracy corpus inside the request — the production scanner over the full labelled
+corpus (851 files as of wave 20; it only grows), plus
 the scanner registry import — and cached the result only in memory, so every
 worker process paid it once. Measured at 6.9–10 s on a cold live server, on a
 thread that could have served another request.
@@ -82,8 +83,8 @@ def test_the_endpoint_serves_the_artifact_without_running_the_corpus(artifact, m
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["report"]["source"] == "precomputed"
-    assert body["report"]["cases"] == len(payload["cases"]) == 842
-    assert body["corpus_overall"]["files"] == 842
+    assert body["report"]["cases"] == len(payload["cases"])
+    assert body["corpus_overall"]["files"] == len(payload["cases"])
     assert body["detector_metrics"], "per-detector calibration is empty"
 
 
@@ -123,7 +124,7 @@ def test_without_an_artifact_the_endpoint_computes_once_and_stores_it(tmp_path, 
     findings_router._corpus_benchmark.cache_clear()
     try:
         report = findings_router._corpus_benchmark()[0]
-        assert len(report["cases"]) == 842
+        assert len(report["cases"]) >= 842  # the labelled corpus only grows as waves are added
         assert path.exists(), "the computed report was not stored for the other workers"
         stored = json.loads(path.read_text())
         assert stored["input_fingerprint"] == findings_router._calibration_fingerprint()

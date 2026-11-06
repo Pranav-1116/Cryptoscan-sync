@@ -2,7 +2,7 @@
 """Precompute the labeled-calibration report the API serves.
 
 `GET /api/v1/findings/detectors/labeled-calibration` used to run the whole
-labeled accuracy corpus inside the request: 842 files scanned with the production
+labeled accuracy corpus inside the request: 851 files scanned with the production
 `scan_file`, plus the scanner registry import, on a worker thread that could have
 served someone else. Measured at 6.9–10 s against a live server on a cold
 process, and paid once per worker process because the result was only cached in
@@ -39,18 +39,26 @@ ROOT = Path(__file__).resolve().parents[1]
 
 SCHEMA = "cryptoscan.labeled-calibration/1"
 
-#: The files that decide what the report says. A change to either one makes every
-#: stored artifact stale.
+#: The files that decide what the report says. A change to any one makes every
+#: stored artifact stale: the corpus itself (corpus.py + every wave module) and
+#: the production parsers whose behaviour the report measures.
 INPUTS = (
     "services/scanner/tests/accuracy/corpus.py",
     "scripts/accuracy_benchmark.py",
 )
+INPUT_GLOBS = (
+    "services/scanner/tests/accuracy/corpus_wave*.py",
+    "services/scanner/scanner/parsers/*.py",
+)
 
 
 def fingerprint(root: Path = ROOT) -> str:
-    """SHA-256 over the corpus definition and the benchmark that scores it."""
+    """SHA-256 over the corpus definition, the benchmark that scores it and the parsers it runs."""
     digest = hashlib.sha256()
-    for relative in INPUTS:
+    relatives = list(INPUTS)
+    for pattern in INPUT_GLOBS:
+        relatives.extend(sorted(p.relative_to(root).as_posix() for p in root.glob(pattern)))
+    for relative in relatives:
         path = root / relative
         digest.update(relative.encode())
         digest.update(path.read_bytes() if path.exists() else b"<missing>")

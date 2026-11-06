@@ -11,6 +11,14 @@ rule array (a padded 8-byte literal such as ``'SHA-256 '``) fixes the algorithm.
 Deliberately not reported: ``RECORD KEY`` / ``ALTERNATE KEY`` / ``SEARCH ... KEY IS``
 (VSAM/table keys), ``PIC`` clauses that merely name a field ``PASSWORD``, ``HASH``
 partitioning, EBCDIC/Base64 conversion, ``FUNCTION RANDOM`` outside a secret context.
+
+Call shapes: ``CALL 'name'``, ``LINK  EP=name``, the HLASM macro form (the service name
+as mnemonic, e.g. ``CSNBSYE  (RC,RS,...)``), ``SVC`` routines named after the service,
+address-constant linkage (``LA R15,=V(CSNBSYG)``) and ``LINK  EPLOC=field`` resolved
+through ``field  DC  CL8'CSNxxxx'``.  Register-indirect targets (``CALL (R3)`` /
+``LINK EPLOC=(Rn)``) are not tracked: a service invoked through a register is reported
+as unexamined, never as "no cryptography".  A service name in the label field followed
+by ``DC``/``DS``/``EQU`` is a definition, not a call.
 """
 
 from __future__ import annotations
@@ -36,9 +44,28 @@ def _r(pattern: str, base: dict, library: str, **extra) -> Rule:
     return re.compile(pattern, re.IGNORECASE), {**base, "library": library, **extra}
 
 
-# CALL 'CSNBSYE' / CALL "CSNESYE" (64-bit) / CALL CSNBSYE-NAME (moved into a variable) / EXEC ICSF
-_V = r"\bCALL\s+['\"]?CSN[BE]"   # CSNB* (31-bit) / CSNE* (64-bit) symmetric & PIN services
-_VD = r"\bCALL\s+['\"]?CSN[DF]"  # CSND* / CSNF* PKA (RSA / ECC) services
+# --------------------------------------------------------------------------------------
+# Statement-shape prefixes.  Every form below names the ICSF service in the statement
+# itself; register-indirect targets (CALL (R3) / LINK EPLOC=(R3) / a name assembled at
+# run time) are deliberately NOT guessed at — those files are reported as unexamined,
+# never as "no cryptography".
+#   CALL       CALL 'CSNBSYE' / CALL "CSNESYE" / CALL CSNBSYE-NAME
+#   LINK       LINK  EP=CSNxxx — entry point named directly
+#   macro      the service name is the assembler mnemonic (with or without a label):
+#              CSNBSYE  (RC,RS,...) / PANPTR   CSNBPTR  (...)
+#   SVC        ICSF routine via SVC — service name in the label field: CSNBMGN  SVC  255
+#   V/A const  address-constant linkage: LA  R15,=V(CSNBSYG) — NOT a DC V(...) declaration
+# LINK EPLOC=field is rewritten to EP='service' by _resolve_hlasm_eploc() below when the
+# same source defines field as DC CL8'CSNxxx'.
+_SOL = r"(?:(?<=\n)|\A)"  # start of line without re.M (inline flags must lead a pattern)
+_PFX_CALL = r"\bCALL\s+['\"]?"
+_PFX_LINK = r"\bLINK\b[^,\n]{0,60}\bEP(?:LOC)?\s*=\s*['\"]?"
+_PFX_MACRO = _SOL + r"(?:[ \t]{2,12}|[A-Z@#$][A-Z0-9@#$]{0,7}[ \t]{1,12})"
+_PFX_SVC = _SOL + r"[ \t]{0,8}(?=CSN[BDEF][A-Z0-9]{0,5}\b[ \t]{1,12}SVC\b)"
+_PFX_VADDR = _SOL + r"[ \t]{0,12}(?:[A-Z@#$][A-Z0-9@#$]{0,7}[ \t]{1,12})?(?:LLGF|LLC|LLH|BASSM|BALR|BRASL|BRAS|BAS|BAL|LA|LG|LH|L)\b[^\n]{0,80}?[=]?(?:V|A)\(\s*['\"]?"
+_PFX = rf"(?:{_PFX_CALL}|{_PFX_LINK}|{_PFX_MACRO}|{_PFX_SVC}|{_PFX_VADDR})"
+_V = _PFX + r"CSN[BE]"   # CSNB* (31-bit) / CSNE* (64-bit) symmetric & PIN services
+_VD = _PFX + r"CSN[DF]"  # CSND* / CSNF* PKA (RSA / ECC) services
 _ICSF = "IBM-ICSF"
 _RULE_LIT = r"['\"]"
 
@@ -93,7 +120,7 @@ _RULES: list[Rule] = [
     _r(_V + r"(RNG|RNGL|RNG2)\b", _RNG, _ICSF, algorithm="CSPRNG", confidence="HIGH", confidence_reason="ICSF Random Number Generate (hardware DRBG)"),
     _r(r"\bFUNCTION\s+RANDOM\b(?=[^\n]*(?:PASS|PWD|SECRET|TOKEN|SALT|OTP|PIN|NONCE|SESSION))|\b[\w-]*?-?(?:PASS\w*|PWD|SECRET|TOKEN|SALT|OTP|PIN|NONCE|SESSION-?ID)\b[^\n]*\bFUNCTION\s+RANDOM\b", _RNG, "cobol-intrinsic", algorithm="PRNG", confidence="HIGH", confidence_reason="FUNCTION RANDOM is not cryptographically secure"),
     # ------------------------------------------------------------- PKCS#11 via ICSF (CSFP*) and Encryption Facility
-    _r(r"\bCALL\s+['\"]?CSFP(?:GKP|GSK|PKS|PKV|PKE|PKD|HMG|HMV|OWH|SKE|SKD|PRF|TRC|TRD|TRL|WPK|UWK|DVK|GAV|SAV|TRL|SKI|SKE|DMK|GAV)\b", _K, "IBM-ICSF-PKCS11", algorithm="UNKNOWN", confidence="MEDIUM", confidence_reason="ICSF PKCS#11 callable service — mechanism from CK_MECHANISM literal"),
+    _r(_PFX + r"CSFP(?:GKP|GSK|PKS|PKV|PKE|PKD|HMG|HMV|OWH|SKE|SKD|PRF|TRC|TRD|TRL|WPK|UWK|DVK|GAV|SAV|TRL|SKI|SKE|DMK|GAV)\b", _K, "IBM-ICSF-PKCS11", algorithm="UNKNOWN", confidence="MEDIUM", confidence_reason="ICSF PKCS#11 callable service — mechanism from CK_MECHANISM literal"),
     _r(r"\bCKM[-_](AES|DES3|DES|RSA|ECDSA|EC|SHA1|SHA256|SHA384|SHA512|MD5)[-_]?\w*", _C, "IBM-ICSF-PKCS11", algo_from_group=1,
        algo_map={"aes": "AES", "des3": "3DES", "des": "DES", "rsa": "RSA", "ecdsa": "ECDSA", "ec": "ECDSA", "sha1": "SHA-1", "sha256": "SHA-256", "sha384": "SHA-384", "sha512": "SHA-512", "md5": "MD5"}),
     _r(r"\bCSDFILEN\b|\bCSDFILDE\b|\bENCRYPTION\s+FACILITY\b|\bCSDFENC\b|\bCSDFDEC\b", _C, "IBM-Encryption-Facility", algorithm="AES", confidence="LOW", confidence_reason="Encryption Facility for z/OS (AES or TDES by parameter)"),
@@ -141,13 +168,33 @@ def _strip_cobol_comments(text: str) -> str:
     return "\n".join(out)
 
 
+_EPLOC_REF = re.compile(r"\bLINK\b([^\n]{0,60}?)\bEPLOC\s*=\s*['\"]?([A-Z@#$][A-Z0-9@#$]{0,7})", re.IGNORECASE)
+_ENTRY_DC = re.compile(r"^[ \t]{0,8}([A-Z@#$][A-Z0-9@#$]{0,7})[ \t]+DC[ \t]+CL\s*8\s*['\"]((?:CSN[BDEF]|CSFP)[A-Z0-9]{2,5})['\"]",
+                       re.IGNORECASE | re.MULTILINE)
+
+
+def _resolve_hlasm_eploc(text: str) -> str:
+    """Rewrite ``LINK  EPLOC=field`` to ``LINK  EP='CSNxxxx'`` when the same source defines
+    ``field  DC  CL8'CSNxxxx'``.  A register-indirect ``EPLOC=(Rn)`` is not tracked — the
+    honest answer for those is "unexamined", never "no cryptography"."""
+    defs = {m.group(1).upper(): m.group(2).upper() for m in _ENTRY_DC.finditer(text)}
+    if not defs:
+        return text
+
+    def _sub(m: re.Match) -> str:
+        svc = defs.get(m.group(2).upper())
+        return f"LINK{m.group(1)}EP='{svc}'" if svc else m.group(0)
+
+    return _EPLOC_REF.sub(_sub, text)
+
+
 def parse_cobol_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
     try:
         text = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
     if file_path.suffix.lower() == ".asm":
-        text = _strip_hlasm_comments(text)
+        text = _resolve_hlasm_eploc(_strip_hlasm_comments(text))
     body = _strip_cobol_comments(text) if file_path.suffix.lower() != ".asm" else text
     findings = run_rules(
         file_path=file_path,

@@ -367,11 +367,19 @@ def _load_calibration_artifact(path: Path) -> dict | None:
 
 
 def _calibration_fingerprint() -> str:
-    """SHA-256 over the corpus definition and the benchmark (`build_labeled_calibration`)."""
+    """SHA-256 over the corpus definition and the benchmark (`build_labeled_calibration`).
+
+    Kept algorithmically identical to ``build_labeled_calibration.fingerprint`` (which
+    includes every wave module and the production parsers): an artifact built by one
+    must be accepted by the other, and ``test_labeled_calibration_artifact`` enforces it.
+    """
     import hashlib
 
     digest = hashlib.sha256()
-    for relative in ("services/scanner/tests/accuracy/corpus.py", "scripts/accuracy_benchmark.py"):
+    relatives = ["services/scanner/tests/accuracy/corpus.py", "scripts/accuracy_benchmark.py"]
+    for pattern in ("services/scanner/tests/accuracy/corpus_wave*.py", "services/scanner/scanner/parsers/*.py"):
+        relatives.extend(sorted(p.relative_to(REPO_ROOT).as_posix() for p in REPO_ROOT.glob(pattern)))
+    for relative in relatives:
         digest.update(relative.encode())
         source = REPO_ROOT / relative
         digest.update(source.read_bytes() if source.exists() else b"<missing>")
