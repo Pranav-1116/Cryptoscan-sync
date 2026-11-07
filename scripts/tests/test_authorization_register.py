@@ -59,7 +59,10 @@ MIN_TENANT_ROLE_GATED = 17
 # 338: a deliberate regeneration added the recorded roadmap computation family
 # (32 /api/v1/intelligence writes) and the CryptoLog event/alert surfaces; each
 # carries its policy reason in `102-authenticated-only-writes.json`.
-MAX_SESSION_ONLY_WRITES = 338
+# 341: a deliberate regeneration added the CryptoLog integrity and alert
+# lifecycle writes (checkpoint, verify, per-alert transition); each is recorded
+# with its reason in `102-authenticated-only-writes.json`.
+MAX_SESSION_ONLY_WRITES = 341
 
 
 @pytest.fixture(scope="module")

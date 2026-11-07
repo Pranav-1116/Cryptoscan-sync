@@ -44,13 +44,16 @@ def _event_dict(**over):
 @pytest.fixture()
 def api():
     from db.connection.session import Base
-    from db.models.cryptolog import CryptoLogCorrection, CryptoLogEvent
+    from db.models.cryptolog import (
+        CryptoLogAlert, CryptoLogCheckpoint, CryptoLogCorrection, CryptoLogEvent,
+    )
 
     engine = create_engine(
         "sqlite://", connect_args={"check_same_thread": False},
         poolclass=StaticPool)
     Base.metadata.create_all(engine, tables=[
-        CryptoLogEvent.__table__, CryptoLogCorrection.__table__])
+        CryptoLogEvent.__table__, CryptoLogCorrection.__table__,
+        CryptoLogAlert.__table__, CryptoLogCheckpoint.__table__])
     session = sessionmaker(bind=engine)()
 
     from api import dependencies

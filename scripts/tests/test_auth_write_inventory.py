@@ -115,8 +115,12 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # the CryptoLog surfaces (event ingestion plus the deterministic alert
     # lifecycle). Both families carry their POLICY decisions in
     # `102-authenticated-only-writes.json`; nothing is REVIEW REQUIRED.
-    assert len(rows) <= 342, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 342. "
+    # 345: a deliberate regeneration added the CryptoLog integrity and alert
+    # lifecycle writes (POST /integrity/checkpoint, /integrity/verify and
+    # /alerts/{id}/transition) under the decided /api/v1/cryptolog family;
+    # each carries its policy reason in `102-authenticated-only-writes.json`.
+    assert len(rows) <= 345, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 345. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

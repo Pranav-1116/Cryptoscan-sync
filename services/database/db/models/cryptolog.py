@@ -58,3 +58,44 @@ class CryptoLogCorrection(BaseModel, TenantScoped):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     actor: Mapped[str] = mapped_column(String(120), nullable=False)
     evidence: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+
+class CryptoLogAlert(BaseModel, TenantScoped):
+    """A rule alert with its honest boundary (section 11). The transition
+    history is append-only: entries are only ever added, never rewritten."""
+
+    __tablename__ = "cryptolog_alerts"
+
+    alert_id: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    rule_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    asset_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    state: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    basis: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    what_is_proven: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    what_is_not_proven: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    evidence_ids: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    occurred_at: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    transitions: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+
+
+class CryptoLogCheckpoint(BaseModel, TenantScoped):
+    """An integrity checkpoint (section 5). The service signs with an
+    operator-held key (env-configured); it never holds long-term keys itself."""
+
+    __tablename__ = "cryptolog_checkpoints"
+
+    checkpoint_ref: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    algorithm: Mapped[str] = mapped_column(String(20), nullable=False)
+    leaf_count: Mapped[int] = mapped_column(nullable=False)
+    merkle_root: Mapped[str] = mapped_column(String(64), nullable=False)
+    head_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    chain_head_event_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    window: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    signer_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    signature: Mapped[str] = mapped_column(Text, nullable=False)
+    retention_ref: Mapped[str] = mapped_column(String(120), nullable=False)
+    previous_checkpoint: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    verification_notes: Mapped[list] = mapped_column(JSON, nullable=False, default=list)

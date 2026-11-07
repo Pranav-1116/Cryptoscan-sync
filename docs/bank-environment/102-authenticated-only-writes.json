@@ -675,6 +675,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/cryptolog/alerts/{alert_id}/transition",
+      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/cryptolog/events",
       "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
     },
@@ -686,6 +691,16 @@
     {
       "method": "POST",
       "path": "/api/v1/cryptolog/events/{event_id}/corrections",
+      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cryptolog/integrity/checkpoint",
+      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cryptolog/integrity/verify",
       "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
     },
     {

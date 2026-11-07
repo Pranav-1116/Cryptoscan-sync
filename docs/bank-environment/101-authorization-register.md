@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 911 |
+| session | 918 |
 | role | 342 |
 | permission | 74 |
 | tenant-role | 17 |
 
-**1344** operations; **342** of them change state with nothing but the session gate — the exact list, with the policy
+**1351** operations; **345** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -37,6 +37,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `vendors` | 10 |
 | `graph` | 9 |
 | `banking` | 8 |
+| `cryptolog` | 8 |
 | `systems` | 8 |
 | `auth` | 7 |
 | `security` | 7 |
@@ -45,7 +46,6 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `exceptions` | 6 |
 | `runtime` | 6 |
 | `automation` | 5 |
-| `cryptolog` | 5 |
 | `host-evidence` | 5 |
 | `resource-monitoring` | 5 |
 | `traffic-control` | 4 |
@@ -206,9 +206,12 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/control/safe-scan/evaluate` | `api.routers.control_plane.evaluate_scan_check` |
 | POST | `/api/v1/cryptolog/alerts/evaluate` | `api.routers.cryptolog.evaluate_alerts` |
 | POST | `/api/v1/cryptolog/alerts/transition` | `api.routers.cryptolog.alert_transition` |
+| POST | `/api/v1/cryptolog/alerts/{alert_id}/transition` | `api.routers.cryptolog.transition_alert_state` |
 | POST | `/api/v1/cryptolog/events` | `api.routers.cryptolog.ingest_event` |
 | POST | `/api/v1/cryptolog/events/batch` | `api.routers.cryptolog.ingest_batch` |
 | POST | `/api/v1/cryptolog/events/{event_id}/corrections` | `api.routers.cryptolog.correct_event` |
+| POST | `/api/v1/cryptolog/integrity/checkpoint` | `api.routers.cryptolog.create_checkpoint` |
+| POST | `/api/v1/cryptolog/integrity/verify` | `api.routers.cryptolog.verify_integrity` |
 | POST | `/api/v1/ct-scans` | `api.routers.ct_scans.trigger_ct_scan` |
 | POST | `/api/v1/ct-scans/` | `api.routers.ct_scans.trigger_ct_scan` |
 | POST | `/api/v1/ct-scans/scan` | `api.routers.ct_scans.trigger_ct_scan` |

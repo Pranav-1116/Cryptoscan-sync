@@ -14,7 +14,7 @@ from typing import Any, Mapping, Optional
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from db.models.cryptolog import CryptoLogCorrection, CryptoLogEvent
+from db.models.cryptolog import CryptoLogCorrection, CryptoLogEvent, CryptoLogAlert, CryptoLogCheckpoint
 from shared_models.cryptolog_events import (
     CONFLICT, DUPLICATE, INSERTED, event_hash, validate_event,
 )
@@ -29,7 +29,14 @@ def partition_for(event: Mapping[str, Any]) -> str:
 
 
 def row_to_event(row: CryptoLogEvent) -> dict[str, Any]:
-    """The canonical event shape reconstructed from its stored row."""
+    """The canonical event shape reconstructed from its stored row.
+
+    Reproduces the hashed canonical form byte-for-byte: the schema marker
+    the insert stashed inside processing is lifted back to its top-level
+    field, never left as a processing key the hash never covered.
+    """
+    processing = dict(row.processing or {})
+    processing.pop("event_schema", None)
     return {
         "event_id": row.event_id,
         "event_schema": (row.processing or {}).get("event_schema")
@@ -47,7 +54,7 @@ def row_to_event(row: CryptoLogEvent) -> dict[str, Any]:
         "observation": row.observation or {},
         "evidence": row.evidence or {},
         "relationships": row.relationships or {},
-        "processing": row.processing or {},
+        "processing": processing,
         "telemetry_mode": row.telemetry_mode,
         "approval_ref": row.approval_ref,
         "attributes": row.attributes or {},
@@ -202,3 +209,238 @@ class CryptoLogRepository:
             "reason": r.reason, "actor": r.actor,
             "evidence_ids": (r.evidence or {}).get("evidence_ids", []),
         } for r in rows]
+
+
+
+class CryptoLogAlertRepository:
+    """Alerts and integrity checkpoints. Alerts carry their honest boundary;
+    transitions and checkpoints are append-only records."""
+
+    def __init__(self, db: Session):
+        self.db = db
+
+    def insert_alert(self, *, tenant_id: str, alert: Mapping[str, Any]) -> dict[str, Any]:
+        existing = (
+            self.db.query(CryptoLogAlert)
+            .filter(CryptoLogAlert.tenant_id == tenant_id,
+                    CryptoLogAlert.alert_id == str(alert["alert_id"]))
+            .one_or_none()
+        )
+        if existing is not None:
+            return {"outcome": DUPLICATE, "alert": self._row(existing)}
+        row = CryptoLogAlert(
+            tenant_id=tenant_id,
+            alert_id=str(alert["alert_id"]),
+            rule_id=str(alert["rule_id"]),
+            event_id=str(alert["event_id"]),
+            asset_id=str(alert["asset_id"]),
+            severity=str(alert["severity"]),
+            state=str(alert.get("state", "NEW")),
+            title=str(alert["title"]),
+            basis=dict(alert.get("basis") or {}),
+            what_is_proven=list(alert.get("what_is_proven") or []),
+            what_is_not_proven=list(alert.get("what_is_not_proven") or []),
+            evidence_ids=list(alert.get("evidence_ids") or []),
+            occurred_at=str(alert["occurred_at"]),
+            transitions=list(alert.get("transitions") or []),
+        )
+        self.db.add(row)
+        self.db.flush()
+        return {"outcome": INSERTED, "alert": self._row(row)}
+
+    def _row(self, row: CryptoLogAlert) -> dict[str, Any]:
+        return {
+            "alert_id": row.alert_id,
+            "rule_id": row.rule_id,
+            "event_id": row.event_id,
+            "asset_id": row.asset_id,
+            "severity": row.severity,
+            "state": row.state,
+            "title": row.title,
+            "basis": dict(row.basis or {}),
+            "what_is_proven": list(row.what_is_proven or []),
+            "what_is_not_proven": list(row.what_is_not_proven or []),
+            "evidence_ids": list(row.evidence_ids or []),
+            "occurred_at": row.occurred_at,
+            "transitions": list(row.transitions or []),
+            "tenant_id": row.tenant_id,
+        }
+
+    def get_alert(self, tenant_id: Optional[str], alert_id: str) -> Optional[dict[str, Any]]:
+        query = self.db.query(CryptoLogAlert).filter(CryptoLogAlert.alert_id == alert_id)
+        if tenant_id:
+            query = query.filter(CryptoLogAlert.tenant_id == tenant_id)
+        row = query.one_or_none()
+        return self._row(row) if row is not None else None
+
+    def list_alerts(self, *, tenant_id: Optional[str] = None,
+                    state: Optional[str] = None,
+                    severity: Optional[str] = None,
+                    rule_id: Optional[str] = None,
+                    event_id: Optional[str] = None,
+                    limit: int = 50,
+                    cursor: Optional[str] = None) -> dict[str, Any]:
+        query = self.db.query(CryptoLogAlert)
+        if tenant_id:
+            query = query.filter(CryptoLogAlert.tenant_id == tenant_id)
+        if state:
+            query = query.filter(CryptoLogAlert.state == state)
+        if severity:
+            query = query.filter(CryptoLogAlert.severity == severity)
+        if rule_id:
+            query = query.filter(CryptoLogAlert.rule_id == rule_id)
+        if event_id:
+            query = query.filter(CryptoLogAlert.event_id == event_id)
+        total = query.count()
+        if cursor:
+            query = query.filter(CryptoLogAlert.alert_id < cursor)
+        rows = query.order_by(CryptoLogAlert.alert_id.desc()).limit(limit).all()
+        return {
+            "rows": [self._row(r) for r in rows],
+            "total_count": total,
+            "next_cursor": rows[-1].alert_id if rows else None,
+            "has_more": len(rows) == limit,
+        }
+
+    def append_transition(self, *, tenant_id: Optional[str], alert_id: str,
+                          entry: Mapping[str, Any]) -> Optional[dict[str, Any]]:
+        query = self.db.query(CryptoLogAlert).filter(
+            CryptoLogAlert.alert_id == alert_id)
+        if tenant_id:
+            query = query.filter(CryptoLogAlert.tenant_id == tenant_id)
+        row = query.one_or_none()
+        if row is None:
+            return None
+        history = list(row.transitions or [])
+        history.append(dict(entry))  # append-only: never rewrite prior entries
+        row.transitions = history
+        if "state" in entry:
+            row.state = str(entry["state"])
+        self.db.flush()
+        return self._row(row)
+
+    def insert_checkpoint(self, *, tenant_id: str,
+                          checkpoint: Mapping[str, Any]) -> dict[str, Any]:
+        ref = str(checkpoint["checkpoint_ref"])
+        existing = (
+            self.db.query(CryptoLogCheckpoint)
+            .filter(CryptoLogCheckpoint.tenant_id == tenant_id,
+                    CryptoLogCheckpoint.checkpoint_ref == ref)
+            .one_or_none()
+        )
+        if existing is not None:
+            return {"outcome": DUPLICATE, "checkpoint": self._cp_row(existing)}
+        canonical = {
+            "schema": str(checkpoint.get("schema") or "chain-checkpoint/1"),
+            "partition_id": str(checkpoint.get("partition_id") or ""),
+            "sequence": int(checkpoint.get("sequence") or 0),
+            "chain_hash": str(checkpoint.get("chain_hash") or ""),
+            "merkle_root_hash": str(checkpoint.get("merkle_root_hash") or ""),
+            "event_count": int(checkpoint.get("event_count") or 0),
+            "created_at": str(checkpoint.get("created_at") or ""),
+            "retention_ref": str(checkpoint.get("retention_ref") or ""),
+            "signer_id": str(checkpoint.get("signer_id") or ""),
+            "signature": str(checkpoint.get("signature") or ""),
+        }
+        window = {"canonical": canonical}
+        window.update(dict(checkpoint.get("window") or {}))
+        row = CryptoLogCheckpoint(
+            tenant_id=tenant_id,
+            checkpoint_ref=ref,
+            algorithm=canonical["schema"],
+            leaf_count=canonical["event_count"],
+            merkle_root=canonical["merkle_root_hash"],
+            head_hash=canonical["chain_hash"],
+            chain_head_event_id=checkpoint.get("chain_head_event_id"),
+            window=window,
+            signer_id=canonical["signer_id"],
+            signature=canonical["signature"],
+            retention_ref=canonical["retention_ref"],
+            previous_checkpoint=dict(checkpoint.get("previous_checkpoint") or {}),
+            verification_notes=list(checkpoint.get("verification_notes") or []),
+        )
+        self.db.add(row)
+        self.db.flush()
+        return {"outcome": INSERTED, "checkpoint": self._cp_row(row)}
+
+    def _cp_row(self, row: CryptoLogCheckpoint) -> dict[str, Any]:
+        window = dict(row.window or {})
+        canonical = dict(window.pop("canonical", {}) or {})
+        out = dict(canonical)
+        out.update({
+            "checkpoint_ref": row.checkpoint_ref,
+            "algorithm": row.algorithm,
+            "leaf_count": row.leaf_count,
+            "merkle_root": row.merkle_root,
+            "head_hash": row.head_hash,
+            "chain_head_event_id": row.chain_head_event_id,
+            "window": window,
+            "signer_id": row.signer_id,
+            "signature": row.signature,
+            "retention_ref": row.retention_ref,
+            "previous_checkpoint": dict(row.previous_checkpoint or {}),
+            "verification_notes": list(row.verification_notes or []),
+        })
+        return out
+
+    def count_checkpoints(self, tenant_id: Optional[str],
+                          partition_id: str) -> int:
+        query = self.db.query(CryptoLogCheckpoint)
+        if tenant_id:
+            query = query.filter(CryptoLogCheckpoint.tenant_id == tenant_id)
+        return sum(
+            1 for r in query.all()
+            if str((r.window or {}).get("canonical", {}).get("partition_id") or "")
+            == partition_id)
+
+    def get_checkpoint(self, tenant_id: Optional[str],
+                       checkpoint_ref: str) -> Optional[dict[str, Any]]:
+        query = self.db.query(CryptoLogCheckpoint).filter(
+            CryptoLogCheckpoint.checkpoint_ref == checkpoint_ref)
+        if tenant_id:
+            query = query.filter(CryptoLogCheckpoint.tenant_id == tenant_id)
+        row = query.one_or_none()
+        return self._cp_row(row) if row is not None else None
+
+    def latest_checkpoint(self, tenant_id: Optional[str]) -> Optional[dict[str, Any]]:
+        query = self.db.query(CryptoLogCheckpoint)
+        if tenant_id:
+            query = query.filter(CryptoLogCheckpoint.tenant_id == tenant_id)
+        row = query.order_by(CryptoLogCheckpoint.created_at.desc()).first()
+        return self._cp_row(row) if row is not None else None
+
+    def list_checkpoints(self, *, tenant_id: Optional[str] = None,
+                         limit: int = 50) -> dict[str, Any]:
+        query = self.db.query(CryptoLogCheckpoint)
+        if tenant_id:
+            query = query.filter(CryptoLogCheckpoint.tenant_id == tenant_id)
+        total = query.count()
+        rows = query.order_by(CryptoLogCheckpoint.created_at.desc()).limit(limit).all()
+        return {"rows": [self._cp_row(r) for r in rows], "total_count": total}
+
+    def events_in_range(self, *, tenant_id: Optional[str],
+                        start_occurred: Optional[str],
+                        end_occurred: Optional[str]) -> list[dict[str, Any]]:
+        """Raw stored event dicts in ledger order (the truest input for
+        integrity verification: hashes recompute over what was stored)."""
+        query = self.db.query(CryptoLogEvent)
+        if tenant_id:
+            query = query.filter(CryptoLogEvent.tenant_id == tenant_id)
+        rows = query.order_by(CryptoLogEvent.created_at, CryptoLogEvent.event_id).all()
+        records: list[dict[str, Any]] = []
+        for r in rows:
+            records.append({
+                "event": row_to_event(r),      # pure: re-hashes to the stored digest
+                "event_hash": r.event_hash,    # the recorded digest at ingestion
+                "partition_id": r.partition_id,
+            })
+        events = records
+        # Filter on observed in Python: portable across SQLite/Postgres and
+        # exact against the stored value rather than a JSON-path variant.
+        if start_occurred:
+            events = [e for e in events
+                      if str(e["event"].get("observed", "")) >= start_occurred]
+        if end_occurred:
+            events = [e for e in events
+                      if str(e["event"].get("observed", "")) <= end_occurred]
+        return events
