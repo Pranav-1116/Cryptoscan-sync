@@ -393,12 +393,16 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    from api.errors import install_error_contract
+    install_error_contract(app)
     from db.repositories.execution_control import ExecutionDenied, required
     from api.middleware.controlled_surface import ControlledSurfaceMiddleware
 
     @app.exception_handler(ExecutionDenied)
-    async def execution_denied(_request, exc):
-        return JSONResponse(status_code=409, content={"detail": str(exc)})
+    async def execution_denied(request, exc):
+        from api.errors import CONFLICT, error_envelope
+        return JSONResponse(status_code=409, content=error_envelope(
+            CONFLICT, str(exc), getattr(request.state, "request_id", None)))
 
     app.add_middleware(ControlledSurfaceMiddleware, production=settings.is_production)
     from api.middleware.assurance_body_limit import AssuranceBodyLimit
@@ -423,7 +427,6 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     from api.middleware.conditional_get import ConditionalGetMiddleware
 
     app.add_middleware(ConditionalGetMiddleware, max_body=2 * 1024 * 1024)
-    app.add_middleware(RequestIDMiddleware)
     # Machine identity for the ingest surface. Inert unless
     # CRYPTOSCAN_REQUIRE_AGENT_IDENTITY is set, and scoped to /api/v1/ingestion.
     from api.middleware.agent_identity_middleware import AgentIdentityMiddleware
@@ -465,6 +468,10 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     from api.middleware.abac_middleware import AbacMiddleware
 
     app.add_middleware(AbacMiddleware)
+    # Correlation runs OUTERMOST so every response — including middleware
+    # short-circuits such as 401/403 — carries X-Request-ID and a state
+    # request_id the error envelope can quote (gap analysis §B).
+    app.add_middleware(RequestIDMiddleware)
     # Zero-trust PDP overlay (advanced/82, round 31): external policy-as-code
     # that can only RESTRICT — deny-wins over RBAC allow, never a bypass.
     # No-op unless ZERO_TRUST_ENFORCED is set (same deployment gate as ABAC).

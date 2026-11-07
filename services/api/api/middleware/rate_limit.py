@@ -21,6 +21,8 @@ from collections import defaultdict, deque
 
 from starlette.requests import Request
 
+from api.middleware.asgi_utils import request_id_from_scope
+
 from api.middleware.asgi_utils import make_send_with_headers, send_json
 
 logger = logging.getLogger(__name__)
@@ -149,9 +151,11 @@ class RateLimitMiddleware:
             headers["Retry-After"] = str(max(1, int(retry_after) + 1))
             await send_json(send, 429, {
                 "detail": "rate limit exceeded",
+                "error_code": "RATE_LIMITED",
                 "limit": limit,
                 "window_seconds": window,
                 "scope": endpoint_class,
-            }, extra_headers=headers)
+            }, extra_headers=headers,
+               request_id=request_id_from_scope(request.scope))
             return
         await self.app(scope, receive, make_send_with_headers(send, headers))

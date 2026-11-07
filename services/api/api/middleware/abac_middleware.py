@@ -39,7 +39,7 @@ import time
 
 from starlette.requests import Request
 
-from api.middleware.asgi_utils import send_json
+from api.middleware.asgi_utils import request_id_from_scope, send_json
 
 logger = logging.getLogger(__name__)
 
@@ -352,7 +352,7 @@ class AbacMiddleware:
                     "error_code": "ABAC_DENIED",
                     "scope": {"region": scope_obj.region, "business_unit": scope_obj.business_unit,
                               "environment": scope_obj.environment, "asset_id": scope_obj.asset_id},
-                })
+                }, request_id=request_id_from_scope(request.scope))
                 return
 
         # Unscoped platform reads/writes are not gate-denied here (RBAC already
@@ -395,7 +395,8 @@ class AbacMiddleware:
         try:
             if denied:
                 body = json.dumps({"detail": "Access denied by scope policy",
-                                   "error_code": "ABAC_DENIED"}).encode()
+                                   "error_code": "ABAC_DENIED",
+                                   "request_id": request_id_from_scope(scope)}).encode()
                 await send({"type": "http.response.start", "status": 403,
                             "headers": [(b"content-type", b"application/json"),
                                         (b"content-length", str(len(body)).encode())]})

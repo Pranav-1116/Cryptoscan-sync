@@ -22,9 +22,22 @@ def json_response_bytes(payload: Any) -> bytes:
     return json.dumps(payload).encode("utf-8")
 
 
+def request_id_from_scope(scope: dict) -> str | None:
+    """Correlation id minted by RequestIDMiddleware (never invented here)."""
+    state = scope.get("state") or {}
+    return state.get("request_id")
+
+
 async def send_json(send, status: int, payload: Any,
-                    extra_headers: dict[str, str] | None = None) -> None:
-    """Emit a complete JSON response directly through the ASGI ``send``."""
+                    extra_headers: dict[str, str] | None = None,
+                    request_id: str | None = None) -> None:
+    """Emit a complete JSON response directly through the ASGI ``send``.
+
+    Error bodies (status >= 400) always carry the request id when one is
+    known, so a client can quote it in a support request (gap analysis §B:
+    "Request IDs are propagated through error responses")."""
+    if status >= 400 and isinstance(payload, dict) and request_id:
+        payload = {**payload, "request_id": request_id}
     body = json_response_bytes(payload)
     headers = [
         (b"content-type", b"application/json"),

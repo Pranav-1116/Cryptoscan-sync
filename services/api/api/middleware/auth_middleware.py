@@ -18,7 +18,7 @@ import logging
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 
-from api.middleware.asgi_utils import send_json
+from api.middleware.asgi_utils import request_id_from_scope, send_json
 from api.security.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
@@ -175,12 +175,14 @@ class AuthMiddleware:
                 status_code = getattr(exc, "status_code", 503)
                 detail = getattr(exc, "detail", "API key authorization unavailable")
                 logger.exception("api_key_middleware_authorization_failed")
-                await send_json(send, status_code, {"detail": detail}, {"WWW-Authenticate": "ApiKey"})
+                await send_json(send, status_code, {"detail": detail}, {"WWW-Authenticate": "ApiKey"},
+                            request_id=request_id_from_scope(scope))
                 return
             if api_key is _API_KEY_INVALID or not isinstance(api_key, tuple):
                 await send_json(send, 401, {"detail": "Invalid or revoked API key",
                                             "error_code": "INVALID_API_KEY"},
-                                {"WWW-Authenticate": "ApiKey"})
+                                {"WWW-Authenticate": "ApiKey"},
+                                request_id=request_id_from_scope(scope))
                 return
             scope.setdefault("state", {})["user_id"] = api_key[0]
             scope.setdefault("state", {})["api_key_auth"] = api_key
@@ -188,12 +190,14 @@ class AuthMiddleware:
             return
         if not token:
             await send_json(send, 401, {"detail": "Missing Authorization header",
-                                        "error_code": "MISSING_AUTH_HEADER"})
+                                        "error_code": "MISSING_AUTH_HEADER"},
+                            request_id=request_id_from_scope(scope))
             return
         username = SessionManager().validate_session(token)
         if not username:
             await send_json(send, 401, {"detail": "Invalid token",
-                                        "error_code": "INVALID_TOKEN"})
+                                        "error_code": "INVALID_TOKEN"},
+                            request_id=request_id_from_scope(scope))
             return
         # The revocation check is a synchronous DB read. Awaiting it on a worker
         # thread keeps the event loop free: done inline it blocked the loop while
@@ -202,7 +206,8 @@ class AuthMiddleware:
         # every request 30 081 ms).
         if not await run_in_threadpool(_store_allows, token, username):
             await send_json(send, 401, {"detail": "Session revoked",
-                                        "error_code": "SESSION_REVOKED"})
+                                        "error_code": "SESSION_REVOKED"},
+                            request_id=request_id_from_scope(scope))
             return
         # scope["state"] is the shared dict backing request.state for every
         # Request built from this scope (starlette wraps it in a State view).
