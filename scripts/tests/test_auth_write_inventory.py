@@ -109,8 +109,14 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # ClientHello offers, a batch whose whole point is that it is larger than a URL. It stores
     # handshake metadata under the passive path's fail-closed rule and opens no connection of
     # its own; the /api/v1/estate operator surface carries the same reason by prefix.
-    assert len(rows) <= 305, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 305. "
+    # 342: a deliberate regeneration recorded the roadmap computation family
+    # (/api/v1/intelligence — 32 writes whose policy is now decided: answers are
+    # computed in the caller's tenant context and carry their evidence links) and
+    # the CryptoLog surfaces (event ingestion plus the deterministic alert
+    # lifecycle). Both families carry their POLICY decisions in
+    # `102-authenticated-only-writes.json`; nothing is REVIEW REQUIRED.
+    assert len(rows) <= 342, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 342. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

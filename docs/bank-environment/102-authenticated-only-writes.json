@@ -665,6 +665,31 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/cryptolog/alerts/evaluate",
+      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cryptolog/alerts/transition",
+      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cryptolog/events",
+      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cryptolog/events/batch",
+      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cryptolog/events/{event_id}/corrections",
+      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/ct-scans",
       "reason": "operator surface: certificate transparency scan runs"
     },
@@ -967,6 +992,166 @@
       "method": "POST",
       "path": "/api/v1/ingestion/observations",
       "reason": "machine-signed: collector ingestion with its own credential"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/asset-alias/merge",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/asset-alias/resolve",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/collector-contracts",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/compliance/assessments",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/compliance/status",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/coverage",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/deployment/attestations",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/intelligence/deployment/custody",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/evidence-reprocess",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/external-validations",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/findings",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/findings/assign",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/findings/confirm",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/gates",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/governance/tickets",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/governance/tickets/{ticket_id}/transition",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/graph-projection",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/investigation/certificate",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/migration/plans",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/migration/validate",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/observations/intake",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/production-qualification/file",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/production-qualification/status",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/qualification",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/reconciliation",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/reconciliation/attribution",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/simulation",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/supplier-concentration",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/supplier-readiness",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/supplier-readiness/least-ready",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/vendor-exposure",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/vendor-risk",
+      "reason": "operator surface: roadmap computation and governance actions over posted rows and recorded state; answers carry their evidence links"
     },
     {
       "method": "POST",

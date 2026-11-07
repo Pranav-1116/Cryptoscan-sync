@@ -65,6 +65,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "libraries": {"tier": "ga", "area": "Intelligence", "why": "Library fingerprint database (ADR-007)."},
     "network": {"tier": "ga", "area": "Discovery", "why": "TLS/cipher/cert probes; 15k LOC, 33 test files."},
     "certificates": {"tier": "ga", "area": "Discovery", "why": "Certificate inventory + expiry from network and source scans."},
+    "cryptolog": {"tier": "ga", "area": "Intelligence", "why": "Cryptographic event intelligence: recorded events with evidence and provenance, idempotent ingestion, corrections that never rewrite the original, and deterministic rules CL-001..CL-015 that open investigations rather than declare verdicts. Signed ledger checkpoints require the deployment's protected signer and retention store."},
     "cloud": {"tier": "ga", "area": "Discovery", "why": "Read-only AWS/Azure/GCP estate scan; 15k LOC, 25 test files. Needs credentials to show data."},
     "dev-sec-ops": {"tier": "ga", "area": "Discovery", "why": "SBOM/container/binary/firmware/mobile/WASM scanning, VEX, licence, gates and correlated binary BOM sidecars; bounded evidence and explicit refusal/partial states."},
     "vendor": {"tier": "ga", "area": "Discovery", "why": "68 vendor plugins across 16 categories; 14k LOC, 31 test files."},

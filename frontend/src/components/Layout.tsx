@@ -76,6 +76,7 @@ export const PRIMARY_SECTIONS: NavSection[] = [
       { to: "/assets", label: "Assets", icon: Cube },
       { to: "/dev-sec-ops", label: "Applications", icon: Code },
       { to: "/certificates", label: "Certificates", icon: Certificate },
+      { to: "/cryptolog", label: "CryptoLog", icon: Pulse },
       { to: "/vendor", label: "Vendors", icon: Buildings },
       {
         to: "/network",

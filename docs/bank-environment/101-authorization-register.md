@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 859 |
+| session | 911 |
 | role | 342 |
 | permission | 74 |
 | tenant-role | 17 |
 
-**1292** operations; **305** of them change state with nothing but the session gate — the exact list, with the policy
+**1344** operations; **342** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -28,6 +28,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | Area | Session-only writes |
 |---|---|
 | `assurance` | 46 |
+| `intelligence` | 32 |
 | `network` | 32 |
 | `collection` | 27 |
 | `estate` | 26 |
@@ -44,6 +45,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `exceptions` | 6 |
 | `runtime` | 6 |
 | `automation` | 5 |
+| `cryptolog` | 5 |
 | `host-evidence` | 5 |
 | `resource-monitoring` | 5 |
 | `traffic-control` | 4 |
@@ -202,6 +204,11 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/control/agents/heartbeat` | `api.routers.control_plane.agent_heartbeat` |
 | POST | `/api/v1/control/events/enqueue` | `api.routers.control_plane.enqueue_event` |
 | POST | `/api/v1/control/safe-scan/evaluate` | `api.routers.control_plane.evaluate_scan_check` |
+| POST | `/api/v1/cryptolog/alerts/evaluate` | `api.routers.cryptolog.evaluate_alerts` |
+| POST | `/api/v1/cryptolog/alerts/transition` | `api.routers.cryptolog.alert_transition` |
+| POST | `/api/v1/cryptolog/events` | `api.routers.cryptolog.ingest_event` |
+| POST | `/api/v1/cryptolog/events/batch` | `api.routers.cryptolog.ingest_batch` |
+| POST | `/api/v1/cryptolog/events/{event_id}/corrections` | `api.routers.cryptolog.correct_event` |
 | POST | `/api/v1/ct-scans` | `api.routers.ct_scans.trigger_ct_scan` |
 | POST | `/api/v1/ct-scans/` | `api.routers.ct_scans.trigger_ct_scan` |
 | POST | `/api/v1/ct-scans/scan` | `api.routers.ct_scans.trigger_ct_scan` |
@@ -263,6 +270,38 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/hsm-scans/scan` | `api.routers.hsm_scans.trigger_hsm_scan` |
 | POST | `/api/v1/ingestion/live/compact` | `api.routers.ingestion.compact_live_history` |
 | POST | `/api/v1/ingestion/observations` | `api.routers.ingestion.push_observation` |
+| POST | `/api/v1/intelligence/asset-alias/merge` | `api.routers.roadmap_operations.api_asset_alias_merge` |
+| POST | `/api/v1/intelligence/asset-alias/resolve` | `api.routers.roadmap_operations.api_asset_alias_resolve` |
+| POST | `/api/v1/intelligence/collector-contracts` | `api.routers.roadmap_operations.api_collection_report` |
+| POST | `/api/v1/intelligence/compliance/assessments` | `api.routers.roadmap_operations.api_compliance_assessment` |
+| POST | `/api/v1/intelligence/compliance/status` | `api.routers.roadmap_operations.api_compliance_status` |
+| POST | `/api/v1/intelligence/coverage` | `api.routers.roadmap_operations.api_file_coverage_batch` |
+| POST | `/api/v1/intelligence/deployment/attestations` | `api.routers.roadmap_operations.api_file_attestation` |
+| PUT | `/api/v1/intelligence/deployment/custody` | `api.routers.roadmap_operations.api_set_custody` |
+| POST | `/api/v1/intelligence/evidence-reprocess` | `api.routers.roadmap_operations.api_evidence_reprocess` |
+| POST | `/api/v1/intelligence/external-validations` | `api.routers.roadmap_operations.api_file_external_validation` |
+| POST | `/api/v1/intelligence/findings` | `api.routers.roadmap_operations.api_file_finding` |
+| POST | `/api/v1/intelligence/findings/assign` | `api.routers.roadmap_operations.api_assign_finding` |
+| POST | `/api/v1/intelligence/findings/confirm` | `api.routers.roadmap_operations.api_confirm_finding` |
+| POST | `/api/v1/intelligence/gates` | `api.routers.roadmap_operations.api_file_gate_evidence` |
+| POST | `/api/v1/intelligence/governance/tickets` | `api.routers.roadmap_operations.api_start_ticket` |
+| POST | `/api/v1/intelligence/governance/tickets/{ticket_id}/transition` | `api.routers.roadmap_operations.api_transition_ticket` |
+| POST | `/api/v1/intelligence/graph-projection` | `api.routers.roadmap_operations.api_graph_projection` |
+| POST | `/api/v1/intelligence/investigation/certificate` | `api.routers.roadmap_operations.api_investigate_certificate` |
+| POST | `/api/v1/intelligence/migration/plans` | `api.routers.roadmap_operations.api_make_migration_plan` |
+| POST | `/api/v1/intelligence/migration/validate` | `api.routers.roadmap_operations.api_validate_migration` |
+| POST | `/api/v1/intelligence/observations/intake` | `api.routers.roadmap_operations.api_observation_intake` |
+| POST | `/api/v1/intelligence/production-qualification/file` | `api.routers.roadmap_operations.api_file_production_qualification` |
+| POST | `/api/v1/intelligence/production-qualification/status` | `api.routers.roadmap_operations.api_production_qualification_status` |
+| POST | `/api/v1/intelligence/qualification` | `api.routers.roadmap_operations.api_file_qualification` |
+| POST | `/api/v1/intelligence/reconciliation` | `api.routers.roadmap_operations.api_reconcile_boms` |
+| POST | `/api/v1/intelligence/reconciliation/attribution` | `api.routers.roadmap_operations.api_attribute_operation` |
+| POST | `/api/v1/intelligence/simulation` | `api.routers.roadmap_intelligence.intelligence_simulation` |
+| POST | `/api/v1/intelligence/supplier-concentration` | `api.routers.roadmap_operations.api_supplier_concentration` |
+| POST | `/api/v1/intelligence/supplier-readiness` | `api.routers.roadmap_operations.api_supplier_readiness` |
+| POST | `/api/v1/intelligence/supplier-readiness/least-ready` | `api.routers.roadmap_operations.api_least_ready_suppliers` |
+| POST | `/api/v1/intelligence/vendor-exposure` | `api.routers.roadmap_operations.api_vendor_exposure` |
+| POST | `/api/v1/intelligence/vendor-risk` | `api.routers.roadmap_operations.api_vendor_risk` |
 | POST | `/api/v1/jobs/{job_id}/retry` | `api.routers.jobs.retry_job` |
 | POST | `/api/v1/marketplace/plugins/{plugin_pk}/evaluate` | `api.routers.marketplace.evaluate_ruleset` |
 | POST | `/api/v1/migrations` | `api.routers.business.create_migration` |

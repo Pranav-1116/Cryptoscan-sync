@@ -4,7 +4,7 @@
 > `scripts/gen_capability_maturity.py`. Served live at
 > `GET /api/v1/platform/capabilities`.
 
-**93 shipped surfaces, all supported.** The navigation carries no maturity
+**94 shipped surfaces, all supported.** The navigation carries no maturity
 badges: a product's sidebar is not the place to negotiate what is proven. What
 used to be a `beta` or `preview` label is now the **stated limit** column below,
 which is the part that actually told an operator something. A support statement
@@ -81,6 +81,7 @@ role-guarded actions.
 | `/crypto` | Intelligence | Algorithm registry + normalized crypto view (114 normalization tests). |
 | `/crypto-assets` | Intelligence | Crypto inventory from the normalized findings table. |
 | `/crypto-changes` | Intelligence | Change timeline from drift + scan history. |
+| `/cryptolog` | Intelligence | Cryptographic event intelligence: recorded events with evidence and provenance, idempotent ingestion, corrections that never rewrite the original, and deterministic rules CL-001..CL-015 that open investigations rather than declare verdicts. Signed ledger checkpoints require the deployment's protected signer and retention store. |
 | `/dependency-graph` | Intelligence | Same graph engine as /graph. |
 | `/digital-twin` | Intelligence | Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. Simulation is scenario-specific: the PQC migration foundation is real, the generic enterprise engine is not implemented, and the scenario-models read states which of the ten scenarios compute and what each cannot see. |
 | `/drift` | Intelligence | Baseline approval + drift events + CI gate; 15 test files. |

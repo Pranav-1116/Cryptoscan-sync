@@ -114,6 +114,23 @@ POLICY: dict[str, str] = {
     "/api/v1/stream": "operator surface: live stream subscriptions",
     "/api/v1/migrations": "operator surface: schema migration plan/apply, gated by the platform-mode switch in the handler",
     "/api/v1/api-keys": "self-service: the caller manages their own keys",
+    # The CryptoLog family is its own decision, not an accident of the
+    # /api/v1/crypto string prefix: event ingestion validates every record
+    # through the event contract, and the alert lifecycle opens
+    # investigations rather than declaring verdicts. Authenticated-only so
+    # every record and every lifecycle action is attributable to the session
+    # principal.
+    "/api/v1/cryptolog": "operator surface: cryptographic event ingestion and "
+                         "deterministic alert lifecycle; records carry their "
+                         "evidence and alerts say what is proven",
+    # The roadmap family computes over posted rows and recorded state
+    # (reconciliation, projection, migration planning, gates, vendor and
+    # qualification registers). Answers are computed in the caller's tenant
+    # context and carry their evidence links; the session principal is the
+    # audit anchor.
+    "/api/v1/intelligence": "operator surface: roadmap computation and "
+                            "governance actions over posted rows and recorded "
+                            "state; answers carry their evidence links",
 }
 
 

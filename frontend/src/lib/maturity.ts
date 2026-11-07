@@ -44,6 +44,7 @@ export const CAPABILITIES_JSON = {
   "crypto-assets": "ga",
   "crypto-assurance": "ga",
   "crypto-changes": "ga",
+  "cryptolog": "ga",
   "dependency-graph": "ga",
   "dev-sec-ops": "ga",
   "digital-twin": "ga",
@@ -215,6 +216,10 @@ export const CAPABILITY_LIMITS = {
   "crypto-changes": {
     "area": "Intelligence",
     "limit": "Change timeline from drift + scan history."
+  },
+  "cryptolog": {
+    "area": "Intelligence",
+    "limit": "Cryptographic event intelligence: recorded events with evidence and provenance, idempotent ingestion, corrections that never rewrite the original, and deterministic rules CL-001..CL-015 that open investigations rather than declare verdicts. Signed ledger checkpoints require the deployment's protected signer and retention store."
   },
   "dependency-graph": {
     "area": "Intelligence",

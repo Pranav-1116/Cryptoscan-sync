@@ -95,6 +95,11 @@ def test_no_shipped_caller_uses_the_withdrawn_paths():
             # the router that defines the withdrawn handlers is where the names live
             if path.name == "enterprise.py" and "routers" in path.parts:
                 continue
+            # the deprecation registry names the paths in order to MARK them
+            # withdrawn (RFC 8594 lifecycle headers on the 410s); it never
+            # calls them
+            if path.name == "deprecation.py" and "api" in path.parts:
+                continue
             # the two generators name the paths in order to MARK them withdrawn in
             # the generated documents; they never call them
             if path.name in {"gen_rest_api.py", "audit_build_status.py"}:

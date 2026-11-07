@@ -56,7 +56,10 @@ MIN_TENANT_ROLE_GATED = 17
 # machine-only snapshot intake and 1 archives an evidence record the twin already holds into the
 # content-addressed tier. Each is recorded with its reason in
 # `102-authenticated-only-writes.json`.
-MAX_SESSION_ONLY_WRITES = 303
+# 338: a deliberate regeneration added the recorded roadmap computation family
+# (32 /api/v1/intelligence writes) and the CryptoLog event/alert surfaces; each
+# carries its policy reason in `102-authenticated-only-writes.json`.
+MAX_SESSION_ONLY_WRITES = 338
 
 
 @pytest.fixture(scope="module")

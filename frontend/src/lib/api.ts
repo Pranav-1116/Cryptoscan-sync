@@ -7984,3 +7984,68 @@ export const apiSimulationRun = (scenario: SimulationScenario): Promise<ApiResul
 
 export const apiSimulationRuns = (): Promise<ApiResult<SimulationRuns>> =>
   _rsGet<SimulationRuns>("/api/v1/estate/evidence/simulation/runs");
+
+/* ---- CryptoLog (docs/cryptolog/01_PRODUCT_SPEC.md, Phase 6) ---- */
+
+export interface CryptologEventRow {
+  event_id: string;
+  event_schema?: string;
+  tenant_id?: string;
+  event_type: string;
+  category: string;
+  logging_kind: string;
+  severity: string;
+  investigation_status: string;
+  asset_id: string;
+  business_system_id?: string | null;
+  source: Record<string, unknown>;
+  cryptographic_context: Record<string, unknown>;
+  observation: Record<string, unknown>;
+  evidence: Record<string, unknown>;
+  relationships: Record<string, unknown>;
+  processing: Record<string, unknown>;
+  telemetry_mode?: string;
+  approval_ref?: string | null;
+  attributes: Record<string, unknown>;
+}
+
+export interface CryptologEventPage {
+  events: CryptologEventRow[];
+  next_cursor: string | null;
+  returned: number;
+}
+
+export interface CryptologCorrection {
+  corrects_event_id: string;
+  original_hash: string;
+  corrected_event: Record<string, unknown>;
+  reason: string;
+  actor: string;
+  evidence_ids: string[];
+}
+
+export interface CryptologEventParams {
+  cursor?: string | null;
+  limit?: number;
+  category?: string;
+  severity?: string;
+  event_type?: string;
+  asset_id?: string;
+  investigation_status?: string;
+  tenant_id?: string;
+}
+
+export const apiCryptologEvents = (params: CryptologEventParams = {}): Promise<ApiResult<CryptologEventPage>> => {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && String(value) !== "") query.set(key, String(value));
+  }
+  const suffix = query.toString();
+  return call<CryptologEventPage>(`/api/v1/cryptolog/events${suffix ? `?${suffix}` : ""}`);
+};
+
+export const apiCryptologEvent = (eventId: string): Promise<ApiResult<CryptologEventRow>> =>
+  call<CryptologEventRow>(`/api/v1/cryptolog/events/${encodeURIComponent(eventId)}`);
+
+export const apiCryptologCorrections = (eventId: string): Promise<ApiResult<{ event_id: string; corrections: CryptologCorrection[]; returned: number }>> =>
+  call(`/api/v1/cryptolog/events/${encodeURIComponent(eventId)}/corrections`);
