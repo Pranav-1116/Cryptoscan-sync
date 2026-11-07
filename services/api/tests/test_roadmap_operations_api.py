@@ -29,6 +29,7 @@ def session(tmp_path):
     from db.models.roadmap_coverage import CoverageReport
     from db.models.roadmap_deployment import (
         DeploymentAttestation, DeploymentCustodyEntry)
+    from db.models.roadmap_gates import GateFiling
     from db.models.roadmap_governance import GovernanceTicket
     from db.models.roadmap_qualification import (
         DiscoveryQualification, ExternalValidation)
@@ -41,6 +42,7 @@ def session(tmp_path):
         DiscoveryQualification.__table__,
         ExternalValidation.__table__,
         CoverageReport.__table__,
+        GateFiling.__table__,
     ])
     factory = sessionmaker(bind=engine)
     db = factory()
@@ -296,3 +298,146 @@ class TestEstateCoverage:
             "authorized_targets": 100, "discovered_assets": 100, "outcomes": []})
         assert refused.status_code == 422
         assert "refuses" in refused.json()["detail"]
+
+
+# ============================ gap analysis §G–§6 at the request boundary =====
+
+class TestFindingsAPI:
+
+    def test_a_finding_carries_the_structure_and_its_evidence(self, api):
+        row = api.post("/api/intelligence/findings", json={
+            "finding_id": "F-1", "pattern_id": "CERT_RISK", "tenant_id": "bank",
+            "affected_asset_ids": ["cert-1"], "affected_system_ids": ["pay"],
+            "severity": "HIGH", "confidence": "MEDIUM",
+            "first_seen": "2026-11-01T00:00:00+00:00",
+            "last_seen": "2026-11-07T00:00:00+00:00",
+            "evidence_ids": ["EV-1"], "observed_change": "downgrade",
+            "expected_state": "policy P-7", "reason": "weakens transport",
+            "not_proven": "does not prove compromise",
+            "recommended_investigation": "who changed the policy"}).json()
+        assert row["change_class"] == "CONFIGURATION_CHANGE"
+        assert row["digest"].startswith("sha256:")
+
+    def test_the_engine_never_confirms_its_own_pattern(self, api):
+        refused = api.post("/api/intelligence/findings", json={
+            "finding_id": "F-2", "pattern_id": "CORR", "tenant_id": "bank",
+            "affected_asset_ids": ["a"], "affected_system_ids": [],
+            "severity": "HIGH", "confidence": "LOW",
+            "first_seen": "2026-11-01T00:00:00+00:00",
+            "last_seen": "2026-11-07T00:00:00+00:00",
+            "evidence_ids": ["EV-1"], "observed_change": "c",
+            "expected_state": "e", "reason": "r",
+            "not_proven": "n", "recommended_investigation": "i",
+            "change_class": "CONFIRMED_INCIDENT"})
+        assert refused.status_code == 422
+        assert "never automatically" in refused.json()["detail"]
+
+
+class TestReconciliationAPI:
+
+    def test_agreement_conflict_and_missing_cross_the_wire(self, api):
+        report = api.post("/api/intelligence/reconciliation", json={
+            "subject": "app-1",
+            "claims": [
+                {"bom": "SBOM", "subject": "app-1", "claim_kind": "PRESENCE",
+                 "relationship": "uses-library", "target": "openssl",
+                 "evidence_ids": ["SBOM-1"]},
+                {"bom": "CBOM", "subject": "app-1", "claim_kind": "PRESENCE",
+                 "relationship": "uses-library", "target": "openssl",
+                 "evidence_ids": ["CBOM-1"]},
+            ]}).json()
+        assert report["counts"]["AGREES"] >= 1
+        assert report["counts"]["MISSING"] >= 1
+        assert "never assumed agreement" in report["note"]
+
+    def test_presence_is_never_responsibility(self, api):
+        verdict = api.post("/api/intelligence/reconciliation/attribution",
+                           json={
+            "component": "openssl", "operation": "tls-7",
+            "claims": [{"bom": "SBOM", "subject": "app-1",
+                        "claim_kind": "PRESENCE", "relationship": "contains",
+                        "target": "openssl", "evidence_ids": ["SBOM-1"]}]}).json()
+        assert verdict["attribution"] == "UNATTRIBUTED"
+        assert "presence is not responsibility" in verdict["reason"]
+
+
+class TestCertificateJourneyAPI:
+
+    def test_the_investigator_journey_is_answerable_with_blind_spots(self, api):
+        report = api.post("/api/intelligence/investigation/certificate", json={
+            "certificate_id": "cert-39", "expiry": "2026-12-01",
+            "usage_edges": [
+                {"asset": "lb-1", "relationship": "presents",
+                 "target": "cert-39", "evidence_ids": ["PCAP-1"]},
+                {"asset": "gw-2", "relationship": "presents",
+                 "target": "cert-39", "evidence_ids": []}],
+            "dependency_edges": [
+                {"system": "payments", "asset": "lb-1",
+                 "relationship": "depends_on", "evidence_ids": ["CMDB-1"]}],
+            "ownership": {}}).json()
+        assert report["assets_using"] == ["lb-1"]
+        assert report["business_systems"]["affected"][0]["system"] == "payments"
+        assert report["connections"]["unevidenced"][0]["asset"] == "gw-2"
+        assert "unknown" in report["unknown_owners"]
+
+
+class TestMigrationPlanAPI:
+
+    def test_a_plan_names_its_policy_snapshot_assumptions_cost_and_approvals(
+            self, api):
+        refused = api.post("/api/intelligence/migration/plans", json={
+            "plan_id": "P-1", "policy_version": "",
+            "algorithm_profiles": [{"from": "RSA", "to": "ML-DSA"}],
+            "source_snapshot": {"snapshot_id": "S", "version": 1},
+            "assumptions": ["a"], "cost_model": {},
+            "approvals": [{"actor": "ciso", "at": "2026-11-07"}]})
+        assert refused.status_code == 422
+
+        ok = api.post("/api/intelligence/migration/plans", json={
+            "plan_id": "P-1", "policy_version": "PQ-3",
+            "algorithm_profiles": [{"from": "RSA", "to": "ML-DSA"}],
+            "source_snapshot": {"snapshot_id": "S", "version": 1},
+            "assumptions": ["firmware lands first"],
+            "cost_model": {"lines": [{"item": "hsm", "estimate": 40000}]},
+            "approvals": [{"actor": "ciso", "at": "2026-11-07"}]}).json()
+        assert ok["policy_version"] == "PQ-3"
+
+    def test_validation_needs_post_change_evidence(self, api):
+        refused = api.post("/api/intelligence/migration/validate", json={
+            "asset": "app-1", "claimed_state": "VALIDATED",
+            "before_state": "CONFIGURED", "evidence_ids": [],
+            "validated_at": "2026-11-08", "validator": "qa"})
+        assert refused.status_code == 422
+        ok = api.post("/api/intelligence/migration/validate", json={
+            "asset": "app-1", "claimed_state": "VALIDATED",
+            "before_state": "CONFIGURED", "evidence_ids": ["POST-1"],
+            "validated_at": "2026-11-08", "validator": "qa"}).json()
+        assert ok["claimed_state"] == "VALIDATED"
+
+
+class TestGatesAPI:
+
+    def test_the_register_starts_not_passed_and_external_gates_refuse_self_filing(
+            self, api):
+        report = api.get("/api/intelligence/gates").json()
+        assert report["counts"]["NOT_PASSED"] == 12
+        assert report["pilot_ready"] is False
+
+        refused = api.post("/api/intelligence/gates", json={
+            "gate": "RECOVERY", "evidence_ids": ["R-1"],
+            "performed_by": "CryptoScan", "performed_at": "2026-11-08"})
+        assert refused.status_code == 422
+        synthetic = api.post("/api/intelligence/gates", json={
+            "gate": "COLLECTOR_QUALIFICATION", "evidence_ids": ["Q-1"],
+            "performed_by": "qa", "performed_at": "2026-11-08",
+            "synthetic": True})
+        assert synthetic.status_code == 422
+
+    def test_a_filed_gate_passes_on_evidence(self, api):
+        assert api.post("/api/intelligence/gates", json={
+            "gate": "EVIDENCE_INTEGRITY", "evidence_ids": ["TAMPER-TEST-1"],
+            "performed_by": "qa team", "performed_at": "2026-11-08"}).status_code == 200
+        report = api.get("/api/intelligence/gates").json()
+        assert report["gates"]["EVIDENCE_INTEGRITY"]["status"] == "PASSED"
+        assert report["gates"]["RECOVERY"]["status"] == "NOT_PASSED"
+        assert report["pilot_ready"] is False

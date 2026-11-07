@@ -11,14 +11,21 @@ import json
 
 from shared_models.algorithm_registry import parse_algorithm
 from shared_models.risk_dimensions import (
+    BUSINESS_CRITICALITY,
+    CERTIFICATE_TRUST,
     CRYPTO_RISK,
+    DIMENSIONS,
+    DISCOVERY_COVERAGE,
     EVIDENCE_CONFIDENCE,
     OPERATIONAL_DEPENDENCY,
     QUANTUM_URGENCY,
     RISK_RULES_VERSION,
     VENDOR_RISK,
     risk_profile,
+    score_business_criticality,
+    score_certificate_trust,
     score_crypto_risk,
+    score_discovery_coverage,
     score_evidence_confidence,
     score_operational_dependency,
     score_quantum_urgency,
@@ -151,11 +158,14 @@ class TestRiskProfile:
                                              eol_announced=True),
         }
 
-    def test_the_five_dimensions_stay_separate_by_default(self):
+    def test_the_eight_dimensions_stay_separate_by_default(self):
         profile = risk_profile(**self._five())
-        assert set(profile["dimensions"]) == {
-            CRYPTO_RISK, QUANTUM_URGENCY, OPERATIONAL_DEPENDENCY,
-            EVIDENCE_CONFIDENCE, VENDOR_RISK}
+        assert set(profile["dimensions"]) == set(DIMENSIONS)
+        assert len(profile["dimensions"]) == 8
+        # the three dimensions nothing was passed stay UNKNOWN, never zero
+        for name in (BUSINESS_CRITICALITY, CERTIFICATE_TRUST, DISCOVERY_COVERAGE):
+            assert profile["dimensions"][name]["score"] is None
+            assert profile["dimensions"][name]["band"] == "UNKNOWN"
         assert profile["blended_score"] is None
         assert profile["blended_requested"] is False
         assert "never replaces the dimensions" in profile["note"]
@@ -182,3 +192,51 @@ class TestRiskProfile:
         profile = risk_profile(**self._five())
         assert profile["dimensions"][EVIDENCE_CONFIDENCE]["sense"] == "confidence"
         assert profile["dimensions"][CRYPTO_RISK]["sense"] == "risk"
+
+
+class TestGapAnalysisDimensions:
+    """The three dimensions the gap analysis adds (§I): each explainable,
+    each unknown when unevidenced — "do not combine all these into an
+    unexplained number"."""
+
+    def test_business_criticality_scores_tier_and_blast_radius(self):
+        row = score_business_criticality(
+            business_tier="MISSION_CRITICAL", dependent_systems=6,
+            evidence_ids=["CMDB-1"])
+        assert row["dimension"] == BUSINESS_CRITICALITY
+        assert row["score"] == 60
+        assert {f["rule"] for f in row["factors"]} == {"BC-1", "BC-2"}
+        unknown = score_business_criticality(business_tier=None)
+        assert unknown["score"] is None
+        assert "not a low-criticality business" in unknown["reason"]
+
+    def test_certificate_trust_scores_expiry_and_trust_changes(self):
+        row = score_certificate_trust(days_until_expiry=5,
+                                      trust_path_changed=True,
+                                      chain_status="INVALID",
+                                      evidence_ids=["CERT-1"])
+        # the factors total 120; the score clamps at 100 by convention
+        assert sum(f["contribution"] for f in row["factors"]) == 120
+        assert row["score"] == 100
+        unknown = score_certificate_trust()
+        assert unknown["score"] is None
+        assert "never fine" in unknown["reason"]
+
+    def test_discovery_coverage_scores_the_risk_of_not_knowing(self):
+        row = score_discovery_coverage(coverage_percent=40.0, unknown_assets=3,
+                                       access_denied_targets=2,
+                                       evidence_ids=["RUN-1"])
+        assert row["score"] == 40 + 20 + 15
+        full = score_discovery_coverage(coverage_percent=100.0)
+        assert full["score"] == 0
+        unknown = score_discovery_coverage()
+        assert unknown["score"] is None
+        assert "no readings is not full coverage" in unknown["reason"]
+
+    def test_the_new_dimensions_blend_only_when_scored(self):
+        profile = risk_profile(
+            certificate_trust=score_certificate_trust(days_until_expiry=5),
+            discovery_coverage=score_discovery_coverage(), blended=True)
+        assert profile["blended_score"] is not None
+        assert DISCOVERY_COVERAGE in profile["excluded_dimensions"]
+        assert CERTIFICATE_TRUST not in profile["excluded_dimensions"]

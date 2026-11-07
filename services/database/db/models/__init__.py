@@ -35,6 +35,7 @@ from db.models.network_inventory import NetworkInventoryRevision
 from db.models.repo_configuration import RepoConfiguration
 from db.models.roadmap_coverage import CoverageReport
 from db.models.roadmap_deployment import DeploymentAttestation, DeploymentCustodyEntry
+from db.models.roadmap_gates import GateFiling
 from db.models.roadmap_governance import GovernanceTicket
 from db.models.roadmap_qualification import DiscoveryQualification, ExternalValidation
 from db.models.scan import Scan
@@ -86,6 +87,7 @@ __all__ = [
     "CoverageReport",
     "DeploymentAttestation",
     "DeploymentCustodyEntry",
+    "GateFiling",
     "GovernanceTicket",
     "DiscoveryQualification",
     "ExternalValidation",

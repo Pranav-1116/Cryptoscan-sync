@@ -35,13 +35,17 @@ from db.models.certificate import Certificate
 from db.models.crypto_asset import CryptoAsset
 from db.models.crypto_asset_evidence import CryptoAssetEvidence
 from db.models.crypto_live import CryptoLiveState
+from db.models.roadmap_coverage import CoverageReport
 from db.models.evidence_record import EvidenceRecord
 from db.models.graph_snapshot import GraphSnapshot
 from shared_models.algorithm_registry import parse_algorithm
 from shared_models.pqc_claims import claim as pqc_claim, pqc_claim_report
 from shared_models.risk_dimensions import (
     risk_profile,
+    score_business_criticality,
+    score_certificate_trust,
     score_crypto_risk,
+    score_discovery_coverage,
     score_evidence_confidence,
     score_quantum_urgency,
     score_vendor_risk,
@@ -243,10 +247,31 @@ def intelligence_risk(
                    "yet: unknown, never assumed zero"),
     }
     vendor = score_vendor_risk(vendor=None)
+    business = score_business_criticality(business_tier=None)
+    certificate = score_certificate_trust()
+    coverage_row = db.execute(
+        select(CoverageReport).order_by(CoverageReport.captured_at.desc())
+        .limit(1)).scalar_one_or_none()
+    if coverage_row is not None:
+        document = dict(coverage_row.document or {})
+        outcomes = document.get("outcomes") or []
+        expected_total = sum(int(o.get("expected") or 0) for o in outcomes)
+        collected_total = sum(int(o.get("collected") or 0) for o in outcomes)
+        coverage = score_discovery_coverage(
+            coverage_percent=(round(100.0 * collected_total / expected_total, 2)
+                              if expected_total else None),
+            unknown_assets=document.get("unknown_assets"),
+            access_denied_targets=document.get("access_denied_targets"),
+            evidence_ids=[f"coverage:{coverage_row.batch_id}"])
+    else:
+        coverage = score_discovery_coverage()
 
     profile = risk_profile(crypto_risk=crypto, quantum_urgency=urgency,
+                           business_criticality=business,
                            operational_dependency=dependency,
-                           evidence_confidence=confidence, vendor_risk=vendor)
+                           vendor_risk=vendor, certificate_trust=certificate,
+                           evidence_confidence=confidence,
+                           discovery_coverage=coverage)
     profile["asset_id"] = asset_id
     profile["algorithm"] = algorithm or None
     profile["usage_state"] = usage_state

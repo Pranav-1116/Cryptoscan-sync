@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from api.dependencies import get_current_user, get_db_session
 from db.models import (
     CoverageReport,
+    GateFiling,
     DeploymentAttestation,
     DeploymentCustodyEntry,
     DiscoveryQualification,
@@ -52,11 +53,32 @@ from shared_models.external_validation import (
     file_validation,
     validation_status,
 )
+from shared_models.acceptance_gates import (
+    file_gate_evidence,
+    gates_status,
+)
+from shared_models.cross_bom_reconciliation import (
+    attribute_operation,
+    bom_claim,
+    reconcile,
+)
+from shared_models.finding_lifecycle import (
+    assign as assign_finding,
+    confirm_incident,
+    finding_digest,
+    finding_record,
+)
 from shared_models.governance import (
     create_ticket,
     transition,
     verify_audit,
 )
+from shared_models.migration_plan import (
+    asset_state,
+    make_plan,
+    validate_migration,
+)
+from shared_models.twin_investigation import investigate_certificate
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
 
@@ -456,3 +478,233 @@ def api_estate_coverage(
     report["batch_id"] = row.batch_id
     report["status"] = "FILED"
     return report
+
+
+# --------------------------------------------- gap analysis §G findings
+
+class FindingIn(BaseModel):
+    finding_id: str
+    pattern_id: str
+    tenant_id: str
+    affected_asset_ids: list[str] = Field(default_factory=list)
+    affected_system_ids: list[str] = Field(default_factory=list)
+    severity: str
+    confidence: str
+    first_seen: str
+    last_seen: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    observed_change: str
+    expected_state: str
+    reason: str
+    not_proven: str
+    recommended_investigation: str
+    change_class: str = "CONFIGURATION_CHANGE"
+    owner: Optional[str] = None
+    status: str = "OPEN"
+
+
+class FindingConfirm(BaseModel):
+    incident_ref: str
+    actor: str
+    at: str
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+class FindingAssign(BaseModel):
+    owner: str
+    actor: str
+
+
+@router.post("/findings")
+def api_file_finding(body: FindingIn,
+                     session: Session = Depends(get_db_session),
+                     _user: Any = Depends(get_current_user)) -> dict:
+    try:
+        record = finding_record(**body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    record["digest"] = finding_digest(record)
+    return record
+
+
+@router.post("/findings/confirm")
+def api_confirm_finding(body: FindingConfirm,
+                        session: Session = Depends(get_db_session),
+                        _user: Any = Depends(get_current_user)) -> dict:
+    """Confirmation is a human act with incident evidence — never automatic."""
+    if not body.incident_ref.strip() or not body.actor.strip():
+        raise HTTPException(status_code=422, detail=(
+            "incident_ref and a named actor are mandatory: a pattern never "
+            "automatically becomes a confirmed compromise"))
+    return {"confirmation_required": True,
+            "note": ("confirmation is applied to a stored finding record via "
+                     "confirm_incident: this endpoint documents the act, the "
+                     "engine never confirms its own pattern")}
+
+
+@router.post("/findings/assign")
+def api_assign_finding(body: FindingAssign,
+                       finding: FindingIn,
+                       session: Session = Depends(get_db_session),
+                       _user: Any = Depends(get_current_user)) -> dict:
+    try:
+        record = finding_record(**finding.model_dump())
+        updated = assign_finding(record, owner=body.owner, actor=body.actor)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return updated
+
+
+# ------------------------------------ gap analysis §E cross-BOM reconciliation
+
+class BomClaimIn(BaseModel):
+    bom: str
+    subject: str
+    claim_kind: str
+    relationship: str
+    target: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    observed_at: Optional[str] = None
+    note: Optional[str] = None
+
+
+class ReconciliationIn(BaseModel):
+    subject: str
+    claims: list[BomClaimIn] = Field(default_factory=list)
+
+
+class AttributionIn(BaseModel):
+    component: str
+    operation: str
+    claims: list[BomClaimIn] = Field(default_factory=list)
+
+
+@router.post("/reconciliation")
+def api_reconcile_boms(body: ReconciliationIn,
+                       session: Session = Depends(get_db_session),
+                       _user: Any = Depends(get_current_user)) -> dict:
+    try:
+        claims = [bom_claim(**c.model_dump()) for c in body.claims]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return reconcile(subject=body.subject, claims=claims)
+
+
+@router.post("/reconciliation/attribution")
+def api_attribute_operation(body: AttributionIn,
+                            session: Session = Depends(get_db_session),
+                            _user: Any = Depends(get_current_user)) -> dict:
+    try:
+        claims = [bom_claim(**c.model_dump()) for c in body.claims]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return attribute_operation(component=body.component,
+                               operation=body.operation, claims=claims)
+
+
+# ---------------------------- gap analysis §F digital twin investigator journey
+
+class JourneyIn(BaseModel):
+    certificate_id: str
+    usage_edges: list[dict[str, Any]] = Field(default_factory=list)
+    dependency_edges: list[dict[str, Any]] = Field(default_factory=list)
+    ownership: dict[str, str] = Field(default_factory=dict)
+    expiry: Optional[str] = None
+
+
+@router.post("/investigation/certificate")
+def api_investigate_certificate(body: JourneyIn,
+                                session: Session = Depends(get_db_session),
+                                _user: Any = Depends(get_current_user)) -> dict:
+    return investigate_certificate(
+        certificate_id=body.certificate_id, usage_edges=body.usage_edges,
+        dependency_edges=body.dependency_edges, ownership=body.ownership,
+        expiry=body.expiry)
+
+
+# -------------------------------- gap analysis §H migration plan and validation
+
+class MigrationPlanIn(BaseModel):
+    plan_id: str
+    policy_version: str
+    algorithm_profiles: list[dict[str, Any]] = Field(default_factory=list)
+    source_snapshot: dict[str, Any]
+    assumptions: list[str] = Field(default_factory=list)
+    cost_model: dict[str, Any] = Field(default_factory=dict)
+    approvals: list[dict[str, Any]] = Field(default_factory=list)
+    waves: list[dict[str, Any]] = Field(default_factory=list)
+    blockers: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class MigrationValidationIn(BaseModel):
+    asset: str
+    claimed_state: str
+    before_state: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    validated_at: str
+    validator: str
+
+
+@router.post("/migration/plans")
+def api_make_migration_plan(body: MigrationPlanIn,
+                            session: Session = Depends(get_db_session),
+                            _user: Any = Depends(get_current_user)) -> dict:
+    try:
+        return make_plan(**body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/migration/validate")
+def api_validate_migration(body: MigrationValidationIn,
+                           session: Session = Depends(get_db_session),
+                           _user: Any = Depends(get_current_user)) -> dict:
+    try:
+        return validate_migration(**body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# --------------------------------------- gap analysis §6 acceptance gate filings
+
+class GateFilingIn(BaseModel):
+    gate: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    performed_by: str
+    performed_at: str
+    result: str = "PASSED"
+    synthetic: bool = False
+    note: Optional[str] = None
+
+
+@router.post("/gates")
+def api_file_gate_evidence(body: GateFilingIn,
+                           session: Session = Depends(get_db_session),
+                           _user: Any = Depends(get_current_user)) -> dict:
+    try:
+        row = file_gate_evidence(
+            gate=body.gate, evidence_ids=body.evidence_ids,
+            performed_by=body.performed_by, performed_at=body.performed_at,
+            result=body.result, synthetic=body.synthetic, note=body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    session.add(GateFiling(
+        gate=row["gate"], performed_by=row["performed_by"],
+        evidence_ids=list(row["evidence_ids"]),
+        performed_at=_when(body.performed_at, "performed_at"),
+        result=row["result"], synthetic=row["synthetic"], note=row["note"]))
+    session.commit()
+    return {"filed": True, "gate": row["gate"],
+            "note": ("a gate passes on filed evidence: this filing is the "
+                     "evidence, the status is computed from all filings")}
+
+
+@router.get("/gates")
+def api_gates_status(session: Session = Depends(get_db_session),
+                     _user: Any = Depends(get_current_user)) -> dict:
+    rows = [{"gate": r.gate, "performed_by": r.performed_by,
+             "evidence_ids": list(r.evidence_ids or []),
+             "performed_at": r.performed_at, "result": r.result,
+             "synthetic": r.synthetic, "note": r.note}
+            for r in session.query(GateFiling).order_by(GateFiling.performed_at)]
+    return gates_status(rows)

@@ -27,15 +27,19 @@ from typing import Any, Mapping, Sequence
 RISK_SCHEMA = "cryptoscan.risk-dimensions/1"
 RISK_RULES_VERSION = "risk-dimensions/1"
 
-#: the five dimensions, kept separate on purpose
+#: the eight independent dimensions, kept separate on purpose (gap analysis §I)
 CRYPTO_RISK = "CRYPTO_RISK"
 QUANTUM_URGENCY = "QUANTUM_URGENCY"
+BUSINESS_CRITICALITY = "BUSINESS_CRITICALITY"
 OPERATIONAL_DEPENDENCY = "OPERATIONAL_DEPENDENCY"
-EVIDENCE_CONFIDENCE = "EVIDENCE_CONFIDENCE"
 VENDOR_RISK = "VENDOR_RISK"
+CERTIFICATE_TRUST = "CERTIFICATE_TRUST"
+EVIDENCE_CONFIDENCE = "EVIDENCE_CONFIDENCE"
+DISCOVERY_COVERAGE = "DISCOVERY_COVERAGE"
 DIMENSIONS: tuple[str, ...] = (
-    CRYPTO_RISK, QUANTUM_URGENCY, OPERATIONAL_DEPENDENCY,
-    EVIDENCE_CONFIDENCE, VENDOR_RISK,
+    CRYPTO_RISK, QUANTUM_URGENCY, BUSINESS_CRITICALITY,
+    OPERATIONAL_DEPENDENCY, VENDOR_RISK, CERTIFICATE_TRUST,
+    EVIDENCE_CONFIDENCE, DISCOVERY_COVERAGE,
 )
 
 BANDS: tuple[tuple[int, str], ...] = (
@@ -351,13 +355,134 @@ def score_vendor_risk(*, vendor: str | None,
                    evidence_ids=evidence)
 
 
+def score_business_criticality(*, business_tier: str | None,
+                               dependent_systems: int | None = None,
+                               evidence_ids: Sequence[str] = ()) -> dict[str, Any]:
+    """Business criticality from the owner's tier and the blast radius.
+
+    Rules: ``BC-1`` tier — MISSION_CRITICAL +40, CRITICAL +30, IMPORTANT +15;
+    ``BC-2`` dependent business systems — 5 or more +20, 2 to 4 +10. Neither
+    known → UNKNOWN: nobody's business classification is not low criticality.
+    """
+    if not business_tier and not dependent_systems:
+        return _unknown(
+            "no business tier and no dependency count were recorded: an "
+            "unclassified business is not a low-criticality business",
+            dimension=BUSINESS_CRITICALITY)
+    factors: list[dict[str, Any]] = []
+    total = 0
+    evidence = [str(e) for e in evidence_ids]
+    tier = str(business_tier or "").upper()
+    points = {"MISSION_CRITICAL": 40, "CRITICAL": 30, "IMPORTANT": 15}.get(tier)
+    if points:
+        factors.append({"rule": "BC-1", "input": f"business tier {tier}",
+                        "contribution": points, "evidence_ids": evidence})
+        total += points
+    elif business_tier:
+        factors.append({"rule": "BC-1", "input": f"business tier {tier}",
+                        "contribution": 0, "evidence_ids": evidence})
+    if dependent_systems is not None:
+        radius = (20 if dependent_systems >= 5
+                  else 10 if dependent_systems >= 2 else 0)
+        factors.append({"rule": "BC-2",
+                        "input": f"{dependent_systems} dependent business system(s)",
+                        "contribution": radius, "evidence_ids": evidence})
+        total += radius
+    return _scored(dimension=BUSINESS_CRITICALITY, score=total, factors=factors,
+                   evidence_ids=evidence,
+                   reason="business criticality is a business fact, scored "
+                          "separately from technical risk")
+
+
+def score_certificate_trust(*, days_until_expiry: int | None = None,
+                            trust_path_changed: bool | None = None,
+                            chain_status: str | None = None,
+                            evidence_ids: Sequence[str] = ()) -> dict[str, Any]:
+    """Certificate and trust risk from expiry facts and trust-path evidence.
+
+    Rules: ``CT-1`` expiry — 7 days or less +40, 30 or less +25, 90 or less
+    +10; ``CT-2`` an evidenced trust-path change +30; ``CT-3`` an invalid
+    chain +50. No certificate facts → UNKNOWN, never "no risk".
+    """
+    if days_until_expiry is None and trust_path_changed is None and not chain_status:
+        return _unknown(
+            "no certificate facts were joined here: expiry and trust state "
+            "are unknown, never fine",
+            dimension=CERTIFICATE_TRUST)
+    factors: list[dict[str, Any]] = []
+    total = 0
+    evidence = [str(e) for e in evidence_ids]
+    if days_until_expiry is not None:
+        days = int(days_until_expiry)
+        points = 40 if days <= 7 else 25 if days <= 30 else 10 if days <= 90 else 0
+        factors.append({"rule": "CT-1",
+                        "input": f"certificate expires in {days} day(s)",
+                        "contribution": points, "evidence_ids": evidence})
+        total += points
+    if trust_path_changed:
+        factors.append({"rule": "CT-2", "input": "trust path changed",
+                        "contribution": 30, "evidence_ids": evidence})
+        total += 30
+    if chain_status and str(chain_status).upper() == "INVALID":
+        factors.append({"rule": "CT-3", "input": "chain status INVALID",
+                        "contribution": 50, "evidence_ids": evidence})
+        total += 50
+    return _scored(dimension=CERTIFICATE_TRUST, score=total, factors=factors,
+                   evidence_ids=evidence,
+                   reason="expiry and trust facts scored as certificate risk")
+
+
+def score_discovery_coverage(*, coverage_percent: float | None = None,
+                             unknown_assets: int | None = None,
+                             access_denied_targets: int | None = None,
+                             evidence_ids: Sequence[str] = ()) -> dict[str, Any]:
+    """Discovery coverage risk: the risk of not knowing the estate.
+
+    Rules: ``DC-1`` coverage — below 50% +40, below 80% +20, else +0;
+    ``DC-2`` unknown assets present +20 (a missing asset is never clean);
+    ``DC-3`` access-denied targets present +15. No coverage readings at all →
+    UNKNOWN: no readings is not full coverage.
+    """
+    if (coverage_percent is None and unknown_assets is None
+            and access_denied_targets is None):
+        return _unknown(
+            "no coverage readings were filed: no readings is not full "
+            "coverage and not low risk",
+            dimension=DISCOVERY_COVERAGE)
+    factors: list[dict[str, Any]] = []
+    total = 0
+    evidence = [str(e) for e in evidence_ids]
+    if coverage_percent is not None:
+        pct = float(coverage_percent)
+        points = 40 if pct < 50 else 20 if pct < 80 else 0
+        factors.append({"rule": "DC-1", "input": f"estate coverage {pct}%",
+                        "contribution": points, "evidence_ids": evidence})
+        total += points
+    if unknown_assets:
+        factors.append({"rule": "DC-2",
+                        "input": f"{unknown_assets} unknown asset(s)",
+                        "contribution": 20, "evidence_ids": evidence})
+        total += 20
+    if access_denied_targets:
+        factors.append({"rule": "DC-3",
+                        "input": f"{access_denied_targets} access-denied target(s)",
+                        "contribution": 15, "evidence_ids": evidence})
+        total += 15
+    return _scored(dimension=DISCOVERY_COVERAGE, score=total, factors=factors,
+                   evidence_ids=evidence,
+                   reason="the risk of not knowing the estate, scored on its own")
+
+
 def risk_profile(*, crypto_risk: Mapping[str, Any] | None = None,
                  quantum_urgency: Mapping[str, Any] | None = None,
+                 business_criticality: Mapping[str, Any] | None = None,
                  operational_dependency: Mapping[str, Any] | None = None,
-                 evidence_confidence: Mapping[str, Any] | None = None,
                  vendor_risk: Mapping[str, Any] | None = None,
+                 certificate_trust: Mapping[str, Any] | None = None,
+                 evidence_confidence: Mapping[str, Any] | None = None,
+                 discovery_coverage: Mapping[str, Any] | None = None,
                  blended: bool = False) -> dict[str, Any]:
-    """The five dimensions side by side. Blending is opt-in and always shows its work.
+    """The eight dimensions side by side. Blending is opt-in and always shows its work.
 
     A dimension passed as ``None`` (or not passed) is reported as UNKNOWN with a
     reason — it is excluded from any blend and named in ``excluded_dimensions``,
@@ -366,9 +491,12 @@ def risk_profile(*, crypto_risk: Mapping[str, Any] | None = None,
     provided = {
         CRYPTO_RISK: crypto_risk,
         QUANTUM_URGENCY: quantum_urgency,
+        BUSINESS_CRITICALITY: business_criticality,
         OPERATIONAL_DEPENDENCY: operational_dependency,
-        EVIDENCE_CONFIDENCE: evidence_confidence,
         VENDOR_RISK: vendor_risk,
+        CERTIFICATE_TRUST: certificate_trust,
+        EVIDENCE_CONFIDENCE: evidence_confidence,
+        DISCOVERY_COVERAGE: discovery_coverage,
     }
     dimensions: dict[str, Any] = {}
     excluded: list[str] = []

@@ -35,6 +35,7 @@ def session(tmp_path):
     from db.models.crypto_live import CryptoLiveState
     from db.models.evidence_record import EvidenceRecord
     from db.models.graph_snapshot import GraphSnapshot
+    from db.models.roadmap_coverage import CoverageReport
 
     engine = create_engine(f"sqlite:///{tmp_path / 'intel.db'}")
     Base.metadata.create_all(engine, tables=[
@@ -44,6 +45,7 @@ def session(tmp_path):
         CryptoLiveState.__table__,
         Certificate.__table__,
         GraphSnapshot.__table__,
+        CoverageReport.__table__,
     ])
     factory = sessionmaker(bind=engine)
     db = factory()
