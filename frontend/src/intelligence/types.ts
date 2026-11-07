@@ -155,3 +155,59 @@ export interface IntelligenceSimulationRequest {
   snapshot_id?: string;
   snapshot_version?: number;
 }
+
+/** Estate coverage — a missing asset never silently becomes clean.
+ *  (CoverageGap is shared with CoverageIntelligence above.) */
+
+export interface CoverageCollectorRow {
+  plane: string;
+  status: string;
+  expected: number;
+  collected: number;
+  reason?: string | null;
+  impact: string;
+  is_failure: boolean;
+}
+
+export interface EstateCoverage {
+  status: "FILED" | "NOT_FILED";
+  batch_id?: string | null;
+  verdict: string;
+  reason: string;
+  authorized_targets: number | null;
+  discovered_assets: number | null;
+  collectors: CoverageCollectorRow[];
+  collectors_needing_attention: CoverageCollectorRow[];
+  unknown_assets: number;
+  stale_evidence: number;
+  unsupported_types: string[];
+  access_denied_targets: number;
+  unverified_relationships: number;
+  gaps: CoverageGap[];
+  attention_items: CoverageGap[];
+  coverage_percent: number | null;
+  percent_note?: string | null;
+  is_clean_result?: boolean;
+  note?: string;
+}
+
+/** External validations — performed outside the platform, filed as evidence. */
+export interface ExternalValidationEntry {
+  status: "FILED" | "NOT_FILED";
+  latest: {
+    kind: string;
+    performed_by: string;
+    evidence_ids: string[];
+    performed_at: string;
+    scope: string;
+    result: string;
+  } | null;
+  history: unknown[];
+  reason: string;
+}
+
+export interface ExternalValidationRegister {
+  kinds: Record<string, ExternalValidationEntry>;
+  counts: { FILED: number; NOT_FILED: number };
+  note: string;
+}

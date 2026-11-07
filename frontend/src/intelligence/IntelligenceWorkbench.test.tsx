@@ -9,7 +9,14 @@ import {
   apiIntelligenceRisk,
   apiIntelligenceSimulation,
 } from "../lib/api";
-import type { PqcReport, RiskProfile, SimulationResult, ThreatReport } from "./types";
+import type {
+  EstateCoverage,
+  ExternalValidationRegister,
+  PqcReport,
+  RiskProfile,
+  SimulationResult,
+  ThreatReport,
+} from "./types";
 
 const FINDINGS: ThreatReport = {
   findings: [
@@ -202,5 +209,85 @@ describe("intelligence API client contracts", () => {
     expect(body).toEqual({
       scenario: "HSM_FAILURE", focal_asset: "hsm-1", snapshot_version: 12,
     });
+  });
+});
+
+const COVERAGE: EstateCoverage = {
+  status: "FILED",
+  batch_id: "RUN-1",
+  verdict: "COVERAGE_INCOMPLETE",
+  reason: "a collection gap exists: planes failed or were never read",
+  authorized_targets: 100,
+  discovered_assets: 80,
+  collectors: [],
+  collectors_needing_attention: [],
+  unknown_assets: 8,
+  stale_evidence: 0,
+  unsupported_types: [],
+  access_denied_targets: 12,
+  unverified_relationships: 0,
+  gaps: [{
+    kind: "COLLECTOR_FAILED",
+    count: 1,
+    detail: "plane windows-cng is NOT_OBSERVED (FAILED): its inventory is unknown",
+    is_clean_result: false,
+  }],
+  attention_items: [],
+  coverage_percent: null,
+  percent_note: "the denominator includes planes that were never read",
+};
+
+const EXTERNAL: ExternalValidationRegister = {
+  kinds: {
+    DR_DRILL: {
+      status: "NOT_FILED",
+      latest: null,
+      history: [],
+      reason: "no entry filed: this platform holds no evidence of this external validation — not filed is not passed",
+    },
+    THIRD_PARTY_PEN_TEST: {
+      status: "FILED",
+      latest: {
+        kind: "THIRD_PARTY_PEN_TEST",
+        performed_by: "external auditors",
+        evidence_ids: ["PEN-2026-Q4"],
+        performed_at: "2026-10-15T00:00:00+00:00",
+        scope: "API + agent surface",
+        result: "PARTIAL",
+      },
+      history: [],
+      reason: "filed by external auditors: PARTIAL on 2026-10-15T00:00:00+00:00",
+    },
+  },
+  counts: { FILED: 1, NOT_FILED: 8 },
+  note: "these validations are performed outside the platform and filed here as evidence; the platform never marks them done from inside itself",
+};
+
+describe("IntelligenceWorkbench — coverage and external validation", () => {
+  it("coverage renders filed gaps and refuses to draw an incomplete percent", async () => {
+    mockFetch({
+      "/api/v1/intelligence/coverage": COVERAGE,
+      "/api/v1/intelligence/external-validations": EXTERNAL,
+    });
+    render(<IntelligenceWorkbench />);
+    expect(await screen.findByText(/batch RUN-1/)).toBeInTheDocument();
+    expect(screen.getByText(/COVERAGE_INCOMPLETE/)).toBeInTheDocument();
+    expect(screen.getByText(/not computed \(denominator incomplete/)).toBeInTheDocument();
+    expect(screen.getByText(/COLLECTOR_FAILED/)).toBeInTheDocument();
+    expect(screen.getByText(/A missing asset never silently becomes a clean security result/)).toBeInTheDocument();
+  });
+
+  it("not-filed external validations read as NOT_FILED, never as passed", async () => {
+    mockFetch({
+      "/api/v1/intelligence/coverage": COVERAGE,
+      "/api/v1/intelligence/external-validations": EXTERNAL,
+    });
+    render(<IntelligenceWorkbench />);
+    const table = (await screen.findByText("Validation")).closest("table")!;
+    expect(within(table).getByText("DR_DRILL")).toBeInTheDocument();
+    expect(within(table).getByText("NOT_FILED")).toBeInTheDocument();
+    expect(within(table).getAllByText("not filed is not passed").length).toBe(1);
+    expect(within(table).getByText(/PARTIAL by external auditors/)).toBeInTheDocument();
+    expect(screen.getByText(/never marks them done/)).toBeInTheDocument();
   });
 });

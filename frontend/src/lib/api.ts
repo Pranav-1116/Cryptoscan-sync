@@ -473,6 +473,14 @@ export const apiIntelligenceSimulation = (
 ): Promise<ApiResult<SimulationResult & { evidence_note?: string }>> =>
   call("/api/v1/intelligence/simulation", { method: "POST", body: JSON.stringify(body) });
 
+/** Estate coverage over the newest filed collection batch — NOT_FILED is honest. */
+export const apiIntelligenceCoverage = (): Promise<ApiResult<import("../intelligence/types").EstateCoverage>> =>
+  call("/api/v1/intelligence/coverage");
+
+/** External validation register — acts performed elsewhere, filed as evidence. */
+export const apiExternalValidations = (): Promise<ApiResult<import("../intelligence/types").ExternalValidationRegister>> =>
+  call("/api/v1/intelligence/external-validations");
+
 export const apiEvidence = (): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/platform/evidence");
 

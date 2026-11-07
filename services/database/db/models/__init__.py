@@ -33,6 +33,10 @@ from db.models.network_scan_target import NetworkScanTarget
 from db.models.network_scan_run import NetworkScanRun
 from db.models.network_inventory import NetworkInventoryRevision
 from db.models.repo_configuration import RepoConfiguration
+from db.models.roadmap_coverage import CoverageReport
+from db.models.roadmap_deployment import DeploymentAttestation, DeploymentCustodyEntry
+from db.models.roadmap_governance import GovernanceTicket
+from db.models.roadmap_qualification import DiscoveryQualification, ExternalValidation
 from db.models.scan import Scan
 from db.models.scan_job import ScanJob
 from db.models.system import System
@@ -79,6 +83,12 @@ __all__ = [
     "CryptoAssetEvidence",
     "CryptoLibraryFingerprint",
     "DriftEvent",
+    "CoverageReport",
+    "DeploymentAttestation",
+    "DeploymentCustodyEntry",
+    "GovernanceTicket",
+    "DiscoveryQualification",
+    "ExternalValidation",
     "EvidenceDisposition",
     "EvidenceRecord",
     "GateEvaluation",

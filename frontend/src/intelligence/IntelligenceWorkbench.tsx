@@ -1,6 +1,8 @@
 import React, { useCallback, useState } from "react";
 import type { ApiResult } from "../lib/api";
 import {
+  apiExternalValidations,
+  apiIntelligenceCoverage,
   apiIntelligenceFindings,
   apiIntelligencePqcClaims,
   apiIntelligenceRisk,
@@ -12,6 +14,8 @@ import PqcClaimsLadder from "./PqcClaimsLadder";
 import RiskDimensionsPanel from "./RiskDimensionsPanel";
 import SimulationPanel from "./SimulationPanel";
 import type {
+  EstateCoverage,
+  ExternalValidationRegister,
   PqcReport,
   RiskProfile,
   SimulationResult,
@@ -43,6 +47,8 @@ const SCENARIOS = [
 export default function IntelligenceWorkbench() {
   const findings = useApi<ThreatReport>(apiIntelligenceFindings);
   const claims = useApi<PqcReport>(apiIntelligencePqcClaims);
+  const coverage = useApi<EstateCoverage>(apiIntelligenceCoverage);
+  const external = useApi<ExternalValidationRegister>(apiExternalValidations);
 
   const [assetId, setAssetId] = useState("");
   const [horizon, setHorizon] = useState("5");
@@ -208,11 +214,97 @@ export default function IntelligenceWorkbench() {
       )}
 
       <h2>Collection coverage</h2>
-      <p className="muted">
-        Coverage intelligence is modelled and tested in shared_models but has no
-        live endpoint yet — this section stays empty and says so, because an
-        unwired panel must never render invented coverage.
-      </p>
+      {coverage.data ? (
+        <>
+          <p className="muted">
+            {coverage.data.status === "FILED"
+              ? `batch ${coverage.data.batch_id} — ${coverage.data.reason}`
+              : coverage.data.reason}
+            {" "}A missing asset never silently becomes a clean security result.
+          </p>
+          <p>
+            <strong>{coverage.data.verdict}</strong>
+            {" · "}coverage:{" "}
+            {coverage.data.coverage_percent === null
+              ? "not computed (denominator incomplete — refused, not estimated)"
+              : `${coverage.data.coverage_percent}%`}
+            {" · "}authorized targets:{" "}
+            {coverage.data.authorized_targets ?? "unknown"}
+            {" · "}discovered: {coverage.data.discovered_assets ?? "unknown"}
+            {" · "}unknown assets: {coverage.data.unknown_assets}
+          </p>
+          {coverage.data.gaps.length > 0 ? (
+            <table>
+              <thead>
+                <tr>
+                  <th>Gap</th>
+                  <th>Count</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {coverage.data.gaps.map((gap) => (
+                  <tr key={gap.kind + gap.detail}>
+                    <td>{gap.kind}</td>
+                    <td>{gap.count}</td>
+                    <td>{gap.detail} (not a clean result)</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            coverage.data.status === "FILED" && (
+              <p className="muted">
+                no gaps recorded in this batch — a filed batch with no gaps is a
+                measured fact about that batch only, not a clean estate.
+              </p>
+            )
+          )}
+        </>
+      ) : (
+        coverage.error && (
+          <p className="muted">
+            coverage did not load ({coverage.detail || coverage.error}) — no
+            readings is not clean coverage.
+          </p>
+        )
+      )}
+
+      <h2>External validation register</h2>
+      {external.data ? (
+        <>
+          <p className="muted">{external.data.note}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Validation</th>
+                <th>Status</th>
+                <th>Latest filing</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(external.data.kinds).map(([kind, entry]) => (
+                <tr key={kind}>
+                  <td>{kind}</td>
+                  <td>{entry.status}</td>
+                  <td>
+                    {entry.latest
+                      ? `${entry.latest.result} by ${entry.latest.performed_by} on ${String(entry.latest.performed_at).slice(0, 10)} — evidence: ${entry.latest.evidence_ids.join(", ")}`
+                      : "not filed is not passed"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : (
+        external.error && (
+          <p className="muted">
+            the register did not load ({external.detail || external.error}) —
+            the status of every external validation stays unknown, never passed.
+          </p>
+        )
+      )}
     </div>
   );
 }

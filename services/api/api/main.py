@@ -76,6 +76,7 @@ from api.routers import (
     estate_graph,
     ingestion,
     roadmap_intelligence,
+    roadmap_operations,
     events,
     exposure,
     trust_model,
@@ -609,6 +610,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(quantum.router, prefix=prefix)
     app.include_router(intelligence.router, prefix=prefix)
     app.include_router(roadmap_intelligence.router, prefix=prefix)
+    app.include_router(roadmap_operations.router, prefix=prefix)
     app.include_router(network.router, prefix=prefix)
     app.include_router(network_scans.router, prefix=prefix)
     app.include_router(certificates.router, prefix=prefix)
