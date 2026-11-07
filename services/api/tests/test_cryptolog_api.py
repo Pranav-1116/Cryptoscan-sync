@@ -191,3 +191,49 @@ def test_corrections_supersede_but_never_rewrite_the_original(api):
 def test_missing_event_reads_404_not_an_empty_truth(api):
     missing = api.get("/api/v1/cryptolog/events/clog_nope")
     assert missing.status_code == 404
+
+
+def test_alert_evaluation_is_deterministic_and_never_confirms(api):
+    events = [{
+        "event_type": "TLS_NEGOTIATION_OBSERVED", "category": "TLS",
+        "logging_kind": "ACTIVITY", "tenant_id": "tenant_001",
+        "severity": "INFO", "asset_id": "asset_gateway_001",
+        "source": {"collector_id": "c1", "collector_version": "1",
+                   "source_type": "NETWORK_OBSERVATION"},
+        "cryptographic_context": {"protocol": "TLS",
+                                  "protocol_version": "TLS1.2",
+                                  "cipher_suite": "TLS_RSA_WITH_RC4_128_SHA",
+                                  "evidence_level": "NETWORK_NEGOTIATED"},
+        "observation": {"observed_at": AS_OF},
+        "evidence": {"evidence_ids": ["ev-rc4"]},
+    }]
+    res = api.post("/api/v1/cryptolog/alerts/evaluate",
+                   json={"events": events, "assessments": {
+                       "asset_gateway_001": {
+                           "asset_criticality": "CRITICAL",
+                           "exposure": "INTERNET_FACING"}}})
+    assert res.status_code == 200, res.text
+    alerts = res.json()["alerts"]
+    assert [a["rule_id"] for a in alerts] == ["CL-002"]
+    alert = alerts[0]
+    assert alert["severity"] == "CRITICAL"
+    assert alert["lifecycle"]["status"] == "OPEN"
+    assert "never automatically becomes a confirmed compromise" \
+        in alert["what_is_not_proven"]
+
+    refused = api.post("/api/v1/cryptolog/alerts/transition", json={
+        "alert": alert, "action": "RESOLVE", "actor": "ciso-1",
+        "at": AS_OF, "note": "it is a compromise",
+        "resolution": "CONFIRMED_INCIDENT"})
+    assert refused.status_code == 422
+    assert "never declares a compromise" in refused.json()["detail"]
+
+    confirmed = api.post("/api/v1/cryptolog/alerts/transition", json={
+        "alert": alert, "action": "RESOLVE", "actor": "ciso-1",
+        "at": AS_OF, "note": "bank SOC opened incident inc-77",
+        "resolution": "CONFIRMED_INCIDENT",
+        "evidence_ids": ["ev-rc4", "inc-77"]})
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["lifecycle"]["status"] == "RESOLVED"
+    assert confirmed.json()["lifecycle"]["history"][-1]["evidence_ids"] \
+        == ["ev-rc4", "inc-77"]

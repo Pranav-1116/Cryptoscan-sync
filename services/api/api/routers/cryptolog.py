@@ -21,6 +21,7 @@ from db.repositories.cryptolog_repository import CryptoLogRepository
 from shared_models.bulk_result import (
     ACCEPTED, REJECTED, SKIPPED, bulk_result, item as bulk_item,
 )
+from shared_models.cryptolog_alerts import evaluate as evaluate_rules, transition as transition_alert
 from shared_models.cryptolog_events import (
     CONFLICT, DUPLICATE, INSERTED, supersede, validate_event,
 )
@@ -175,3 +176,52 @@ def list_corrections(event_id: str,
     rows = _repo(db).list_corrections(event_id)
     return {"event_id": event_id, "corrections": rows,
             "returned": len(rows)}
+
+
+class AlertEvaluateIn(BaseModel):
+    events: list[dict[str, Any]] = Field(default_factory=list)
+    previous_by_asset: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    assessments: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
+class AlertTransitionIn(BaseModel):
+    alert: dict[str, Any] = Field(default_factory=dict)
+    action: str
+    actor: str
+    at: str
+    note: Optional[str] = None
+    resolution: Optional[str] = None
+    evidence_ids: list[str] = Field(default_factory=list)
+
+
+@router.post("/alerts/evaluate")
+def evaluate_alerts(body: AlertEvaluateIn,
+                    db: Session = Depends(get_db_session),
+                    user: str = Depends(get_current_user)) -> dict:
+    """Deterministic rules CL-001..CL-015 over a recorded event stream.
+    Every result is an OPEN investigation carrying what is proven and what
+    is not — a pattern never automatically becomes a confirmed compromise,
+    and severity is named drivers, never one unexplained number."""
+    try:
+        alerts = evaluate_rules(body.events,
+                                previous_by_asset=body.previous_by_asset,
+                                assessments=body.assessments)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"alerts": alerts, "returned": len(alerts)}
+
+
+@router.post("/alerts/transition")
+def alert_transition(body: AlertTransitionIn,
+                     db: Session = Depends(get_db_session),
+                     user: str = Depends(get_current_user)) -> dict:
+    """Append-only alert lifecycle. CONFIRMED_INCIDENT is the only
+    resolution that names a compromise, and it demands a named actor with
+    evidence — the engine never declares one."""
+    try:
+        return transition_alert(body.alert, action=body.action,
+                                actor=body.actor, at=body.at, note=body.note,
+                                resolution=body.resolution,
+                                evidence_ids=body.evidence_ids)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

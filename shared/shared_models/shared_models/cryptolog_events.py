@@ -96,6 +96,13 @@ EVENT_TYPES: dict[str, str] = {
     "PQC_NEGOTIATION_OBSERVED": TLS,
     "PQC_MIGRATION_VALIDATED": GOVERNANCE,
     "PQC_REGRESSION_DETECTED": CRYPTO_DRIFT,
+    # event types the deterministic rule set (CL-001..CL-015) reads; each
+    # files under its taxonomy category exactly as the spec classifies it
+    "CA_TRUST_CHANGED": CERTIFICATE,
+    "CRYPTO_POLICY_DISABLED": CONFIGURATION,
+    "CRYPTO_PROVIDER_CHANGED": CONFIGURATION,
+    "HSM_AVAILABILITY_CHANGED": HSM_KMS,
+    "COLLECTION_VISIBILITY_LOST": CRYPTO_DRIFT,
 }
 
 # ---- the three logging kinds, with distinct trust semantics ---------------
