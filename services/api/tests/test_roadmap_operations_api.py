@@ -740,3 +740,40 @@ def test_supplier_concentration_and_readiness_surfaces(api):
     assert least.status_code == 200
     assert least.json()["state"] == "CONSTRAINED"
     assert least.json()["suppliers"][0]["vendor"] == "ACME HSM"
+
+
+def test_production_qualification_register_keeps_external_only_honesty(api):
+    # the platform cannot perform a real-environment qualification
+    refused = api.post("/api/intelligence/production-qualification/file", json={
+        "activity": "LINUX_WINDOWS_ENV_QUALIFICATION",
+        "evidence_ids": ["ev-1"], "performed_by": "cryptoscan",
+        "performed_at": "2026-11-07", "result": "PASS"})
+    assert refused.status_code == 422
+    assert refused.json()["error_code"] == "INVALID_ARGUMENT"
+
+    # a synthetic filing stays labelled synthetic and never reads QUALIFIED
+    synthetic = api.post("/api/intelligence/production-qualification/file", json={
+        "activity": "LARGE_ESTATE_SYNTHETIC_TESTING",
+        "evidence_ids": ["ev-scale"], "performed_by": "cryptoscan scale validation",
+        "performed_at": "2026-11-07", "result": "PASS", "synthetic": True})
+    assert synthetic.status_code == 200, synthetic.text
+    assert synthetic.json()["state"] == "SYNTHETIC_ONLY"
+
+    qualified = api.post("/api/intelligence/production-qualification/file", json={
+        "activity": "BACKUP_RESTORE_DRILL",
+        "evidence_ids": ["ev-drill"], "performed_by": "Bank DR team",
+        "performed_at": "2026-11-07", "result": "PASS"})
+    assert qualified.status_code == 200, qualified.text
+    assert qualified.json()["state"] == "QUALIFIED"
+
+    status = api.post("/api/intelligence/production-qualification/status",
+                      json={"rows": [synthetic.json(), qualified.json()]})
+    assert status.status_code == 200, status.text
+    body = status.json()
+    assert body["production_ready"] is False
+    assert "LINUX_WINDOWS_ENV_QUALIFICATION" in body["blockers"]
+    assert body["synthetic_results"] == ["LARGE_ESTATE_SYNTHETIC_TESTING"]
+    not_filed = next(a for a in body["activities"]
+                     if a["activity"] == "BANK_PILOT_ACCEPTANCE")
+    assert not_filed["state"] == "NOT_FILED"
+    assert "never passed" in body["note"]

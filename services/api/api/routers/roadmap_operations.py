@@ -103,6 +103,10 @@ from shared_models.vendor_lifecycle import (
     supplier_risk,
 )
 from shared_models.supplier_concentration import supplier_concentration
+from shared_models.production_qualification import (
+    file_result as file_qualification_result,
+    qualification_status,
+)
 from shared_models.asset_alias import (
     merge_duplicates,
     resolve_all,
@@ -1045,3 +1049,49 @@ def api_least_ready_suppliers(body: LeastReadyIn,
     """Name the pacing constraints: the estate is bound by its least-ready
     critical suppliers — never an average readiness score."""
     return least_ready_suppliers(body.assessments)
+
+
+# ---- Phase-6 production-qualification register (external-only honesty) ------
+
+class QualificationFileIn(BaseModel):
+    activity: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    performed_by: str
+    performed_at: str
+    result: str
+    synthetic: bool = False
+    note: Optional[str] = None
+
+
+class QualificationStatusIn(BaseModel):
+    rows: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/production-qualification/file")
+def api_file_production_qualification(
+        body: QualificationFileIn,
+        session: Session = Depends(get_db_session),
+        _user: Any = Depends(get_current_user)) -> dict:
+    """File evidence of one Phase-6 activity. Real-environment activities
+    refuse synthetic evidence and refuse the platform as performer; a
+    synthetic result files but never reads QUALIFIED."""
+    try:
+        return file_qualification_result(
+            activity=body.activity, evidence_ids=body.evidence_ids,
+            performed_by=body.performed_by, performed_at=body.performed_at,
+            result=body.result, synthetic=body.synthetic, note=body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/production-qualification/status")
+def api_production_qualification_status(
+        body: QualificationStatusIn,
+        session: Session = Depends(get_db_session),
+        _user: Any = Depends(get_current_user)) -> dict:
+    """Per-activity register state: NOT_FILED is 'no evidence the platform
+    holds' — never passed, never not applicable."""
+    try:
+        return qualification_status(body.rows)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

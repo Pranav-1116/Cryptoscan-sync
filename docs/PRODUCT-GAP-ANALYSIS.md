@@ -25,8 +25,16 @@ intake collapse); §D collector contract published at
 dimensions (unknown never blended), evidence classification (levels never
 merge upward); §G validated post-change states only; §H collector contract
 with zero-asset explanations; §I POLICY_MATCH_ONLY never counted as
-compliant; §J twelve acceptance gates, two external-only. Qualification
-(Phase 6) and real-estate figures remain open.
+compliant; §J twelve acceptance gates, two external-only; §B deprecation /
+sunset policy over the real withdrawn air-gap family (RFC 8594 lifecycle
+trail, silent removals refused, exception headers survive the error
+envelope) and pagination clamps on every list surface; PQC ICT supply-chain
+analysis (named supplier/component concentration clusters, evidence-backed
+vendor readiness where a claim of testing is never test evidence, least-ready
+suppliers named as pacing constraints). Phase 6 now holds its external-only
+production-qualification register (performer + evidence mandatory, synthetic
+results never read QUALIFIED): the qualification acts themselves and
+real-estate figures remain open — they happen outside this repository.
 
 ## A. Frontend and user experience
 
