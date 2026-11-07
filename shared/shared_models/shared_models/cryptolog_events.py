@@ -469,3 +469,52 @@ def original_intact(original: Mapping[str, Any],
     """True when the preserved original still matches the correction's
     recorded hash: the original was never rewritten."""
     return event_hash(original) == str(correction.get("original_hash") or "")
+
+
+def validate_event(event: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize and validate an event-shaped dict through the contract.
+
+    The ingestion gateway's schema validation: an incoming record is
+    rebuilt through ``make_event``, so every construction-time refusal
+    (taxonomy, privacy, evidence, capability/usage, telemetry) applies to
+    stored records exactly as to locally built ones. The returned dict is
+    the canonical form: its ``event_hash`` identity is what the ledger and
+    deduplication record.
+    """
+    offender = _scan_for_secrets(dict(event), "event")
+    if offender:
+        raise ValueError(
+            f"prohibited value at {offender}: CryptoLog collects metadata, "
+            "counters, event identifiers and approved evidence, never keys, "
+            "tokens, plaintext or other secret contents")
+    obs = event.get("observation") or {}
+    ev = event.get("evidence") or {}
+    rel = event.get("relationships") or {}
+    proc = event.get("processing") or {}
+    return make_event(
+        event_type=event.get("event_type"),
+        category=event.get("category"),
+        logging_kind=event.get("logging_kind"),
+        tenant_id=event.get("tenant_id"),
+        severity=event.get("severity"),
+        asset_id=event.get("asset_id"),
+        business_system_id=event.get("business_system_id"),
+        source=event.get("source") or {},
+        cryptographic_context=event.get("cryptographic_context") or {},
+        observed_at=obs.get("observed_at"),
+        first_seen=obs.get("first_seen"),
+        last_seen=obs.get("last_seen"),
+        evidence_ids=ev.get("evidence_ids") or [],
+        integrity_status=ev.get("integrity_status") or "UNVERIFIED",
+        signature_status=ev.get("signature_status") or "UNKNOWN",
+        related_asset_ids=rel.get("related_asset_ids") or [],
+        relationship_evidence_ids=rel.get("relationship_evidence_ids") or [],
+        deduplication_key=proc.get("deduplication_key"),
+        event_id=event.get("event_id"),
+        investigation_status=event.get("investigation_status") or "OBSERVED",
+        telemetry_mode=event.get("telemetry_mode") or "EVENT",
+        approval_ref=event.get("approval_ref"),
+        attributes=event.get("attributes") or {},
+        normalization_version=proc.get("normalization_version") or "1.0",
+        rule_version=proc.get("rule_version"),
+    )
