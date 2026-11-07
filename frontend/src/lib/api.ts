@@ -8049,3 +8049,120 @@ export const apiCryptologEvent = (eventId: string): Promise<ApiResult<CryptologE
 
 export const apiCryptologCorrections = (eventId: string): Promise<ApiResult<{ event_id: string; corrections: CryptologCorrection[]; returned: number }>> =>
   call(`/api/v1/cryptolog/events/${encodeURIComponent(eventId)}/corrections`);
+
+/* CryptoLog alerts (Phase 5 storage surface) and integrity (section 5):
+   totals come from the server; a failed read is a failure, never zeros. */
+
+export interface CryptologAlertTransition {
+  action: string;
+  actor: string;
+  at: string;
+  note?: string | null;
+  resolution?: string | null;
+  evidence_ids?: string[];
+  state?: string;
+}
+
+export interface CryptologAlert {
+  alert_id: string;
+  rule_id: string;
+  event_id: string;
+  asset_id: string;
+  severity: string;
+  state: string;
+  title: string;
+  basis: Record<string, unknown>;
+  what_is_proven: string[];
+  what_is_not_proven: string[];
+  evidence_ids: string[];
+  occurred_at: string;
+  transitions: CryptologAlertTransition[];
+}
+
+export interface CryptologAlertPage {
+  rows: CryptologAlert[];
+  total_count: number;
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface CryptologAlertParams {
+  state?: string;
+  severity?: string;
+  rule_id?: string;
+  event_id?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export const apiCryptologAlerts = (params: CryptologAlertParams = {}): Promise<ApiResult<CryptologAlertPage>> => {
+  const qs = new URLSearchParams();
+  if (params.state) qs.set("state", params.state);
+  if (params.severity) qs.set("severity", params.severity);
+  if (params.rule_id) qs.set("rule_id", params.rule_id);
+  if (params.event_id) qs.set("event_id", params.event_id);
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.cursor) qs.set("cursor", params.cursor);
+  const suffix = qs.toString();
+  return call<CryptologAlertPage>(`/api/v1/cryptolog/alerts${suffix ? `?${suffix}` : ""}`);
+};
+
+export const apiCryptologAlert = (alertId: string): Promise<ApiResult<CryptologAlert>> =>
+  call<CryptologAlert>(`/api/v1/cryptolog/alerts/${encodeURIComponent(alertId)}`);
+
+export interface CryptologCheckpoint {
+  checkpoint_ref: string;
+  schema?: string;
+  partition_id?: string;
+  sequence?: number;
+  chain_hash?: string;
+  merkle_root_hash?: string;
+  event_count?: number;
+  created_at?: string;
+  signer_id?: string;
+  signature?: string;
+  retention_ref?: string;
+  window?: Record<string, unknown>;
+}
+
+export interface CryptologCheckpointPage {
+  rows: CryptologCheckpoint[];
+  total_count: number;
+}
+
+export const apiCryptologCheckpoints = (): Promise<ApiResult<CryptologCheckpointPage>> =>
+  call<CryptologCheckpointPage>("/api/v1/cryptolog/integrity/checkpoints");
+
+export interface CryptologVerifyResult {
+  schema?: string;
+  partition_id?: string;
+  results: Array<{ event_id: string; state: string; note: string }>;
+  overall_state: string;
+  note: string;
+  checkpoint_used: boolean;
+  input?: { event_count?: number; checkpoint_ref?: string | null; checkpoint_signature_verified?: boolean | null };
+}
+
+export const apiCryptologVerify = (body: {
+  checkpoint_ref?: string;
+  start_occurred?: string;
+  end_occurred?: string;
+} = {}): Promise<ApiResult<CryptologVerifyResult>> =>
+  call<CryptologVerifyResult>("/api/v1/cryptolog/integrity/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+export interface CryptologMerkleProof {
+  event_id: string;
+  event_hash: string;
+  index: number;
+  checkpoint_ref: string;
+  merkle_root_hash: string;
+  proof: Array<Record<string, string>>;
+  verified: boolean;
+}
+
+export const apiCryptologMerkleProof = (eventId: string, checkpointRef: string): Promise<ApiResult<CryptologMerkleProof>> =>
+  call<CryptologMerkleProof>(`/api/v1/cryptolog/integrity/merkle-proof?event_id=${encodeURIComponent(eventId)}&checkpoint_ref=${encodeURIComponent(checkpointRef)}`);

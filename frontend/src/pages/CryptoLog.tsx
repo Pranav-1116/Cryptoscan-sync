@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Panel, PageHead } from "../components/ui.jsx";
+import CryptoLogAlerts from "./CryptoLogAlerts.js";
+import CryptoLogIntegrity from "./CryptoLogIntegrity.js";
 import {
   apiCryptologCorrections, apiCryptologEvent, apiCryptologEvents,
   type ApiResult, type CryptologCorrection, type CryptologEventPage,
@@ -48,6 +50,7 @@ function observedAt(event: CryptologEventRow): string {
 }
 
 export default function CryptoLog() {
+  const [view, setView] = useState<"explorer" | "alerts" | "integrity">("explorer");
   const [category, setCategory] = useState("");
   const [severity, setSeverity] = useState("");
   const [status, setStatus] = useState("");
@@ -148,7 +151,19 @@ export default function CryptoLog() {
         right={<Badge tone="violet">{loadedCount} event{loadedCount === 1 ? "" : "s"} loaded</Badge>}
       />
 
-      <Panel title="Event explorer" sub="Filters are server-side: the term travels to the event store, never a page-local filter">
+      <div className="row" data-testid="cryptolog-views" style={{ gap: 8, marginBottom: 16 }}>
+        {([["explorer", "Event explorer"], ["alerts", "Threat investigation"], ["integrity", "Integrity monitor"]] as const).map(([key, label]) => (
+          <button key={key} className="btn" data-testid={`cryptolog-view-${key}`}
+            aria-pressed={view === key}
+            onClick={() => setView(key)}
+            style={view === key ? { background: "var(--ink)", color: "var(--panel)" } : undefined}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === "alerts" ? <CryptoLogAlerts /> : view === "integrity" ? <CryptoLogIntegrity /> : (
+      <><Panel title="Event explorer" sub="Filters are server-side: the term travels to the event store, never a page-local filter">
         <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <select aria-label="category" value={category} onChange={(e) => setCategory(e.target.value)} style={CONTROL_STYLE}>
             <option value="">All categories</option>
@@ -293,6 +308,7 @@ export default function CryptoLog() {
           <div className="dim" data-testid="detail-idle">Select an event to inspect its metadata, parameters, evidence, relationships and corrections.</div>
         </Panel>
       )}
+      </>)}
     </div>
   );
 }
