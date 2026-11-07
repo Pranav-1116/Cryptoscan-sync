@@ -8,6 +8,26 @@
 > - **Major gap** — Important capability remains incomplete or requires proof.
 > - **Needs audit** — Current implementation needs verification.
 
+**Build status (2026-11-07, tracked live in `CURRENT-STATE.md`):** substantial
+in-repo progress with tests — §A metric-to-record linking, evidence classes,
+inspectable evidence (hashes + provenance), six-BOM navigation, PQC plans
+traceable to assets and rules, named search boundaries, audited governance;
+§B stable error codes + request ids + rate-limit declarations + pagination
+hard maximum, bulk partial success, idempotent writes, export manifests;
+§C cross-BOM AGREES/CONFLICTS/MISSING ("presence is not responsibility")
+and the rebuildable graph projection (same authoritative rows → same logical
+graph; acceptance criteria audited: cross-tenant evidence isolation =
+test_cross_tenant_adversarial, snapshot verifiability = test_collection_views
+refusals, restore = "a backup is not a tested restore" gate, duplicates =
+intake collapse); §D collector contract published at
+`docs/contracts/collector-contract.schema.json` with drift-proof tests;
+§E threat ladder (a pattern never auto-confirms), explainable risk
+dimensions (unknown never blended), evidence classification (levels never
+merge upward); §G validated post-change states only; §H collector contract
+with zero-asset explanations; §I POLICY_MATCH_ONLY never counted as
+compliant; §J twelve acceptance gates, two external-only. Qualification
+(Phase 6) and real-estate figures remain open.
+
 ## A. Frontend and user experience
 
 Needs completion
