@@ -1,0 +1,123 @@
+/* Intelligence workbench — the roadmap's UI surface.
+   Dark navy / charcoal, dense tables, evidence-linked rows.
+   Design prohibitions (enforced by design.contract.test.ts): plain flat fills
+   and 1px borders only — no decorative shading, no lighting effects, and no
+   conversational-assistant surfaces. Keep this file tight and quiet. */
+
+.intel {
+  --intel-navy: #0b1220;
+  --intel-charcoal: #1a2332;
+  --intel-surface: #111c2e;
+  --intel-line: #2a3852;
+  --intel-text: #dbe4f0;
+  --intel-muted: #8ea0b8;
+  --intel-accent: #22d3ee;
+  --intel-warn: #f0b429;
+  --intel-danger: #ef6a6a;
+  background: var(--intel-navy);
+  color: var(--intel-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 12px;
+}
+
+.intel h2 {
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--intel-accent);
+  border-bottom: 1px solid var(--intel-line);
+  padding-bottom: 6px;
+  margin: 14px 0 8px;
+}
+
+.intel table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 4px 0 10px;
+}
+
+.intel th,
+.intel td {
+  border: 1px solid var(--intel-line);
+  padding: 3px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.intel th {
+  background: var(--intel-charcoal);
+  color: var(--intel-muted);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.intel tr:nth-child(even) td {
+  background: var(--intel-surface);
+}
+
+.intel .chip {
+  display: inline-block;
+  border: 1px solid var(--intel-line);
+  background: var(--intel-charcoal);
+  padding: 0 5px;
+  border-radius: 2px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.intel .chip-unknown {
+  color: var(--intel-warn);
+  border-color: var(--intel-warn);
+}
+
+.intel .chip-bad {
+  color: var(--intel-danger);
+  border-color: var(--intel-danger);
+}
+
+.intel .chip-ok {
+  color: var(--intel-accent);
+  border-color: var(--intel-accent);
+}
+
+.intel .banner {
+  border: 1px solid var(--intel-warn);
+  background: var(--intel-charcoal);
+  color: var(--intel-warn);
+  padding: 6px 8px;
+  margin: 6px 0;
+}
+
+.intel .evidence {
+  color: var(--intel-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.intel .muted {
+  color: var(--intel-muted);
+}
+
+.intel .filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 4px 0 8px;
+}
+
+.intel .filters input,
+.intel .filters select {
+  background: var(--intel-charcoal);
+  color: var(--intel-text);
+  border: 1px solid var(--intel-line);
+  padding: 2px 6px;
+  font: inherit;
+}
+
+.intel .not-proven {
+  color: var(--intel-warn);
+}
