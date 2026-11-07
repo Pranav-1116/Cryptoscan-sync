@@ -578,6 +578,52 @@ DRIVERS: dict[str, type[BaseDriver]] = {
 }
 
 
+def driver_coverage() -> dict[str, Any]:
+    """Live driver vs dialect documentation vs nothing — named, never implied.
+
+    A dialect row documents what a vendor exposes; a *driver* is code that actually reads
+    the device. This returns the two sets separately, and names the families (WAF, VPN,
+    rate-limit) where dialects are documented and no live read exists. A report showing
+    only the dialect rows would be implying coverage the platform does not have: nine
+    dialects have live drivers, the rest are fixtures at best, and the gap is this, not a
+    blank.
+    """
+    from .registry import adapters as registry_adapters
+
+    live = {key.lower(): cls.__name__ for key, cls in DRIVERS.items()}
+    fixture_only: list[str] = []
+    facade: list[str] = []
+    for key in registry_adapters():
+        normalized = key.lower().replace(":", ".")
+        if key.endswith(":existing-collectors"):
+            facade.append(normalized)
+        elif normalized not in live:
+            fixture_only.append(normalized)
+    gaps: dict[str, Any] = {}
+    for family in ("waf", "vpn", "rate_limit"):
+        members = sorted(k for k in (*fixture_only, *live) if k.split(".", 1)[0] == family)
+        if members and not any(k in live for k in members):
+            gaps[family] = {
+                "dialects": members,
+                "live_drivers": [],
+                "gap": (f"{len(members)} documented dialect(s) and no live driver: the row "
+                        "describes what the vendor exposes and nothing reads it. Supporting "
+                        "this family or reporting this gap are the only two honest options, "
+                        "and this is the report"),
+            }
+    return {
+        "live": dict(sorted(live.items())),
+        "fixture_only": sorted(fixture_only),
+        "facade": sorted(facade),
+        "gaps": gaps,
+        "counts": {"live": len(live), "fixture_only": len(fixture_only),
+                   "facade": len(facade), "gap_families": len(gaps)},
+        "note": ("a fixture proves the parsing, not the device: only the names in 'live' "
+                 "read real hardware, and only those were live-tested against real devices "
+                 "(see the operations guide's real-device qualification gap)"),
+    }
+
+
 def driver_for(adapter_key: str, transport: ReadOnlyTransport, *,
                system: str = "", **options: Any) -> BaseDriver:
     """The driver for one dialect, or a refusal that names which dialects have one.

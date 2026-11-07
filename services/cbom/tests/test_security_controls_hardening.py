@@ -460,3 +460,25 @@ def test_the_snapshot_ceiling_is_reported_before_it_is_hit():
     assert limits["max_rows_per_section"] > 0
     assert limits["max_snapshot_bytes"] > 0
     assert limits["bytes_remaining"] <= limits["max_snapshot_bytes"]
+
+
+def test_driver_coverage_names_live_reads_and_the_gaps_honestly():
+    """A dialect row documents what a vendor exposes; only a driver reads the device.
+
+    The coverage report is where the two stop being confused: the nine live drivers are
+    named, the fixture-only dialects are named, and the families with no live read at all
+    (WAF, VPN, rate-limit) are reported as gaps — not implied by the existence of a row.
+    """
+    from cbom.security_controls.drivers import DRIVERS, driver_coverage
+
+    coverage = driver_coverage()
+    assert coverage["counts"]["live"] == len(DRIVERS) == 9
+    assert set(coverage["live"]) == set(DRIVERS)
+    for family in ("waf", "vpn", "rate_limit"):
+        assert family in coverage["gaps"], f"{family} dialects exist and nothing reads them"
+        assert coverage["gaps"][family]["live_drivers"] == []
+        assert coverage["gaps"][family]["dialects"]
+    assert not any(key.startswith(("waf.", "vpn.", "rate_limit."))
+                   for key in coverage["live"])
+    # and a fixture is never listed as a live read
+    assert not (set(coverage["live"]) & set(coverage["fixture_only"]))

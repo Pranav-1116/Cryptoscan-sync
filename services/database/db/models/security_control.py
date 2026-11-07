@@ -36,7 +36,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (JSON, Boolean, DateTime, ForeignKey, Index, Integer, String,
-                        UniqueConstraint)
+                        UniqueConstraint, text)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -64,6 +64,13 @@ class SecurityControlSnapshot(BaseModel, TenantScoped):
         UniqueConstraint("tenant_id", "digest", name="uq_security_control_snapshot_digest"),
         Index("ix_security_control_snapshot_tenant_captured",
               "tenant_id", "captured_at"),
+        # NULL is the platform estate's identity, and SQL counts NULLs as distinct in
+        # unique constraints — so (tenant_id, sequence) alone lets two estate writers store
+        # the same sequence. This partial index makes the sequence unique for estate rows
+        # too (migration 0134); the write path retries on collision either way.
+        Index("uq_security_control_snapshot_seq_platform", "sequence", unique=True,
+              postgresql_where=text("tenant_id IS NULL"),
+              sqlite_where=text("tenant_id IS NULL")),
     )
 
     #: sha256 over the canonical body, minus the volatile fields. Two reads that say the same

@@ -167,9 +167,9 @@ def summarise(entries: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     for row in rows:
         code = normalise(row.get("state"))
         counts[code] += 1
-        per_control.append({**describe(code), "control": _norm(row.get("control")),
-                            "vendor": row.get("vendor"), "system": row.get("system"),
-                            "detail": row.get("detail")})
+        # the row is carried through untouched (its state replaced by the normalised one),
+        # so a caller's own per-control detail renders instead of being dropped here
+        per_control.append({**row, **describe(code), "control": _norm(row.get("control"))})
     total = len(rows)
     collected = sum(count for code, count in counts.items() if code in COLLECTED)
     failed = sum(count for code, count in counts.items() if code in FAILED)

@@ -224,6 +224,12 @@ class APISettings(BaseSettings):
     #: mechanism switched on.
     ESTATE_HISTORY_RETENTION_DAYS: int = 2555
     ESTATE_EVIDENCE_RETENTION_DAYS: int = 2555
+    #: The content-addressed evidence store the security-control plane resolves snapshot
+    #: bodies (and the evidence ids inside them) against. An empty root means "no store is
+    #: configured": a snapshot that *claims* evidence is then refused, because an
+    #: unresolvable evidence id is an assertion, not a reading. Tenant bodies live under
+    #: ``<root>/<tenant_id>/`` and a location may never escape its tenant directory.
+    SECURITY_CONTROLS_EVIDENCE_ROOT: str = ""
     #: Litigation/regulatory hold: refuses every sweep, archiving nothing and
     #: deleting nothing, until an operator clears it.
     ESTATE_RETENTION_LEGAL_HOLD: bool = False

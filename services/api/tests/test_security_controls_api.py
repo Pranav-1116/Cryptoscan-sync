@@ -67,15 +67,80 @@ def api(session):
 
 
 @pytest.fixture()
-def writer(api, monkeypatch):
-    """A client that authenticates as a machine: the transport is not what is under test."""
+def store(tmp_path, monkeypatch):
+    """A per-test evidence store, tenant directory and all, exactly as production files it."""
+    from api.config.settings import get_settings
+
+    root = tmp_path / "evidence"
+    root.mkdir()
+    monkeypatch.setattr(get_settings(), "SECURITY_CONTROLS_EVIDENCE_ROOT", str(root),
+                        raising=False)
+    return root
+
+
+class CollectorClient:
+    """What a collector actually does: write the content-addressed body first, then post.
+
+    A snapshot that cites evidence names the body's location and digest, and the platform
+    resolves every id against that artifact. The harness writes a real artifact (under the
+    tenant's own directory) so a test payload is a claim the store can back, not a wish.
+    """
+
+    def __init__(self, client, store) -> None:
+        self._client = client
+        self._store = store
+
+    def _attach(self, payload: dict) -> dict:
+        import hashlib
+        from datetime import datetime, timezone
+
+        captured = payload.get("captured_at") or datetime.now(timezone.utc).isoformat()
+        body_doc: dict = {"captured_at": captured, "collector": payload.get("collector"),
+                          "evidence": []}
+        for finding in payload.get("findings", []):
+            for evidence_id in finding.get("evidence_ids", []):
+                body_doc["evidence"].append({
+                    "evidence_id": evidence_id,
+                    "scheme": "v1",
+                    "control": finding.get("control"),
+                    "vendor": finding.get("vendor") or "test-vendor",
+                    "system": finding.get("subject"),
+                    "kind": finding.get("kind", "STATE"),
+                    "identity": finding.get("subject"),
+                    "config_version": {},
+                })
+        raw = json.dumps(body_doc, sort_keys=True).encode("utf-8")
+        location = f"{str(payload.get('digest', 'body')).replace(':', '_')}.json"
+        target = self._store / "_platform" / location
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+        payload = dict(payload)
+        payload["captured_at"] = captured
+        payload["body_location"] = location
+        payload["body_digest"] = "sha256:" + hashlib.sha256(raw).hexdigest()
+        payload["body_bytes"] = len(raw)
+        return payload
+
+    def post(self, url: str, json: dict | None = None, **kwargs):
+        if json and json.get("findings") is not None and not json.get("body_location"):
+            json = self._attach(json)
+        return self._client.post(url, json=json, **kwargs)
+
+    def get(self, url: str, **kwargs):
+        return self._client.get(url, **kwargs)
+
+
+@pytest.fixture()
+def writer(api, store, monkeypatch):
+    """A client that authenticates as a machine and collects like one. The transport is
+    not what is under test."""
     from api.routers import security_controls
 
     monkeypatch.setattr(security_controls, "_service_identity",
                         lambda request, signature=None: {"kind": "api_key",
                                                          "id": "key-collector-1",
                                                          "signature_bound": False})
-    return TestClient(api)
+    return CollectorClient(TestClient(api), store)
 
 
 def body(digest: str = "sha256:aaaabbbbccccdddd", **overrides) -> dict:
@@ -256,10 +321,21 @@ def test_findings_keep_their_evidence_ids(writer, api):
 
 def test_health_route_names_every_control_and_never_says_nothing(writer, api):
     """A console that renders "no findings" for four different failures is a console that
-    hides three of them. The route is where they stop looking alike."""
+    hides three of them. The route is where they stop looking alike — and where a snapshot
+    covering three controls carries three per-control outcomes, not one painted state."""
     from api.dependencies import TenantContext
 
-    assert writer.post("/api/security-controls/snapshots", json=body()).status_code == 200
+    payload = body("sha256:aaaa000011112222", read_state="PARTIAL_READ", partial=True)
+    payload["controls"] = ["FIREWALL", "WAF", "RATE_LIMIT"]
+    payload["findings"] = [
+        {"control": "FIREWALL", "state": "OBSERVED", "subject": "FW-EDGE-01",
+         "facts": ["OBSERVED"], "evidence_ids": ["EVID-FIREWALL-00000000abcd"],
+         "reason": "TLS inspection enabled on the edge policy"},
+        {"control": "RATE_LIMIT", "state": "UNKNOWN", "subject": "PAYMENTS-API",
+         "facts": ["OBSERVED"], "evidence_ids": ["EVID-RL-1"],
+         "reason": "the limiter's counters could not be read"},
+    ]
+    assert writer.post("/api/security-controls/snapshots", json=payload).status_code == 200
     api.dependency_overrides[__import__("api").dependencies.get_tenant_context] = (
         lambda: TenantContext(username="auditor", tenant_id=None, tenant_role="auditor",
                               is_platform_admin=True))
@@ -267,9 +343,19 @@ def test_health_route_names_every_control_and_never_says_nothing(writer, api):
     assert response.status_code == 200
     payload = response.json()
     controls = {row["control"]: row for row in payload["controls"]}
-    # the snapshot covered FIREWALL and WAF, so those were read; the rest were never asked
-    assert controls["FIREWALL"]["state"] == "OK"
+    # three controls, one snapshot, three per-control read results
+    assert controls["FIREWALL"]["state"] == "OK"  # its statements arrived
+    assert controls["FIREWALL"]["finding_states"] == ["OBSERVED"]
+    assert controls["FIREWALL"]["read_state"] == "PARTIAL_READ"
+    assert controls["RATE_LIMIT"]["state"] == "PARTIAL_READ"  # nothing learnable arrived
+    assert controls["RATE_LIMIT"]["finding_states"] == ["UNKNOWN"]
+    assert controls["WAF"]["state"] == "PARTIAL_READ"  # covered, no findings of its own
+    assert controls["WAF"]["finding_states"] == []
     assert controls["HSM"]["state"] in {"NOT_CONFIGURED", "OK"}
+    # device-level stays its own block: the read outcome of the newest snapshot
+    assert payload["device"]["read_state"] == "PARTIAL_READ"
+    assert payload["device"]["collector"] == "key-collector-1"
+    assert "live" in payload["driver_coverage"]
     assert payload["coverage"]["nothing_asked"] is False
     assert payload["coverage"]["total"] == len(controls)
     assert "PARTIAL_READ" in payload["taxonomy"]

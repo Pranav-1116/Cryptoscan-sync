@@ -38,6 +38,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Protocol
+from urllib.parse import urljoin, urlsplit
 
 from .base import ControlRefused, _norm, scrub
 
@@ -219,6 +220,40 @@ class ReadOnlyTransport(Protocol):
         ...
 
 
+# --------------------------------------------------------------------------- #
+# Where a credential-bearing request is allowed to go
+# --------------------------------------------------------------------------- #
+
+def _origin(url: str) -> tuple[str, str, int]:
+    """The ``(scheme, host, port)`` a URL points at. The port defaults per scheme, never guesses."""
+    parts = urlsplit(url)
+    scheme = (parts.scheme or "").lower()
+    host = (parts.hostname or "").lower()
+    try:
+        port = parts.port
+    except ValueError:
+        port = -1
+    if port is None:
+        port = 443 if scheme == "https" else 80 if scheme == "http" else 0
+    return scheme, host, port
+
+
+def _url_userinfo(url: str) -> bool:
+    """True when a URL smuggles ``user:pass@`` in its netloc."""
+    parts = urlsplit(url)
+    return bool(parts.username or parts.password) or "@" in (parts.netloc or "")
+
+
+def _redact_url(url: str) -> str:
+    """A URL safe to record: user-info (if any) is stripped before it reaches a log line."""
+    parts = urlsplit(url)
+    if not (parts.username or parts.password):
+        return url
+    host = parts.hostname or ""
+    port = f":{parts.port}" if parts.port else ""
+    return f"{parts.scheme}://***@{host}{port}{parts.path}"
+
+
 @dataclass
 class HttpTransport:
     """HTTPS with TLS verification, bounded retries and an allow-listed method set.
@@ -271,13 +306,21 @@ class HttpTransport:
                 f"{verb} would change the device; this integration sends "
                 f"{', '.join(sorted(READ_METHODS))} and refuses everything else at the "
                 "transport, not only in the adapter's declaration")
-        url = path if path.startswith(("http://", "https://")) else f"{self.base_url}/{path.lstrip('/')}"
+        started = time.monotonic()
+        try:
+            url = self._resolve(path)
+        except ControlRefused as exc:
+            # a refusal is a result, not a crash: the caller learns the read was refused and
+            # why, and no credential-bearing packet left this process
+            return TransportResult(url=_redact_url(path)[:200], method=verb, state=REFUSED,
+                                   attempts=0, reason=_scrub_text(exc)[:300],
+                                   elapsed_ms=int((time.monotonic() - started) * 1000))
         headers = {"Accept": "application/json"}
         if self.credential is not None and self.credential:
+            # only reachable for a same-origin url — _resolve refused every other destination
             secret = self.credential.reveal()
             headers[self.header_name] = (f"Bearer {secret}" if self.scheme == "bearer"
                                          else secret)
-        started = time.monotonic()
         attempts = 0
         last: TransportResult | None = None
         for attempt in range(self.max_retries + 1):
@@ -294,6 +337,16 @@ class HttpTransport:
                     continue
                 return last
             status = int(getattr(response, "status_code", 0) or 0)
+            if 300 <= status < 400:
+                # redirects are refused at this layer and httpx is configured never to follow
+                # them: a 302 to a host nobody approved is the classic credential-stealing
+                # move, and an auto-following client would send the token along
+                return TransportResult(
+                    url=url, method=verb, status=status, state=REFUSED, attempts=attempts,
+                    reason=(f"HTTP {status} redirect refused — this transport never follows "
+                            "a redirect, so the credential cannot be carried to a "
+                            "destination nobody approved"),
+                    elapsed_ms=int((time.monotonic() - started) * 1000))
             if status >= 500 or status in (408, 429):
                 state = _STATUS_STATE.get(status, UNREACHABLE)
                 last = TransportResult(
@@ -387,6 +440,48 @@ class HttpTransport:
         }
 
     # -- internals ---------------------------------------------------------- #
+    def _resolve(self, path: str) -> str:
+        """Resolve a request or pagination target, and enforce where the credential may go.
+
+        The ``Authorization`` header this transport carries is the device's credential. It
+        goes to exactly one origin — the origin of ``base_url`` (scheme + host + port) — and
+        nowhere else. Absolute targets are how a device, or an attacker shaping one's
+        answers, points a credential-bearing client at a foreign host:
+
+        * a relative target resolves against the base URL and is allowed;
+        * an absolute target is allowed only when scheme, host **and** port all match the
+          base origin;
+        * an ``https`` base never follows a target down to ``http`` (downgrade refused);
+        * a URL carrying user-info (``user:pass@host``) is refused outright — a credential
+          in a URL is a credential in a log line.
+
+        Nothing is silently rewritten and nothing is followed: a cross-origin target raises
+        :class:`ControlRefused`, and :meth:`request` turns that into a ``REFUSED`` result
+        naming the destination.
+        """
+        text = _norm(path)
+        target = (text if text.startswith(("http://", "https://"))
+                  else urljoin(self.base_url + "/", text))
+        if _url_userinfo(target):
+            raise ControlRefused(
+                "CREDENTIAL_IN_URL",
+                f"{_redact_url(target)} carries user-info in the URL; credentials belong in "
+                "the credential source, not in an address that ends up in every log line")
+        base_origin = _origin(self.base_url)
+        target_origin = _origin(target)
+        if target_origin != base_origin:
+            if base_origin[0] == "https" and target_origin[0] == "http":
+                raise ControlRefused(
+                    "CROSS_ORIGIN_REFUSED",
+                    f"refusing an https→http downgrade to {_redact_url(target)}: the device "
+                    f"credential for {self.base_url} never travels in plaintext")
+            raise ControlRefused(
+                "CROSS_ORIGIN_REFUSED",
+                f"refusing to send the credential for {self.base_url} to "
+                f"{_redact_url(target)}: scheme, host and port must all match the approved "
+                "origin (pagination links included)")
+        return target
+
     def _send(self, method: str, url: str, *, headers: Mapping[str, str],
               params: Mapping[str, Any] | None) -> Any:
         if self._client_factory is not None:
@@ -496,8 +591,12 @@ class FileTail:
     path: str
     max_bytes: int = 4 * 1024 * 1024
     max_lines: int = 5000
-    _offset: int = 0
-    _rotated: bool = False
+    #: a durable cursor returned by a previous :meth:`durable_cursor` — resume is exact
+    cursor: Mapping[str, Any] | None = None
+    _offset: int = field(default=0, repr=False)      # first byte not yet consumed
+    _pending: bytes = field(default=b"", repr=False)  # read ahead, not yet a whole record
+    _rotated: bool = field(default=False, repr=False)
+    _identity: tuple[int, int] | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         target = Path(_norm(self.path))
@@ -505,27 +604,94 @@ class FileTail:
             raise ControlRefused("LOG_PATH_NOT_ABSOLUTE",
                                  f"{self.path!r} must be an absolute path")
         self.path = str(target)
+        if self.cursor is not None:
+            self._offset = max(0, int(self.cursor.get("offset", 0) or 0))
+            try:
+                self._identity = (int(self.cursor["device"]), int(self.cursor["inode"]))
+            except (KeyError, TypeError, ValueError):
+                self._identity = None
 
-    def read_lines(self) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    def durable_cursor(self) -> dict[str, Any]:
+        """The resume point: the first byte not yet consumed as a record.
+
+        Persist this next to whatever the records feed; rebuilding a tail from it continues
+        at the exact byte boundary the last read finished on. ``pending_bytes`` counts bytes
+        already read from disk but not yet consumed — they are re-read from the file on
+        resume, so only the offset and the file identity need to survive a restart.
+        """
+        device, inode = self._identity if self._identity else (None, None)
+        return {"offset": self._offset, "device": device, "inode": inode,
+                "pending_bytes": len(self._pending)}
+
+    def read_lines(self, *, flush_tail: bool = False) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        """Consume complete JSON records since the last read, and nothing else.
+
+        Three rules, each one a cursor rule:
+
+        * **a partial line is never skipped** — the bytes after the last newline stay in an
+          in-memory tail and are prepended to the next read, so a line written in two
+          ``write()`` calls still arrives as one record;
+        * **the durable cursor only advances through consumed records** — it stops at the
+          last record this call returned, never at ``tell()``. Unread complete lines (beyond
+          ``max_lines``) and the unfinished tail stay for the next read;
+        * **rotation is detected, not guessed** — the file's ``(device, inode)`` is tracked;
+          when the file under the path is a different file, or it shrank below the cursor,
+          the read restarts at byte 0 and says ``rotated``.
+
+        A final unterminated line is reported as ``pending_bytes`` — never lost, never
+        invented. ``flush_tail=True`` consumes it as a final record for a caller that knows
+        the file is finished; on a live log it would truncate a line mid-write.
+        """
         target = Path(self.path)
         detail: dict[str, Any] = {"path": self.path, "offset_before": self._offset}
         if not target.is_file() or target.is_symlink():
             return [], {**detail, "state": UNREACHABLE,
                         "reason": "the log file is missing or is a symlink"}
-        size = target.stat().st_size
-        if size < self._offset:  # rotated or truncated under us
-            self._offset = 0
+        stat = target.stat()
+        identity = (stat.st_dev, stat.st_ino)
+        if self._identity is not None and identity != self._identity:
+            # a different file under the same path: the old one rotated away
             self._rotated = True
+            self._offset = 0
+            self._pending = b""
+        self._identity = identity
+        if stat.st_size < self._offset:  # truncated under us
+            self._rotated = True
+            self._offset = 0
+            self._pending = b""
         with target.open("rb") as handle:
-            handle.seek(self._offset)
+            handle.seek(self._offset + len(self._pending))
             chunk = handle.read(self.max_bytes)
-            self._offset = handle.tell()
-        lines = chunk.split(b"\n")
-        # the final fragment may be a partial write; keep the offset so the next read
-        # continues from it instead of losing the whole line
+        data = self._pending + chunk
+        if flush_tail:
+            complete_end = len(data)
+        else:
+            complete_end = data.rfind(b"\n") + 1
+        if complete_end == 0:
+            # nothing complete yet: the durable cursor does not move past unread content
+            self._pending = data
+            if len(self._pending) > self.max_bytes:
+                # one "line" larger than the byte cap is not a sensor record; counting it and
+                # refusing to grow without bound is the honest trade
+                self._pending = b""
+                self._offset = stat.st_size
+                return [], {**detail, "offset_after": self._offset, "size": stat.st_size,
+                            "rotated": self._rotated, "lines": 0, "malformed": 1,
+                            "truncated": False, "pending_bytes": 0, "oversize_line": True,
+                            "cursor": self.durable_cursor(), "state": OK}
+            return [], {**detail, "offset_after": self._offset, "size": stat.st_size,
+                        "rotated": self._rotated, "lines": 0, "malformed": 0,
+                        "truncated": False, "pending_bytes": len(self._pending),
+                        "cursor": self.durable_cursor(), "state": OK}
+        pieces = data[:complete_end].splitlines(keepends=True)
+        over = len(pieces) > self.max_lines
+        chosen = pieces[: self.max_lines]
+        consumed = sum(len(piece) for piece in chosen)
+        self._pending = data[consumed:]
+        self._offset += consumed
         rows: list[dict[str, Any]] = []
         malformed = 0
-        for raw in lines[: self.max_lines]:
+        for raw in chosen:
             text = raw.decode("utf-8", "replace").strip()
             if not text:
                 continue
@@ -537,10 +703,10 @@ class FileTail:
             if isinstance(payload, Mapping):
                 rows.append(dict(payload))
         return rows, {
-            **detail, "offset_after": self._offset, "size": size,
+            **detail, "offset_after": self._offset, "size": stat.st_size,
             "rotated": self._rotated, "lines": len(rows), "malformed": malformed,
-            "truncated": len(lines) > self.max_lines,
-            "state": OK,
+            "truncated": over, "pending_bytes": len(self._pending),
+            "cursor": self.durable_cursor(), "state": OK,
         }
 
     def health(self) -> dict[str, Any]:
