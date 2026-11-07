@@ -57,6 +57,14 @@ from shared_models.acceptance_gates import (
     file_gate_evidence,
     gates_status,
 )
+from shared_models.collector_contract import (
+    collector_contract,
+    collection_report,
+)
+from shared_models.compliance_mapping import (
+    assessment as compliance_assessment,
+    compliance_status,
+)
 from shared_models.cross_bom_reconciliation import (
     attribute_operation,
     bom_claim,
@@ -72,6 +80,10 @@ from shared_models.governance import (
     create_ticket,
     transition,
     verify_audit,
+)
+from shared_models.observation_intake import (
+    ingest_observations,
+    rebuild_projection,
 )
 from shared_models.migration_plan import (
     asset_state,
@@ -708,3 +720,127 @@ def api_gates_status(session: Session = Depends(get_db_session),
              "synthetic": r.synthetic, "note": r.note}
             for r in session.query(GateFiling).order_by(GateFiling.performed_at)]
     return gates_status(rows)
+
+
+# ----------------------------------- gap analysis §D collector standard contract
+
+class CollectorContractIn(BaseModel):
+    collector_id: str
+    version: str
+    supported_asset_types: list[str] = Field(default_factory=list)
+    required_permissions: list[str] = Field(default_factory=list)
+    data_sensitivity: str
+    signature: dict[str, Any] = Field(default_factory=dict)
+
+
+class CollectionReportIn(BaseModel):
+    contract: CollectorContractIn
+    started_at: str
+    ended_at: str
+    target_scope: str
+    state: str
+    assets_found: list[dict[str, Any]] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    coverage_metrics: dict[str, Any] = Field(default_factory=dict)
+    zero_reason: Optional[str] = None
+    note: Optional[str] = None
+
+
+@router.post("/collector-contracts")
+def api_collection_report(body: CollectionReportIn,
+                          session: Session = Depends(get_db_session),
+                          _user: Any = Depends(get_current_user)) -> dict:
+    """Publish a collector contract and one run report against it.
+
+    A zero-asset result without FOUND_NOTHING / NO_PERMISSION / FAILED /
+    UNSUPPORTED_TARGET is refused: an unexplained zero is not a measurement.
+    """
+    try:
+        contract = collector_contract(**body.contract.model_dump())
+        return collection_report(
+            contract=contract, started_at=body.started_at,
+            ended_at=body.ended_at, target_scope=body.target_scope,
+            state=body.state, assets_found=body.assets_found,
+            evidence_ids=body.evidence_ids,
+            coverage_metrics=body.coverage_metrics,
+            zero_reason=body.zero_reason, note=body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ------------------------------ gap analysis §C intake idempotency + projection
+
+class IntakeIn(BaseModel):
+    observations: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/observations/intake")
+def api_observation_intake(body: IntakeIn,
+                           session: Session = Depends(get_db_session),
+                           _user: Any = Depends(get_current_user)) -> dict:
+    """Collapse duplicate observations and digest the logical graph.
+
+    Duplicates merge with unioned evidence (a re-run is not new estate), and
+    the graph digest is the reproducibility proof for the projection rebuild.
+    """
+    try:
+        intake = ingest_observations(body.observations)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    intake["projection"] = rebuild_projection(intake)
+    return intake
+
+
+# ---------------------------------- gap analysis §I compliance mapping
+
+class ComplianceRequirementIn(BaseModel):
+    requirement_id: str
+    framework: str
+    clause: str
+    text: str
+
+
+class ComplianceAssessmentIn(BaseModel):
+    requirement_id: str
+    policy_match: Optional[bool] = None
+    evidence_ids: list[str] = Field(default_factory=list)
+    assessed_by: str
+    outcome: str
+    note: Optional[str] = None
+
+
+class ComplianceQuery(BaseModel):
+    requirements: list[ComplianceRequirementIn] = Field(default_factory=list)
+    assessments: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/compliance/assessments")
+def api_compliance_assessment(body: ComplianceAssessmentIn,
+                              session: Session = Depends(get_db_session),
+                              _user: Any = Depends(get_current_user)) -> dict:
+    try:
+        return compliance_assessment(
+            requirement_id=body.requirement_id,
+            policy_match=body.policy_match, evidence_ids=body.evidence_ids,
+            assessed_by=body.assessed_by, outcome=body.outcome,
+            note=body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/compliance/status")
+def api_compliance_status(body: ComplianceQuery,
+                          session: Session = Depends(get_db_session),
+                          _user: Any = Depends(get_current_user)) -> dict:
+    requirements = []
+    for req in body.requirements:
+        try:
+            requirements.append({
+                "requirement_id": req.requirement_id,
+                "framework": req.framework, "clause": req.clause,
+                "text": req.text,
+            })
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return compliance_status(requirements=requirements,
+                             assessments=body.assessments)

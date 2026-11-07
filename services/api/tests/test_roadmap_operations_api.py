@@ -441,3 +441,91 @@ class TestGatesAPI:
         assert report["gates"]["EVIDENCE_INTEGRITY"]["status"] == "PASSED"
         assert report["gates"]["RECOVERY"]["status"] == "NOT_PASSED"
         assert report["pilot_ready"] is False
+
+
+class TestCollectorContractAPI:
+
+    def _contract(self):
+        return {"collector_id": "linux-procfs", "version": "2.1.0",
+                "supported_asset_types": ["crypto-library"],
+                "required_permissions": ["read:/proc"],
+                "data_sensitivity": "INTERNAL",
+                "signature": {"algorithm": "ed25519", "value": "sig-1"}}
+
+    def test_a_zero_result_without_an_explanation_is_refused(self, api):
+        refused = api.post("/api/intelligence/collector-contracts", json={
+            "contract": self._contract(),
+            "started_at": "2026-11-07T01:00:00+00:00",
+            "ended_at": "2026-11-07T01:05:00+00:00",
+            "target_scope": "prod", "state": "SUCCESS",
+            "assets_found": [], "evidence_ids": ["RUN-1"],
+            "coverage_metrics": {}})
+        assert refused.status_code == 422
+        assert "must explain itself" in refused.json()["detail"]
+
+        ok = api.post("/api/intelligence/collector-contracts", json={
+            "contract": self._contract(),
+            "started_at": "2026-11-07T01:00:00+00:00",
+            "ended_at": "2026-11-07T01:05:00+00:00",
+            "target_scope": "prod", "state": "SUCCESS",
+            "assets_found": [], "evidence_ids": ["RUN-1"],
+            "coverage_metrics": {}, "zero_reason": "FOUND_NOTHING"}).json()
+        assert ok["zero_reason"] == "FOUND_NOTHING"
+
+    def test_an_unsigned_contract_is_refused(self, api):
+        bad = dict(self._contract(), signature={})
+        refused = api.post("/api/intelligence/collector-contracts", json={
+            "contract": bad,
+            "started_at": "2026-11-07T01:00:00+00:00",
+            "ended_at": "2026-11-07T01:05:00+00:00",
+            "target_scope": "prod", "state": "SUCCESS",
+            "assets_found": [{"asset_id": "a"}], "evidence_ids": ["RUN-1"],
+            "coverage_metrics": {}})
+        assert refused.status_code == 422
+        assert "integrity metadata" in refused.json()["detail"]
+
+
+class TestObservationIntakeAPI:
+
+    def test_duplicates_collapse_and_the_graph_digest_is_stable(self, api):
+        row = api.post("/api/intelligence/observations/intake", json={
+            "observations": [
+                {"plane": "linux", "asset_type": "lib", "locator": "p1",
+                 "asset_id": "lib-1", "evidence_ids": ["E1"]},
+                {"plane": "linux", "asset_type": "lib", "locator": "p1",
+                 "asset_id": "lib-1", "evidence_ids": ["E2"]},
+                {"kind": "relationship", "subject": "app", "predicate": "uses",
+                 "object": "lib-1", "evidence_ids": ["E3"]}]}).json()
+        assert row["duplicates_collapsed"] == 1
+        assert row["assets"][0]["evidence_ids"] == ["E1", "E2"]
+        assert row["projection"]["vertex_count"] == 1
+        assert row["projection"]["graph_digest"].startswith("sha256:")
+
+    def test_an_unplaceable_observation_is_refused(self, api):
+        refused = api.post("/api/intelligence/observations/intake", json={
+            "observations": [{"plane": "linux", "asset_type": "lib",
+                              "locator": ""}]})
+        assert refused.status_code == 422
+
+
+class TestComplianceAPI:
+
+    def test_a_policy_match_alone_never_reads_as_compliant(self, api):
+        report = api.post("/api/intelligence/compliance/status", json={
+            "requirements": [{"requirement_id": "PCI-6.4",
+                              "framework": "PCI-DSS", "clause": "6.4",
+                              "text": "changes controlled"}],
+            "assessments": [{"requirement_id": "PCI-6.4",
+                             "policy_match": True}]}).json()
+        assert report["requirements"]["PCI-6.4"]["status"] == "POLICY_MATCH_ONLY"
+
+    def test_an_assessment_needs_evidence_and_an_assessor(self, api):
+        refused = api.post("/api/intelligence/compliance/assessments", json={
+            "requirement_id": "PCI-6.4", "policy_match": True,
+            "evidence_ids": [], "assessed_by": "auditor", "outcome": "COMPLIANT"})
+        assert refused.status_code == 422
+        ok = api.post("/api/intelligence/compliance/assessments", json={
+            "requirement_id": "PCI-6.4", "policy_match": True,
+            "evidence_ids": ["CHANGE-1"], "assessed_by": "auditor",
+            "outcome": "COMPLIANT"}).json()
+        assert ok["outcome"] == "COMPLIANT"
