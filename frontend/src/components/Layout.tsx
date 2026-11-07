@@ -123,6 +123,7 @@ export const PRIMARY_SECTIONS: NavSection[] = [
           { to: "/crypto-assets", label: "Algorithm catalog", icon: Key },
           { to: "/findings", label: "Findings", icon: ListChecks },
           { to: "/pqc", label: "PQC readiness", icon: ShieldCheck },
+          { to: "/intelligence", label: "Intelligence workbench", icon: ShieldCheck },
           { to: "/agility", label: "Crypto agility", icon: SlidersHorizontal },
           { to: "/drift", label: "Crypto drift", icon: Pulse },
         ],

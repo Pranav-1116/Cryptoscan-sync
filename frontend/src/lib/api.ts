@@ -423,6 +423,56 @@ export const apiDigitalTwinTimeline = (assetId: string): Promise<ApiResult<Recor
 export const apiSecurity = (request: Record<string, unknown>): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/platform/security", { method: "POST", body: JSON.stringify({ request }) });
 
+/* ── intelligence (roadmap models; api/routers/roadmap_intelligence.py) ──
+ *
+ * Read-only views over the shared intelligence models. Two boundary rules the
+ * server enforces and these signatures preserve: the quantum threat horizon is
+ * a required POLICY INPUT (no default is invented here either), and a
+ * simulation names its snapshot explicitly (id or version, never "current").
+ */
+
+import type {
+  IntelligenceOverview,
+  IntelligenceSimulationRequest,
+  PqcReport,
+  RiskProfile,
+  SimulationResult,
+  ThreatReport,
+} from "../intelligence/types";
+
+export const apiIntelligenceOverview = (): Promise<ApiResult<IntelligenceOverview>> =>
+  call("/api/v1/intelligence/overview");
+
+export const apiIntelligenceFindings = (): Promise<ApiResult<ThreatReport>> =>
+  call("/api/v1/intelligence/findings");
+
+export const apiIntelligencePqcClaims = (subject?: string): Promise<ApiResult<PqcReport>> =>
+  call(subject
+    ? `/api/v1/intelligence/pqc/claims?subject=${encodeURIComponent(subject)}`
+    : "/api/v1/intelligence/pqc/claims");
+
+export const apiIntelligenceRisk = (
+  assetId: string,
+  quantumThreatHorizonYears: number,
+  opts?: { dataShelfLifeYears?: number; migrationLeadTimeYears?: number },
+): Promise<ApiResult<RiskProfile>> => {
+  const params = new URLSearchParams({
+    quantum_threat_horizon_years: String(quantumThreatHorizonYears),
+  });
+  if (opts?.dataShelfLifeYears !== undefined) {
+    params.set("data_shelf_life_years", String(opts.dataShelfLifeYears));
+  }
+  if (opts?.migrationLeadTimeYears !== undefined) {
+    params.set("migration_lead_time_years", String(opts.migrationLeadTimeYears));
+  }
+  return call(`/api/v1/intelligence/risk/${encodeURIComponent(assetId)}?${params.toString()}`);
+};
+
+export const apiIntelligenceSimulation = (
+  body: IntelligenceSimulationRequest,
+): Promise<ApiResult<SimulationResult & { evidence_note?: string }>> =>
+  call("/api/v1/intelligence/simulation", { method: "POST", body: JSON.stringify(body) });
+
 export const apiEvidence = (): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/platform/evidence");
 

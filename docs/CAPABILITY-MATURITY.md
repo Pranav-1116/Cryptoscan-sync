@@ -4,7 +4,7 @@
 > `scripts/gen_capability_maturity.py`. Served live at
 > `GET /api/v1/platform/capabilities`.
 
-**92 shipped surfaces, all supported.** The navigation carries no maturity
+**93 shipped surfaces, all supported.** The navigation carries no maturity
 badges: a product's sidebar is not the place to negotiate what is proven. What
 used to be a `beta` or `preview` label is now the **stated limit** column below,
 which is the part that actually told an operator something. A support statement
@@ -88,6 +88,7 @@ role-guarded actions.
 | `/findings` | Intelligence | Policy-evaluated findings with evidence links. |
 | `/graph` | Intelligence | Neo4j dependency graph is optional at runtime (in-process engine is the fallback and the tenant-isolated path); 3.2k+ LOC. Edge management API with provenance (source/created_by/confidence/last_verified), discovered-edge adoption (scanner cascade + graph snapshots → operator approval), declared crypto↔hardware and vendor-of-vendor linkage, and asset-level blast radius (shared asset → union over every using system) are live with tenant-scoped tests; scale evidence on real Neo4j estates is still open. |
 | `/hbom` | Intelligence | Hardware BOM view over the Technology BOM; depends on hardware scan coverage. |
+| `/intelligence` | Intelligence | The roadmap workbench over live estate rows: evidence-linked threat findings (a detector with no evidence source is listed as not-fired with its reason — an explained absence, never an all-clear), five separate risk dimensions (the quantum threat horizon is a required policy input, unknown dimensions are UNKNOWN rather than zero, and blending is opt-in and shows its arithmetic), PQC migration-stage claims (support-derived claims stay SUPPORT_ONLY: a library supporting ML-KEM is not readiness), and snapshot simulations (labelled hypothetical, proven and assumed dependencies kept apart). Collection coverage is modelled and tested but has no live endpoint yet, and the page says so instead of inventing coverage. |
 | `/libraries` | Intelligence | Library fingerprint database (ADR-007). |
 | `/live-asset-intelligence` | Intelligence | The unified BOM console: materialise → version → compare → export. |
 | `/migration` | Intelligence | Scan → project → tasks → velocity forecast; forecast model is simple. |

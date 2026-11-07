@@ -14,6 +14,7 @@ import { AuthProvider, RequireAuth } from "./lib/auth.js";
 
 // Generated from src/pages/ — one entry per page file.
 const Accuracy = lazy(() => import("./pages/Accuracy"));
+const Intelligence = lazy(() => import("./pages/Intelligence"));
 const Admin = lazy(() => import("./pages/Admin"));
 const Agility = lazy(() => import("./pages/Agility"));
 const Alerts = lazy(() => import("./pages/Alerts"));
@@ -164,6 +165,7 @@ function RoutedPages() {
       <Route path="/" element={<Navigate to="/command-center" replace />} />
       <Route path="/banking-regulatory" element={<BankingRegulatory />} />
       <Route path="/accuracy" element={<Accuracy />} />
+      <Route path="/intelligence" element={<Intelligence />} />
       {/* Legacy bookmarks resolve inside the authenticated shell, without duplicating pages. */}
       <Route path="/audit" element={<Audit />} />
       <Route path="/remediation" element={<Remediation />} />

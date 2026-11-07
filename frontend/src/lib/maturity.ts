@@ -58,6 +58,7 @@ export const CAPABILITIES_JSON = {
   "hbom": "ga",
   "identity": "ga",
   "integrations": "ga",
+  "intelligence": "ga",
   "invite-accept": "ga",
   "launch-readiness": "ga",
   "libraries": "ga",
@@ -270,6 +271,10 @@ export const CAPABILITY_LIMITS = {
   "integrations": {
     "area": "Administration",
     "limit": "GitHub webhooks, CI gate, SMTP, ITSM/SIEM connectors (burn-in covers them)."
+  },
+  "intelligence": {
+    "area": "Intelligence",
+    "limit": "The roadmap workbench over live estate rows: evidence-linked threat findings (a detector with no evidence source is listed as not-fired with its reason \u2014 an explained absence, never an all-clear), five separate risk dimensions (the quantum threat horizon is a required policy input, unknown dimensions are UNKNOWN rather than zero, and blending is opt-in and shows its arithmetic), PQC migration-stage claims (support-derived claims stay SUPPORT_ONLY: a library supporting ML-KEM is not readiness), and snapshot simulations (labelled hypothetical, proven and assumed dependencies kept apart). Collection coverage is modelled and tested but has no live endpoint yet, and the page says so instead of inventing coverage."
   },
   "invite-accept": {
     "area": "Auth",

@@ -109,3 +109,49 @@ export interface SimulationResult {
   approvals_required: string[];
   rollback_plan: string[];
 }
+
+// ---- API response shapes (api/routers/roadmap_intelligence.py) ----------
+
+export interface ThreatReport {
+  findings: ThreatFinding[];
+  counts: Record<string, number>;
+  compromise_declared: boolean;
+  note: string;
+  detectors_fired?: string[];
+  detectors_not_fired?: Record<string, string>;
+  sources?: Record<string, string>;
+}
+
+export interface PqcReport {
+  subjects: Record<string, Omit<PqcSubject, "subject">>;
+  counts: Record<string, number>;
+  note: string;
+  derived_from?: string;
+}
+
+export interface RiskProfile {
+  dimensions: Record<string, RiskDimension>;
+  blended_requested: boolean;
+  blended_score: number | null;
+  blended_arithmetic: string[];
+  excluded_dimensions: string[];
+  note: string;
+  asset_id?: string;
+  algorithm?: string | null;
+  usage_state?: string | null;
+}
+
+export interface IntelligenceOverview {
+  schema: string;
+  endpoints: Record<string, string>;
+  scenarios: string[];
+  threat_classes: string[];
+  note: string;
+}
+
+export interface IntelligenceSimulationRequest {
+  scenario: string;
+  focal_asset: string;
+  snapshot_id?: string;
+  snapshot_version?: number;
+}
