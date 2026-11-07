@@ -78,7 +78,12 @@ def test_the_inventory_does_not_claim_routes_that_are_now_typed(untyped, recorde
 #: network-evidence record schema (cryptoscan.network-evidence/1) shared with the rest of the
 #: observation-intake family (crypto-observe, crypto-passive), which is recorded untyped for the
 #: same reason: the records are validated by their builders, not by a response model.
-MAX_UNTYPED_OPERATIONS = 1158
+#: 1159: POST /api/v1/cryptolog/reports/export. The auditor pack: a ZIP whose manifest
+#: hashes every file, verified with any sha256sum-style check. A `response_model` here would
+#: publish an application/json contract for an archive, which is worse than an honest gap —
+#: recorded deliberately, like the export family above. The typed
+#: POST /api/v1/cryptolog/reports/verify carries the examiner verdict as JSON.
+MAX_UNTYPED_OPERATIONS = 1159
 
 
 def test_the_untyped_surface_does_not_grow(untyped, recorded):

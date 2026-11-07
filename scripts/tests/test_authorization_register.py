@@ -62,7 +62,9 @@ MIN_TENANT_ROLE_GATED = 17
 # 341: a deliberate regeneration added the CryptoLog integrity and alert
 # lifecycle writes (checkpoint, verify, per-alert transition); each is recorded
 # with its reason in `102-authenticated-only-writes.json`.
-MAX_SESSION_ONLY_WRITES = 341
+# 343: a deliberate regeneration added the CryptoLog report family
+# (export + verify — POST computations recorded under the decided family).
+MAX_SESSION_ONLY_WRITES = 343
 
 
 @pytest.fixture(scope="module")

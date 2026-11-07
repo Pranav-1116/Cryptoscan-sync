@@ -818,6 +818,7 @@
     "POST /api/v1/crypto/live/events",
     "POST /api/v1/crypto/scan",
     "POST /api/v1/crypto/simulate",
+    "POST /api/v1/cryptolog/reports/export",
     "POST /api/v1/ct-scans",
     "POST /api/v1/ct-scans/",
     "POST /api/v1/ct-scans/scan",

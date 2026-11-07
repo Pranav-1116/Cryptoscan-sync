@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 920 |
+| session | 922 |
 | role | 342 |
 | permission | 74 |
 | tenant-role | 17 |
 
-**1353** operations; **345** of them change state with nothing but the session gate — the exact list, with the policy
+**1355** operations; **347** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -34,10 +34,10 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `estate` | 26 |
 | `cbom` | 15 |
 | `migrations` | 13 |
+| `cryptolog` | 10 |
 | `vendors` | 10 |
 | `graph` | 9 |
 | `banking` | 8 |
-| `cryptolog` | 8 |
 | `systems` | 8 |
 | `auth` | 7 |
 | `security` | 7 |
@@ -212,6 +212,8 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/cryptolog/events/{event_id}/corrections` | `api.routers.cryptolog.correct_event` |
 | POST | `/api/v1/cryptolog/integrity/checkpoint` | `api.routers.cryptolog.create_checkpoint` |
 | POST | `/api/v1/cryptolog/integrity/verify` | `api.routers.cryptolog.verify_integrity` |
+| POST | `/api/v1/cryptolog/reports/export` | `api.routers.cryptolog.export_report` |
+| POST | `/api/v1/cryptolog/reports/verify` | `api.routers.cryptolog.verify_report_bundle` |
 | POST | `/api/v1/ct-scans` | `api.routers.ct_scans.trigger_ct_scan` |
 | POST | `/api/v1/ct-scans/` | `api.routers.ct_scans.trigger_ct_scan` |
 | POST | `/api/v1/ct-scans/scan` | `api.routers.ct_scans.trigger_ct_scan` |

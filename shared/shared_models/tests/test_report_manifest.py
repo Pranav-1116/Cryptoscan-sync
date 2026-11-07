@@ -75,3 +75,64 @@ def test_verify_manifest_rejects_incomplete_manifests():
 def test_generated_at_defaults_to_a_utc_timestamp():
     manifest = build_manifest(**_good())
     assert manifest["generated_at"].endswith("+00:00") or manifest["generated_at"].endswith("Z")
+
+
+# ---------------------------------------------------------------------------
+# P0-2: the manifest's file digests are binding. A hashed artifact that is
+# present and matches is VALID; a missing artifact is unverifiable, not
+# valid; a changed artifact is a named mismatch, never a pass.
+# ---------------------------------------------------------------------------
+
+
+def _hashed_manifest(files: dict):
+    import hashlib
+    manifest = build_manifest(**_good(extra={
+        "files": {
+            name: {"sha256": hashlib.sha256(payload).hexdigest(),
+                   "bytes": len(payload)}
+            for name, payload in files.items()
+        },
+    }))
+    return manifest
+
+
+def test_verify_manifest_files_accepts_an_untouched_pack():
+    from shared_models.report_manifest import VALID, verify_manifest_files
+    files = {"events.json": b"{}", "report.md": b"# report"}
+    verdict = verify_manifest_files(_hashed_manifest(files), files)
+    assert verdict["verified"] is True
+    assert verdict["problems"] == []
+    assert set(verdict["files"].values()) == {VALID}
+
+
+def test_a_missing_artifact_is_unverifiable_never_valid():
+    from shared_models.report_manifest import (
+        ARTIFACT_UNVERIFIABLE, VALID, verify_manifest_files,
+    )
+    files = {"events.json": b"{}", "report.md": b"# report"}
+    manifest = _hashed_manifest(files)
+    present_only = {"events.json": b"{}"}
+    verdict = verify_manifest_files(manifest, present_only)
+    assert verdict["verified"] is False
+    assert verdict["files"]["report.md"] == ARTIFACT_UNVERIFIABLE
+    assert verdict["files"]["events.json"] == VALID
+    assert verdict["problems"][0]["code"] == "ARTIFACT_UNVERIFIABLE"
+    assert "unverifiable, not valid" in verdict["problems"][0]["detail"]
+
+
+def test_a_changed_artifact_is_a_named_digest_mismatch():
+    from shared_models.report_manifest import DIGEST_MISMATCH, verify_manifest_files
+    files = {"events.json": b"{}"}
+    manifest = _hashed_manifest(files)
+    verdict = verify_manifest_files(manifest, {"events.json": b'{"tampered": true}'})
+    assert verdict["verified"] is False
+    assert verdict["files"]["events.json"] == DIGEST_MISMATCH
+    assert verdict["problems"][0]["code"] == "DIGEST_MISMATCH"
+
+
+def test_a_manifest_with_no_recorded_files_verifies_nothing():
+    import pytest as _pytest
+    from shared_models.report_manifest import verify_manifest_files
+    manifest = build_manifest(**_good())
+    with _pytest.raises(ValueError):
+        verify_manifest_files(manifest, {"events.json": b"{}"})

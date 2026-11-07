@@ -119,8 +119,12 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # lifecycle writes (POST /integrity/checkpoint, /integrity/verify and
     # /alerts/{id}/transition) under the decided /api/v1/cryptolog family;
     # each carries its policy reason in `102-authenticated-only-writes.json`.
-    assert len(rows) <= 345, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 345. "
+    # 347: a deliberate regeneration added the CryptoLog report family
+    # (POST /reports/export and /reports/verify — computation, no store
+    # writes, but POSTs under the decided /api/v1/cryptolog policy entry);
+    # each carries its policy reason in `102-authenticated-only-writes.json`.
+    assert len(rows) <= 347, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 347. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

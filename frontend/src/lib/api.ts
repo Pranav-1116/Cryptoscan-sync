@@ -8226,3 +8226,43 @@ export interface CryptologOverview {
 
 export const apiCryptologOverview = (): Promise<ApiResult<CryptologOverview>> =>
   call<CryptologOverview>("/api/v1/cryptolog/overview");
+
+/* CryptoLog reports (§9): the auditor pack is a binary archive — a raw
+   fetch, not the JSON bridge. The manifest inside hashes every file; a
+   missing artifact is unverifiable, not valid. */
+
+export interface CryptologReportExportResult {
+  ok: boolean;
+  blob?: Blob;
+  reportId?: string;
+  fileCount?: string;
+  error?: string;
+}
+
+export const apiCryptologReportExport = (filters: {
+  start_occurred?: string;
+  end_occurred?: string;
+  severity?: string;
+  category?: string;
+} = {}): Promise<CryptologReportExportResult> => {
+  const body: Record<string, string> = {};
+  if (filters.start_occurred) body.start_occurred = filters.start_occurred;
+  if (filters.end_occurred) body.end_occurred = filters.end_occurred;
+  if (filters.severity) body.severity = filters.severity;
+  if (filters.category) body.category = filters.category;
+  return fetch("/api/v1/cryptolog/reports/export", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).then(async (response) => {
+    if (!response.ok) {
+      return { ok: false, error: `HTTP ${response.status}` };
+    }
+    return {
+      ok: true,
+      blob: await response.blob(),
+      reportId: response.headers.get("X-Report-Id") || undefined,
+      fileCount: response.headers.get("X-Archive-Files") || undefined,
+    };
+  }).catch(() => ({ ok: false, error: "offline" }));
+};

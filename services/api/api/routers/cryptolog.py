@@ -845,3 +845,217 @@ def cryptolog_overview(
         note="Every figure counts recorded CryptoLog events and alerts. "
              "A recorded count is not an estate guarantee: a missing "
              "collector is named in collection health, never a clean zero.")
+
+
+# ---------------------------------------------------------------------------
+# Reports (section 9): the auditor and management export. One archive whose
+# manifest hashes every file — an examiner proves the pack is untouched with
+# any sha256sum check, and a missing artifact is unverifiable, not valid.
+# ---------------------------------------------------------------------------
+
+
+class ReportIn(BaseModel):
+    model_config = {"extra": "allow"}
+
+    tenant_id: Optional[str] = None
+    start_occurred: Optional[str] = None
+    end_occurred: Optional[str] = None
+    severity: Optional[str] = None
+    category: Optional[str] = None
+
+
+def _doc_bytes(document: Any) -> bytes:
+    import json as _json
+    return _json.dumps(document, indent=2, sort_keys=True,
+                       default=str).encode("utf-8")
+
+
+@router.post("/reports/export")
+def export_report(
+    payload: ReportIn,
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+):
+    """The auditor pack as one ZIP: events, alerts, integrity and a
+    management rendering, each hashed into manifest.json. Binary by design
+    — deliberately recorded untyped rather than publishing a JSON contract
+    for an archive (see 103-untyped-response-operations.json)."""
+    import hashlib
+    import io
+    import json as _json
+    import uuid
+    import zipfile
+
+    from shared_models.report_manifest import MANIFEST_SCHEMA, build_manifest
+
+    repo = CryptoLogAlertRepository(db)
+    records = repo.events_in_range(
+        tenant_id=payload.tenant_id,
+        start_occurred=payload.start_occurred,
+        end_occurred=payload.end_occurred)
+    events_doc = {
+        "schema": "cryptoscan.cryptolog-report-events/1",
+        "window": {"start_occurred": payload.start_occurred,
+                   "end_occurred": payload.end_occurred},
+        "events": records,
+    }
+    alerts_page = repo.list_alerts(
+        tenant_id=payload.tenant_id, severity=payload.severity, limit=1000)
+    alerts_doc = {
+        "schema": "cryptoscan.cryptolog-report-alerts/1",
+        "alerts": alerts_page["rows"],
+        "total_count": alerts_page["total_count"],
+    }
+
+    # Integrity section: the checkpoint register plus an honest verification
+    # over the exported window against the latest checkpoint.
+    checkpoints = repo.list_checkpoints(tenant_id=payload.tenant_id)
+    checkpoint = checkpoints["rows"][0] if checkpoints["rows"] else None
+    partition_ids = {str(r.get("partition_id") or "") for r in records}
+    partition_id = next(iter(partition_ids)) if len(partition_ids) == 1 \
+        else f"{payload.tenant_id or 'unknown'}:empty"
+    hashes = [str(r["event_hash"]) for r in records]
+    chain = build_chain(partition_id, hashes)
+    entries = [
+        {"event_id": r["event"]["event_id"], "event_hash": h, "chain_hash": c}
+        for r, h, c in zip(records, hashes, chain)
+    ]
+    secret = _checkpoint_secret()
+    verification = verify_range(
+        partition_id=partition_id,
+        entries=entries,
+        events_by_id={r["event"]["event_id"]: r["event"] for r in records},
+        checkpoint=checkpoint,
+        verify=_hmac_verify(secret) if (secret and checkpoint) else None)
+    integrity_doc = {
+        "schema": "cryptoscan.cryptolog-report-integrity/1",
+        "checkpoints": checkpoints["rows"],
+        "verification": verification,
+    }
+
+    report = {
+        "schema": "cryptoscan.cryptolog-report/1",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "filters": {"tenant_id": payload.tenant_id,
+                    "start_occurred": payload.start_occurred,
+                    "end_occurred": payload.end_occurred,
+                    "severity": payload.severity,
+                    "category": payload.category},
+        "totals": {
+            "events": len(records),
+            "alerts": alerts_page["total_count"],
+            "checkpoints": checkpoints["total_count"],
+        },
+        "integrity_state": verification["overall_state"],
+        "proven": [
+            "every figure counts recorded CryptoLog records in the stated window",
+            f"the archive's manifest hashes each of its {4} documents",
+        ],
+        "not_proven": [
+            "complete estate coverage: a collector gap is a gap in the record",
+            "the truth of any individual observation: source validation is separate",
+        ],
+        "note": "management rendering of the auditor pack; the JSON documents "
+                "are the record and the manifest binds them",
+    }
+    report_md = "\n".join([
+        "# CryptoLog report",
+        "",
+        f"Generated: {report['generated_at']}",
+        f"Filters: {_json.dumps(report['filters'], sort_keys=True)}",
+        "",
+        f"- recorded events: {report['totals']['events']}",
+        f"- alerts: {report['totals']['alerts']}",
+        f"- checkpoints: {report['totals']['checkpoints']}",
+        f"- integrity state: {report['integrity_state']}",
+        "",
+        "## What is proven",
+        *[f"- {line}" for line in report["proven"]],
+        "",
+        "## What is NOT proven",
+        *[f"- {line}" for line in report["not_proven"]],
+        "",
+        report["note"],
+    ])
+
+    files = {
+        "events.json": _doc_bytes(events_doc),
+        "alerts.json": _doc_bytes(alerts_doc),
+        "integrity.json": _doc_bytes(integrity_doc),
+        "report.md": report_md.encode("utf-8"),
+    }
+    generated_at = datetime.now(timezone.utc)
+    manifest = build_manifest(
+        schema_version=MANIFEST_SCHEMA,
+        report_id=f"cryptolog-{generated_at.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}",
+        tenant_id=payload.tenant_id,
+        scope=payload.tenant_id or "platform-estate",
+        filters=report["filters"],
+        totals=report["totals"],
+        generated_at=generated_at.isoformat(),
+        extra={
+            "kind": "cryptoscan-cryptolog-auditor-pack",
+            "files": {
+                name: {"sha256": hashlib.sha256(blob).hexdigest(),
+                       "bytes": len(blob)}
+                for name, blob in sorted(files.items())
+            },
+        },
+    )
+    files["manifest.json"] = _doc_bytes(manifest)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, blob in sorted(files.items()):
+            info = zipfile.ZipInfo(name, date_time=generated_at.timetuple()[:6])
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, blob)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="cryptolog-report-{generated_at.strftime("%Y%m%dT%H%M%SZ")}.zip"',
+            "X-Report-Id": manifest["report_id"],
+            "X-Archive-Files": str(len(files)),
+        },
+    )
+
+
+class ReportVerifyIn(BaseModel):
+    model_config = {"extra": "allow"}
+
+    manifest: dict[str, Any]
+    documents: dict[str, Any] = Field(default_factory=dict)
+
+
+class ReportVerifyOut(BaseModel):
+    verified: bool = False
+    files: dict[str, str] = Field(default_factory=dict)
+    problems: list[Any] = Field(default_factory=list)
+    note: str = ""
+
+
+@router.post("/reports/verify")
+def verify_report_bundle(
+    payload: ReportVerifyIn,
+    user=Depends(get_current_user),
+) -> ReportVerifyOut:
+    """Examiner-side check of a returned bundle: every manifest-recorded
+    document must be present and hash to its digest. A missing artifact is
+    unverifiable, not valid; a changed artifact is a named mismatch."""
+    from shared_models.report_manifest import verify_manifest_files
+    try:
+        verdict = verify_manifest_files(
+            payload.manifest,
+            {name: doc.encode("utf-8") if isinstance(doc, str)
+             else _doc_bytes(doc)
+             for name, doc in payload.documents.items()})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return ReportVerifyOut(
+        verified=verdict["verified"],
+        files=verdict["files"],
+        problems=verdict["problems"],
+        note="every recorded artifact must be present and hash to its digest: "
+             "a missing artifact is unverifiable, not valid")

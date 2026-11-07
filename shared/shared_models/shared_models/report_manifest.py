@@ -75,3 +75,50 @@ def verify_manifest(manifest: dict) -> None:
         scope=manifest.get("scope", ""),
         generated_at=manifest["generated_at"],
     )
+
+
+#: File-level verification verdicts (P0-2): a hashed file that is present
+#: and matches is VALID; a hash that does not match is DIGEST_MISMATCH; a
+#: file the manifest covers but that is not present is ARTIFACT_UNVERIFIABLE
+#: — unverifiable, never valid.
+VALID = "VALID"
+DIGEST_MISMATCH = "DIGEST_MISMATCH"
+ARTIFACT_UNVERIFIABLE = "ARTIFACT_UNVERIFIABLE"
+
+
+def verify_manifest_files(manifest: dict, files: dict) -> dict:
+    """Check the manifest's recorded file digests against the actual files.
+
+    ``files`` maps name -> bytes. Every file the manifest records must be
+    present and hash to its recorded sha256: a missing artifact is
+    unverifiable, not valid. Returns {"verified", "files", "problems"}.
+    """
+    import hashlib
+    verify_manifest(manifest)
+    recorded = manifest.get("files") or {}
+    if not isinstance(recorded, dict) or not recorded:
+        raise ValueError("manifest records no file digests: nothing to verify")
+    verdicts: dict[str, str] = {}
+    problems: list[dict[str, str]] = []
+    for name, meta in sorted(recorded.items()):
+        expected = str((meta or {}).get("sha256") or "")
+        payload = files.get(name)
+        if payload is None:
+            verdicts[name] = ARTIFACT_UNVERIFIABLE
+            problems.append({"code": "ARTIFACT_UNVERIFIABLE", "file": name,
+                             "detail": "the manifest covers this artifact but it "
+                                       "is not present: unverifiable, not valid"})
+        elif not hmac_compare(expected, hashlib.sha256(payload).hexdigest()):
+            verdicts[name] = DIGEST_MISMATCH
+            problems.append({"code": "DIGEST_MISMATCH", "file": name,
+                             "detail": "the artifact does not hash to its "
+                                       "recorded digest"})
+        else:
+            verdicts[name] = VALID
+    verified = not problems
+    return {"verified": verified, "files": verdicts, "problems": problems}
+
+
+def hmac_compare(a: str, b: str) -> bool:
+    import hmac
+    return hmac.compare_digest(str(a), str(b))

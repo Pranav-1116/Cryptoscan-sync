@@ -705,6 +705,16 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/cryptolog/reports/export",
+      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/cryptolog/reports/verify",
+      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/ct-scans",
       "reason": "operator surface: certificate transparency scan runs"
     },
