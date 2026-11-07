@@ -69,6 +69,23 @@ def code_for_status(status: int) -> str:
     return STATUS_TO_CODE.get(status, INTERNAL_ERROR)
 
 
+def _json_safe(value):
+    """Make arbitrary error content serializable without changing shape.
+
+    Pydantic wraps validator refusals with ``ctx: {"error": <the exception>}``;
+    a raw exception is not JSON. Its message is what the caller needs, so the
+    leaf becomes its string form — dict/list structure and every JSON-native
+    leaf are preserved verbatim.
+    """
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
 def error_envelope(code: str, detail, request_id: str | None = None) -> dict:
     """Build the stable error body. ``detail`` keeps its existing shape."""
     if code not in ERROR_CODES:
@@ -96,7 +113,7 @@ def install_error_contract(app: FastAPI) -> None:
         return JSONResponse(
             status_code=422,
             content=error_envelope(
-                INVALID_ARGUMENT, exc.errors(), _request_id(request)),
+                INVALID_ARGUMENT, _json_safe(exc.errors()), _request_id(request)),
         )
 
     @app.exception_handler(StarletteHTTPException)
@@ -108,7 +125,7 @@ def install_error_contract(app: FastAPI) -> None:
             code = detail["error_code"]
         return JSONResponse(
             status_code=exc.status_code,
-            content=error_envelope(code, detail, _request_id(request)),
+            content=error_envelope(code, _json_safe(detail), _request_id(request)),
             # exception-specified headers survive the envelope (RFC 8594
             # deprecation trail, Retry-After, ...)
             headers=getattr(exc, "headers", None) or None,
