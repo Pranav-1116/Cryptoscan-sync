@@ -1,3 +1,0 @@
-All checks passed!
-21 files already formatted
-No broken requirements found.

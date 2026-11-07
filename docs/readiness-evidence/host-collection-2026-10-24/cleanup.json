@@ -1,6 +1,0 @@
-{
-  "scope": "Owned host witness only; not unrelated test/customer resources",
-  "owned_witness_directories_remaining": [],
-  "owned_postgres_processes_remaining": [],
-  "customer_deployment_touched": false
-}

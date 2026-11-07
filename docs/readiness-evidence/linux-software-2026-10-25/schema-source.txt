@@ -1,6 +1,0 @@
-LinuxSoftwareInventory Draft2020-12 model schema check PASS (not CycloneDX validation)
-PackageGroup Draft2020-12 model schema check PASS (not CycloneDX validation)
-Source-lock builder includes: services/inventory/inventory/host.py
-Source-lock builder includes: services/inventory/inventory/linux_packages.py
-Source-lock builder includes: shared/shared_models/shared_models/linux_software.py
-No release lock generated or signed; prior locks must not be reused.

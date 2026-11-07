@@ -1,8 +1,0 @@
-operation-approval-v2 : model / Draft2020-12 PASS
-operation-evidence-v2 : model / Draft2020-12 PASS
-hsm-operation-request-v1 : model / Draft2020-12 PASS
-software-estate-plan-v1 : model / Draft2020-12 PASS
-software-estate-packet-v1 : model / Draft2020-12 PASS
-estate-asset-register-v1 : model / Draft2020-12 PASS
-All 18 existing schemas including operation-v1 and old facts are byte-for-byte unchanged.
-Source lock: 113 files; hashes do not attest external producers, SDK dependencies, customer applications or physical HSMs.

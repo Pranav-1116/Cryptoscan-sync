@@ -1,3 +1,0 @@
-All checks passed!
-16 files already formatted
-C syntax/Wall/Wextra/Werror PASS; static executable compiled/executed by native runner.

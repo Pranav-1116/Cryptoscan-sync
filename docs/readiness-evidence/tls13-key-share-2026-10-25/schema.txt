@@ -1,7 +1,0 @@
-host-manifest-v1: schema/model/Draft2020-12 PASS; exact key-share addition reversal reproduces a6fcc06322a6a1192fe560a416ca977272afd81d; old fact shapes/defaults unchanged
-host-snapshot-v1: schema/model/Draft2020-12 PASS; exact key-share addition reversal reproduces a6fcc06322a6a1192fe560a416ca977272afd81d; old fact shapes/defaults unchanged
-collection-target-v1: schema/model/Draft2020-12 PASS; exact key-share addition reversal reproduces a6fcc06322a6a1192fe560a416ca977272afd81d; old fact shapes/defaults unchanged
-collection-evidence-v1: schema/model/Draft2020-12 PASS; exact key-share addition reversal reproduces a6fcc06322a6a1192fe560a416ca977272afd81d; old fact shapes/defaults unchanged
-native-evidence-v1: schema/model/Draft2020-12 PASS; exact key-share addition reversal reproduces a6fcc06322a6a1192fe560a416ca977272afd81d; old fact shapes/defaults unchanged
-Source-lock inclusion PASS: 97 files; no signature, authorization, PQC implementation or measured execution attestation generated.
-API network job admission stays blocked; offline_host cannot tunnel NETWORK_TLS_SESSION; generic collect_host has no active probe.

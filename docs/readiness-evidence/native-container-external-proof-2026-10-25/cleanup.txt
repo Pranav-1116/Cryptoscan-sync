@@ -1,1 +1,0 @@
-Owned namespace/container and PostgreSQL directories/processes absent. No customer deployment or provider contacted.

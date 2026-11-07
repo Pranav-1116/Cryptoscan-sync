@@ -1,1 +1,0 @@
-15 real browser/API/PG checks passed; bank acceptance remains external.

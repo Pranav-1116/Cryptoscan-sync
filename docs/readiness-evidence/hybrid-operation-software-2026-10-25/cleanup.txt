@@ -1,1 +1,0 @@
-Owned PostgreSQL directories: absent; owned PostgreSQL processes: absent. No customer deployment touched.

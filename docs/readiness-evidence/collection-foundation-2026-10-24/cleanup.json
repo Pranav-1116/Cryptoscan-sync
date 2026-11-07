@@ -1,8 +1,0 @@
-{
-  "observed_at": "2026-10-24T17:28:34.306331+00:00",
-  "scope": "Owned cryptoscan-host-witness-* resources only",
-  "remaining_owned_directories": [],
-  "remaining_owned_postgres_pids": [],
-  "status": "PASS",
-  "customer_deployment_modified": false
-}

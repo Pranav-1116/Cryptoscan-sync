@@ -1,9 +1,0 @@
-host-manifest-v1: model/Draft PASS; exact hybrid kind/reason/fact reversal reproduces 7b06710118fa5efd14bad223e543176544df15bd; old facts unchanged
-host-snapshot-v1: model/Draft PASS; exact hybrid kind/reason/fact reversal reproduces 7b06710118fa5efd14bad223e543176544df15bd; old facts unchanged
-collection-target-v1: model/Draft PASS; exact hybrid kind/reason/fact reversal reproduces 7b06710118fa5efd14bad223e543176544df15bd; old facts unchanged
-collection-evidence-v1: model/Draft PASS; exact hybrid kind/reason/fact reversal reproduces 7b06710118fa5efd14bad223e543176544df15bd; old facts unchanged
-native-evidence-v1: model/Draft PASS; exact hybrid kind/reason/fact reversal reproduces 7b06710118fa5efd14bad223e543176544df15bd; old facts unchanged
-operation-approval-v1: new bounded public model/Draft PASS; no private keys/producer-supplied roots in evidence
-operation-evidence-v1: new bounded public model/Draft PASS; no private keys/producer-supplied roots in evidence
-software-truth-plan-v1: new bounded public model/Draft PASS; no private keys/producer-supplied roots in evidence
-Source-lock inclusion PASS: 104 files. Hash/source inclusion is not authenticity or qualified execution.
