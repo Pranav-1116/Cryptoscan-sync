@@ -263,3 +263,46 @@ describe("Evidence — completed scans disclose failed optional stages (§4.8)",
     expect(screen.queryByText(/Filtered view/)).toBeNull();
   });
 });
+
+describe("Evidence — raw metadata, hashes and provenance (gap analysis §A)", () => {
+  it("a record shows both hashes and its provenance beside the verify action", async () => {
+    mockFetch({
+      [scanPath]: scans(["scan-p"]),
+      [findingsPath]: findings([observation("ev-p", "scan-p", {
+        content_hash: "0123456789abcdef0123456789abcdef",
+        chain_hash: "fedcba9876543210fedcba9876543210",
+        provenance: { source: "repo-scan", observer: "static-scanner-3" },
+      })]),
+      [auditPath]: { events: [], page: 1, page_size: 50 },
+      "/api/v1/auth/audit/verify": { status: "OK", checked: 0 },
+    });
+    renderWithProviders(<Evidence />);
+    expect(await screen.findByText("Evidence ID: ev-p")).toBeInTheDocument();
+    const detail = screen.getByText("Evidence ID: ev-p").closest("article")!;
+    expect(within(detail).getByText("Content hash")).toBeInTheDocument();
+    expect(within(detail).getByText(/0123456789abcdef/)).toBeInTheDocument();
+    expect(within(detail).getByText("Chain hash")).toBeInTheDocument();
+    expect(within(detail).getByText(/fedcba9876543210/)).toBeInTheDocument();
+    expect(within(detail).getByText("Provenance")).toBeInTheDocument();
+    expect(within(detail).getByText(/source: repo-scan/)).toBeInTheDocument();
+    expect(within(detail).getByText(/observer: static-scanner-3/)).toBeInTheDocument();
+    // the verify action sits beside the metadata it verifies
+    expect(within(detail).getByRole("button", { name: "Verify this record" }))
+      .toBeInTheDocument();
+  });
+
+  it("absent hashes or provenance read Not supplied, never invented", async () => {
+    mockFetch({
+      [scanPath]: scans(["scan-q"]),
+      [findingsPath]: findings([observation("ev-q", "scan-q", {
+        content_hash: null, chain_hash: null, provenance: null,
+      })]),
+      [auditPath]: { events: [], page: 1, page_size: 50 },
+      "/api/v1/auth/audit/verify": { status: "OK", checked: 0 },
+    });
+    renderWithProviders(<Evidence />);
+    const detail = (await screen.findByText("Evidence ID: ev-q")).closest("article")!;
+    expect(within(detail).getByText("Provenance")).toBeInTheDocument();
+    expect(within(detail).getAllByText("Not supplied").length).toBeGreaterThanOrEqual(2);
+  });
+});

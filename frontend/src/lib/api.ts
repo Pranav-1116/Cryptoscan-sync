@@ -689,6 +689,7 @@ export interface Finding {
   compliance_status?: string | null;
   content_hash: string;
   chain_hash: string;
+  provenance?: Record<string, unknown> | string | null;
   normalized_crypto?: Record<string, unknown> | null;
   policy_evaluation?: Record<string, unknown> | null;
   finding_data?: Record<string, unknown> | null;

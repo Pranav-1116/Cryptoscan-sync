@@ -88,3 +88,39 @@ describe("SearchResults — runtime findings, server-side (round 65)", () => {
     expect(screen.queryByText(/Findings \(runtime/)).toBeNull();
   });
 });
+
+describe("SearchResults — tenant and permission boundaries (gap analysis §A)", () => {
+  it("a denied source is named as not searched — never silently empty", async () => {
+    mockFetch({
+      "/api/v1/algorithms": { algorithms: [{ name: "RSA", family: "asymmetric", status: "ALLOWED" }] },
+      "/api/v1/network/protocols": { protocols: [] },
+      "/api/v1/hardware/catalog": { devices: [] },
+      "/api/v1/scans/runtime-findings": new Response(
+        JSON.stringify({ detail: "Access denied to runtime findings for this account or tenant." }),
+        { status: 403 }),
+      "/api/v1/assets": { assets: [], total_count: 0, page: 1, page_size: 25 },
+    });
+    renderAt("RSA");
+    const boundary = await screen.findByTestId("search-boundary");
+    expect(boundary).toHaveTextContent("Findings (runtime)");
+    expect(boundary).toHaveTextContent(/access denied/i);
+    expect(boundary).toHaveTextContent(/not searched/);
+    expect(screen.getByText(/A source that was not searched is not a source with no results/))
+      .toBeInTheDocument();
+  });
+
+  it("results declare the tenant they are scoped to", async () => {
+    mockFetch({
+      "/api/v1/algorithms": { algorithms: [{ name: "RSA", family: "asymmetric", status: "ALLOWED" }] },
+      "/api/v1/network/protocols": { protocols: [] },
+      "/api/v1/hardware/catalog": { devices: [] },
+      "/api/v1/scans/runtime-findings": { findings: [], total_count: 0 },
+      "/api/v1/assets": { assets: [], total_count: 0, page: 1, page_size: 25 },
+    });
+    renderAt("RSA");
+    await screen.findByText("Algorithms");
+    expect(screen.getByText(/scoped to tenant/)).toBeInTheDocument();
+    expect(screen.getByText(/every source answered within this tenant boundary/))
+      .toBeInTheDocument();
+  });
+});

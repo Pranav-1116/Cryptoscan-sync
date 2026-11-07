@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Panel, PageHead } from "../components/ui.jsx";
-import { apiAlgorithmCatalog, apiProtocolCatalog, apiHardwareCatalog, apiRuntimeFindings, apiAssetsSearch } from "../lib/api.js";
+import { activeTenantId, apiAlgorithmCatalog, apiProtocolCatalog, apiHardwareCatalog, apiRuntimeFindings, apiAssetsSearch, type ApiResult } from "../lib/api.js";
 import { IconCrypto, IconNetwork, IconHardware, IconWarn, IconEstate, ICON_MD, type Icon } from "../components/icons";
 
 /* Full search results page — queries the LIVE catalogs and the runtime
@@ -11,11 +11,26 @@ import { IconCrypto, IconNetwork, IconHardware, IconWarn, IconEstate, ICON_MD, t
 
 interface Item { name: string; to: string; meta: string }
 interface Group { label: string; icon: Icon; items: Item[] }
+interface SourceBoundary { label: string; reason: string }
+
+/** A source that was not searched is not a source with no results (gap
+ *  analysis §A: "search results preserve tenant and permission boundaries"). */
+function boundaryFor(label: string, res: ApiResult<unknown>): SourceBoundary {
+  const detail = String(res.detail || res.error || "");
+  const denied = /denied|forbidden|403|unauthor|401/i.test(detail);
+  return {
+    label,
+    reason: denied
+      ? `access denied for this account or tenant — not searched (${detail})`
+      : `unreachable — not searched (${detail || "no response"})`,
+  };
+}
 
 export default function SearchResults() {
   const [q, setQ] = useState("");
   const [input, setInput] = useState("");
   const [groups, setGroups] = useState<Group[]>([]);
+  const [boundaries, setBoundaries] = useState<SourceBoundary[]>([]);
   const [loading, setLoading] = useState(false);
   const { search } = useLocation();
   const navigate = useNavigate();
@@ -31,7 +46,7 @@ export default function SearchResults() {
   };
 
   useEffect(() => {
-    if (!q.trim()) { setGroups([]); return; }
+    if (!q.trim()) { setGroups([]); setBoundaries([]); return; }
     let cancelled = false;
     setLoading(true);
     (async () => {
@@ -44,6 +59,12 @@ export default function SearchResults() {
         apiAssetsSearch(term),
       ]);
       const out: Group[] = [];
+      const boundaries: SourceBoundary[] = [];
+      if (assets.source !== "live") boundaries.push(boundaryFor("Assets (estate)", assets));
+      if (alg.source !== "live") boundaries.push(boundaryFor("Algorithms", alg));
+      if (proto.source !== "live") boundaries.push(boundaryFor("Protocols", proto));
+      if (hw.source !== "live") boundaries.push(boundaryFor("Hardware", hw));
+      if (find.source !== "live") boundaries.push(boundaryFor("Findings (runtime)", find));
       // §5 (round 62): real asset search — SERVER-side, across the whole
       // estate (asset id, identity spine, algorithm, file location), not a
       // client-side filter of loaded rows. Reference-catalog matches below
@@ -88,7 +109,7 @@ export default function SearchResults() {
           to: "/runtime", meta: f.status ?? f.kind ?? "",
         })) });
       }
-      if (!cancelled) setGroups(out);
+      if (!cancelled) { setGroups(out); setBoundaries(boundaries); }
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -125,6 +146,24 @@ export default function SearchResults() {
             Try an algorithm (RSA, AES, ML-KEM), a protocol, a hardware class, or a finding id. Findings appear only after a real scan.
           </div>
         </Panel>
+      )}
+      {q && !loading && boundaries.length > 0 && (
+        <Panel title="Search boundaries" sub="sources this search could not read" className="mt">
+          <div className="dim" style={{ fontSize: 12.5, marginBottom: 8 }}>
+            Results are scoped to tenant <span className="mono">{activeTenantId() ?? "unknown"}</span>.
+            A source that was not searched is not a source with no results.
+          </div>
+          {boundaries.map((b) => (
+            <div key={b.label} data-testid="search-boundary" style={{ fontSize: 12.5, padding: "4px 0" }}>
+              <strong>{b.label}</strong> — {b.reason}
+            </div>
+          ))}
+        </Panel>
+      )}
+      {q && !loading && boundaries.length === 0 && groups.length > 0 && (
+        <div className="dim" style={{ fontSize: 11, marginBottom: 10 }}>
+          Results scoped to tenant <span className="mono">{activeTenantId() ?? "unknown"}</span> · every source answered within this tenant boundary.
+        </div>
       )}
       {groups.map((g, gi) => (
         <Panel key={g.label} title={<span className="ico-row"><g.icon className="ico" size={ICON_MD} /><span>{g.label}</span></span>} sub={`${g.items.length} matches`} className="mt" style={gi === 0 ? { marginTop: 0 } : undefined}>

@@ -18,6 +18,18 @@ const failure = (result: ApiResult<unknown>, subject: string) => {
 };
 const validCount = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
 
+function provenanceText(value: unknown): string {
+  if (value == null) return "Not supplied";
+  if (typeof value === "string") return value;
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v != null && v !== "")
+      .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);
+    return entries.length ? entries.join(" · ") : "Not supplied";
+  }
+  return String(value);
+}
+
 export default function Evidence() { return <PrivateScope><EvidencePage /></PrivateScope>; }
 
 function EvidencePage() {
@@ -254,7 +266,9 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
                 <dt style={{ color: "var(--faint)" }}>Location</dt><dd style={{ margin: 0 }}>{field(f.file_path)}{validCount(f.line_number) && f.line_number > 0 ? ` · line ${f.line_number}` : ""}</dd>
                 <dt style={{ color: "var(--faint)" }}>Observed</dt><dd style={{ margin: 0 }}>{field(f.created_at)}</dd>
                 <dt style={{ color: "var(--faint)" }}>Scanner</dt><dd style={{ margin: 0 }}>{field(f.finding_data?.scanner_id)}</dd>
+                <dt style={{ color: "var(--faint)" }}>Content hash</dt><dd style={{ margin: 0, fontFamily: "var(--mono)", fontSize: 11 }}>{f.content_hash ? `${String(f.content_hash).slice(0, 32)}…` : "Not supplied"}</dd>
                 <dt style={{ color: "var(--faint)" }}>Chain hash</dt><dd style={{ margin: 0, fontFamily: "var(--mono)", fontSize: 11 }}>{String(field(f.chain_hash)).slice(0, 32)}…</dd>
+                <dt style={{ color: "var(--faint)" }}>Provenance</dt><dd style={{ margin: 0 }}>{provenanceText(f.provenance)}</dd>
               </dl>
               <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <button onClick={() => verifyRecord(f.evidence_id)} disabled={!!recordVerdicts[f.evidence_id]?.busy} style={{ fontSize: 11.5, padding: "5px 10px", borderRadius: "var(--r)", background: recordVerdicts[f.evidence_id]?.verdict?.result === "PASS" ? "var(--green)" : "var(--amber)", color: "#fff", border: "none", fontWeight: 700, cursor: recordVerdicts[f.evidence_id]?.busy ? "not-allowed" : "pointer", opacity: recordVerdicts[f.evidence_id]?.busy ? 0.6 : 1 }}>{recordVerdicts[f.evidence_id]?.busy ? "Verifying…" : "Verify this record"}</button>

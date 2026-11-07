@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useLive, LiveStatus } from "../lib/useLive.js";
 
@@ -65,6 +66,10 @@ export default function Governance() {
         {requests.length === 0 && <p className="dim" style={{ fontSize: 13 }}>No approval requests.</p>}
       </Panel>
       <Panel title="Audit trail" sub="append-only · hash-chained · live event bus" className="mt">
+        <p className="dim" style={{ fontSize: 12.5, margin: "0 0 8px" }} data-testid="governance-audited">
+          Every ownership change, approval, exception and risk acceptance on this page is
+          recorded in the append-only audit trail — <Link to="/audit">open the full audit ledger</Link>.
+        </p>
         <div className="timeline">
           {audit.map((a, i) => (
             <div className="tl" key={a.id ?? i}>
