@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_db_session
+from api.dependencies import get_current_user, get_db_session
 from db.models import (
     CoverageReport,
     DeploymentAttestation,
@@ -113,6 +113,7 @@ def _ticket_body(row: GovernanceTicket) -> dict[str, Any]:
 
 @router.post("/governance/tickets")
 def api_start_ticket(body: GovernanceStart,
+                     _user: Any = Depends(get_current_user),
                      session: Session = Depends(get_db_session)) -> dict:
     try:
         ticket = create_ticket(
@@ -131,6 +132,7 @@ def api_start_ticket(body: GovernanceStart,
 
 @router.post("/governance/tickets/{ticket_id}/transition")
 def api_transition_ticket(ticket_id: str, body: GovernanceTransition,
+                          _user: Any = Depends(get_current_user),
                           session: Session = Depends(get_db_session)) -> dict:
     row = session.query(GovernanceTicket).filter_by(ticket_id=ticket_id).first()
     if row is None:
@@ -152,6 +154,7 @@ def api_transition_ticket(ticket_id: str, body: GovernanceTransition,
 
 @router.get("/governance/tickets/{ticket_id}")
 def api_get_ticket(ticket_id: str,
+                   _user: Any = Depends(get_current_user),
                    session: Session = Depends(get_db_session)) -> dict:
     row = session.query(GovernanceTicket).filter_by(ticket_id=ticket_id).first()
     if row is None:
@@ -163,7 +166,9 @@ def api_get_ticket(ticket_id: str,
 
 
 @router.get("/governance/tickets")
-def api_list_tickets(session: Session = Depends(get_db_session)) -> dict:
+def api_list_tickets(
+        _user: Any = Depends(get_current_user),
+        session: Session = Depends(get_db_session)) -> dict:
     rows = session.query(GovernanceTicket).order_by(
         GovernanceTicket.created_at).all()
     return {"tickets": [_ticket_body(r) for r in rows], "count": len(rows)}
@@ -188,6 +193,7 @@ class CustodyEntryIn(BaseModel):
 
 @router.post("/deployment/attestations")
 def api_file_attestation(body: AttestationIn,
+                         _user: Any = Depends(get_current_user),
                          session: Session = Depends(get_db_session)) -> dict:
     try:
         record = attest(control=body.control, evidence_ids=body.evidence_ids,
@@ -206,6 +212,7 @@ def api_file_attestation(body: AttestationIn,
 
 @router.put("/deployment/custody")
 def api_set_custody(entries: list[CustodyEntryIn],
+                    _user: Any = Depends(get_current_user),
                     session: Session = Depends(get_db_session)) -> dict:
     classes = {e.custody_class for e in entries}
     unknown = classes - set(CUSTODY_CLASSES)
@@ -227,6 +234,7 @@ def api_set_custody(entries: list[CustodyEntryIn],
 @router.get("/deployment/readiness")
 def api_deployment_readiness(
         mode: str = Query("ON_PREM"),
+        _user: Any = Depends(get_current_user),
         session: Session = Depends(get_db_session)) -> dict:
     attestations = [
         {"control": r.control, "status": r.status,
@@ -260,6 +268,7 @@ class QualificationIn(BaseModel):
 
 @router.post("/qualification")
 def api_file_qualification(body: QualificationIn,
+                           _user: Any = Depends(get_current_user),
                            session: Session = Depends(get_db_session)) -> dict:
     try:
         record = qualification(
@@ -290,6 +299,7 @@ def _qualification_records(session: Session) -> list[dict[str, Any]]:
 @router.get("/qualification/summary")
 def api_qualification_summary(
         families: str = Query(""),
+        _user: Any = Depends(get_current_user),
         session: Session = Depends(get_db_session)) -> dict:
     wanted = tuple(f.strip() for f in families.split(",") if f.strip()) or tuple(
         TARGET_FAMILIES)
@@ -300,6 +310,7 @@ def api_qualification_summary(
 def api_qualification_claim(
         collector: str = Query(...),
         family: str = Query(...),
+        _user: Any = Depends(get_current_user),
         session: Session = Depends(get_db_session)) -> dict:
     return support_claim(_qualification_records(session),
                          collector=collector, family=family)
@@ -320,6 +331,7 @@ class ExternalValidationIn(BaseModel):
 @router.post("/external-validations")
 def api_file_external_validation(
         body: ExternalValidationIn,
+        _user: Any = Depends(get_current_user),
         session: Session = Depends(get_db_session)) -> dict:
     try:
         row = file_validation(
@@ -341,6 +353,7 @@ def api_file_external_validation(
 
 @router.get("/external-validations")
 def api_external_validation_register(
+        _user: Any = Depends(get_current_user),
         session: Session = Depends(get_db_session)) -> dict:
     rows = [{"kind": r.kind, "performed_by": r.performed_by,
              "evidence_ids": list(r.evidence_ids or []),
@@ -378,6 +391,7 @@ class CoverageBatchIn(BaseModel):
 @router.post("/coverage")
 def api_file_coverage_batch(
         body: CoverageBatchIn,
+        _user: Any = Depends(get_current_user),
         session: Session = Depends(get_db_session)) -> dict:
     if session.query(CoverageReport).filter_by(batch_id=body.batch_id).first():
         raise HTTPException(status_code=409, detail=(
@@ -412,6 +426,7 @@ def api_file_coverage_batch(
 @router.get("/coverage")
 def api_estate_coverage(
         batch_id: str = Query(""),
+        _user: Any = Depends(get_current_user),
         session: Session = Depends(get_db_session)) -> dict:
     if batch_id:
         row = session.query(CoverageReport).filter_by(batch_id=batch_id).first()
