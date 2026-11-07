@@ -472,7 +472,8 @@ def create_owner(body: OwnerCreate, user: str = Depends(get_current_user), db: S
 
 
 @router.get("/vendors")
-def list_vendors(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+def list_vendors(q: str | None = None,
+                 user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     intel = IntelligenceRepository(db)
     rows = []
     from db.repositories.vendor_profile_repository import VendorProfileRepository
@@ -493,6 +494,12 @@ def list_vendors(user: str = Depends(get_current_user), db: Session = Depends(ge
             ),
         }
         rows.append(payload)
+    if q and str(q).strip():
+        term = str(q).strip().lower()
+        # whole-store term search over the vendor's identifying fields
+        rows = [row for row in rows if any(
+            term in str(row.get(field) or "").lower()
+            for field in ("name", "vendor_type", "criticality", "integration_type"))]
     return {"vendors": rows}
 
 

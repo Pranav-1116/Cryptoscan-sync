@@ -98,6 +98,9 @@ def list_all_findings(
     algorithm: str | None = None,
     compliance_status: str | None = None,
     scan_id: str | None = Query(None, description="Restrict to a single scan"),
+    q: str | None = Query(None, description="Whole-store term search over "
+                                            "algorithm, file path, content "
+                                            "hash and evidence id"),
     user: str = Depends(get_current_user),
     repo: EvidenceRepository = Depends(get_evidence_repository),
     ctx: TenantContext = Depends(history_context),
@@ -106,6 +109,7 @@ def list_all_findings(
         algorithm=algorithm,
         compliance_status=compliance_status,
         scan_id=scan_id,
+        q=q,
         owner=ctx.tenant_id,
         page=page,
         page_size=page_size,

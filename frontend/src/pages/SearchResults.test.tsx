@@ -99,6 +99,9 @@ describe("SearchResults — tenant and permission boundaries (gap analysis §A)"
         JSON.stringify({ detail: "Access denied to runtime findings for this account or tenant." }),
         { status: 403 }),
       "/api/v1/assets": { assets: [], total_count: 0, page: 1, page_size: 25 },
+      "/api/v1/vendors": { vendors: [] },
+      "/api/v1/certificates": { certificates: [], total_count: 0 },
+      "/api/v1/findings": { findings: [], total_count: 0 },
     });
     renderAt("RSA");
     const boundary = await screen.findByTestId("search-boundary");
@@ -116,11 +119,71 @@ describe("SearchResults — tenant and permission boundaries (gap analysis §A)"
       "/api/v1/hardware/catalog": { devices: [] },
       "/api/v1/scans/runtime-findings": { findings: [], total_count: 0 },
       "/api/v1/assets": { assets: [], total_count: 0, page: 1, page_size: 25 },
+      "/api/v1/vendors": { vendors: [] },
+      "/api/v1/certificates": { certificates: [], total_count: 0 },
+      "/api/v1/findings": { findings: [], total_count: 0 },
     });
     renderAt("RSA");
     await screen.findByText("Algorithms");
     expect(screen.getByText(/scoped to tenant/)).toBeInTheDocument();
     expect(screen.getByText(/every source answered within this tenant boundary/))
       .toBeInTheDocument();
+  });
+});
+
+describe("SearchResults — global asset, vendor, certificate and evidence search (§A)", () => {
+  it("vendors, certificates and evidence come from their stores with the term", async () => {
+    const fetchSpy = mockFetch({
+      "/api/v1/algorithms": { algorithms: [] },
+      "/api/v1/network/protocols": { protocols: [] },
+      "/api/v1/hardware/catalog": { devices: [] },
+      "/api/v1/scans/runtime-findings": { findings: [], total_count: 0 },
+      "/api/v1/assets": { assets: [], total_count: 0, page: 1, page_size: 25 },
+      "/api/v1/vendors": { vendors: [
+        { name: "ACME HSM", vendor_type: "hardware", criticality: "HIGH" },
+      ] },
+      "/api/v1/certificates": { certificates: [
+        { subject: "CN=payments.acme.test", issuer: "CN=ACME CA", fingerprint_sha256: "ab12" },
+      ], total_count: 1 },
+      "/api/v1/findings": { findings: [
+        { evidence_id: "ev-7", algorithm: "RSA-2048", file_path: "src/keys.java" },
+      ], total_count: 1 },
+    });
+    renderAt("payments");
+    expect(await screen.findByText("Vendors (1 match)")).toBeInTheDocument();
+    expect(screen.getByText("ACME HSM")).toBeInTheDocument();
+    expect(screen.getByText("Certificates (1 match)")).toBeInTheDocument();
+    expect(screen.getByText("CN=payments.acme.test")).toBeInTheDocument();
+    expect(screen.getByText("Evidence (register, 1 match)")).toBeInTheDocument();
+    expect(screen.getByText(/ev-7 · RSA-2048/)).toBeInTheDocument();
+    // the term goes to each store's API — server-side, not a page-local filter
+    for (const path of ["/api/v1/vendors?q=payments", "/api/v1/certificates?q=payments",
+                        "/api/v1/findings"]) {
+      expect(fetchSpy.mock.calls.some(([p]) => String(p).includes(path)), path).toBeTruthy();
+    }
+    expect(fetchSpy.mock.calls.some(([p]) =>
+      String(p).includes("/api/v1/findings") && String(p).includes("q=payments"))).toBeTruthy();
+  });
+
+  it("a denied vendor source is named as not searched with the others intact", async () => {
+    mockFetch({
+      "/api/v1/algorithms": { algorithms: [] },
+      "/api/v1/network/protocols": { protocols: [] },
+      "/api/v1/hardware/catalog": { devices: [] },
+      "/api/v1/scans/runtime-findings": { findings: [], total_count: 0 },
+      "/api/v1/assets": { assets: [], total_count: 0, page: 1, page_size: 25 },
+      "/api/v1/vendors": new Response(
+        JSON.stringify({ detail: "Access denied to vendors for this account or tenant." }),
+        { status: 403 }),
+      "/api/v1/certificates": { certificates: [], total_count: 0 },
+      "/api/v1/findings": { findings: [], total_count: 0 },
+    });
+    renderAt("payments");
+    const boundary = await screen.findByTestId("search-boundary");
+    expect(boundary).toHaveTextContent("Vendors");
+    expect(boundary).toHaveTextContent(/access denied/i);
+    expect(boundary).toHaveTextContent(/not searched/);
+    // no vendor results are invented in place of the refused source
+    expect(screen.queryByText(/^Vendors \(/)).toBeNull();
   });
 });

@@ -169,10 +169,22 @@ def list_protocols(
 @router.get("/certificates")
 def list_certificates(
     expiring_days: int | None = None,
+    q: str | None = None,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     rows = CertificateRepository(db).list_all(expiring_days=expiring_days)
+    if q and str(q).strip():
+        term = str(q).strip().lower()
+        # whole-store term search over the certificate's identifying fields
+        def _match(row) -> bool:
+            data = row.to_dict()
+            for field in ("subject", "issuer", "fingerprint_sha256", "serial_number"):
+                if term in str(data.get(field) or "").lower():
+                    return True
+            return False
+
+        rows = [row for row in rows if _match(row)]
     return {"certificates": [row.to_dict() for row in rows], "total_count": len(rows)}
 
 

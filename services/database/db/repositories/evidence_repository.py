@@ -56,13 +56,29 @@ class EvidenceRepository(BaseRepository[EvidenceRecord]):
         algorithm: str | None = None,
         compliance_status: str | None = None,
         scan_id: str | None = None,
+        q: str | None = None,
         page: int = 1,
         page_size: int = 50,
         include_deleted: bool = False,
         owner=_UNSCOPED,
     ) -> tuple[list[EvidenceRecord], int]:
+        from sqlalchemy import or_
+
         stmt = select(EvidenceRecord)
         count_stmt = select(func.count()).select_from(EvidenceRecord)
+        if q and str(q).strip():
+            term = f"%{str(q).strip().lower()}%"
+            # whole-store term search over the record's identifying fields —
+            # server side, never a page-local filter
+            def _match(row):
+                return or_(
+                    func.lower(row.algorithm).like(term),
+                    func.lower(row.file_path).like(term),
+                    func.lower(row.content_hash).like(term),
+                    func.lower(row.id).like(term),
+                )
+            stmt = stmt.where(_match(EvidenceRecord))
+            count_stmt = count_stmt.where(_match(EvidenceRecord))
         if owner is not _UNSCOPED:
             stmt = stmt.where(EvidenceRecord.tenant_id == owner)
             count_stmt = count_stmt.where(EvidenceRecord.tenant_id == owner)

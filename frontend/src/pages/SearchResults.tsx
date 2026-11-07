@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Panel, PageHead } from "../components/ui.jsx";
-import { activeTenantId, apiAlgorithmCatalog, apiProtocolCatalog, apiHardwareCatalog, apiRuntimeFindings, apiAssetsSearch, type ApiResult } from "../lib/api.js";
+import { activeTenantId, apiAlgorithmCatalog, apiProtocolCatalog, apiHardwareCatalog, apiRuntimeFindings, apiAssetsSearch, apiVendors, apiCertificateEstate, apiFindings, type ApiResult } from "../lib/api.js";
 import { IconCrypto, IconNetwork, IconHardware, IconWarn, IconEstate, ICON_MD, type Icon } from "../components/icons";
 
 /* Full search results page — queries the LIVE catalogs and the runtime
@@ -51,12 +51,15 @@ export default function SearchResults() {
     setLoading(true);
     (async () => {
       const term = q.trim();
-      const [alg, proto, hw, find, assets] = await Promise.all([
+      const [alg, proto, hw, find, assets, vendors, certs, evidence] = await Promise.all([
         apiAlgorithmCatalog({ q: term }),
         apiProtocolCatalog(),
         apiHardwareCatalog(),
         apiRuntimeFindings(100, term),
         apiAssetsSearch(term),
+        apiVendors(term),
+        apiCertificateEstate(term),
+        apiFindings({ q: term, page_size: 25 }),
       ]);
       const out: Group[] = [];
       const boundaries: SourceBoundary[] = [];
@@ -65,6 +68,9 @@ export default function SearchResults() {
       if (proto.source !== "live") boundaries.push(boundaryFor("Protocols", proto));
       if (hw.source !== "live") boundaries.push(boundaryFor("Hardware", hw));
       if (find.source !== "live") boundaries.push(boundaryFor("Findings (runtime)", find));
+      if (vendors.source !== "live") boundaries.push(boundaryFor("Vendors", vendors));
+      if (certs.source !== "live") boundaries.push(boundaryFor("Certificates", certs));
+      if (evidence.source !== "live") boundaries.push(boundaryFor("Evidence (register)", evidence));
       // §5 (round 62): real asset search — SERVER-side, across the whole
       // estate (asset id, identity spine, algorithm, file location), not a
       // client-side filter of loaded rows. Reference-catalog matches below
@@ -107,6 +113,31 @@ export default function SearchResults() {
         out.push({ label: `Findings (runtime, ${fTotal} match${fTotal === 1 ? "" : "es"})`, icon: IconWarn, items: fRows.slice(0, 25).map((f) => ({
           name: `${f.hostname ?? f.process_name ?? f.algorithm ?? f.id}${f.algorithm ? ` · ${f.algorithm}` : ""}`,
           to: "/runtime", meta: f.status ?? f.kind ?? "",
+        })) });
+      }
+      // §A: "Global asset, vendor, certificate and evidence search" — each
+      // group is server-side term search over its whole store, same as assets.
+      const vendorRows = ((vendors.data as any)?.vendors ?? []) as any[];
+      if (vendorRows.length) {
+        out.push({ label: `Vendors (${vendorRows.length} match${vendorRows.length === 1 ? "" : "es"})`, icon: IconEstate, items: vendorRows.slice(0, 25).map((v: any) => ({
+          name: v.name ?? v.id, to: "/vbom",
+          meta: [v.vendor_type, v.criticality].filter(Boolean).join(" · "),
+        })) });
+      }
+      const certRows = ((certs.data as any)?.certificates ?? []) as any[];
+      const certTotal = Number((certs.data as any)?.total_count ?? certRows.length) || certRows.length;
+      if (certRows.length) {
+        out.push({ label: `Certificates (${certTotal} match${certTotal === 1 ? "" : "es"})`, icon: IconCrypto, items: certRows.slice(0, 25).map((c: any) => ({
+          name: c.subject ?? c.fingerprint_sha256 ?? c.id, to: "/certificates",
+          meta: c.issuer ?? "",
+        })) });
+      }
+      const evRows = ((evidence.data as any)?.findings ?? []) as any[];
+      const evTotal = Number((evidence.data as any)?.total_count ?? evRows.length) || evRows.length;
+      if (evRows.length) {
+        out.push({ label: `Evidence (register, ${evTotal} match${evTotal === 1 ? "" : "es"})`, icon: IconWarn, items: evRows.slice(0, 25).map((e: any) => ({
+          name: `${e.evidence_id ?? e.id}${e.algorithm ? ` · ${e.algorithm}` : ""}`, to: "/findings",
+          meta: e.file_path ?? "",
         })) });
       }
       if (!cancelled) { setGroups(out); setBoundaries(boundaries); }

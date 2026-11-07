@@ -711,6 +711,7 @@ export const apiFindings = (params: {
   algorithm?: string;
   compliance_status?: string;
   scan_id?: string;
+  q?: string;
 } = {}): Promise<ApiResult<FindingList>> => {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
@@ -718,6 +719,7 @@ export const apiFindings = (params: {
   if (params.algorithm) q.set("algorithm", params.algorithm);
   if (params.compliance_status) q.set("compliance_status", params.compliance_status);
   if (params.scan_id) q.set("scan_id", params.scan_id);
+  if (params.q) q.set("q", params.q);
   const qs = q.toString();
   return call(`/api/v1/findings${qs ? `?${qs}` : ""}`);
 };
@@ -2996,8 +2998,8 @@ export interface CertificateEstateRow {
 export interface CertificateEstateList {
   certificates: CertificateEstateRow[]; total_count: number;
 }
-export const apiCertificateEstate = (): Promise<ApiResult<CertificateEstateList>> =>
-  _rsGet<CertificateEstateList>("/api/v1/certificates");
+export const apiCertificateEstate = (q?: string): Promise<ApiResult<CertificateEstateList>> =>
+  _rsGet<CertificateEstateList>(`/api/v1/certificates${q ? `?q=${encodeURIComponent(q)}` : ""}`);
 export interface CertificateUsageRow {
   id: string; fingerprint_sha256: string;
   usage_type: string; location: string; last_seen: string | null;
@@ -3259,8 +3261,8 @@ export interface VendorProfileWriteResponse {
   completeness: VendorProfileCompleteness;
   audit?: { source?: string; content_sha256?: string; created_by?: string; captured_at?: string | null; reviewed_by?: string | null };
 }
-export const apiVendors = (): Promise<ApiResult<{ vendors: VendorRecord[] }>> =>
-  call("/api/v1/vendors");
+export const apiVendors = (q?: string): Promise<ApiResult<{ vendors: VendorRecord[] }>> =>
+  call(`/api/v1/vendors${q ? `?q=${encodeURIComponent(q)}` : ""}`);
 export const apiVendorCreate = (body: { name: string; criticality?: string; vendor_type?: string; integration_type?: string; profile?: Record<string, unknown> }): Promise<ApiResult<VendorRecord>> =>
   call("/api/v1/vendors", { method: "POST", body: JSON.stringify(body) });
 export const apiVendor = (vendorId: string): Promise<ApiResult<VendorRecord>> =>
