@@ -1059,3 +1059,76 @@ def verify_report_bundle(
         problems=verdict["problems"],
         note="every recorded artifact must be present and hash to its digest: "
              "a missing artifact is unverifiable, not valid")
+
+
+# ---------------------------------------------------------------------------
+# Retention (section 10): policy in the open, plans as projections. The
+# plan never executes — DELETE_CANDIDATE is its strongest claim, and
+# execution is a separate, disposition-gated act.
+# ---------------------------------------------------------------------------
+
+
+class RetentionPolicyOut(BaseModel):
+    model_config = {"extra": "allow"}
+
+    schema: Optional[str] = None
+    activity_retention_days: int = 180
+    change_retention_days: int = 3650
+    audit_retention_days: int = 3650
+    archive_after_days: int = 90
+    require_disposition_ref: bool = True
+    note: str = ""
+
+
+@router.get("/retention/policy")
+def get_retention_policy(user=Depends(get_current_user)) -> RetentionPolicyOut:
+    """The retention defaults in the open: named windows per retention
+    class, and a deletion that always requires a disposition."""
+    from shared_models.cryptolog_retention import DEFAULT_POLICY
+    return RetentionPolicyOut(
+        **DEFAULT_POLICY,
+        note="policy is stated, not hidden: every planned action cites the "
+             "window it applied, and a deletion always requires a named "
+             "disposition — the plan grants none")
+
+
+class RetentionPlanIn(BaseModel):
+    model_config = {"extra": "allow"}
+
+    policy: dict[str, Any] = Field(default_factory=dict)
+    tenant_id: Optional[str] = None
+    start_occurred: Optional[str] = None
+    end_occurred: Optional[str] = None
+
+
+class RetentionPlanOut(BaseModel):
+    model_config = {"extra": "allow"}
+
+    schema: Optional[str] = None
+    generated_at: str = ""
+    policy: dict[str, Any] = Field(default_factory=dict)
+    counts: dict[str, int] = Field(default_factory=dict)
+    rows: list[Any] = Field(default_factory=list)
+    proven: list[str] = Field(default_factory=list)
+    not_proven: list[str] = Field(default_factory=list)
+    note: str = ""
+
+
+@router.post("/retention/plan")
+def plan_retention(
+    payload: RetentionPlanIn,
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+) -> RetentionPlanOut:
+    """A retention PLAN: a deterministic projection over recorded events.
+    It performs nothing — executing it is a separate, disposition-gated
+    act, and the plan says so in its own not_proven."""
+    from shared_models.cryptolog_retention import plan as build_plan
+    repo = CryptoLogAlertRepository(db)
+    records = repo.events_in_range(
+        tenant_id=payload.tenant_id,
+        start_occurred=payload.start_occurred,
+        end_occurred=payload.end_occurred)
+    result = build_plan([r["event"] for r in records], payload.policy,
+                        datetime.now(timezone.utc))
+    return RetentionPlanOut(**result)

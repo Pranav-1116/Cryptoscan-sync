@@ -64,7 +64,9 @@ MIN_TENANT_ROLE_GATED = 17
 # with its reason in `102-authenticated-only-writes.json`.
 # 343: a deliberate regeneration added the CryptoLog report family
 # (export + verify — POST computations recorded under the decided family).
-MAX_SESSION_ONLY_WRITES = 343
+# 344: a deliberate regeneration added the CryptoLog retention planning POST
+# (a projection computation under the decided family).
+MAX_SESSION_ONLY_WRITES = 344
 
 
 @pytest.fixture(scope="module")

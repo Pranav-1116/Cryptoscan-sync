@@ -8266,3 +8266,49 @@ export const apiCryptologReportExport = (filters: {
     };
   }).catch(() => ({ ok: false, error: "offline" }));
 };
+
+/* CryptoLog retention (§10): policy in the open, plans as projections. */
+
+export interface CryptologRetentionPolicy {
+  schema?: string;
+  activity_retention_days: number;
+  change_retention_days: number;
+  audit_retention_days: number;
+  archive_after_days: number;
+  require_disposition_ref: boolean;
+  note: string;
+}
+
+export const apiCryptologRetentionPolicy = (): Promise<ApiResult<CryptologRetentionPolicy>> =>
+  call<CryptologRetentionPolicy>("/api/v1/cryptolog/retention/policy");
+
+export interface CryptologRetentionPlan {
+  schema?: string;
+  generated_at: string;
+  policy: Record<string, unknown>;
+  counts: Record<string, number>;
+  rows: Array<{
+    event_id: string;
+    retention_class: string;
+    observed_at?: string | null;
+    age_days?: number | null;
+    action: string;
+    reason: string;
+  }>;
+  proven: string[];
+  not_proven: string[];
+  note: string;
+}
+
+export const apiCryptologRetentionPlan = (filters: {
+  start_occurred?: string;
+  end_occurred?: string;
+} = {}): Promise<ApiResult<CryptologRetentionPlan>> =>
+  call<CryptologRetentionPlan>("/api/v1/cryptolog/retention/plan", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      start_occurred: filters.start_occurred,
+      end_occurred: filters.end_occurred,
+    }),
+  });
