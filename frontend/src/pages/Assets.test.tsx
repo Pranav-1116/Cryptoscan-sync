@@ -352,3 +352,65 @@ describe("asset detail → fact and graph cross-links (round 64)", () => {
     expect(screen.getByText(/not invented here/)).toBeInTheDocument();
   });
 });
+
+describe("asset inventory — evidence classification (gap analysis §A)", () => {
+  it("every record shows its evidence classification from the API", async () => {
+    mockFetch({
+      [listPath]: {
+        assets: [
+          {
+            id: "asset-classified",
+            evidence_classification: {
+              strongest_level: "RUNTIME_OBSERVED",
+              note: "collector source 'runtime process probe' observed a running system",
+            },
+          },
+          { id: "asset-silent" },
+        ],
+        total_count: 2, page: 1, page_size: 100,
+      },
+      "/api/v1/assets/asset-classified": {
+        id: "asset-classified",
+        evidence_ids: ["ev-1"],
+        evidence_classification: {
+          strongest_level: "RUNTIME_OBSERVED",
+          note: "collector source 'runtime process probe' observed a running system",
+        },
+      },
+      "/api/v1/assets/asset-silent": { id: "asset-silent", evidence_ids: [] },
+    });
+    renderWithProviders(<Assets />);
+    await screen.findByRole("heading", { name: "asset-classified" });
+    expect(screen.getByText("Evidence: RUNTIME_OBSERVED")).toBeInTheDocument();
+    // a record whose evidence level is not recorded shows UNCLASSIFIED —
+    // unknown, never promoted by assumption
+    expect(screen.getByText("Evidence: UNCLASSIFIED")).toBeInTheDocument();
+  });
+
+  it("the detail panel names the level and the rule behind it", async () => {
+    mockFetch({
+      [listPath]: {
+        assets: [{
+          id: "asset-classified",
+          evidence_classification: {
+            strongest_level: "STATIC_REFERENCE",
+            note: "named in source at a line: referenced, not run",
+          },
+        }],
+        total_count: 1, page: 1, page_size: 100,
+      },
+      "/api/v1/assets/asset-classified": {
+        id: "asset-classified",
+        evidence_ids: ["ev-1"],
+        evidence_classification: {
+          strongest_level: "STATIC_REFERENCE",
+          note: "named in source at a line: referenced, not run",
+        },
+      },
+    });
+    renderWithProviders(<Assets />);
+    await screen.findByRole("heading", { name: "asset-classified" });
+    expect(screen.getByTestId("evidence-classification")).toHaveTextContent("STATIC_REFERENCE");
+    expect(screen.getByText(/referenced, not run/)).toBeInTheDocument();
+  });
+});

@@ -20,6 +20,10 @@ interface AssetApiRow {
   updated_at?: string | null;
   extra?: { first_seen_at?: string | null; last_seen_at?: string | null; protocol?: string | null } | null;
   evidence_ids?: string[];
+  evidence_classification?: {
+    strongest_level?: string;
+    note?: string | null;
+  } | null;
 }
 
 interface AssetRecord {
@@ -39,6 +43,8 @@ interface AssetRecord {
   lastObserved: string | null;
   assetKey: string | null;
   evidenceIds: string[];
+  evidenceClass: string | null;
+  evidenceClassNote: string | null;
 }
 
 const observed = (value: unknown): string | null =>
@@ -68,6 +74,8 @@ function assetRecord(value: unknown): AssetRecord | null {
     lastObserved: observed(extra?.last_seen_at),
     assetKey: observed(row.asset_key),
     evidenceIds: Array.isArray(row.evidence_ids) ? row.evidence_ids.filter((item): item is string => !!observed(item)) : [],
+    evidenceClass: observed(row.evidence_classification?.strongest_level),
+    evidenceClassNote: observed(row.evidence_classification?.note),
   };
 }
 
@@ -476,7 +484,12 @@ export default function Assets() {
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
                         <span style={{ fontWeight: 600, fontSize: "13px", color: isSel ? "var(--cyan)" : "var(--text)" }}>{asset.name}</span>
-                        <Badge tone="slate">{asset.lifecycleState ?? "Unknown"}</Badge>
+                        <span style={{ display: "flex", gap: "4px" }}>
+                          <Badge tone={asset.evidenceClass && asset.evidenceClass !== "UNCLASSIFIED" ? "cyan" : "slate"}>
+                            {`Evidence: ${asset.evidenceClass ?? "UNCLASSIFIED"}`}
+                          </Badge>
+                          <Badge tone="slate">{asset.lifecycleState ?? "Unknown"}</Badge>
+                        </span>
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", color: "var(--dim)" }}>
                         <span>{asset.sourcePath ?? "Source not observed"}</span>
@@ -557,6 +570,15 @@ export default function Assets() {
                         <div>
                           <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Evidence</div>
                           <div style={{ marginTop: "2px" }}>{detailLoading ? "Loading evidence IDs..." : detailError ?? (detail?.id === selectedId && detail.evidenceIds.length ? `${detail.evidenceIds.length} linked ID(s); integrity not verified` : "Not observed; integrity not verified")}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Evidence classification</div>
+                          <div style={{ marginTop: "2px" }} data-testid="evidence-classification">
+                            {displayedAsset.evidenceClass ?? "UNCLASSIFIED"}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 2 }}>
+                            {displayedAsset.evidenceClassNote ?? "the evidence level is not recorded: unknown, never promoted"}
+                          </div>
                         </div>
                       </div>
                     </div>

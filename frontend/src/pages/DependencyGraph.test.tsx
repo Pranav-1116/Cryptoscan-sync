@@ -208,3 +208,49 @@ describe("DependencyGraph — asset-inventory deep link (round 64)", () => {
     expect(screen.getByText(/Blast is unknown, not zero/)).toBeTruthy();
   });
 });
+
+describe("DependencyGraph — asset inspector (gap analysis §A)", () => {
+  it("selecting a node shows its dependencies and their evidence", async () => {
+    mockFetch({
+      "/api/v1/graph": graph({
+        nodes: [
+          { id: "system:payments", label: "payments", kind: "system",
+            evidence_ids: ["EV-1", "EV-2"] },
+          { id: "system:billing", label: "billing", kind: "system" },
+        ],
+        edges: [{
+          from: "system:payments", to: "system:billing", label: "CALLS",
+          provenance: "SCANNER_DERIVED",
+        }],
+      }),
+    });
+    renderPage();
+    await clickNode("payments");
+    const inspector = await screen.findByTestId("node-inspector");
+    expect(inspector).toHaveTextContent("payments");
+    const deps = screen.getByTestId("node-dependencies");
+    expect(deps).toHaveTextContent("billing");
+    expect(deps).toHaveTextContent("CALLS");
+    expect(deps).toHaveTextContent("SCANNER_DERIVED");
+    const evidence = screen.getByTestId("node-evidence");
+    expect(evidence).toHaveTextContent("EV-1");
+    expect(evidence).toHaveTextContent("EV-2");
+  });
+
+  it("a node without evidence reads unknown, never a clean provenance", async () => {
+    mockFetch({
+      "/api/v1/graph": graph({
+        nodes: [
+          { id: "system:payments", label: "payments", kind: "system" },
+          { id: "system:billing", label: "billing", kind: "system" },
+          { id: "system:orphan", label: "orphan", kind: "system" },
+        ],
+      }),
+    });
+    renderPage();
+    await clickNode("orphan");
+    await screen.findByTestId("node-inspector");
+    expect(screen.getByText(/unknown, never a clean provenance/)).toBeInTheDocument();
+    expect(screen.getByText(/unknown, not isolated/)).toBeInTheDocument();
+  });
+});

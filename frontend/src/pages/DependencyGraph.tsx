@@ -106,6 +106,19 @@ export default function DependencyGraph(){
 
   const blastSet = useMemo(()=> new Set((blastRadius?.systems||[]).map((s:any)=> s.id)),[blastRadius]);
 
+  // Inspector (gap analysis §A: select an asset and inspect its evidence and
+  // dependencies). Edges keep their reported provenance; evidence is listed
+  // only when the node carries it — an un evidenced connection reads unknown.
+  const nodeEdges = useMemo(()=> (
+    selectedNode ? (edges as any[]).filter((e:any)=>
+      (e.from ?? e.source)===selectedNode.id || (e.to ?? e.target)===selectedNode.id) : []
+  ), [edges, selectedNode]);
+  const nodeEvidence: string[] = Array.isArray((selectedNode as any)?.evidence_ids)
+    ? ((selectedNode as any).evidence_ids as unknown[]).map(String)
+    : Array.isArray((selectedNode as any)?.evidenceIds)
+      ? ((selectedNode as any).evidenceIds as unknown[]).map(String)
+      : [];
+
   return (
     <div className="page" style={{maxWidth:"1280px", margin:"0 auto", padding:"10px 0 60px"}}>
       {/* Header */}
@@ -153,6 +166,48 @@ export default function DependencyGraph(){
           <Bar value={selectedNode && blastRadius ? Math.min(1, (blastRadius.systems?.length||0)/8) : 0} tone="violet"/>
         </div>
       </div>
+
+      {selectedNode && (
+        <div className="panel" style={{padding:"12px 14px", marginBottom:16}} data-testid="node-inspector">
+          <div style={{fontSize:10, letterSpacing:.08, color:"var(--dim)"}}>
+            INSPECTOR · {selectedNode.label || selectedNode.id}
+          </div>
+          <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginTop:8}}>
+            <div>
+              <div style={{fontSize:11, textTransform:"uppercase", color:"var(--dim)"}}>Dependencies</div>
+              {nodeEdges.length ? (
+                <ul style={{margin:"4px 0 0", paddingLeft:16, fontSize:11.5}} data-testid="node-dependencies">
+                  {nodeEdges.map((e:any, i:number)=> {
+                    const other = (e.from ?? e.source)===selectedNode.id ? (e.to ?? e.target) : (e.from ?? e.source);
+                    return (
+                      <li key={i}>
+                        {String(other)} — {String(e.label ?? e.predicate ?? "related to")}{" "}
+                        <span style={{color:"var(--faint)"}}>({String(e.provenance ?? "UNKNOWN")})</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <div style={{fontSize:11.5, color:"var(--dim)"}}>
+                  no dependency edges are recorded for this node — unknown, not isolated
+                </div>
+              )}
+            </div>
+            <div>
+              <div style={{fontSize:11, textTransform:"uppercase", color:"var(--dim)"}}>Evidence</div>
+              {nodeEvidence.length ? (
+                <ul style={{margin:"4px 0 0", paddingLeft:16, fontSize:11.5, fontFamily:"var(--mono)"}} data-testid="node-evidence">
+                  {nodeEvidence.map((id)=> <li key={id}>{id}</li>)}
+                </ul>
+              ) : (
+                <div style={{fontSize:11.5, color:"var(--dim)"}}>
+                  no evidence is attached to this node's connections: unknown, never a clean provenance
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Visual workspace */}
       <div style={{display:"grid", gridTemplateColumns:"1.2fr 1fr", gap:20}}>
