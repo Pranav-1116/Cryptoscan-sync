@@ -336,3 +336,41 @@ async def test_engagement_archive_bundles_pack_report_and_manifest(tmp_path, mon
         assert verify_exit_report(report) is True
         assert manifest["exit_report_hash"] == report["report_hash"]
         assert report["report_hash"] in archive.read("exit-report.md").decode()
+
+
+@pytest.mark.asyncio
+async def test_export_manifests_carry_every_contract_field():
+    """Gap analysis §B: 'Export manifests include schema version, report_id,
+    tenant_id, filters, generated_at and totals.'"""
+    from shared_models.report_manifest import REQUIRED_FIELDS, verify_manifest
+
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        pack = await client.get("/api/v1/audit-export/pack")
+        assert pack.status_code == 200, pack.text
+        archive = zipfile.ZipFile(io.BytesIO(pack.content))
+        manifest = json.loads(archive.read("manifest.json"))
+        for field in REQUIRED_FIELDS:
+            assert field in manifest, field
+        verify_manifest(manifest)
+        assert manifest["report_id"].startswith("audit-pack-")
+        assert manifest["tenant_id"] is None, "NULL = platform estate, stated honestly"
+        assert manifest["scope"] == "platform-estate"
+        assert manifest["filters"]["hsm_events_days"] == 90
+        assert manifest["totals"]["files"] == manifest["file_count"]
+
+        archive_resp = await client.get(
+            "/api/v1/audit-export/engagement-archive",
+            params={"client": "demo-bank", "window": "2026-Q4"})
+        assert archive_resp.status_code == 200, archive_resp.text
+        outer = zipfile.ZipFile(io.BytesIO(archive_resp.content))
+        engagement = json.loads(outer.read("manifest.json"))
+        for field in REQUIRED_FIELDS:
+            assert field in engagement, field
+        verify_manifest(engagement)
+        assert engagement["report_id"].startswith("engagement-")
+        assert engagement["filters"]["client"] == "demo-bank"
+        assert engagement["totals"]["files"] >= 3
+        # two different exports never share a report id
+        assert engagement["report_id"] != manifest["report_id"]

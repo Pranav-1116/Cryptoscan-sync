@@ -19,6 +19,7 @@ import io
 import json
 import re
 import zipfile
+from uuid import uuid4
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -160,18 +161,29 @@ def engagement_archive(
                                         default=str).encode("utf-8"),
         "exit-report.md": render_markdown(report).encode("utf-8"),
     }
-    manifest = {
-        "kind": "cryptoscan-engagement-archive",
-        "version": "1.0.0",
-        "client": report["client"],
-        "window": report.get("window", ""),
-        "generated_at": generated_at.isoformat(),
-        "exit_report_hash": report["report_hash"],
-        "files": {
-            name: {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}
-            for name, payload in sorted(files.items())
+    from shared_models.report_manifest import MANIFEST_SCHEMA, build_manifest
+
+    manifest = build_manifest(
+        schema_version=MANIFEST_SCHEMA,
+        report_id=f"engagement-{generated_at.strftime('%Y%m%dT%H%M%SZ')}-{uuid4().hex[:8]}",
+        tenant_id=None,  # NULL = platform estate; stated via scope below
+        scope="platform-estate",
+        filters={"client": client, "window": window, "owner": owner,
+                 "accepted_by": accepted_by},
+        totals={"files": len(files)},
+        generated_at=generated_at.isoformat(),
+        extra={
+            "kind": "cryptoscan-engagement-archive",
+            "version": "1.0.0",
+            "client": report["client"],
+            "window": report.get("window", ""),
+            "exit_report_hash": report["report_hash"],
+            "files": {
+                name: {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}
+                for name, payload in sorted(files.items())
+            },
         },
-    }
+    )
     files["manifest.json"] = _json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8")
 
     buffer = io.BytesIO()
@@ -422,15 +434,17 @@ def export_pack(
     })
 
     # ----------------------------------------------------------- manifest
-    manifest = {
-        "generated_at": generated_at.isoformat(),
-        "exported_by": user,
-        "file_count": len(entries),
-        "files": {
-            path: {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}
-            for path, payload in sorted(entries.items())
-        },
-        "totals": {
+    from shared_models.report_manifest import MANIFEST_SCHEMA, build_manifest
+
+    manifest = build_manifest(
+        schema_version=MANIFEST_SCHEMA,
+        report_id=f"audit-pack-{generated_at.strftime('%Y%m%dT%H%M%SZ')}-{uuid4().hex[:8]}",
+        tenant_id=None,  # NULL = platform estate; the export scope enforces it
+        scope="platform-estate",
+        filters={"hsm_events_days": 90, "transaction_series_days": 120,
+                 "findings": "OPEN only", "monitor_targets": "enabled only",
+                 "certificates": "all", "estates": "all"},
+        totals={
             "payment_keys": len(keys), "ceremonies": len(ceremonies),
             "open_findings": sum(1 for row in findings if row["status"] == "OPEN"),
             "certificates": len(certificates), "hsm_events_90d": len(events),
@@ -438,8 +452,18 @@ def export_pack(
             "cloud_acm_certificates": len(acm_rows),
             "code_finding_assets": len(code_rows),
             "telecom_targets": int((telecom or {}).get("targets_registered") or 0),
+            "files": len(entries),
         },
-    }
+        generated_at=generated_at.isoformat(),
+        extra={
+            "exported_by": user,
+            "file_count": len(entries),
+            "files": {
+                path: {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}
+                for path, payload in sorted(entries.items())
+            },
+        },
+    )
     entries["manifest.json"] = _canonical(manifest)
 
     buffer = io.BytesIO()
