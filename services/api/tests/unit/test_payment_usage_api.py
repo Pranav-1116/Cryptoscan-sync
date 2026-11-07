@@ -94,23 +94,75 @@ async def test_bulk_transaction_series_upsert():
     app, session, engine = _make_app()
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        rejected = await client.post("/api/v1/payment-crypto/transactions/bulk",
-                                     json={"series": {"31-02-2026": 5}})
-        assert rejected.status_code == 422
+        # one bad key is per-item REJECTED with a reason — the rest of the
+        # batch is never rejected with it (gap analysis §B partial success)
+        mixed = await client.post("/api/v1/payment-crypto/transactions/bulk",
+                                  json={"series": {"31-02-2026": 5, "2026-08-29": 10_000_000}})
+        assert mixed.status_code == 200
+        body = mixed.json()
+        assert body["partial"] is True
+        by_key = {row["key"]: row for row in body["items"]}
+        assert by_key["31-02-2026"]["outcome"] == "REJECTED"
+        assert "invalid ISO date" in by_key["31-02-2026"]["reason"]
+        assert by_key["2026-08-29"]["outcome"] == "ACCEPTED"
+        assert body["totals"] == {"accepted": 1, "rejected": 1, "skipped": 0, "total": 2}
+
         posted = await client.post("/api/v1/payment-crypto/transactions/bulk",
                                    json={"series": {"2026-08-29": 10_000_000, "2026-08-30": 10_500_000},
                                          "source": "dw-push"})
         assert posted.status_code == 200, posted.text
-        assert posted.json()["days_ingested"] == 2
+        # 2026-08-29 is written again with the same value -> SKIPPED "unchanged"
+        assert posted.json()["days_ingested"] == 1
         # upsert: same day, new count — no duplicate row
         again = await client.post("/api/v1/payment-crypto/transactions/bulk",
                                   json={"series": {"2026-08-30": 9_900_000}})
         assert again.status_code == 200
+        assert again.json()["items"] == [
+            {"key": "2026-08-30", "outcome": "ACCEPTED", "reason": "written"}]
         from db.models.payment_crypto import PaymentTransactionVolume
 
         rows = session.query(PaymentTransactionVolume).order_by(PaymentTransactionVolume.day).all()
         assert [(row.day.isoformat(), row.transaction_count) for row in rows] == [
             ("2026-08-29", 10_000_000), ("2026-08-30", 9_900_000)]
+
+        # unchanged value is SKIPPED with its own reason, not fake-accepted
+        unchanged = await client.post("/api/v1/payment-crypto/transactions/bulk",
+                                      json={"series": {"2026-08-30": 9_900_000}})
+        assert unchanged.json()["items"] == [
+            {"key": "2026-08-30", "outcome": "SKIPPED", "reason": "value unchanged"}]
+
+
+@pytest.mark.asyncio
+async def test_bulk_write_is_idempotent_with_idempotency_key():
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        payload = {"series": {"2026-09-01": 1_000}}
+        first = await client.post("/api/v1/payment-crypto/transactions/bulk",
+                                  json=payload, headers={"Idempotency-Key": "dw-2026-09-01"})
+        assert first.status_code == 200
+        assert first.json()["idempotent_replay"] is False
+        assert first.json()["totals"]["accepted"] == 1
+
+        replay = await client.post("/api/v1/payment-crypto/transactions/bulk",
+                                   json=payload, headers={"Idempotency-Key": "dw-2026-09-01"})
+        assert replay.status_code == 200
+        body = replay.json()
+        assert body["idempotent_replay"] is True
+        assert body["totals"] == {"accepted": 0, "rejected": 0, "skipped": 1, "total": 1}
+        assert body["items"][0]["reason"] == "idempotent replay of dw-2026-09-01"
+
+        from db.models.payment_crypto import PaymentTransactionVolume
+        rows = session.query(PaymentTransactionVolume).all()
+        assert len(rows) == 1, "the replay must not write again"
+
+        # the same key with a different body is a CONFLICT, never a wrong answer
+        conflict = await client.post("/api/v1/payment-crypto/transactions/bulk",
+                                     json={"series": {"2026-09-01": 9_999}},
+                                     headers={"Idempotency-Key": "dw-2026-09-01"})
+        assert conflict.status_code == 409
+        assert conflict.json()["error_code"] == "CONFLICT"
+        assert conflict.json()["request_id"]
 
 
 @pytest.mark.asyncio

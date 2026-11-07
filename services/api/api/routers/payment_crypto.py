@@ -10,12 +10,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, require_auditor, get_db_session
 from db.repositories.payment_crypto_repository import PaymentCryptoRepository
+from api.idempotency import ConflictError, idempotent_write, record
 from payment_crypto.auditlog import HsmAuditParser
 from payment_crypto.keyblocks import parse_tr31_header
 from payment_crypto.policy import PaymentPolicyEngine
@@ -270,25 +271,81 @@ def record_transactions(body: TransactionVolumeIn, user: str = Depends(require_a
 
 @router.post("/transactions/bulk")
 def record_transactions_bulk(body: TransactionBulkIn, user: str = Depends(require_auditor),
-                             db: Session = Depends(get_db_session)):
-    """Upsert a daily-transaction series (data-warehouse push, one call per day/week)."""
+                             db: Session = Depends(get_db_session), request: Request = None):
+    """Upsert a daily-transaction series (data-warehouse push, one call per day/week).
+
+    Bulk partial success (gap analysis §B): every day key returns its own
+    outcome — ACCEPTED (written), REJECTED (bad item, with the reason) or
+    SKIPPED (value unchanged) — and totals are computed from those items.
+    One bad key never rejects the rest of the batch. Writes are idempotent
+    via ``Idempotency-Key``: a replay is served the stored response and
+    marked ``idempotent_replay``; the same key with a different body is a
+    CONFLICT, never a silent wrong answer.
+    """
     from datetime import date as _date
+
+    from db.models.payment_crypto import PaymentTransactionVolume
+    from shared_models.bulk_result import (ACCEPTED, REJECTED, SKIPPED,
+                                           bulk_result, item)
 
     if not body.series:
         raise HTTPException(status_code=422, detail="series must contain at least one day")
+
+    scope = request.scope if request is not None else {}
+    idem_key = None
+    if request is not None:
+        idem_key = request.headers.get("Idempotency-Key") or None
+    try:
+        replay = idempotent_write(scope, "/api/v1/payment-crypto/transactions/bulk",
+                                  idem_key, body.model_dump())
+    except ConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    if replay is not None:
+        status, stored = replay
+        replayed = dict(stored)
+        replayed["idempotent_replay"] = True
+        replayed["items"] = [
+            dict(row, outcome=SKIPPED, reason=f"idempotent replay of {idem_key}")
+            for row in stored.get("items", [])
+        ]
+        replayed["totals"] = {"accepted": 0, "rejected": 0,
+                              "skipped": len(replayed["items"]),
+                              "total": len(replayed["items"])}
+        replayed["complete"] = False
+        replayed["partial"] = False
+        return replayed
+
     repo = _repo(db)
-    days = []
+    items = []
+    accepted_days = []
     for day_text, count in body.series.items():
         try:
             day = _date.fromisoformat(str(day_text)[:10])
         except ValueError:
-            raise HTTPException(status_code=422, detail=f"invalid ISO date key '{day_text}'")
+            items.append(item(str(day_text), REJECTED, f"invalid ISO date key '{day_text}'"))
+            continue
         if count is None or count < 0:
-            raise HTTPException(status_code=422, detail=f"count for {day_text} must be >= 0")
+            items.append(item(day.isoformat(), REJECTED, f"count for {day_text} must be >= 0"))
+            continue
+        current = db.query(PaymentTransactionVolume).filter(
+            PaymentTransactionVolume.day == day).one_or_none()
+        if current is not None and int(current.transaction_count) == int(count):
+            items.append(item(day.isoformat(), SKIPPED, "value unchanged"))
+            continue
         repo.upsert_transaction_volume(day, int(count), source=body.source or "bulk-push")
-        days.append(day.isoformat())
+        items.append(item(day.isoformat(), ACCEPTED, "written"))
+        accepted_days.append(day.isoformat())
     db.commit()
-    return {"days_ingested": len(days), "days": sorted(days)}
+    outcome = bulk_result(items)
+    response = {
+        "days_ingested": len(accepted_days),
+        "days": sorted(accepted_days),
+        "idempotent_replay": False,
+        **outcome,
+    }
+    record(scope, "/api/v1/payment-crypto/transactions/bulk", idem_key,
+           body.model_dump(), 200, response)
+    return response
 
 
 @router.get("/usage")
