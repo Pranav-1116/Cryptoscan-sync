@@ -682,3 +682,61 @@ def test_asset_alias_resolve_reports_conflicts_and_merge_preserves_keys(api):
     })
     assert refused.status_code == 422
     assert refused.json()["error_code"] == "INVALID_ARGUMENT"
+
+
+def test_supplier_concentration_and_readiness_surfaces(api):
+    # §6: two critical services behind one supplier is a named finding
+    conc = api.post("/api/intelligence/supplier-concentration", json={
+        "dependencies": [
+            {"service": "payments-api", "supplier": "ACME HSM",
+             "component": "Luna 7", "criticality": "CRITICAL",
+             "evidence_ref": "ev-1"},
+            {"service": "settlement-api", "supplier": "ACME HSM",
+             "component": "Luna 7", "criticality": "HIGH",
+             "evidence_ref": "ev-2"},
+        ],
+        "as_of": "2026-11-07",
+    })
+    assert conc.status_code == 200, conc.text
+    body = conc.json()
+    assert body["state"] == "CONCENTRATED"
+    assert body["findings"][0]["subject"] == "ACME HSM"
+    assert "score" not in body
+
+    refused = api.post("/api/intelligence/supplier-concentration", json={
+        "dependencies": [{"service": "x", "supplier": "y",
+                          "criticality": "CRITICAL", "evidence_ref": ""}]})
+    assert refused.status_code == 422
+    assert refused.json()["error_code"] == "INVALID_ARGUMENT"
+
+    # §5.2: readiness needs evidence + a vendor claim of testing is not
+    # independent test evidence
+    ready = api.post("/api/intelligence/supplier-readiness", json={
+        "vendor": "ACME HSM", "product": "Luna",
+        "responses": [
+            {"dimension": "pqc_roadmap", "status": "ANSWERED",
+             "evidence_ref": "ev-r", "verification": "INDEPENDENT_TEST"},
+            {"dimension": "implementation_capability", "status": "ANSWERED",
+             "evidence_ref": "ev-i", "verification": "VENDOR_CLAIM"},
+            {"dimension": "testing_evidence", "status": "ANSWERED",
+             "evidence_ref": "ev-t", "verification": "VENDOR_CLAIM"},
+            {"dimension": "product_support_lifecycle", "status": "ANSWERED",
+             "evidence_ref": "ev-l", "verification": "INDEPENDENT_TEST"},
+            {"dimension": "upgrade_commitment", "status": "ANSWERED",
+             "evidence_ref": "ev-u", "verification": "INDEPENDENT_TEST"},
+        ],
+        "as_of": "2026-11-07",
+    })
+    assert ready.status_code == 200, ready.text
+    ready_body = ready.json()
+    assert ready_body["state"] == "PARTIAL"
+    assert ready_body["is_clean_result"] is False
+    testing = next(d for d in ready_body["dimensions"]
+                   if d["dimension"] == "testing_evidence")
+    assert testing["met"] is False
+
+    least = api.post("/api/intelligence/supplier-readiness/least-ready",
+                     json={"assessments": [ready_body]})
+    assert least.status_code == 200
+    assert least.json()["state"] == "CONSTRAINED"
+    assert least.json()["suppliers"][0]["vendor"] == "ACME HSM"

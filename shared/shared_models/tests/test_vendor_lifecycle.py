@@ -141,3 +141,106 @@ def test_change_log_digest_is_order_insensitive():
                         detail="7.14 released")
     assert vendor_log_digest([a, b]) == vendor_log_digest([b, a])
     assert vendor_log_digest([a, b]) != vendor_log_digest([a])
+
+
+# ---- PQC supplier readiness ("questions to ask your vendors") ----
+
+from shared_models.vendor_lifecycle import (
+    ANSWERED, DECLINED, INDEPENDENT_TEST, NOT_PROVIDED, READY, PARTIAL,
+    VENDOR_CLAIM, least_ready_suppliers, supplier_readiness,
+)
+
+
+def _answer(dimension, **over):
+    base = {"dimension": dimension, "status": ANSWERED,
+            "evidence_ref": f"ev-{dimension}", "verification": VENDOR_CLAIM,
+            "detail": "vendor questionnaire response"}
+    base.update(over)
+    return base
+
+
+def _full_answers(**overrides):
+    rows = [
+        _answer("pqc_roadmap", verification=INDEPENDENT_TEST),
+        _answer("implementation_capability"),
+        _answer("testing_evidence", verification=INDEPENDENT_TEST),
+        _answer("product_support_lifecycle"),
+        _answer("upgrade_commitment"),
+    ]
+    return rows
+
+
+def test_a_vendor_claim_of_testing_is_not_test_evidence():
+    rows = _full_answers()
+    rows[2] = _answer("testing_evidence", verification=VENDOR_CLAIM)
+    out = supplier_readiness(vendor="ACME HSM", product="Luna", responses=rows,
+                             as_of=AS_OF)
+    assert out["state"] == PARTIAL
+    assert out["is_clean_result"] is False
+    testing = next(d for d in out["dimensions"] if d["dimension"] == "testing_evidence")
+    assert testing["met"] is False
+    assert "only an independent test" in testing["note"]
+
+
+def test_ready_requires_every_dimension_with_evidence():
+    out = supplier_readiness(vendor="ACME HSM", product="Luna",
+                             responses=_full_answers(), as_of=AS_OF)
+    assert out["state"] == READY
+    assert out["is_clean_result"] is True
+    assert out["dimensions_met"] == 5 == out["dimensions_total"]
+
+
+def test_a_positive_answer_needs_evidence_and_verification_kind():
+    rows = _full_answers()
+    rows[0] = _answer("pqc_roadmap", evidence_ref="")
+    with pytest.raises(ValueError):
+        supplier_readiness(vendor="ACME HSM", product="Luna", responses=rows,
+                           as_of=AS_OF)
+    rows[0] = _answer("pqc_roadmap", verification="")
+    with pytest.raises(ValueError):
+        supplier_readiness(vendor="ACME HSM", product="Luna", responses=rows,
+                           as_of=AS_OF)
+
+
+def test_no_response_is_unknown_for_that_dimension_never_readiness():
+    out = supplier_readiness(vendor="ACME HSM", product="Luna",
+                             responses=_full_answers()[:3], as_of=AS_OF)
+    unasked = [d for d in out["dimensions"] if d["status"] == "UNKNOWN"]
+    assert {d["dimension"] for d in unasked} == {
+        "product_support_lifecycle", "upgrade_commitment"}
+    assert all(d["note"] == "no response is not readiness" for d in unasked)
+    assert out["is_clean_result"] is False
+
+
+def test_a_declined_dimension_reads_not_ready():
+    rows = _full_answers()
+    rows[4] = _answer("upgrade_commitment", status=DECLINED, evidence_ref=None,
+                      verification=None)
+    out = supplier_readiness(vendor="ACME HSM", product="Luna", responses=rows,
+                             as_of=AS_OF)
+    assert out["state"] == PARTIAL
+    declined = next(d for d in out["dimensions"]
+                    if d["dimension"] == "upgrade_commitment")
+    assert declined["status"] == DECLINED and declined["met"] is False
+
+
+def test_least_ready_suppliers_names_the_pacing_constraints():
+    ready = supplier_readiness(vendor="Fast Co", product="FastHSM",
+                               responses=_full_answers(), as_of=AS_OF)
+    slow = supplier_readiness(vendor="ACME HSM", product="Luna",
+                              responses=_full_answers()[:2], as_of=AS_OF)
+    out = least_ready_suppliers([ready, slow])
+    assert out["state"] == "CONSTRAINED"
+    assert out["is_clean_result"] is False
+    assert [s["vendor"] for s in out["suppliers"]] == ["ACME HSM"]
+    assert "no average readiness number" in out["note"]
+    all_ready = least_ready_suppliers([ready])
+    assert all_ready["state"] == "NO_CONSTRAINT"
+    assert all_ready["is_clean_result"] is True
+
+
+def test_dimension_answered_twice_is_refused():
+    rows = _full_answers() + [_answer("pqc_roadmap")]
+    with pytest.raises(ValueError):
+        supplier_readiness(vendor="ACME HSM", product="Luna", responses=rows,
+                           as_of=AS_OF)

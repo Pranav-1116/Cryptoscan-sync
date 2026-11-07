@@ -241,3 +241,165 @@ def vendor_log_digest(events: Iterable[Mapping[str, Any]]) -> str:
     """Deterministic digest of a supplier-change log (order-insensitive)."""
     rows = sorted((_freeze(dict(e)) for e in events))
     return "sha256:" + hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest()
+
+
+# ---- PQC supply-chain readiness ("Post-Quantum Questions to Ask Your Vendors")
+
+READINESS_DIMENSIONS: tuple[str, ...] = (
+    "pqc_roadmap",
+    "implementation_capability",
+    "testing_evidence",
+    "product_support_lifecycle",
+    "upgrade_commitment",
+)
+
+VENDOR_CLAIM = "VENDOR_CLAIM"
+INDEPENDENT_TEST = "INDEPENDENT_TEST"
+VERIFICATION_KINDS: tuple[str, ...] = (VENDOR_CLAIM, INDEPENDENT_TEST)
+
+ANSWERED = "ANSWERED"
+NOT_PROVIDED = "NOT_PROVIDED"
+DECLINED = "DECLINED"
+DIMENSION_STATES: tuple[str, ...] = (ANSWERED, NOT_PROVIDED, DECLINED)
+
+READY = "READY"
+PARTIAL = "PARTIAL"
+NOT_READY = "NOT_READY"
+
+
+def supplier_readiness(*, vendor: str, product: str | None,
+                       responses: Iterable[Mapping[str, Any]],
+                       as_of: str | None = None) -> dict[str, Any]:
+    """One supplier's PQC-readiness questionnaire result.
+
+    The review's third-party rule: assess "PQC roadmaps, implementation
+    capabilities, testing evidence, product support lifecycles, and upgrade
+    commitments" — and never infer readiness. House rules enforced here:
+
+    - a positive answer needs evidence and a verification kind: a claim is
+      not proof;
+    - the testing_evidence dimension counts as met only when an INDEPENDENT
+      test backs it — "don't claim support simply because an integration
+      has a fixture": a vendor saying "we tested" is a VENDOR_CLAIM;
+    - a dimension with no response is UNKNOWN for that dimension — no
+      response is not readiness;
+    - READY requires every dimension met with evidence; anything less is
+      PARTIAL or NOT_READY, and ``is_clean_result`` is never true on
+      missing answers.
+    """
+    if not str(vendor or "").strip():
+        raise ValueError("vendor is mandatory for a readiness assessment")
+    today = str(as_of or date.today().isoformat())
+
+    answered: dict[str, dict[str, Any]] = {}
+    for row in responses:
+        dimension = str(row.get("dimension") or "").strip().lower()
+        if dimension not in READINESS_DIMENSIONS:
+            raise ValueError(f"unknown readiness dimension {row.get('dimension')!r}; "
+                             f"expected one of {', '.join(READINESS_DIMENSIONS)}")
+        if dimension in answered:
+            raise ValueError(f"dimension {dimension!r} answered twice: a "
+                             "questionnaire is one answer per question")
+        state = str(row.get("status") or "").upper()
+        if state not in DIMENSION_STATES:
+            raise ValueError(f"unknown dimension status {row.get('status')!r}; "
+                             f"expected one of {', '.join(DIMENSION_STATES)}")
+        verification = str(row.get("verification") or "").upper() or None
+        detail = str(row.get("detail") or "")
+        if state == ANSWERED:
+            ref = _require_evidence(
+                row.get("evidence_ref"), f"an ANSWERED readiness claim for {dimension!r}")
+            if verification not in VERIFICATION_KINDS:
+                raise ValueError(
+                    f"an ANSWERED {dimension!r} claim needs its verification "
+                    f"kind ({VENDOR_CLAIM} or {INDEPENDENT_TEST}): a claim "
+                    "without provenance cannot be weighed")
+            entry = {"status": ANSWERED, "evidence_ref": ref,
+                     "verification": verification, "detail": detail}
+        else:
+            entry = {"status": state, "evidence_ref": None,
+                     "verification": None, "detail": detail}
+        answered[dimension] = entry
+
+    dimensions = []
+    met = 0
+    for dimension in READINESS_DIMENSIONS:
+        entry = answered.get(dimension)
+        if entry is None:
+            dimensions.append({
+                "dimension": dimension, "status": "UNKNOWN",
+                "evidence_ref": None, "verification": None, "detail": "",
+                "met": False,
+                "note": "no response is not readiness",
+            })
+            continue
+        is_met = entry["status"] == ANSWERED and not (
+            dimension == "testing_evidence" and
+            entry["verification"] != INDEPENDENT_TEST)
+        note = ""
+        if (dimension == "testing_evidence" and entry["status"] == ANSWERED
+                and entry["verification"] != INDEPENDENT_TEST):
+            note = ("a vendor claim of testing is not test evidence: only an "
+                    "independent test meets this dimension")
+        if is_met:
+            met += 1
+        dimensions.append({
+            "dimension": dimension, **entry, "met": is_met, "note": note,
+        })
+
+    if met == len(READINESS_DIMENSIONS):
+        state = READY
+        note = ("every dimension is met with evidence, testing independently "
+                "verified")
+        is_clean = True
+    elif met == 0 and all(d["status"] in ("UNKNOWN", NOT_PROVIDED, DECLINED)
+                          for d in dimensions):
+        state = NOT_READY if any(d["status"] == DECLINED for d in dimensions) else "UNKNOWN"
+        note = ("no evidence-backed answers: readiness is unknown, never "
+                "assumed")
+        is_clean = False
+    else:
+        state = PARTIAL
+        note = ("readiness is partial; the estate's migration pace is bound "
+                "by its least-ready critical supplier")
+        is_clean = False
+    return {
+        "schema": VENDOR_SCHEMA,
+        "kind": "supplier_readiness",
+        "vendor": str(vendor),
+        "product": str(product) if product else None,
+        "as_of": today,
+        "dimensions": dimensions,
+        "dimensions_met": met,
+        "dimensions_total": len(READINESS_DIMENSIONS),
+        "state": state,
+        "is_clean_result": is_clean,
+        "note": note,
+    }
+
+
+def least_ready_suppliers(
+        assessments: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """The estate's migration pace is bound by its least-ready suppliers.
+
+    Per the review: "the migration readiness of an organization can be
+    constrained by its least-prepared critical supplier." This names those
+    suppliers — it never averages readiness into a score.
+    """
+    rows = [dict(a) for a in assessments]
+    blockers = sorted(
+        ({"vendor": r.get("vendor"), "product": r.get("product"),
+          "state": r.get("state"),
+          "dimensions_met": r.get("dimensions_met"),
+          "dimensions_total": r.get("dimensions_total")}
+         for r in rows if r.get("state") not in (READY,)),
+        key=lambda r: (str(r["vendor"] or ""), str(r["product"] or "")))
+    return {
+        "schema": VENDOR_SCHEMA,
+        "kind": "least_ready_suppliers",
+        "suppliers": blockers,
+        "state": "CONSTRAINED" if blockers else "NO_CONSTRAINT",
+        "is_clean_result": not blockers,
+        "note": ("each named supplier is a pacing constraint; there is no "
+                 "average readiness number"),
+    }

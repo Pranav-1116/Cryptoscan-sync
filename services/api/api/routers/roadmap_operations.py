@@ -98,8 +98,11 @@ from shared_models.evidence_reprocessing import (
 )
 from shared_models.vendor_lifecycle import (
     deployed_exposure,
+    least_ready_suppliers,
+    supplier_readiness,
     supplier_risk,
 )
+from shared_models.supplier_concentration import supplier_concentration
 from shared_models.asset_alias import (
     merge_duplicates,
     resolve_all,
@@ -990,3 +993,55 @@ def api_asset_alias_merge(body: AliasMergeIn,
                                 evidence_ref=body.evidence_ref, at=body.at)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ---- PQC ICT supply-chain analysis: concentration + supplier readiness -------
+
+class SupplierConcentrationIn(BaseModel):
+    dependencies: list[dict[str, Any]] = Field(default_factory=list)
+    as_of: Optional[str] = None
+
+
+class SupplierReadinessIn(BaseModel):
+    vendor: str
+    product: Optional[str] = None
+    responses: list[dict[str, Any]] = Field(default_factory=list)
+    as_of: Optional[str] = None
+
+
+class LeastReadyIn(BaseModel):
+    assessments: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/supplier-concentration")
+def api_supplier_concentration(body: SupplierConcentrationIn,
+                               session: Session = Depends(get_db_session),
+                               _user: Any = Depends(get_current_user)) -> dict:
+    """Named concentration clusters — never one blended number (§6)."""
+    try:
+        return supplier_concentration(dependencies=body.dependencies,
+                                      as_of=body.as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/supplier-readiness")
+def api_supplier_readiness(body: SupplierReadinessIn,
+                           session: Session = Depends(get_db_session),
+                           _user: Any = Depends(get_current_user)) -> dict:
+    """One supplier's questionnaire result — evidence-backed, never assumed.
+    A vendor claim of testing is not test evidence."""
+    try:
+        return supplier_readiness(vendor=body.vendor, product=body.product,
+                                  responses=body.responses, as_of=body.as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/supplier-readiness/least-ready")
+def api_least_ready_suppliers(body: LeastReadyIn,
+                              session: Session = Depends(get_db_session),
+                              _user: Any = Depends(get_current_user)) -> dict:
+    """Name the pacing constraints: the estate is bound by its least-ready
+    critical suppliers — never an average readiness score."""
+    return least_ready_suppliers(body.assessments)
