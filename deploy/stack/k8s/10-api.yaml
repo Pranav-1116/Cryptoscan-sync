@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cryptoscan-api
+  namespace: cryptoscan
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: cryptoscan-api }
+  template:
+    metadata:
+      labels: { app: cryptoscan-api }
+    spec:
+      containers:
+        - name: api
+          image: cryptoscan/api:latest
+          ports: [{ containerPort: 8000 }]
+          envFrom:
+            - configMapRef: { name: cryptoscan-stack }
+            - secretRef: { name: cryptoscan-runtime }   # bank secret manager
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 5
+          resources:
+            requests: { cpu: "250m", memory: "512Mi" }
+            limits: { cpu: "2", memory: "2Gi" }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: cryptoscan
+spec:
+  selector: { app: cryptoscan-api }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cryptoscan-api
+  namespace: cryptoscan
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: cryptoscan-api }
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }

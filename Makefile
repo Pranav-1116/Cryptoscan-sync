@@ -161,3 +161,20 @@ backup:
 
 docker-up-prod-tls:
 	$(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.tls.yml up --build -d
+
+
+# ---------------------------------------------------------------------------
+# Bank stack profile (deploy/stack/): the full infrastructure table —
+# PostgreSQL, Neo4j, Redis, Celery, Kafka, MinIO, OpenSearch, Prometheus,
+# Grafana, OpenTelemetry, Vault, Envoy — as one overlay on the app compose.
+# Secrets come from .env (copy deploy/stack/.env.stack.example) or the
+# bank's secret manager; never commit values.
+# ---------------------------------------------------------------------------
+stack-up:
+	docker compose -f docker-compose.yml -f deploy/stack/docker-compose.stack.yml up -d
+
+stack-down:
+	docker compose -f docker-compose.yml -f deploy/stack/docker-compose.stack.yml down
+
+stack-status:
+	.venv/bin/python scripts/stack_status.py

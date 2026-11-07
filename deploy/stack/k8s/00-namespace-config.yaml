@@ -1,0 +1,22 @@
+# Kubernetes profile (the ORCHESTRATION layer): namespace and non-secret
+# configuration. Secrets arrive from the bank's secret manager via
+# ExternalSecrets/CSI — never from this repository.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cryptoscan
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cryptoscan-stack
+  namespace: cryptoscan
+data:
+  POSTGRES_HOST: "postgres.cryptoscan.svc"
+  NEO4J_URI: "bolt://neo4j.cryptoscan.svc:7687"
+  REDIS_URL: "redis://redis.cryptoscan.svc:6379/0"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka.cryptoscan.svc:9092"
+  MINIO_ENDPOINT: "minio.cryptoscan.svc:9000"
+  OPENSEARCH_URL: "http://opensearch.cryptoscan.svc:9200"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.cryptoscan.svc:4317"
+  VAULT_ADDR: "http://vault.cryptoscan.svc:8200"

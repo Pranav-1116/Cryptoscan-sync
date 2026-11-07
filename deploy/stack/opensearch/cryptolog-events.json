@@ -1,0 +1,25 @@
+{
+  "index_patterns": ["cryptolog-events-*"],
+  "template": {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 1 },
+    "mappings": {
+      "properties": {
+        "event_id":     { "type": "keyword" },
+        "event_hash":   { "type": "keyword" },
+        "partition_id": { "type": "keyword" },
+        "tenant_id":    { "type": "keyword" },
+        "event_type":   { "type": "keyword" },
+        "category":     { "type": "keyword" },
+        "logging_kind": { "type": "keyword" },
+        "severity":     { "type": "keyword" },
+        "asset_id":     { "type": "keyword" },
+        "observed_at":  { "type": "date" },
+        "collector_id": { "type": "keyword" },
+        "evidence_ids": { "type": "keyword" },
+        "message":      { "type": "text" }
+      }
+    }
+  },
+  "composed_of": [],
+  "version": 1
+}

@@ -1,0 +1,22 @@
+# Prometheus scrape configuration (the METRICS layer).
+# Scrapes the platform's own /metrics surfaces; add the bank's node-exporters
+# and pushgateways in the environment profile.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 30s
+
+scrape_configs:
+  - job_name: cryptoscan-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000"]
+  - job_name: cryptoscan-worker
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["worker:8100"]
+  - job_name: cryptoscan-otel
+    static_configs:
+      - targets: ["otel-collector:8889"]
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

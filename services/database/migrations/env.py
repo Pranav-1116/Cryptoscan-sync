@@ -23,6 +23,9 @@ from db.models.baseline import Baseline  # noqa: F401
 from db.models.drift_event import DriftEvent  # noqa: F401
 from db.models.scan_job import ScanJob  # noqa: F401
 from db.models.repo_configuration import RepoConfiguration  # noqa: F401
+from db.models.cryptolog import (  # noqa: F401
+    CryptoLogAlert, CryptoLogCheckpoint, CryptoLogCorrection, CryptoLogEvent,
+)
 
 # Alembic Config object
 config = context.config

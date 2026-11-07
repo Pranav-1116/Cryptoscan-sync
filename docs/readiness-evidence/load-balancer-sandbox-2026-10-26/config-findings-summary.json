@@ -1,0 +1,1483 @@
+{
+  "files": 26250,
+  "files_with_findings": 2700,
+  "algorithms_reported": [
+    "AES",
+    "ECDH",
+    "RSA",
+    "SHA-1",
+    "SHA-256",
+    "SHA-384",
+    "TLS",
+    "TLS-CIPHERS",
+    "TLS1.2",
+    "TLS1.3",
+    "X25519"
+  ],
+  "raw_findings_sha256": "ccbe58199954255ebb94b3d0466947d9e44e70ba3fd03bed52e01efa20217f51",
+  "fixture_manifest_sha256": "ee02581e93b0b985b19fac1a21482b0368d70d9589b70fb53cbb89f3afccd515",
+  "bounded_examples": [
+    {
+      "algorithms": [
+        "AES",
+        "ECDH",
+        "RSA",
+        "SHA-256",
+        "SHA-384",
+        "TLS-CIPHERS",
+        "TLS1.2",
+        "TLS1.3",
+        "X25519"
+      ],
+      "evidence_type": "STATIC_OBSERVED",
+      "raw_findings": [
+        {
+          "crypto": {
+            "algorithm": "ECDH",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "KEY_EXCHANGE"
+          },
+          "finding_id": "13f8fd24-3183-4358-9e1f-e62226e33b1f",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.962203+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-01/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 4,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "X25519",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "KEY_EXCHANGE"
+          },
+          "finding_id": "b2da3ba2-bf50-446d-a34f-c7c2d3d31d03",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "HIGH",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.962569+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-01/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 4,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "TLS1.2",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "7431dc21-dd70-4f02-9c01-3775b490239e",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "HIGH",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.962824+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-01/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 2,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "TLS1.3",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "c4e65554-e403-4a57-9764-ea96b896a5a9",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "HIGH",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.963020+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-01/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 2,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "TLS-CIPHERS",
+            "api_type": "CIPHER_INSTANCE",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "670b505b-52dc-4fd9-9e13-0a41d40b05a6",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-list",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.963223+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-01/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "AES",
+            "api_type": "CIPHER_INSTANCE",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "33a9b5bb-ffd8-4598-99eb-004a18562d43",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.963891+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-01/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "SHA-384",
+            "api_type": "MESSAGE_DIGEST",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "30900e30-06bf-4402-bb34-5aa2dcdbbd21",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.964110+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-01/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "ECDH",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "f7685056-adb1-4135-918a-954e530b46ef",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.964288+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-01/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "RSA",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "58bcc742-28be-47c4-a993-b34dd4a4c7c1",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.964496+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-01/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "SHA-256",
+            "api_type": "MESSAGE_DIGEST",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "cf6c108c-f504-4d04-9597-b472948432e1",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.964697+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-01/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        }
+      ],
+      "semantic_scope": "CONFIGURATION_NOT_NEGOTIATION",
+      "source_file": "source/bank-0001/bank-0001-lb-case-01/nginx.conf",
+      "status": "COMPLETE"
+    },
+    {
+      "algorithms": [
+        "TLS",
+        "TLS-CIPHERS"
+      ],
+      "evidence_type": "STATIC_OBSERVED",
+      "raw_findings": [
+        {
+          "crypto": {
+            "algorithm": "TLS",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "af6b36f0-837b-42ad-b1a8-481ac5f77c84",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "LOW",
+            "confidence_reason": "protocol list is a template variable",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.972668+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-03/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 2,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "TLS-CIPHERS",
+            "api_type": "CIPHER_INSTANCE",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "f5ff65f4-482f-4aae-88a7-8d20af8da645",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-list",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.972902+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-03/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        }
+      ],
+      "semantic_scope": "CONFIGURATION_NOT_NEGOTIATION",
+      "source_file": "source/bank-0001/bank-0001-lb-case-03/nginx.conf",
+      "status": "COMPLETE"
+    },
+    {
+      "algorithms": [
+        "AES",
+        "ECDH",
+        "RSA",
+        "SHA-256",
+        "SHA-384",
+        "TLS-CIPHERS",
+        "TLS1.2",
+        "TLS1.3",
+        "X25519"
+      ],
+      "evidence_type": "STATIC_OBSERVED",
+      "raw_findings": [
+        {
+          "crypto": {
+            "algorithm": "ECDH",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "KEY_EXCHANGE"
+          },
+          "finding_id": "5d14f9d1-ff0c-4f5c-8c8e-34495733e748",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.978387+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-06/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 4,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "X25519",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "KEY_EXCHANGE"
+          },
+          "finding_id": "626644f0-c58d-4dc2-b3d1-16ce02f3af41",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "HIGH",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.978582+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-06/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 4,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "TLS1.2",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "9638690a-01ba-458a-a2f8-167253fbbe29",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "HIGH",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.978754+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-06/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 2,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "TLS1.3",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "0db4078e-2369-4f23-9c23-89757f9aff67",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "HIGH",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.978911+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-06/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 2,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "TLS1.2",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "8562550d-e116-4016-83f2-2e92b3dde1ea",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "HIGH",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.979072+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-06/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 5,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "TLS-CIPHERS",
+            "api_type": "CIPHER_INSTANCE",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "719fa88c-fe15-4bb4-98ef-40ccc21d4caa",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-list",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.979254+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-06/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "AES",
+            "api_type": "CIPHER_INSTANCE",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "7ced02ce-9c57-4d58-ac6c-9a7c6a68667d",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.979830+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-06/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "SHA-384",
+            "api_type": "MESSAGE_DIGEST",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "916ffa30-242f-4000-9d48-96989ef4495d",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.979990+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-06/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "ECDH",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "be4ad039-73e8-4084-8c99-e5e0ffbbe199",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.980129+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-06/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "RSA",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "1ea2ac10-a650-4786-b291-27e6c577d75f",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.980266+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-06/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "SHA-256",
+            "api_type": "MESSAGE_DIGEST",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "0dd26f55-c0f9-45ab-9e86-29892e6ad419",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.980441+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-06/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        }
+      ],
+      "semantic_scope": "CONFIGURATION_NOT_NEGOTIATION",
+      "source_file": "source/bank-0001/bank-0001-lb-case-06/nginx.conf",
+      "status": "COMPLETE"
+    },
+    {
+      "algorithms": [
+        "AES",
+        "SHA-1",
+        "TLS-CIPHERS",
+        "TLS1.2"
+      ],
+      "evidence_type": "STATIC_OBSERVED",
+      "raw_findings": [
+        {
+          "crypto": {
+            "algorithm": "TLS1.2",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "d6f6883c-a9ab-4cd5-bacc-24b5f788578c",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "HIGH",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.983018+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-07/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 2,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "TLS-CIPHERS",
+            "api_type": "CIPHER_INSTANCE",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "b495914b-df24-457c-b038-1e0f4690cf68",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-list",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.983214+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-07/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "AES",
+            "api_type": "CIPHER_INSTANCE",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "aa5961f3-9d17-462a-92fb-5865ac7fe06c",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.983718+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-07/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "SHA-1",
+            "api_type": "MESSAGE_DIGEST",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "9b1c9ed8-f21b-4b35-9cf3-8651e803c06e",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.983888+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-07/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        }
+      ],
+      "semantic_scope": "CONFIGURATION_NOT_NEGOTIATION",
+      "source_file": "source/bank-0001/bank-0001-lb-case-07/nginx.conf",
+      "status": "COMPLETE"
+    },
+    {
+      "algorithms": [
+        "AES",
+        "ECDH",
+        "RSA",
+        "SHA-256",
+        "SHA-384",
+        "TLS-CIPHERS",
+        "TLS1.2",
+        "TLS1.3",
+        "X25519"
+      ],
+      "evidence_type": "STATIC_OBSERVED",
+      "raw_findings": [
+        {
+          "crypto": {
+            "algorithm": "ECDH",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "KEY_EXCHANGE"
+          },
+          "finding_id": "6206a796-e22d-4081-8f33-b85a2bc2d092",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.987559+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-09/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 4,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "X25519",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "KEY_EXCHANGE"
+          },
+          "finding_id": "56457628-2890-4496-8580-a8b91c4efafa",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "HIGH",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.987728+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-09/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 4,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "TLS1.2",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "affd541d-2e7a-4ff0-9b49-1bc128697a00",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "HIGH",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.987902+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-09/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 2,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "TLS1.3",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "21e65198-55f7-44bf-b959-1f8f1bf473a3",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "HIGH",
+            "confidence_reason": "literal-api",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.988050+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-09/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 2,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "TLS-CIPHERS",
+            "api_type": "CIPHER_INSTANCE",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "7922b4d7-6034-4d20-80e6-2803d1cf48d0",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-list",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.988327+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-09/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "AES",
+            "api_type": "CIPHER_INSTANCE",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "102ac76d-b49e-4240-bba9-9327b088b674",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.988927+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-09/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "SHA-384",
+            "api_type": "MESSAGE_DIGEST",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "7b7ffe78-a1e9-4db5-8b7b-0890acdda88d",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.989078+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-09/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "ECDH",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "9d7d1b6f-db40-400e-8da3-8f53f1258c31",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.989217+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-09/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "RSA",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "7d2fca0b-8aa3-4931-aa6b-aeaf1f4e0ac9",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.989385+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-09/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "SHA-256",
+            "api_type": "MESSAGE_DIGEST",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "05874794-a78e-42c5-a74a-a730829dbfd6",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-component",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.989540+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-09/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        }
+      ],
+      "semantic_scope": "CONFIGURATION_NOT_NEGOTIATION",
+      "source_file": "source/bank-0001/bank-0001-lb-case-09/nginx.conf",
+      "status": "COMPLETE"
+    },
+    {
+      "algorithms": [
+        "TLS",
+        "TLS-CIPHERS"
+      ],
+      "evidence_type": "STATIC_OBSERVED",
+      "raw_findings": [
+        {
+          "crypto": {
+            "algorithm": "TLS",
+            "api_type": "KEY_AGREEMENT",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "ec62bf83-873b-4bad-910d-ad3fdfba6ade",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "LOW",
+            "confidence_reason": "protocol list is a template variable",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "nginx"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.993250+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-11/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 2,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        },
+        {
+          "crypto": {
+            "algorithm": "TLS-CIPHERS",
+            "api_type": "CIPHER_INSTANCE",
+            "hash_algorithm": null,
+            "key_size": null,
+            "mode": null,
+            "padding": null,
+            "purpose": "NETWORK_ENCRYPTION"
+          },
+          "finding_id": "f47104b2-2ed2-44ce-9f96-c616b6300b1b",
+          "git_context": null,
+          "metadata": {
+            "code_origin": "source",
+            "confidence": "MEDIUM",
+            "confidence_reason": "cipher-suite-list",
+            "hardcoded_key_length": null,
+            "is_hardcoded_key": false,
+            "library": "tls-config"
+          },
+          "scan_timestamp": "2026-10-26T09:25:41.993494+00:00",
+          "scanner_id": "static-config-scanner-v1.0",
+          "scanner_version": "1.0.0",
+          "source": {
+            "class_name": null,
+            "column_number": null,
+            "file_path": "source/bank-0001/bank-0001-lb-case-11/nginx.conf",
+            "is_in_try_catch": false,
+            "language": "CONFIG",
+            "line_number": 3,
+            "method_name": null,
+            "type": "SOURCE_CODE",
+            "variable_name": null
+          }
+        }
+      ],
+      "semantic_scope": "CONFIGURATION_NOT_NEGOTIATION",
+      "source_file": "source/bank-0001/bank-0001-lb-case-11/nginx.conf",
+      "status": "COMPLETE"
+    }
+  ],
+  "accuracy": null,
+  "reason": "No configuration accuracy floor/complete oracle adapter qualified; nonempty files are not a recall score"
+}

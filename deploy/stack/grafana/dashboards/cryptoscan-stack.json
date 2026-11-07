@@ -1,0 +1,35 @@
+{
+  "title": "CryptoScan — platform stack",
+  "uid": "cryptoscan-stack",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "API request rate",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum(rate(http_requests_total[5m])) by (job)", "legendFormat": "{{job}}" }]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "API 5xx responses",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum(rate(http_requests_total{status=~\"5..\"}[5m])) by (job)", "legendFormat": "{{job}}" }]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Worker job throughput",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum(rate(celery_tasks_total[5m])) by (task)", "legendFormat": "{{task}}" }]
+    },
+    {
+      "id": 4, "type": "stat", "title": "Backing services up",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [{ "expr": "sum(up{job=~\"cryptoscan-.*|prometheus\"})", "legendFormat": "up" }]
+    },
+    {
+      "id": 5, "type": "timeseries", "title": "Event ingest (Kafka consumer lag)",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+      "targets": [{ "expr": "sum(kafka_consumergroup_lag) by (topic)", "legendFormat": "{{topic}}" }]
+    }
+  ]
+}

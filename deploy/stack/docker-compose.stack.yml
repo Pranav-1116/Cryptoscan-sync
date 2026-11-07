@@ -1,0 +1,230 @@
+# The bank stack profile — every infrastructure tool the platform table names.
+#
+# This file is an OVERLAY on the root compose (which already runs the app
+# services: api, worker (Celery), estate-daemon, notifications, monitor,
+# frontend, nginx gateway):
+#
+#   docker compose -f docker-compose.yml -f deploy/stack/docker-compose.stack.yml up -d
+#
+# or simply `make stack-up`. Images are pinned; every stateful tool has a
+# named volume and a healthcheck. This profile is an OPERATIONAL BASELINE,
+# not a production admission: TLS material, Vault unseal, Kafka sizing,
+# OpenSearch hardening and Kubernetes HA are configured for the bank's
+# environment by its operators (register those separately).
+#
+#   PostgreSQL    = TRUTH        Neo4j       = GRAPH       Redis      = SPEED
+#   Celery        = JOBS         Kafka       = EVENTS      MinIO      = EVIDENCE
+#   OpenSearch    = SEARCH       Prometheus  = METRICS     Grafana    = MONITORING
+#   OpenTelemetry = TRACING      Vault       = SECRETS     Envoy      = GATEWAY
+#   Docker        = PACKAGING    Kubernetes  = ORCHESTRATION (deploy/stack/k8s/)
+
+name: cryptoscan-stack
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cryptoscan}
+      POSTGRES_USER: ${POSTGRES_USER:-cryptoscan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env — never commit one}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cryptoscan}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [cryptoscan-net]
+
+  neo4j:
+    image: neo4j:5.24.0-community
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}
+      NEO4J_server_memory_heap_max__size: 1G
+    volumes:
+      - neo4j_data:/data
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [cryptoscan-net]
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [cryptoscan-net]
+
+  kafka:
+    image: apache/kafka:3.8.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LOG_RETENTION_HOURS: ${KAFKA_LOG_RETENTION_HOURS:-168}
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    ports:
+      - "9092:9092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+    networks: [cryptoscan-net]
+
+  kafka-init:
+    image: apache/kafka:3.8.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        for topic in cryptolog.observations cryptolog.events scan.jobs scan.results evidence.events; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+            --create --if-not-exists --topic "$$topic" --partitions 3 --replication-factor 1
+        done
+        echo "kafka topics ready"
+    networks: [cryptoscan-net]
+
+  minio:
+    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cryptoscan}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [cryptoscan-net]
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-10-08T09-37-26Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"
+        for bucket in evidence cbom reports; do
+          mc mb --ignore-existing "local/$$bucket"
+        done
+        echo "minio buckets ready (evidence · cbom · reports)"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cryptoscan}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    networks: [cryptoscan-net]
+
+  opensearch:
+    image: opensearchproject/opensearch:2.17.0
+    environment:
+      discovery.type: single-node
+      plugins.security.disabled: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    networks: [cryptoscan-net]
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [cryptoscan-net]
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on: [prometheus]
+    networks: [cryptoscan-net]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+    networks: [cryptoscan-net]
+
+  vault:
+    image: hashicorp/vault:1.18.0
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN_ID:?set a dev token in .env — production uses unseal + bank IAM}
+      VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    volumes:
+      - ./vault/policies:/vault/policies:ro
+    ports:
+      - "8200:8200"
+    cap_add: [IPC_LOCK]
+    networks: [cryptoscan-net]
+
+  envoy:
+    image: envoyproxy/envoy:v1.31.2
+    command: ["-c", "/etc/envoy/envoy.yaml"]
+    volumes:
+      - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    ports:
+      - "8443:8443"
+      - "8080:8080"
+    networks: [cryptoscan-net]
+
+volumes:
+  postgres_data:
+  neo4j_data:
+  redis_data:
+  kafka_data:
+  minio_data:
+  opensearch_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  cryptoscan-net:
+    name: cryptoscan-net
