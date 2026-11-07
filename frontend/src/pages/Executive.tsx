@@ -92,13 +92,13 @@ export default function Executive() {
             <Ring pct={posture / 100} label={`${posture}`} sub={postureLabel} tone={postureTone === "slate" ? "cyan" : postureTone} />
             <div style={{ flex: 1, minWidth: 260, display: "flex", flexDirection: "column", gap: 12 }}>
               {[
-                { k: `Estate coverage (${coveragePct}%)`, v: coveragePct, tone: "cyan" },
-                { k: `Quantum-safe crypto share (${pct(cryptoComps - quantumVuln, cryptoComps)}%)`, v: pct(cryptoComps - quantumVuln, cryptoComps), tone: quantumVuln ? "amber" : "green" },
-                { k: `Compliant findings (${pct(compliant, totalFindings)}%)`, v: pct(compliant, totalFindings), tone: "green" },
+                { k: `Estate coverage (${coveragePct}%)`, v: coveragePct, tone: "cyan", to: "/assurance-coverage" },
+                { k: `Quantum-safe crypto share (${pct(cryptoComps - quantumVuln, cryptoComps)}%)`, v: pct(cryptoComps - quantumVuln, cryptoComps), tone: quantumVuln ? "amber" : "green", to: "/pqc" },
+                { k: `Compliant findings (${pct(compliant, totalFindings)}%)`, v: pct(compliant, totalFindings), tone: "green", to: "/findings" },
               ].map((r) => (
                 <div key={r.k}>
                   <div className="spread" style={{ marginBottom: 4, fontSize: 13 }}>
-                    <span>{r.k}</span><span className="mono">{r.v}%</span>
+                    <Link to={r.to} style={{ color: "inherit" }}>{r.k}</Link><span className="mono">{r.v}%</span>
                   </div>
                   <Bar value={r.v / 100} tone={r.tone} />
                 </div>
@@ -111,16 +111,16 @@ export default function Executive() {
       {/* board KPI strip */}
       <div className="grid cols-5" style={{ margin: "16px 0" }}>
         {[
-          { k: "crypto components", v: cryptoComps },
-          { k: "quantum vulnerable", v: quantumVuln, tone: quantumVuln ? "red" : "" },
-          { k: "total findings", v: totalFindings },
-          { k: "estate coverage", v: `${coveragePct}%` },
-          { k: "crypto drift changes", v: driftChangeCount, tone: driftChangeCount ? "amber" : "" },
+          { k: "crypto components", v: cryptoComps, to: "/crypto-assets" },
+          { k: "quantum vulnerable", v: quantumVuln, tone: quantumVuln ? "red" : "", to: "/pqc" },
+          { k: "total findings", v: totalFindings, to: "/findings" },
+          { k: "estate coverage", v: `${coveragePct}%`, to: "/assurance-coverage" },
+          { k: "crypto drift changes", v: driftChangeCount, tone: driftChangeCount ? "amber" : "", to: "/crypto-changes" },
         ].map((kpi) => (
-          <div className="kpi" key={kpi.k}>
+          <Link to={kpi.to} className="kpi" key={kpi.k} style={{ textDecoration: "none", color: "inherit" }}>
             <span className="k">{kpi.k}</span>
             <span className="v" style={kpi.tone ? { color: `var(--${kpi.tone})` } : undefined}>{kpi.v}</span>
-          </div>
+          </Link>
         ))}
       </div>
 
@@ -166,18 +166,22 @@ export default function Executive() {
                 </div>
                 <div className="verdict-legend">
                   {order.map(([state, col]) => (
-                    <span key={state}><span className="sw" style={{
-                      background: { green: "var(--green)", amber: "var(--amber)", red: "var(--red)", slate: "var(--slate)" }[col],
-                    }} />{state.toLowerCase()} {Number(counts[state] || 0)}</span>
+                    <Link key={state} to="/live-asset-intelligence"
+                          style={{ color: "inherit", textDecoration: "none" }}
+                          title={`the ${state.toLowerCase()} systems are the records behind this count`}>
+                      <span className="sw" style={{
+                        background: { green: "var(--green)", amber: "var(--amber)", red: "var(--red)", slate: "var(--slate)" }[col],
+                      }} />{state.toLowerCase()} {Number(counts[state] || 0)}
+                    </Link>
                   ))}
                 </div>
               </>
             );
           })()}
-          <div className="mono" style={{ fontSize: 12, color: "var(--dim)", marginTop: 16 }}>
-            systems: <b style={{ color: "var(--text)" }}>{Number(coverage.systems ?? 0)}</b> · with CBOM:{" "}
-            <b style={{ color: "var(--text)" }}>{Number(coverage.with_cbom ?? 0)}</b> · unknown crypto:{" "}
-            <b style={{ color: "var(--text)" }}>{Number(coverage.unknown_crypto ?? 0)}</b>
+          <div className="mono" data-testid="coverage-foot" style={{ fontSize: 12, color: "var(--dim)", marginTop: 16 }}>
+            systems: <Link to="/live-asset-intelligence"><b style={{ color: "var(--text)" }}>{Number(coverage.systems ?? 0)}</b></Link> · with CBOM:{" "}
+            <Link to="/cbom"><b style={{ color: "var(--text)" }}>{Number(coverage.with_cbom ?? 0)}</b></Link> · unknown crypto:{" "}
+            <Link to="/cbom"><b style={{ color: "var(--text)" }}>{Number(coverage.unknown_crypto ?? 0)}</b></Link>
           </div>
         </Panel>
       </div>
