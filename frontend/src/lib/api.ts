@@ -2997,9 +2997,10 @@ export interface CertificateEstateRow {
 }
 export interface CertificateEstateList {
   certificates: CertificateEstateRow[]; total_count: number;
+  page?: number; page_size?: number;
 }
 export const apiCertificateEstate = (q?: string): Promise<ApiResult<CertificateEstateList>> =>
-  _rsGet<CertificateEstateList>(`/api/v1/certificates${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+  _rsGet<CertificateEstateList>(`/api/v1/certificates?page_size=200${q ? `&q=${encodeURIComponent(q)}` : ""}`);
 export interface CertificateUsageRow {
   id: string; fingerprint_sha256: string;
   usage_type: string; location: string; last_seen: string | null;
@@ -3261,8 +3262,8 @@ export interface VendorProfileWriteResponse {
   completeness: VendorProfileCompleteness;
   audit?: { source?: string; content_sha256?: string; created_by?: string; captured_at?: string | null; reviewed_by?: string | null };
 }
-export const apiVendors = (q?: string): Promise<ApiResult<{ vendors: VendorRecord[] }>> =>
-  call(`/api/v1/vendors${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+export const apiVendors = (q?: string): Promise<ApiResult<{ vendors: VendorRecord[]; total_count?: number; page?: number; page_size?: number }>> =>
+  call(`/api/v1/vendors?page_size=200${q ? `&q=${encodeURIComponent(q)}` : ""}`);
 export const apiVendorCreate = (body: { name: string; criticality?: string; vendor_type?: string; integration_type?: string; profile?: Record<string, unknown> }): Promise<ApiResult<VendorRecord>> =>
   call("/api/v1/vendors", { method: "POST", body: JSON.stringify(body) });
 export const apiVendor = (vendorId: string): Promise<ApiResult<VendorRecord>> =>

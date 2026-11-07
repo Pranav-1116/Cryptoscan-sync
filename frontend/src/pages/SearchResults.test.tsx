@@ -156,10 +156,12 @@ describe("SearchResults — global asset, vendor, certificate and evidence searc
     expect(screen.getByText("CN=payments.acme.test")).toBeInTheDocument();
     expect(screen.getByText("Evidence (register, 1 match)")).toBeInTheDocument();
     expect(screen.getByText(/ev-7 · RSA-2048/)).toBeInTheDocument();
-    // the term goes to each store's API — server-side, not a page-local filter
-    for (const path of ["/api/v1/vendors?q=payments", "/api/v1/certificates?q=payments",
+    // the term goes to each store's API — server-side, not a page-local
+    // filter (URLs also carry page_size: bounded responses, honest totals)
+    for (const path of ["/api/v1/vendors", "/api/v1/certificates",
                         "/api/v1/findings"]) {
-      expect(fetchSpy.mock.calls.some(([p]) => String(p).includes(path)), path).toBeTruthy();
+      expect(fetchSpy.mock.calls.some(([p]) =>
+        String(p).includes(path) && String(p).includes("q=payments")), path).toBeTruthy();
     }
     expect(fetchSpy.mock.calls.some(([p]) =>
       String(p).includes("/api/v1/findings") && String(p).includes("q=payments"))).toBeTruthy();

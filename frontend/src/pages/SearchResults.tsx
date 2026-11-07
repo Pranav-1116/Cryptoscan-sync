@@ -118,8 +118,9 @@ export default function SearchResults() {
       // §A: "Global asset, vendor, certificate and evidence search" — each
       // group is server-side term search over its whole store, same as assets.
       const vendorRows = ((vendors.data as any)?.vendors ?? []) as any[];
+      const vendorTotal = Number((vendors.data as any)?.total_count ?? vendorRows.length) || vendorRows.length;
       if (vendorRows.length) {
-        out.push({ label: `Vendors (${vendorRows.length} match${vendorRows.length === 1 ? "" : "es"})`, icon: IconEstate, items: vendorRows.slice(0, 25).map((v: any) => ({
+        out.push({ label: `Vendors (${vendorTotal} match${vendorTotal === 1 ? "" : "es"})`, icon: IconEstate, items: vendorRows.slice(0, 25).map((v: any) => ({
           name: v.name ?? v.id, to: "/vbom",
           meta: [v.vendor_type, v.criticality].filter(Boolean).join(" · "),
         })) });

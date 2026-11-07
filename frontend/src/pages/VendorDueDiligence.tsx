@@ -37,6 +37,7 @@ function emptyResult<T>() { return { source: "offline" as const, data: null as T
 export default function VendorDueDiligence() {
   const vendorsRes = useApi(() => apiVendors(), []);
   const vendors = vendorsRes.data?.vendors ?? [];
+  const vendorTotal = Number((vendorsRes.data as any)?.total_count ?? vendors.length) || vendors.length;
   const [selectedId, setSelectedId] = useState<string>("");
   const profileRes = useApi<VendorProfileResponse>(
     () => selectedId ? apiVendorProfile(selectedId) : Promise.resolve(emptyResult<VendorProfileResponse>()),
@@ -155,7 +156,7 @@ export default function VendorDueDiligence() {
         crumb="governance / vendor due diligence"
         title="Vendor due diligence"
         sub="Ten-section operational vendor profiles with explicit unknowns, evidence provenance and immutable revisions"
-        right={<><LiveBadge source={vendorsRes.source} /><Badge tone="violet">{vendors.length} vendors</Badge></>}
+        right={<><LiveBadge source={vendorsRes.source} /><Badge tone="violet">{vendors.length === vendorTotal ? `${vendorTotal} vendor${vendorTotal === 1 ? "" : "s"}` : `${vendors.length} of ${vendorTotal} vendors`}</Badge></>}
       />
 
       <Panel title="Add operational vendor" sub="Creates only the vendor record; due diligence remains explicitly incomplete until evidence is collected">
