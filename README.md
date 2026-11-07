@@ -1,10 +1,14 @@
 # CryptoScan
 
-> **Current source review (2026-10-23, tenth increment from `8c1b2bcf`):**
+> **Current state: [docs/CURRENT-STATE.md](docs/CURRENT-STATE.md)** — generated from the tree
+> (migration head, surface counts, driver coverage, open gaps); regenerate with
+> `scripts/gen_current_state.py --write`, and a staleness test keeps it byte-true.
+>
+> **Historical source review (2026-10-23, tenth increment from `8c1b2bcf`):**
 > [implementation / CI / migration / six-BOM boundaries](docs/CURRENT-IMPLEMENTATION-STATUS.md),
 > [CI and product-build plan](docs/CI-WORKFLOW-AND-PRODUCT-BUILD-PLAN.md),
 > [operator installation and recovery](docs/runbooks/operator-install-upgrade-recover.md).
-> [workflow / real PostgreSQL / built-browser qualification](docs/readiness-evidence/quality-workflow-qualification-2026-10-23.md), migration **0106**.
+> [workflow / real PostgreSQL / built-browser qualification](docs/readiness-evidence/quality-workflow-qualification-2026-10-23.md) (migration **0106** era — superseded by CURRENT-STATE.md).
 > [shared private-read hardening](docs/readiness-evidence/quality-shared-private-reads-2026-10-23.md): 516 frontend checks and 11 built-browser checks; synthetic HTTP, not site acceptance.
 > Older dated tables/diagrams are historical; configured CI does not mean a signed
 > release or site approval. The user reports one remaining workflow failure.
