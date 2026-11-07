@@ -60,6 +60,8 @@ def api(session):
 
     app = FastAPI()
     app.include_router(roadmap_operations.router, prefix="/api")
+    from api.errors import install_error_contract
+    install_error_contract(app)
     app.dependency_overrides[dependencies.get_db_session] = lambda: session
     app.dependency_overrides[dependencies.get_current_user] = lambda: {
         "username": "auditor"}
@@ -529,3 +531,154 @@ class TestComplianceAPI:
             "evidence_ids": ["CHANGE-1"], "assessed_by": "auditor",
             "outcome": "COMPLIANT"}).json()
         assert ok["outcome"] == "COMPLIANT"
+
+
+# ---- gap analysis §C/§5/Phase-2 contract surfaces (wave 15) ----
+
+def test_graph_projection_rebuilds_the_same_logical_graph(api):
+    rows = {
+        "assets": [
+            {"identifier": "asset:rsa", "evidence_ids": ["ev-1"]},
+            {"identifier": "asset:cert", "evidence_ids": ["ev-2"]},
+        ],
+        "relationships": [
+            {"subject": "asset:cert", "predicate": "USES",
+             "object": "asset:rsa", "evidence_ids": ["ev-2"]},
+            {"subject": "asset:rsa", "predicate": "DEPLOYED_IN",
+             "object": "app:payments", "evidence_ids": []},
+        ],
+    }
+    first = api.post("/api/intelligence/graph-projection", json=rows)
+    assert first.status_code == 200, first.text
+    flipped = {
+        "assets": list(reversed(rows["assets"])),
+        "relationships": list(reversed(rows["relationships"])),
+    }
+    second = api.post("/api/intelligence/graph-projection", json=flipped)
+    assert second.json()["graph_digest"] == first.json()["graph_digest"]
+    edges = {tuple(sorted((e["subject"], e["object"]))): e
+             for e in first.json()["edges"]}
+    unproven = edges[("app:payments", "asset:rsa")]
+    assert unproven["provenance"] == "UNKNOWN", "evidence-less edges stay UNKNOWN"
+
+    refused = api.post("/api/intelligence/graph-projection",
+                       json={"assets": [{"evidence_ids": []}], "relationships": []})
+    assert refused.status_code == 422
+    assert refused.json()["error_code"] == "INVALID_ARGUMENT"
+
+
+def test_evidence_reprocess_keeps_the_original_and_reports_the_verdict(api):
+    record = {
+        "content_hash": "ab" * 32,
+        "finding_data": {"snippet": "AES-256 at src/c.ts:17"},
+        "normalized_crypto": {"algorithm": "AES"},
+        "normalization": {"normalizer_version": "norm-1"},
+    }
+    resp = api.post("/api/intelligence/evidence-reprocess", json={
+        "record": record,
+        "normalizer_version": "norm-2",
+        "normalized_crypto": {"algorithm": "AES", "key_size": 256},
+    })
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["original_intact"]["original_intact"] is True
+    assert body["record"]["finding_data"] == record["finding_data"]
+    assert body["record"]["content_hash"] == record["content_hash"]
+    assert body["record"]["normalization"]["normalizer_version"] == "norm-2"
+    assert body["record"]["superseded_normalizations"][0][
+        "normalization"]["normalizer_version"] == "norm-1"
+
+    refused = api.post("/api/intelligence/evidence-reprocess", json={
+        "record": {"finding_data": None, "content_hash": "x"},
+        "normalizer_version": "norm-2", "normalized_crypto": {},
+    })
+    assert refused.status_code == 422
+
+
+def test_vendor_exposure_and_risk_name_the_gaps(api):
+    exposure = api.post("/api/intelligence/vendor-exposure", json={
+        "deployments": [
+            {"asset": "hsm-01", "vendor": "ACME", "product": "Luna",
+             "version": "7.13"},
+            {"asset": "hsm-02", "vendor": "ACME", "product": "Luna",
+             "version": "9.0"},
+        ],
+        "support_records": [
+            {"vendor": "ACME", "product": "Luna", "version": "7.13",
+             "status": "END_OF_SUPPORT", "end_of_support_at": "2026-01-31",
+             "evidence_ref": "decl-1"},
+        ],
+        "as_of": "2026-11-07",
+    })
+    assert exposure.status_code == 200, exposure.text
+    body = exposure.json()
+    assert body["is_clean_result"] is False
+    assert body["unsupported_deployed"][0]["deployment"]["asset"] == "hsm-01"
+    assert body["unknown_support"][0]["deployment"]["asset"] == "hsm-02"
+
+    risk = api.post("/api/intelligence/vendor-risk", json={
+        "vendor": "ACME",
+        "deployments": [
+            {"asset": "hsm-01", "vendor": "ACME", "product": "Luna",
+             "version": "7.13"},
+        ],
+        "support_records": [
+            {"vendor": "ACME", "product": "Luna", "version": "7.13",
+             "status": "END_OF_SUPPORT", "end_of_support_at": "2026-01-31",
+             "evidence_ref": "decl-1"},
+        ],
+        "changes": [
+            {"change": "END_OF_SUPPORT_ANNOUNCED", "evidence_ref": "adv-1"},
+        ],
+        "as_of": "2026-11-07",
+    })
+    assert risk.status_code == 200
+    risk_body = risk.json()
+    assert "score" not in risk_body
+    names = {d["driver"] for d in risk_body["drivers"]}
+    assert "unsupported_product_deployed" in names
+    assert "supplier_change:end_of_support_announced" in names
+    for driver in risk_body["drivers"]:
+        assert driver["records"]
+
+
+def test_asset_alias_resolve_reports_conflicts_and_merge_preserves_keys(api):
+    resolved = api.post("/api/intelligence/asset-alias/resolve", json={
+        "keys": ["ip:10.0.0.5", "asset:db-9"],
+        "aliases": [
+            {"alias_key": "ip:10.0.0.5", "canonical_key": "asset:web-1"},
+        ],
+    })
+    assert resolved.status_code == 200, resolved.text
+    rows = {r["key"]: r for r in resolved.json()["resolutions"]}
+    assert rows["ip:10.0.0.5"]["canonical_key"] == "asset:web-1"
+    assert rows["asset:db-9"]["state"] == "UNALIASED"
+
+    conflicted = api.post("/api/intelligence/asset-alias/resolve", json={
+        "keys": ["ip:10.0.0.5"],
+        "aliases": [
+            {"alias_key": "ip:10.0.0.5", "canonical_key": "asset:web-1"},
+            {"alias_key": "ip:10.0.0.5", "canonical_key": "asset:web-2"},
+        ],
+    })
+    assert conflicted.json()["conflicted"] == ["ip:10.0.0.5"]
+    assert conflicted.json()["is_clean_result"] is False
+
+    merged = api.post("/api/intelligence/asset-alias/merge", json={
+        "keys": ["host:web-1", "ip:10.0.0.5"],
+        "canonical_key": "asset:web-1",
+        "actor": "alice",
+        "reason": "same physical host",
+        "evidence_ref": "ev-9",
+    })
+    assert merged.status_code == 200, merged.text
+    assert merged.json()["original_keys"] == ["host:web-1", "ip:10.0.0.5"]
+    assert {row["alias_key"] for row in merged.json()["aliases"]} == {
+        "host:web-1", "ip:10.0.0.5"}
+
+    refused = api.post("/api/intelligence/asset-alias/merge", json={
+        "keys": ["a", "b"], "canonical_key": "asset:x", "actor": "x",
+        "reason": "r", "evidence_ref": "",
+    })
+    assert refused.status_code == 422
+    assert refused.json()["error_code"] == "INVALID_ARGUMENT"

@@ -91,6 +91,19 @@ from shared_models.migration_plan import (
     validate_migration,
 )
 from shared_models.twin_investigation import investigate_certificate
+from shared_models.graph_projection import build_projection
+from shared_models.evidence_reprocessing import (
+    original_intact,
+    reprocess,
+)
+from shared_models.vendor_lifecycle import (
+    deployed_exposure,
+    supplier_risk,
+)
+from shared_models.asset_alias import (
+    merge_duplicates,
+    resolve_all,
+)
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
 
@@ -844,3 +857,136 @@ def api_compliance_status(body: ComplianceQuery,
             raise HTTPException(status_code=422, detail=str(exc)) from exc
     return compliance_status(requirements=requirements,
                              assessments=body.assessments)
+
+
+# ---------------- gap analysis §C rebuildable projection / §5 reprocessing ----
+
+class GraphProjectionIn(BaseModel):
+    assets: list[dict[str, Any]] = Field(default_factory=list)
+    relationships: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/graph-projection")
+def api_graph_projection(body: GraphProjectionIn,
+                         session: Session = Depends(get_db_session),
+                         _user: Any = Depends(get_current_user)) -> dict:
+    """Rebuild the logical graph from authoritative rows.
+
+    Same rows in any order rebuild the same digest (gap analysis §C:
+    'Rebuilding Neo4j from authoritative records produces the same logical
+    graph'); edges without evidence links come back UNKNOWN, never proven.
+    """
+    try:
+        return build_projection(assets=body.assets,
+                                relationships=body.relationships)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+class ReprocessIn(BaseModel):
+    record: dict[str, Any]
+    normalizer_version: str
+    normalized_crypto: dict[str, Any]
+    at: Optional[str] = None
+
+
+@router.post("/evidence-reprocess")
+def api_evidence_reprocess(body: ReprocessIn,
+                           session: Session = Depends(get_db_session),
+                           _user: Any = Depends(get_current_user)) -> dict:
+    """Re-normalize a retained original observation without losing it.
+
+    The response carries the new record and the original-intact verdict —
+    the §5 acceptance check, computed per call.
+    """
+    try:
+        out = reprocess(body.record,
+                        normalizer_version=body.normalizer_version,
+                        normalized_crypto=body.normalized_crypto,
+                        at=body.at)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"record": out,
+            "original_intact": original_intact(body.record, out)}
+
+
+# ---------------- gap analysis Phase 5 vendor lifecycle / supplier risk -------
+
+class VendorExposureIn(BaseModel):
+    deployments: list[dict[str, Any]] = Field(default_factory=list)
+    support_records: list[dict[str, Any]] = Field(default_factory=list)
+    as_of: Optional[str] = None
+
+
+class VendorRiskIn(VendorExposureIn):
+    vendor: str = ""
+    changes: list[dict[str, Any]] = Field(default_factory=list)
+
+
+@router.post("/vendor-exposure")
+def api_vendor_exposure(body: VendorExposureIn,
+                        session: Session = Depends(get_db_session),
+                        _user: Any = Depends(get_current_user)) -> dict:
+    try:
+        return deployed_exposure(deployments=body.deployments,
+                                 support_records=body.support_records,
+                                 as_of=body.as_of)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/vendor-risk")
+def api_vendor_risk(body: VendorRiskIn,
+                    session: Session = Depends(get_db_session),
+                    _user: Any = Depends(get_current_user)) -> dict:
+    """Evidence-linked supplier-risk drivers — never one blended number."""
+    try:
+        exposure = deployed_exposure(deployments=body.deployments,
+                                     support_records=body.support_records,
+                                     as_of=body.as_of)
+        return supplier_risk(vendor=body.vendor,
+                             deployments_report=exposure,
+                             changes=body.changes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+# ---------------- gap analysis Phase 2 asset aliases / duplicate resolution ---
+
+class AliasResolveIn(BaseModel):
+    keys: list[str] = Field(default_factory=list)
+    aliases: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class AliasMergeIn(BaseModel):
+    keys: list[str] = Field(default_factory=list)
+    canonical_key: str
+    actor: str
+    reason: str
+    evidence_ref: str
+    at: Optional[str] = None
+
+
+@router.post("/asset-alias/resolve")
+def api_asset_alias_resolve(body: AliasResolveIn,
+                            session: Session = Depends(get_db_session),
+                            _user: Any = Depends(get_current_user)) -> dict:
+    try:
+        return resolve_all(body.keys, body.aliases)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/asset-alias/merge")
+def api_asset_alias_merge(body: AliasMergeIn,
+                          session: Session = Depends(get_db_session),
+                          _user: Any = Depends(get_current_user)) -> dict:
+    """Compute a duplicate-resolution merge record — every original key is
+    preserved as an alias; the call never deletes identity."""
+    try:
+        return merge_duplicates(keys=body.keys,
+                                canonical_key=body.canonical_key,
+                                actor=body.actor, reason=body.reason,
+                                evidence_ref=body.evidence_ref, at=body.at)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
