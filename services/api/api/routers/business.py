@@ -473,6 +473,8 @@ def create_owner(body: OwnerCreate, user: str = Depends(get_current_user), db: S
 
 @router.get("/vendors")
 def list_vendors(q: str | None = None,
+                 page: int = Query(1, ge=1),
+                 page_size: int = Query(50, ge=1, le=200),
                  user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     intel = IntelligenceRepository(db)
     rows = []
@@ -500,7 +502,10 @@ def list_vendors(q: str | None = None,
         rows = [row for row in rows if any(
             term in str(row.get(field) or "").lower()
             for field in ("name", "vendor_type", "criticality", "integration_type"))]
-    return {"vendors": rows}
+    total_count = len(rows)
+    start = (page - 1) * page_size
+    return {"vendors": rows[start:start + page_size],
+            "total_count": total_count, "page": page, "page_size": page_size}
 
 
 @router.post("/vendors")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
@@ -170,6 +170,8 @@ def list_protocols(
 def list_certificates(
     expiring_days: int | None = None,
     q: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
@@ -185,7 +187,11 @@ def list_certificates(
             return False
 
         rows = [row for row in rows if _match(row)]
-    return {"certificates": [row.to_dict() for row in rows], "total_count": len(rows)}
+    total_count = len(rows)
+    start = (page - 1) * page_size
+    page_rows = rows[start:start + page_size]
+    return {"certificates": [row.to_dict() for row in page_rows],
+            "total_count": total_count, "page": page, "page_size": page_size}
 
 
 @router.get("/certificates/composite")

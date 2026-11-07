@@ -181,3 +181,36 @@ def test_vendor_term_search_hits_name_type_and_criticality(vendors_api):
 
     miss = vendors_api.get("/api/v1/vendors", params={"q": "no-such"}).json()
     assert miss["vendors"] == []
+
+
+# --------------------------------------------------------- pagination clamps
+
+def test_certificate_pagination_clamps_and_keeps_honest_totals(certs_api):
+    first = certs_api.get("/api/v1/certificates",
+                          params={"page": 1, "page_size": 1}).json()
+    assert len(first["certificates"]) == 1
+    assert first["total_count"] == 2, "total counts matches, not the page"
+    assert (first["page"], first["page_size"]) == (1, 1)
+    second = certs_api.get("/api/v1/certificates",
+                           params={"page": 2, "page_size": 1}).json()
+    assert second["certificates"][0]["subject"] != first["certificates"][0]["subject"]
+    assert second["total_count"] == 2
+
+    over = certs_api.get("/api/v1/certificates", params={"page_size": 5000})
+    assert over.status_code == 422, "page_size is clamped at 200"
+
+
+def test_vendor_pagination_clamps_and_keeps_honest_totals(vendors_api):
+    page = vendors_api.get("/api/v1/vendors",
+                           params={"page": 2, "page_size": 1}).json()
+    assert [row["name"] for row in page["vendors"]] == ["Globex Crypto Cloud"]
+    assert page["total_count"] == 2
+    assert page["page"] == 2
+
+    empty = vendors_api.get("/api/v1/vendors",
+                            params={"page": 3, "page_size": 1}).json()
+    assert empty["vendors"] == []
+    assert empty["total_count"] == 2, "a past-the-end page keeps the true total"
+
+    over = vendors_api.get("/api/v1/vendors", params={"page_size": 0})
+    assert over.status_code == 422

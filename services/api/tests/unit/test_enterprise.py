@@ -262,3 +262,19 @@ def test_the_withdrawn_transfer_never_reports_success(client):
     assert imported.status_code == 410
     assert "accepted" not in imported.json()
     assert imported.json()["detail"]["endpoint"].endswith("/airgap/import")
+
+def test_withdrawn_airgap_routes_carry_the_lifecycle_headers(client):
+    """The real deprecated family answers 410 with Deprecation/Sunset/Link
+    headers — late callers learn where to go instead of meeting silence."""
+    h = _h(client)
+    for path in ("/api/v1/enterprise/airgap/bundle",
+                 "/api/v1/enterprise/airgap/export",
+                 "/api/v1/enterprise/airgap/import"):
+        res = client.post(path, json={}, headers=h)
+        assert res.status_code == 410, res.text
+        assert res.headers.get("Deprecation") == "true"
+        assert "Sunset" in res.headers
+        assert 'rel="successor-version"' in res.headers.get("Link", "")
+        assert res.json()["detail"]["endpoint"] == path
+    live = client.get("/api/v1/enterprise/regions", headers=h)
+    assert "Deprecation" not in live.headers

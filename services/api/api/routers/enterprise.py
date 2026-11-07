@@ -565,7 +565,9 @@ def withdrawn_routes() -> tuple[str, ...]:
 
 
 def _withdrawn(endpoint: str) -> None:
-    raise HTTPException(status_code=410, detail={**WITHDRAWN_TRANSFER, "endpoint": endpoint})
+    from api.deprecation import headers_for
+    raise HTTPException(status_code=410, detail={**WITHDRAWN_TRANSFER, "endpoint": endpoint},
+                        headers=headers_for(endpoint))
 
 
 @router.post("/airgap/bundle", deprecated=True)

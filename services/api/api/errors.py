@@ -109,6 +109,9 @@ def install_error_contract(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content=error_envelope(code, detail, _request_id(request)),
+            # exception-specified headers survive the envelope (RFC 8594
+            # deprecation trail, Retry-After, ...)
+            headers=getattr(exc, "headers", None) or None,
         )
 
     @app.exception_handler(Exception)
