@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
+import BomCrossNav from "../components/BomCrossNav";
 import { Link } from "react-router-dom";
 import { Panel, Badge, Bar, Ring } from "../components/ui";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
@@ -134,6 +135,7 @@ export default function Hbom() {
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
+      <BomCrossNav current="HBOM" />
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 420px", minWidth: 280 }}>

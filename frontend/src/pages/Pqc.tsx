@@ -298,15 +298,45 @@ export default function Pqc() {
             const c = p.instance_count ?? 0;
             const v = phasedTotal ? c / phasedTotal : 0;
             return (
-              <div key={idx} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                <span style={{ width: 90, fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)" }}>{p.phase} · {p.deadline ?? "∞"}</span>
-                <div style={{ flex: 1 }}><Bar value={v} tone={c === 0 ? "slate" : c > 10 ? "red" : "amber"} /></div>
-                <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text)", minWidth: 56, textAlign: "right" }}>{c} · {Math.round(v * 100)}%</span>
-              </div>
+              <React.Fragment key={idx}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <span style={{ width: 90, fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)" }}>{p.phase} · {p.deadline ?? "∞"}</span>
+                  <div style={{ flex: 1 }}><Bar value={v} tone={c === 0 ? "slate" : c > 10 ? "red" : "amber"} /></div>
+                  <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text)", minWidth: 56, textAlign: "right" }}>{c} · {Math.round(v * 100)}%</span>
+                </div>
+                {/* traceability (gap analysis §A: plans traceable to assets and
+                    rules): every migration line names the rule that placed it
+                    and links its applications to the inventory. */}
+                {Array.isArray(p.items) && p.items.length > 0 && (
+                  <ul data-testid={`phase-items-${p.phase}`} style={{ margin: "0 0 10px 100px", paddingLeft: 12, fontSize: 10.5, color: "var(--dim)", listStyle: "disc" }}>
+                    {p.items.map((item: any, j: number) => (
+                      <li key={j}>
+                        <Link to={`/cbom?focus=${encodeURIComponent(item.family ?? "")}`} style={{ color: "var(--cyan)", textDecoration: "none" }}>
+                          {item.family}{item.key_size ? ` ${item.key_size}` : ""}
+                        </Link>
+                        {" "}· rule: <span style={{ fontFamily: "var(--mono)" }}>{item.transition ?? "not reported"}</span>
+                        {item.deadline != null ? <> · deadline {item.deadline}{item.overdue ? " (overdue)" : ""}</> : null}
+                        {" "}· {item.instances} instance(s)
+                        {Array.isArray(item.applications) && item.applications.length > 0 && (
+                          <> · applications: {item.applications.map((app: string, k: number) => (
+                            <React.Fragment key={app}>{k > 0 ? ", " : ""}<Link to={`/assets?q=${encodeURIComponent(app)}`} style={{ color: "var(--cyan)" }}>{app}</Link></React.Fragment>
+                          ))}</>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </React.Fragment>
             );
           })}
           <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
             Share of the {phasedTotal} instances the roadmap placed. A phase with 0 has nothing left in it.
+          </div>
+          {/* traceability: the plan names the rule basis it was generated under */}
+          <div data-testid="plan-anchor" style={{ fontSize: 10.5, color: "var(--dim)", marginTop: 6 }}>
+            plan anchor: {rmOk ? roadmap?.anchor ?? "not reported" : "roadmap not read"}
+            {rmOk && roadmap?.deadline_basis ? <> · basis: <span style={{ fontFamily: "var(--mono)" }}>{roadmap.deadline_basis}</span></> : null}
+            {rmOk && roadmap?.regulatory_approval === false ? " · not a regulatory mandate" : null}
           </div>
         </Panel>
 

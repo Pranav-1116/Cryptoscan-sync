@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import BomCrossNav from "../components/BomCrossNav";
 import { Link } from "react-router-dom";
 import { Panel, Badge, Bar, Ring } from "../components/ui";
 import { usePollingApi } from "../lib/apiUi.jsx";
@@ -42,6 +43,7 @@ export default function Vbom() {
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
+      <BomCrossNav current="VBOM" />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 460px", minWidth: 280 }}>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--green) 12%, transparent)", border: "1px solid var(--green)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--green)", letterSpacing: "0.06em" }}>

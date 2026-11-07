@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Badge, Tabs } from "../components/ui";
 import { Link } from "react-router-dom";
 import { apiFactStore, apiGraphBlastRadiusFromAsset, apiRemediationTasks, FactStoreRow, RemediationTask, tenantFetch } from "../lib/api";
@@ -130,7 +131,10 @@ export default function Assets() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(0);
-  const [searchTerm, setSearchTerm] = useState("");
+  // traceability entry point (gap analysis §A): a PQC plan or cross-BOM view
+  // links here with ?q=<term> and the inventory opens focused on that term.
+  const [searchParams] = useSearchParams();
+  const [searchTerm, setSearchTerm] = useState(() => searchParams.get("q") ?? "");
 
   const tabNames = ["Overview", "Evidence", "Facts", "Dependencies", "Usage", "History", "Policy", "PQC", "Remediation"];
   /* §5 (round 64): the fact behind the selected asset (joined on the

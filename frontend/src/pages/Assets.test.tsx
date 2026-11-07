@@ -414,3 +414,24 @@ describe("asset inventory — evidence classification (gap analysis §A)", () =>
     expect(screen.getByText(/referenced, not run/)).toBeInTheDocument();
   });
 });
+
+describe("asset inventory — traceability entry (gap analysis §A)", () => {
+  it("a ?q= deep link opens the inventory focused on that term", async () => {
+    mockFetch({
+      [listPath]: {
+        assets: [
+          { id: "a-pay", algorithm: "RSA", file_path: "payments/api.py" },
+          { id: "a-ledger", algorithm: "AES", file_path: "ledger/svc.py" },
+        ],
+        total_count: 2, page: 1, page_size: 100,
+      },
+      "/api/v1/assets/a-pay": { id: "a-pay", evidence_ids: [] },
+      "/api/v1/assets/a-ledger": { id: "a-ledger", evidence_ids: [] },
+    });
+    renderWithProviders(<Assets />, { route: "/assets?q=payments" });
+    await screen.findByRole("heading", { name: "RSA" });
+    // the search opens on the linked term: one match, the other filtered out
+    expect(screen.getByText(/1 match search/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "AES" })).toBeNull();
+  });
+});
