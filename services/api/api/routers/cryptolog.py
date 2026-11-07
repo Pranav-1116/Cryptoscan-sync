@@ -677,3 +677,171 @@ def get_merkle_proof(
         "proof": proof,
         "verified": verify_merkle_proof(hashes[index], proof, root_hash),
     }
+
+
+# ---------------------------------------------------------------------------
+# Insights: overview and timeline (section 9). Server-side aggregation over
+# the recorded events — every count names what it counts, and the counts
+# are never presented as complete estate coverage.
+# ---------------------------------------------------------------------------
+
+
+def _observed_at(event: Mapping[str, Any]) -> str:
+    obs = event.get("observation") or {}
+    return str(event.get("observed") or obs.get("observed_at") or "")
+
+
+class TimelineBucket(BaseModel):
+    bucket_start: str
+    total: int = 0
+    by_category: dict[str, int] = Field(default_factory=dict)
+    by_severity: dict[str, int] = Field(default_factory=dict)
+    critical_changes: int = 0
+
+
+class TimelineOut(BaseModel):
+    model_config = {"extra": "allow"}
+
+    bucket: str = "day"
+    window: dict[str, Any] = Field(default_factory=dict)
+    event_count: int = 0
+    buckets: list[TimelineBucket] = Field(default_factory=list)
+    note: str = ""
+
+
+@router.get("/timeline")
+def event_timeline(
+    bucket: str = Query("day", pattern="^(day|hour)$"),
+    tenant_id: Optional[str] = Query(None),
+    start_occurred: Optional[str] = Query(None),
+    end_occurred: Optional[str] = Query(None),
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+) -> TimelineOut:
+    """Bucketed event volume from the recorded events. A bucket with no
+    events is a bucket with no recorded events — never evidence that the
+    estate was quiet."""
+    repo = CryptoLogAlertRepository(db)
+    events = [r["event"] for r in repo.events_in_range(
+        tenant_id=tenant_id, start_occurred=start_occurred,
+        end_occurred=end_occurred)]
+    width = 10 if bucket == "day" else 13
+    grouped: dict[str, dict[str, Any]] = {}
+    for event in events:
+        stamp = _observed_at(event)[:width]
+        entry = grouped.setdefault(stamp, {
+            "bucket_start": stamp or "unknown", "total": 0,
+            "by_category": {}, "by_severity": {}, "critical_changes": 0})
+        entry["total"] += 1
+        cat = str(event.get("category") or "UNKNOWN")
+        sev = str(event.get("severity") or "UNKNOWN")
+        entry["by_category"][cat] = entry["by_category"].get(cat, 0) + 1
+        entry["by_severity"][sev] = entry["by_severity"].get(sev, 0) + 1
+        if str(event.get("logging_kind")) == "CHANGE" and sev in ("HIGH", "CRITICAL"):
+            entry["critical_changes"] += 1
+    buckets = [TimelineBucket(**grouped[k]) for k in sorted(grouped)]
+    return TimelineOut(
+        bucket=bucket,
+        window={"start_occurred": start_occurred, "end_occurred": end_occurred},
+        event_count=len(events),
+        buckets=buckets,
+        note="Counts cover recorded CryptoLog events only. A gap is a gap "
+             "in the record, never proof the estate was quiet: sampling or "
+             "aggregation never claims complete event coverage.")
+
+
+class CollectorHealth(BaseModel):
+    collector_id: str
+    event_count: int = 0
+    telemetry_modes: dict[str, int] = Field(default_factory=dict)
+
+
+class IntegritySummary(BaseModel):
+    model_config = {"extra": "allow"}
+
+    state: str = "UNVERIFIED"
+    checkpoint_count: int = 0
+    latest_checkpoint_ref: Optional[str] = None
+    latest_created_at: Optional[str] = None
+    note: str = ""
+
+
+class OverviewOut(BaseModel):
+    model_config = {"extra": "allow"}
+
+    event_total: int = 0
+    by_severity: dict[str, int] = Field(default_factory=dict)
+    by_category: dict[str, int] = Field(default_factory=dict)
+    by_logging_kind: dict[str, int] = Field(default_factory=dict)
+    critical_changes: int = 0
+    alerts_total: int = 0
+    alerts_open: int = 0
+    collectors: list[CollectorHealth] = Field(default_factory=list)
+    integrity: IntegritySummary = Field(default_factory=IntegritySummary)
+    note: str = ""
+
+
+@router.get("/overview")
+def cryptolog_overview(
+    tenant_id: Optional[str] = Query(None),
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+) -> OverviewOut:
+    """Event volume, critical changes, integrity and collection health —
+    every figure computed over the recorded events and named as such."""
+    repo = CryptoLogAlertRepository(db)
+    events = [r["event"] for r in repo.events_in_range(tenant_id=tenant_id)]
+    by_severity: dict[str, int] = {}
+    by_category: dict[str, int] = {}
+    by_kind: dict[str, int] = {}
+    collectors: dict[str, dict[str, Any]] = {}
+    critical = 0
+    for event in events:
+        sev = str(event.get("severity") or "UNKNOWN")
+        cat = str(event.get("category") or "UNKNOWN")
+        kind = str(event.get("logging_kind") or "UNKNOWN")
+        by_severity[sev] = by_severity.get(sev, 0) + 1
+        by_category[cat] = by_category.get(cat, 0) + 1
+        by_kind[kind] = by_kind.get(kind, 0) + 1
+        if kind == "CHANGE" and sev in ("HIGH", "CRITICAL"):
+            critical += 1
+        source = event.get("source") or {}
+        cid = str(source.get("collector_id") or "unattributed")
+        entry = collectors.setdefault(cid, {
+            "collector_id": cid, "event_count": 0, "telemetry_modes": {}})
+        entry["event_count"] += 1
+        mode = str(event.get("telemetry_mode") or "EVENT")
+        entry["telemetry_modes"][mode] = entry["telemetry_modes"].get(mode, 0) + 1
+
+    alert_rows = CryptoLogAlertRepository(db).list_alerts(
+        tenant_id=tenant_id, limit=1)
+    open_rows = CryptoLogAlertRepository(db).list_alerts(
+        tenant_id=tenant_id, state="OPEN", limit=1)
+
+    checkpoints = repo.list_checkpoints(tenant_id=tenant_id, limit=1)
+    latest = checkpoints["rows"][0] if checkpoints["rows"] else None
+    integrity = IntegritySummary(
+        state="CHECKPOINTED" if latest else "UNVERIFIED",
+        checkpoint_count=checkpoints["total_count"],
+        latest_checkpoint_ref=(latest or {}).get("checkpoint_ref"),
+        latest_created_at=(latest or {}).get("created_at"),
+        note="an event store without a signed checkpoint is UNVERIFIED: "
+             "this is not a failed chain, it is a chain not yet anchored"
+             if not latest else
+             "checkpointed store: run verification for the per-entry state")
+
+    return OverviewOut(
+        event_total=len(events),
+        by_severity=by_severity,
+        by_category=by_category,
+        by_logging_kind=by_kind,
+        critical_changes=critical,
+        alerts_total=alert_rows["total_count"],
+        alerts_open=open_rows["total_count"],
+        collectors=[CollectorHealth(**c) for c in
+                    sorted(collectors.values(),
+                           key=lambda c: (-c["event_count"], c["collector_id"]))],
+        integrity=integrity,
+        note="Every figure counts recorded CryptoLog events and alerts. "
+             "A recorded count is not an estate guarantee: a missing "
+             "collector is named in collection health, never a clean zero.")

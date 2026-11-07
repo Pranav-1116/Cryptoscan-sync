@@ -8166,3 +8166,63 @@ export interface CryptologMerkleProof {
 
 export const apiCryptologMerkleProof = (eventId: string, checkpointRef: string): Promise<ApiResult<CryptologMerkleProof>> =>
   call<CryptologMerkleProof>(`/api/v1/cryptolog/integrity/merkle-proof?event_id=${encodeURIComponent(eventId)}&checkpoint_ref=${encodeURIComponent(checkpointRef)}`);
+
+/* CryptoLog insights (§9 overview + timeline): server-side aggregation,
+   every count names what it counts. */
+
+export interface CryptologTimelineBucket {
+  bucket_start: string;
+  total: number;
+  by_category: Record<string, number>;
+  by_severity: Record<string, number>;
+  critical_changes: number;
+}
+
+export interface CryptologTimeline {
+  bucket: string;
+  window: { start_occurred?: string | null; end_occurred?: string | null };
+  event_count: number;
+  buckets: CryptologTimelineBucket[];
+  note: string;
+}
+
+export const apiCryptologTimeline = (params: {
+  bucket?: "day" | "hour";
+  start_occurred?: string;
+  end_occurred?: string;
+} = {}): Promise<ApiResult<CryptologTimeline>> => {
+  const qs = new URLSearchParams();
+  if (params.bucket) qs.set("bucket", params.bucket);
+  if (params.start_occurred) qs.set("start_occurred", params.start_occurred);
+  if (params.end_occurred) qs.set("end_occurred", params.end_occurred);
+  const suffix = qs.toString();
+  return call<CryptologTimeline>(`/api/v1/cryptolog/timeline${suffix ? `?${suffix}` : ""}`);
+};
+
+export interface CryptologCollectorHealth {
+  collector_id: string;
+  event_count: number;
+  telemetry_modes: Record<string, number>;
+}
+
+export interface CryptologOverview {
+  event_total: number;
+  by_severity: Record<string, number>;
+  by_category: Record<string, number>;
+  by_logging_kind: Record<string, number>;
+  critical_changes: number;
+  alerts_total: number;
+  alerts_open: number;
+  collectors: CryptologCollectorHealth[];
+  integrity: {
+    state: string;
+    checkpoint_count: number;
+    latest_checkpoint_ref?: string | null;
+    latest_created_at?: string | null;
+    note: string;
+  };
+  note: string;
+}
+
+export const apiCryptologOverview = (): Promise<ApiResult<CryptologOverview>> =>
+  call<CryptologOverview>("/api/v1/cryptolog/overview");

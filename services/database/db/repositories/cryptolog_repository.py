@@ -418,9 +418,9 @@ class CryptoLogAlertRepository:
         rows = query.order_by(CryptoLogCheckpoint.created_at.desc()).limit(limit).all()
         return {"rows": [self._cp_row(r) for r in rows], "total_count": total}
 
-    def events_in_range(self, *, tenant_id: Optional[str],
-                        start_occurred: Optional[str],
-                        end_occurred: Optional[str]) -> list[dict[str, Any]]:
+    def events_in_range(self, *, tenant_id: Optional[str] = None,
+                        start_occurred: Optional[str] = None,
+                        end_occurred: Optional[str] = None) -> list[dict[str, Any]]:
         """Raw stored event dicts in ledger order (the truest input for
         integrity verification: hashes recompute over what was stored)."""
         query = self.db.query(CryptoLogEvent)
@@ -437,10 +437,12 @@ class CryptoLogAlertRepository:
         events = records
         # Filter on observed in Python: portable across SQLite/Postgres and
         # exact against the stored value rather than a JSON-path variant.
+        def _observed(rec: dict[str, Any]) -> str:
+            ev = rec["event"]
+            obs = ev.get("observation") or {}
+            return str(ev.get("observed") or obs.get("observed_at") or "")
         if start_occurred:
-            events = [e for e in events
-                      if str(e["event"].get("observed", "")) >= start_occurred]
+            events = [e for e in events if _observed(e) >= start_occurred]
         if end_occurred:
-            events = [e for e in events
-                      if str(e["event"].get("observed", "")) <= end_occurred]
+            events = [e for e in events if _observed(e) <= end_occurred]
         return events
