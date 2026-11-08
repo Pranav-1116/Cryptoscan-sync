@@ -8816,3 +8816,180 @@ export const apiBinaryFirmwareScan = (body: {
     method: "POST",
     body: JSON.stringify(body),
   });
+
+/* ── OS & Kernel Intelligence (docs/os-kernel-intelligence/01_PRODUCT_SPEC.md) ──
+ * Read-only collection packages: the API records and serves what the
+ * collector observed. Every capability row carries
+ * runtime_usage_confirmed — a registered kernel implementation is
+ * never proof of application usage (§2.2). */
+
+export interface OSAssetRecord {
+  asset_id: string;
+  collection_id: string;
+  kernel_name: string;
+  kernel_release: string;
+  kernel_version: string;
+  machine: string;
+  os_pretty_name: string;
+  os_id: string;
+  os_version_id: string;
+  arch: string;
+  cmdline: string;
+  tainted_flags: string;
+  tainted_meanings: string[];
+  environment_development_only: boolean;
+  qualification_note: string | null;
+  collector_version: string;
+  notes: string[];
+  collected_at: string;
+}
+
+export interface OSCapability {
+  algorithm: string;
+  driver: string | null;
+  type: string | null;
+  module: string | null;
+  priority: number | null;
+  blocksize: number | null;
+  digestsize: number | null;
+  key_size_range: Array<number | null> | null;
+  selftest: string | null;
+  hardware_accelerated: boolean | null;
+  runtime_usage_confirmed: boolean;
+  parse_notes: string[];
+}
+
+export interface OSModule {
+  name: string;
+  size: number | null;
+  refcount: number | null;
+  used_by: string[];
+  state: string;
+}
+
+export interface OSConfigFlag {
+  flag: string;
+  value: string;
+  explicitly_disabled: boolean;
+}
+
+export interface OSStorageFact {
+  device: string;
+  fstype: string;
+  metadata: Record<string, string>;
+  notes: string[];
+}
+
+export interface OSTrustFact {
+  subject: string;
+  state: string;
+  evidence_class: string;
+  metadata: Record<string, string>;
+  notes: string[];
+}
+
+export interface OSFindingRecord {
+  finding_type: string;
+  host_id: string | null;
+  algorithm: string;
+  implementation: string;
+  evidence_source: string;
+  observation_type: string;
+  runtime_usage_confirmed: boolean;
+  evidence_class: string;
+  severity_label: string | null;
+  severity_factors: { factors: Record<string, string>; derivation: string[] } | null;
+  risk_model_version: string | null;
+  details: Record<string, unknown>;
+  limitations: string[];
+}
+
+export interface OSCoverage {
+  sources_attempted: string[];
+  sources_collected: string[];
+  sources_unavailable: Array<{ source: string; reason: string }>;
+  source_digests: Record<string, string>;
+  note: string | null;
+}
+
+export interface OSRuleResult {
+  rule_id: string;
+  detection: string;
+  potential_impact: string;
+  status: "evaluated" | "not_evaluable";
+  evaluation_note: string;
+  findings: OSFindingRecord[];
+}
+
+export interface OSRuleEvaluation {
+  rule_model_version: string;
+  results: OSRuleResult[];
+  note: string;
+}
+
+const osQuery = (p: { tenant_id: string }) =>
+  `?tenant_id=${encodeURIComponent(p.tenant_id)}`;
+
+export const apiOSAssets = (
+  p: { tenant_id: string },
+): Promise<ApiResult<{ assets: OSAssetRecord[]; note: string }>> =>
+  call(`/api/v1/os-intelligence/assets${osQuery(p)}`);
+
+export const apiOSAsset = (
+  assetId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<OSAssetRecord>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}${osQuery(p)}`);
+
+export const apiOSCapabilities = (
+  assetId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<{ capabilities: OSCapability[]; note: string }>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/crypto-capabilities${osQuery(p)}`);
+
+export const apiOSModules = (
+  assetId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<{ modules: OSModule[]; note: string }>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/modules${osQuery(p)}`);
+
+export const apiOSConfigFlags = (
+  assetId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<{ flags: OSConfigFlag[]; note: string }>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/config-flags${osQuery(p)}`);
+
+export const apiOSStorage = (
+  assetId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<{ storage: OSStorageFact[]; note: string }>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/storage${osQuery(p)}`);
+
+export const apiOSHardwareTrust = (
+  assetId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<{ hardware_trust: OSTrustFact[]; note: string }>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/hardware-trust${osQuery(p)}`);
+
+export const apiOSFindings = (
+  assetId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<{ findings: OSFindingRecord[]; note: string }>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/findings${osQuery(p)}`);
+
+export const apiOSCoverage = (
+  assetId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<OSCoverage>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/coverage${osQuery(p)}`);
+
+export const apiOSRules = (): Promise<ApiResult<{
+  rules: Array<{ rule_id: string; detection: string; potential_impact: string }>;
+  note: string;
+}>> => call("/api/v1/os-intelligence/rules");
+
+export const apiOSRuleEvaluation = (
+  assetId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<OSRuleEvaluation>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/rule-evaluation${osQuery(p)}`);

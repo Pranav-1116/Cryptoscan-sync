@@ -61,6 +61,16 @@ are kept distinct.
 - hardware trust facts (TPM device presence, RNG device presence) —
   device presence is metadata, never a trust verdict.
 
+## Console (delivered)
+
+`/os-kernel-intelligence` — nine views (hosts & identity, kernel crypto
+API, modules, configuration, disk encryption, hardware trust, findings,
+coverage, OS-CRYPTO rules) with the honesty rules as display rules: an
+unknown renders "unknown (never guessed)", 'not detected' renders its
+"never absent" text visibly, every capability row shows "runtime usage
+not confirmed", unavailable coverage sources render their reasons, and
+every host carries its development-only / qualification caveat.
+
 ## OS-CRYPTO rules (delivered)
 
 The OS-CRYPTO-001…018 catalogue (§9) evaluates over every collection:

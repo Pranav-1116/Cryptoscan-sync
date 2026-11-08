@@ -78,6 +78,7 @@ export const CAPABILITIES_JSON = {
   "onboarding": "ga",
   "operator-decisions": "ga",
   "organization": "ga",
+  "os-kernel-intelligence": "ga",
   "performance": "ga",
   "platform-p2": "ga",
   "pqc": "ga",
@@ -354,6 +355,10 @@ export const CAPABILITY_LIMITS = {
   "organization": {
     "area": "Administration",
     "limit": "Org structure + business context seed."
+  },
+  "os-kernel-intelligence": {
+    "area": "Intelligence",
+    "limit": "OS & Kernel Intelligence (docs/os-kernel-intelligence/01_PRODUCT_SPEC.md): read-only Linux OS and kernel cryptographic inventory \u2014 OS/kernel identity, Kernel Crypto API registrations with the generic algorithm name distinct from the implementation driver, module inventory with fail-safe row validation, kernel configuration states where an explicit 'not set' is distinct from a missing source, disk-encryption metadata (never key files), hardware trust metadata and collection coverage that records unavailable sources with their reasons. runtime_usage_confirmed stays false: a registered implementation is never proof of runtime use. The OS-CRYPTO-001..018 catalogue evaluates as detections, never verdicts, with severity computed by the versioned R=f(S,E,X,B,C) ladder whose factors are preserved. Tier-2 runtime monitoring (eBPF), Windows/macOS adapters, Secure Boot/certificate/TLS-collection sources and SBOM/BOM integration are NOT IMPLEMENTED and reported as not-evaluable, never as clean; one host is never enterprise qualification."
   },
   "performance": {
     "area": "Intelligence",

@@ -4,7 +4,7 @@
 > `scripts/gen_capability_maturity.py`. Served live at
 > `GET /api/v1/platform/capabilities`.
 
-**96 shipped surfaces, all supported.** The navigation carries no maturity
+**97 shipped surfaces, all supported.** The navigation carries no maturity
 badges: a product's sidebar is not the place to negotiate what is proven. What
 used to be a `beta` or `preview` label is now the **stated limit** column below,
 which is the part that actually told an operator something. A support statement
@@ -95,6 +95,7 @@ role-guarded actions.
 | `/live-asset-intelligence` | Intelligence | The unified BOM console: materialise → version → compare → export. |
 | `/migration` | Intelligence | Scan → project → tasks → velocity forecast; forecast model is simple. |
 | `/nbom` | Intelligence | Network BOM from authorized network evidence plus static binary capability candidates. Binary-derived records are marked `observed: false` and do not prove a live listener; corroboration requires a separately authorized network probe. |
+| `/os-kernel-intelligence` | Intelligence | OS & Kernel Intelligence (docs/os-kernel-intelligence/01_PRODUCT_SPEC.md): read-only Linux OS and kernel cryptographic inventory — OS/kernel identity, Kernel Crypto API registrations with the generic algorithm name distinct from the implementation driver, module inventory with fail-safe row validation, kernel configuration states where an explicit 'not set' is distinct from a missing source, disk-encryption metadata (never key files), hardware trust metadata and collection coverage that records unavailable sources with their reasons. runtime_usage_confirmed stays false: a registered implementation is never proof of runtime use. The OS-CRYPTO-001..018 catalogue evaluates as detections, never verdicts, with severity computed by the versioned R=f(S,E,X,B,C) ladder whose factors are preserved. Tier-2 runtime monitoring (eBPF), Windows/macOS adapters, Secure Boot/certificate/TLS-collection sources and SBOM/BOM integration are NOT IMPLEMENTED and reported as not-evaluable, never as clean; one host is never enterprise qualification. |
 | `/performance` | Intelligence | ZELNX Performance Intelligence (docs/performance/01_PRODUCT_SPEC.md): tenant-scoped, time-bounded metric views with missing telemetry named unknown — never zero; bandwidth capacity never shown as throughput; alerts that state proven AND not-proven with computed severity; forecasts labelled forecast, not fact; controlled benchmarks never presented as production performance; investigations that end at correlation, never causation. Real bank collection overhead measurement and HSM/KMS/PQC benchmarks remain external acts. |
 | `/pqc` | Intelligence | Quantum classification lives in shared_models (176 tests) and runs as a pipeline stage. |
 | `/pqc-map` | Intelligence | Geographic/estate PQC map; needs location context the scanners do not collect yet. |

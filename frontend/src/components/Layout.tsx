@@ -126,6 +126,7 @@ export const PRIMARY_SECTIONS: NavSection[] = [
           { to: "/findings", label: "Findings", icon: ListChecks },
           { to: "/pqc", label: "PQC readiness", icon: ShieldCheck },
           { to: "/binary-intelligence", label: "Binary Intelligence", icon: Pulse },
+          { to: "/os-kernel-intelligence", label: "OS & Kernel Intelligence", icon: Pulse },
           { to: "/intelligence", label: "Intelligence workbench", icon: ShieldCheck },
           { to: "/agility", label: "Crypto agility", icon: SlidersHorizontal },
           { to: "/drift", label: "Crypto drift", icon: Pulse },
