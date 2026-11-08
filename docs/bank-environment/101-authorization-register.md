@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 927 |
+| session | 939 |
 | role | 342 |
 | permission | 74 |
 | tenant-role | 17 |
 
-**1360** operations; **350** of them change state with nothing but the session gate — the exact list, with the policy
+**1372** operations; **351** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -55,6 +55,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `ct-scans` | 3 |
 | `hsm-scans` | 3 |
 | `ot` | 3 |
+| `performance` | 3 |
 | `sectors` | 3 |
 | `cloud-scans` | 2 |
 | `container` | 2 |
@@ -62,7 +63,6 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `enterprise` | 2 |
 | `ingestion` | 2 |
 | `network-scans` | 2 |
-| `performance` | 2 |
 | `remediation` | 2 |
 | `anomaly` | 1 |
 | `certificates` | 1 |
@@ -362,6 +362,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/ot/metrics` | `api.routers.ot.render_ot_metrics` |
 | POST | `/api/v1/ot/safety/authorize` | `api.routers.ot_safety.authorize` |
 | POST | `/api/v1/ot/scan` | `api.routers.ot.scan_ot` |
+| POST | `/api/v1/performance/benchmarks` | `api.routers.performance.benchmarks` |
 | POST | `/api/v1/performance/ingest` | `api.routers.performance.ingest_metric` |
 | POST | `/api/v1/performance/ingest/batch` | `api.routers.performance.ingest_batch` |
 | POST | `/api/v1/quantum/mosca` | `api.routers.quantum.quantum_mosca` |

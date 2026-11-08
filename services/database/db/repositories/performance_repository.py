@@ -8,15 +8,18 @@ reconstructed as zero on the way out.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db.models.performance import (
-    PerformanceCollectorHealth, PerformanceMetric as PerformanceMetricRow,
-    PerformanceMetricDefinition,
+    PerformanceAggregate, PerformanceAlert, PerformanceAsset,
+    PerformanceBaseline, PerformanceBenchmarkRun,
+    PerformanceCapacityForecast, PerformanceCollectorHealth,
+    PerformanceIncident, PerformanceMetric as PerformanceMetricRow,
+    PerformanceMetricDefinition, PerformanceSloPolicy,
 )
 from shared_models.performance_metrics import (
     NO_VALUE_QUALITIES, PerformanceMetric,
@@ -24,6 +27,15 @@ from shared_models.performance_metrics import (
 
 INSERTED = "inserted"
 DUPLICATE = "duplicate"
+
+
+def _aware(value: Optional[datetime]) -> Optional[datetime]:
+    """SQLite hands back naive datetimes; the contract requires the
+    timezone. UTC is the storage convention — attach it rather than
+    pretend the instant is unknown."""
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
 
 
 def row_to_metric(row: PerformanceMetricRow) -> PerformanceMetric:
@@ -36,7 +48,7 @@ def row_to_metric(row: PerformanceMetricRow) -> PerformanceMetric:
         metric_value=row.metric_value,
         unit=row.unit,
         source_id=row.source_id,
-        observed_at=row.observed_at,
+        observed_at=_aware(row.observed_at),
         interval_seconds=row.interval_seconds,
         labels=row.labels or {},
         evidence_id=row.evidence_id,
@@ -127,3 +139,168 @@ class PerformanceRepository:
             }
             for r in rows
         ]
+
+    # -- engine stores ---------------------------------------------------
+    def register_asset(self, tenant_id: str, asset_id: str, *,
+                       identity_source: str = "digital-twin",
+                       seen_at: Optional[datetime] = None) -> Dict[str, Any]:
+        """Link an asset_id to its Digital Twin identity — a reference,
+        never invented attributes (§3.6: reuse asset identity)."""
+        stamp = seen_at or datetime.now(timezone.utc)
+        existing = self.db.execute(
+            select(PerformanceAsset).where(
+                PerformanceAsset.tenant_id == tenant_id,
+                PerformanceAsset.asset_id == asset_id)
+        ).scalar_one_or_none()
+        if existing is None:
+            existing = PerformanceAsset(
+                tenant_id=tenant_id, asset_id=asset_id,
+                identity_source=identity_source,
+                first_seen_at=stamp, last_seen_at=stamp)
+            self.db.add(existing)
+        else:
+            existing.last_seen_at = stamp
+        self.db.commit()
+        return {
+            "asset_id": existing.asset_id,
+            "identity_source": existing.identity_source,
+            "first_seen_at": existing.first_seen_at,
+            "last_seen_at": existing.last_seen_at,
+        }
+
+    def asset_reference(self, tenant_id: str,
+                        asset_id: str) -> Optional[Dict[str, Any]]:
+        row = self.db.execute(
+            select(PerformanceAsset).where(
+                PerformanceAsset.tenant_id == tenant_id,
+                PerformanceAsset.asset_id == asset_id)
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        return {
+            "asset_id": row.asset_id,
+            "identity_source": row.identity_source,
+            "first_seen_at": row.first_seen_at,
+            "last_seen_at": row.last_seen_at,
+        }
+
+    def insert_benchmark_run(self, tenant_id: str, run) -> Dict[str, Any]:
+        """A controlled benchmark run is stored in its own table — it is
+        never written to performance_metrics and never mixed into
+        observed aggregates (§2.F)."""
+        existing = self.db.execute(
+            select(PerformanceBenchmarkRun).where(
+                PerformanceBenchmarkRun.run_id == run.run_id)
+        ).scalar_one_or_none()
+        if existing is not None:
+            return {"outcome": DUPLICATE, "accepted_id": existing.run_id}
+        row = PerformanceBenchmarkRun(
+            tenant_id=tenant_id,
+            run_id=run.run_id,
+            measurement_kind=run.measurement_kind,
+            approved=1 if run.approved else 0,
+            method=run.method.model_dump(),
+            results=[r.model_dump() for r in run.results],
+            executed_at=run.executed_at,
+        )
+        self.db.add(row)
+        self.db.commit()
+        return {"outcome": INSERTED, "accepted_id": run.run_id}
+
+    def list_benchmark_runs(self, tenant_id: str, *,
+                            limit: int = 50) -> List[Dict[str, Any]]:
+        rows = self.db.execute(
+            select(PerformanceBenchmarkRun).where(
+                PerformanceBenchmarkRun.tenant_id == tenant_id)
+            .order_by(PerformanceBenchmarkRun.executed_at.desc())
+            .limit(limit)
+        ).scalars()
+        return [
+            {
+                "run_id": r.run_id,
+                "measurement_kind": r.measurement_kind,
+                "approved": bool(r.approved),
+                "method": r.method,
+                "results": r.results,
+                "executed_at": r.executed_at,
+            }
+            for r in rows
+        ]
+
+    def insert_alert(self, tenant_id: str, alert: Dict[str, Any]
+                     ) -> Dict[str, Any]:
+        row = PerformanceAlert(
+            tenant_id=tenant_id,
+            metric_name=alert["metric_name"],
+            severity=alert["severity"],
+            severity_factors=alert.get("severity_factors"),
+            proven=alert.get("proven"),
+            not_proven=alert.get("not_proven"),
+            supporting_measurements=alert.get("supporting_measurements"),
+            window_start=alert["window_start"],
+            window_end=alert["window_end"],
+            raised_at=datetime.now(timezone.utc),
+        )
+        self.db.add(row)
+        self.db.commit()
+        return {"outcome": INSERTED, "accepted_id": row.id}
+
+    def list_alerts(self, tenant_id: str, *,
+                    metric_name: Optional[str] = None,
+                    limit: int = 50) -> List[Dict[str, Any]]:
+        stmt = select(PerformanceAlert).where(
+            PerformanceAlert.tenant_id == tenant_id)
+        if metric_name is not None:
+            stmt = stmt.where(PerformanceAlert.metric_name == metric_name)
+        stmt = stmt.order_by(PerformanceAlert.raised_at.desc()).limit(limit)
+        return [
+            {
+                "alert_id": r.id,
+                "metric_name": r.metric_name,
+                "severity": r.severity,
+                "severity_factors": r.severity_factors,
+                "proven": r.proven,
+                "not_proven": r.not_proven,
+                "supporting_measurements": r.supporting_measurements,
+                "window_start": r.window_start,
+                "window_end": r.window_end,
+                "raised_at": r.raised_at,
+            }
+            for r in self.db.execute(stmt).scalars()
+        ]
+
+    def insert_baseline(self, tenant_id: str, baseline) -> Dict[str, Any]:
+        row = PerformanceBaseline(
+            tenant_id=tenant_id,
+            metric_name=baseline.metric_name,
+            asset_id=baseline.asset_id,
+            window_start=baseline.window_start,
+            window_end=baseline.window_end,
+            method=baseline.method,
+            sample_count=baseline.sample_count,
+            median=baseline.median, p95=baseline.p95, mad=baseline.mad,
+        )
+        self.db.add(row)
+        self.db.commit()
+        return {"outcome": INSERTED, "accepted_id": row.id}
+
+    def insert_forecast(self, tenant_id: str, forecast: Dict[str, Any],
+                        *, window_start: datetime,
+                        window_end: datetime) -> Dict[str, Any]:
+        row = PerformanceCapacityForecast(
+            tenant_id=tenant_id,
+            metric_name=forecast["metric_name"],
+            method=forecast["method"],
+            status=forecast["status"],
+            sample_count=forecast.get("sample_count") or 0,
+            growth_per_second=forecast.get("growth_per_second"),
+            estimated_seconds_to_exhaustion=forecast.get(
+                "estimated_seconds_to_exhaustion"),
+            disclaimer=forecast.get("disclaimer")
+            or "forecast, not fact — recorded as computed, never as a promise",
+            window_start=window_start,
+            window_end=window_end,
+        )
+        self.db.add(row)
+        self.db.commit()
+        return {"outcome": INSERTED, "accepted_id": row.id}

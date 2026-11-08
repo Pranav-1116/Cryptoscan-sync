@@ -26,6 +26,13 @@ from db.models.repo_configuration import RepoConfiguration  # noqa: F401
 from db.models.cryptolog import (  # noqa: F401
     CryptoLogAlert, CryptoLogCheckpoint, CryptoLogCorrection, CryptoLogEvent,
 )
+from db.models.performance import (  # noqa: F401
+    PerformanceAggregate, PerformanceAlert, PerformanceAsset,
+    PerformanceBaseline, PerformanceBenchmarkRun,
+    PerformanceCapacityForecast, PerformanceCollectorHealth,
+    PerformanceIncident, PerformanceMetric,
+    PerformanceMetricDefinition, PerformanceSloPolicy,
+)
 
 # Alembic Config object
 config = context.config

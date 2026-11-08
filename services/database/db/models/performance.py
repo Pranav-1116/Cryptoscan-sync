@@ -79,3 +79,169 @@ class PerformanceCollectorHealth(BaseModel, TenantScoped):
         Index("ix_performance_collector_health_tenant_collector",
               "tenant_id", "collector_id", unique=True),
     )
+
+
+class PerformanceAsset(BaseModel, TenantScoped):
+    """Digital Twin asset reference (§5): the performance engine links
+    ``asset_id`` to the Digital Twin — it never becomes a second asset
+    registry with invented attributes."""
+
+    __tablename__ = "performance_assets"
+
+    asset_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    identity_source: Mapped[str] = mapped_column(String(40), nullable=False)
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                    nullable=False)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                   nullable=False)
+
+    __table_args__ = (
+        Index("ix_performance_assets_tenant_asset",
+              "tenant_id", "asset_id", unique=True),
+    )
+
+
+class PerformanceAggregate(BaseModel, TenantScoped):
+    """Stored aggregate over raw samples — provenance carries the window
+    and the delivered/unknown counts so a stored figure never hides its
+    coverage."""
+
+    __tablename__ = "performance_aggregates"
+
+    metric_name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    asset_id: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                   nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                 nullable=False)
+    sample_count: Mapped[int] = mapped_column(nullable=False)
+    value_count: Mapped[int] = mapped_column(nullable=False)
+    unknown_count: Mapped[int] = mapped_column(nullable=False)
+    average: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    p95: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    __table_args__ = (
+        Index("ix_performance_aggregates_tenant_name_window",
+              "tenant_id", "metric_name", "window_start"),
+    )
+
+
+class PerformanceBaseline(BaseModel, TenantScoped):
+    __tablename__ = "performance_baselines"
+
+    metric_name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    asset_id: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                   nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                 nullable=False)
+    method: Mapped[str] = mapped_column(String(80), nullable=False)
+    sample_count: Mapped[int] = mapped_column(nullable=False)
+    median: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    p95: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    mad: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    __table_args__ = (
+        Index("ix_performance_baselines_tenant_name_window",
+              "tenant_id", "metric_name", "window_start"),
+    )
+
+
+class PerformanceAlert(BaseModel, TenantScoped):
+    """An alert row stores what is proven AND what is not proven, with
+    its computed severity and the supporting measurements."""
+
+    __tablename__ = "performance_alerts"
+
+    metric_name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)
+    severity_factors: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    proven: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    not_proven: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    supporting_measurements: Mapped[Optional[dict]] = mapped_column(JSON,
+                                                                   nullable=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                   nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                 nullable=False)
+    raised_at: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                nullable=False)
+
+    __table_args__ = (
+        Index("ix_performance_alerts_tenant_name_raised",
+              "tenant_id", "metric_name", "raised_at"),
+    )
+
+
+class PerformanceIncident(BaseModel, TenantScoped):
+    __tablename__ = "performance_incidents"
+
+    incident_key: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    alert_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (
+        Index("ix_performance_incidents_tenant_key",
+              "tenant_id", "incident_key", unique=True),
+    )
+
+
+class PerformanceSloPolicy(BaseModel, TenantScoped):
+    __tablename__ = "performance_slo_policies"
+
+    policy_key: Mapped[str] = mapped_column(String(160), nullable=False, index=True)
+    metric_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    objective: Mapped[float] = mapped_column(Float, nullable=False)
+    window_seconds: Mapped[int] = mapped_column(nullable=False)
+    comparator: Mapped[str] = mapped_column(String(8), nullable=False)
+
+    __table_args__ = (
+        Index("ix_performance_slo_policies_tenant_key",
+              "tenant_id", "policy_key", unique=True),
+    )
+
+
+class PerformanceCapacityForecast(BaseModel, TenantScoped):
+    """A stored forecast keeps its disclaimer: forecast, not fact."""
+
+    __tablename__ = "performance_capacity_forecasts"
+
+    metric_name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    method: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    sample_count: Mapped[int] = mapped_column(nullable=False)
+    growth_per_second: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    estimated_seconds_to_exhaustion: Mapped[Optional[float]] = mapped_column(
+        Float, nullable=True)
+    disclaimer: Mapped[str] = mapped_column(Text, nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                   nullable=False)
+    window_end: Mapped[datetime] = mapped_column(DateTime(timezone=True),
+                                                 nullable=False)
+
+    __table_args__ = (
+        Index("ix_performance_capacity_forecasts_tenant_name",
+              "tenant_id", "metric_name"),
+    )
+
+
+class PerformanceBenchmarkRun(BaseModel, TenantScoped):
+    """Controlled benchmark results (§2.F) — their own table, never
+    mixed into observed production metrics."""
+
+    __tablename__ = "performance_benchmark_runs"
+
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True,
+                                        index=True)
+    measurement_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    approved: Mapped[int] = mapped_column(nullable=False)
+    method: Mapped[dict] = mapped_column(JSON, nullable=False)
+    results: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    executed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_performance_benchmark_runs_tenant_run",
+              "tenant_id", "run_id", unique=True),
+    )

@@ -70,7 +70,10 @@ MIN_TENANT_ROLE_GATED = 17
 # ingest family (POST /api/v1/performance/ingest and /ingest/batch,
 # docs/performance/01_PRODUCT_SPEC.md Phase 1) — measurements written to
 # the caller's tenant context under the decided family policy entry.
-MAX_SESSION_ONLY_WRITES = 346
+# 346 -> 347: a deliberate regeneration added the ZELNX Performance
+# benchmark write (POST /api/v1/performance/benchmarks — Phase 5
+# controlled benchmark runs recorded under the decided family entry).
+MAX_SESSION_ONLY_WRITES = 347
 
 
 @pytest.fixture(scope="module")
