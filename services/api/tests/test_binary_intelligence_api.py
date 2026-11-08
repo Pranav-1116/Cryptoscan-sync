@@ -344,3 +344,76 @@ def test_scan_rejects_malformed_input_safely(api):
     if body["artifact"]["detected_format"] == "unknown":
         assert "never guessed" in body["artifact"]["format_reason"], \
             "unknown is named with its reason, never guessed"
+
+
+def test_drift_series_reports_indicator_drift_with_caveats(api):
+    v1 = _submit(api, elf_crypto_sample(), name="payments-engine",
+                 tenant="tenant_drift")
+    v2 = _submit(api, pe_crypto_sample(), name="payments-engine",
+                 tenant="tenant_drift")
+    body = api.get("/api/v1/binary/drift",
+                   params={"tenant_id": "tenant_drift",
+                           "subject": "payments-engine"}).json()
+    assert body["subject"] == "payments-engine"
+    assert len(body["points"]) == 2
+    first, second = body["points"]
+    assert first["delta_vs_previous"] is None, \
+        "the first version has no predecessor to compare"
+    assert second["delta_vs_previous"] is not None
+    assert body["summary"]["added"] + body["summary"]["removed"] + \
+        body["summary"]["unchanged"] > 0
+    assert "never for runtime behavior" in body["note"]
+    assert any("metadata, not proof of common origin" in limitation
+               for limitation in body["limitations"])
+    for delta in second["delta_vs_previous"]["deltas"]:
+        if delta["change"] in ("added", "removed"):
+            assert delta["caveat"]
+
+    # tenant isolation
+    cross = api.get("/api/v1/binary/drift",
+                    params={"tenant_id": "tenant_other",
+                            "subject": "payments-engine"})
+    assert cross.status_code == 200
+    assert cross.json()["points"] == []
+
+
+def test_history_is_about_the_immutable_artifact(api):
+    created = _submit(api, elf_crypto_sample())
+    artifact_id = created.json()["artifact"]["artifact_id"]
+    # a rescan gives the SAME artifact a second run
+    import base64 as _b64
+    api.post(f"/api/v1/binary/artifacts/{artifact_id}/rescan", json={
+        "tenant_id": "tenant_001",
+        "artifact_base64": _b64.b64encode(elf_crypto_sample()).decode(),
+        "scan_profile": "quick"})
+    body = api.get(f"/api/v1/binary/artifacts/{artifact_id}/history",
+                   params={"tenant_id": "tenant_001"}).json()
+    assert len(body["runs"]) == 2
+    profiles = {r["scan_profile"] for r in body["runs"]}
+    assert profiles == {"standard", "quick"}
+    timeline = body["finding_timeline"]
+    assert timeline and all(t["observations"] for t in timeline)
+    assert "the artifact is immutable" in body["limitations"][0]
+    assert "not a change in the artifact" in body["note"]
+
+
+def test_estate_groups_recorded_findings_never_running_crypto(api):
+    _submit(api, elf_crypto_sample(), name="a", tenant="tenant_estate")
+    _submit(api, pe_crypto_sample(), name="b", tenant="tenant_estate")
+    body = api.get("/api/v1/binary/estate",
+                   params={"tenant_id": "tenant_estate"}).json()
+    assert body["findings_total"] > 0
+    assert body["by_format"].get("elf", 0) > 0
+    assert body["by_format"].get("pe", 0) > 0
+    assert body["by_algorithm"].get("AES", 0) > 0
+    assert body["quantum_vulnerable_findings"] > 0, \
+        "RSA indicators are quantum-vulnerable — flagged, never an " \
+        "immediate vulnerability claim"
+    assert "RECORDED FINDINGS" in body["note"]
+    assert "not proof of common origin" in body["note"]
+
+    cross = api.get("/api/v1/binary/estate",
+                    params={"tenant_id": "tenant_empty"})
+    assert cross.json()["findings_total"] == 0
+    assert cross.json()["by_format"] == {}, \
+        "an empty estate is empty, never zero-filled with guesses"

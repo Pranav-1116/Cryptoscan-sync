@@ -337,3 +337,71 @@ class BinaryIntelligenceRepository:
                                 if row.observed_at else None),
             })
         return out
+
+    # ---- drift intelligence (Phase 6) -----------------------------
+
+    def list_artifact_series(self, tenant_id: str, *,
+                             original_filename: str | None = None,
+                             source_location: str | None = None
+                             ) -> list[dict]:
+        """Artifacts in one subject series, ordered by receipt — the
+        shape drift.py consumes. A series groups by name/location; the
+        same name may be different software (§8)."""
+        query = self.db.query(BinaryArtifact).filter(
+            BinaryArtifact.tenant_id == tenant_id)
+        if original_filename is not None:
+            query = query.filter(
+                BinaryArtifact.original_filename == original_filename)
+        if source_location is not None:
+            query = query.filter(
+                BinaryArtifact.source_location == source_location)
+        rows = query.order_by(BinaryArtifact.created_at).all()
+        out = []
+        for row in rows:
+            scan_count = self.db.query(BinaryScanRun).filter(
+                BinaryScanRun.tenant_id == tenant_id,
+                BinaryScanRun.artifact_id == row.artifact_id).count()
+            out.append({
+                "artifact_id": row.artifact_id,
+                "sha256": row.sha256,
+                "received_at": (row.created_at.isoformat()
+                                if row.created_at else None),
+                "original_filename": row.original_filename,
+                "source_type": row.source_type,
+                "source_location": row.source_location,
+                "detected_format": row.detected_format,
+                "scan_count": scan_count,
+            })
+        return out
+
+    def list_findings_with_artifacts(self, tenant_id: str) -> list[dict]:
+        """Finding rows joined with artifact metadata for estate
+        grouping — counts of RECORDED findings, never of running
+        cryptography."""
+        rows = (
+            self.db.query(BinaryCryptoFinding, BinaryScanRun, BinaryArtifact)
+            .join(BinaryScanRun,
+                  BinaryCryptoFinding.run_id == BinaryScanRun.scan_id)
+            .join(BinaryArtifact,
+                  BinaryScanRun.artifact_id == BinaryArtifact.artifact_id)
+            .filter(BinaryCryptoFinding.tenant_id == tenant_id)
+            .all())
+        out = []
+        for finding, _run, artifact in rows:
+            out.append({
+                "finding_id": finding.finding_id,
+                "artifact_id": artifact.artifact_id,
+                "finding_type": finding.finding_type,
+                "algorithm": finding.algorithm,
+                "variant": finding.variant,
+                "library": finding.library,
+                "evidence_class": finding.evidence_class,
+                "usage_status": finding.usage_status,
+                "key_size_bits": finding.key_size_bits,
+                "quantum_vulnerable": bool(finding.quantum_vulnerable),
+                "pqc_family": bool(finding.pqc_family),
+                "detected_format": artifact.detected_format,
+                "source_type": artifact.source_type,
+                "original_filename": artifact.original_filename,
+            })
+        return out

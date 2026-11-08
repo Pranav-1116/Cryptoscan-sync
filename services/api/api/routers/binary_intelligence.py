@@ -21,6 +21,9 @@ from db.repositories.binary_intelligence_repository import (
     BinaryIntelligenceRepository,
 )
 from binary_intelligence.comparison import compare_findings
+from binary_intelligence.drift import (
+    build_drift_series, build_estate, build_history,
+)
 from binary_intelligence.orchestrator import (
     ScanJob, ScanJobQueue, WorkerLimits,
 )
@@ -535,3 +538,112 @@ def artifact_twin_edges(artifact_id: str, tenant_id: str = Query(...),
         note="graph relationships need evidence — edges come from "
              "observed binary evidence with provenance, never from names "
              "or co-occurrence (§8)")
+
+
+class DriftPointOut(BaseModel):
+    artifact_id: str
+    sha256: str
+    received_at: Optional[str] = None
+    original_filename: str
+    source_type: str
+    source_location: Optional[str] = None
+    detected_format: str
+    scan_count: int
+    delta_vs_previous: Optional[Dict[str, Any]] = None
+
+
+class DriftSeriesOut(BaseModel):
+    subject: str
+    points: List[DriftPointOut]
+    summary: Dict[str, int]
+    limitations: List[str]
+    note: str
+
+
+class HistoryOut(BaseModel):
+    artifact_id: str
+    runs: List[Dict[str, Any]]
+    finding_timeline: List[Dict[str, Any]]
+    limitations: List[str]
+    note: str
+
+
+class EstateOut(BaseModel):
+    findings_total: int
+    by_format: Dict[str, int]
+    by_source_type: Dict[str, int]
+    by_library: Dict[str, int]
+    by_algorithm: Dict[str, int]
+    quantum_vulnerable_findings: int
+    pqc_family_findings: int
+    note: str
+
+
+@router.get("/drift", response_model=DriftSeriesOut)
+def drift_series(tenant_id: str = Query(...),
+                 subject: Optional[str] = Query(None),
+                 source_location: Optional[str] = Query(None),
+                 db: Session = Depends(get_db_session),
+                 user: str = Depends(get_current_user)) -> DriftSeriesOut:
+    """Version-drift series (§17 Phase 6): artifacts grouped by subject
+    (filename / source location), compared consecutively — drift of
+    static INDICATORS, never drift of behavior; every delta carries its
+    caveat. An on-demand computation; a deployment scheduler can call
+    this endpoint on its own cadence."""
+    repository = _repo(db)
+    artifacts = repository.list_artifact_series(
+        tenant_id, original_filename=subject,
+        source_location=source_location)
+    findings_by_artifact = {}
+    for artifact in artifacts:
+        findings_by_artifact[artifact["artifact_id"]] = \
+            repository.list_findings(tenant_id,
+                                     artifact_id=artifact["artifact_id"])
+    label = subject or source_location or "(all artifacts)"
+    series = build_drift_series(
+        subject=label, artifacts=artifacts,
+        findings_by_artifact=findings_by_artifact)
+    return DriftSeriesOut(**series.as_dict())
+
+
+@router.get("/artifacts/{artifact_id}/history", response_model=HistoryOut)
+def artifact_history(artifact_id: str, tenant_id: str = Query(...),
+                     db: Session = Depends(get_db_session),
+                     user: str = Depends(get_current_user)) -> HistoryOut:
+    """Historical evidence comparison (§17 Phase 6): how findings moved
+    across scan runs of ONE immutable artifact — a change between runs
+    is a change of scanner, profile or signature database, never of the
+    artifact."""
+    repository = _repo(db)
+    if repository.get_artifact(tenant_id, artifact_id) is None:
+        raise HTTPException(status_code=404, detail="artifact not found")
+    run_rows = repository.list_scans_for_artifact(tenant_id, artifact_id)
+    runs = [{
+        "scan_id": row["scan_id"],
+        "scan_profile": row["scan_profile"],
+        "scanner_version": row["scanner_version"],
+        "signature_database_version": row["signature_database_version"],
+        "status": row["status"],
+        "scanned_at": row.get("scanned_at"),
+    } for row in run_rows]
+    findings_by_run = {
+        row["scan_id"]: repository.list_findings(
+            tenant_id, run_id=row["scan_id"])
+        for row in run_rows
+    }
+    history = build_history(artifact_id=artifact_id, runs=runs,
+                            findings_by_run=findings_by_run)
+    return HistoryOut(**history.as_dict())
+
+
+@router.get("/estate", response_model=EstateOut)
+def estate_view(tenant_id: str = Query(...),
+                db: Session = Depends(get_db_session),
+                user: str = Depends(get_current_user)) -> EstateOut:
+    """Vendor and firmware intelligence (§17 Phase 6): findings grouped
+    by format, source, library and algorithm. Grouping is metadata —
+    shared names are not proof of common origin (§8); counts are counts
+    of RECORDED findings, never of running cryptography."""
+    repository = _repo(db)
+    rows = repository.list_findings_with_artifacts(tenant_id)
+    return EstateOut(**build_estate(findings_with_artifacts=rows))
