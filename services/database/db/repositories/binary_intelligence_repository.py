@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from db.models.binary_intelligence import (
     BinaryAnalysisCoverage, BinaryArtifact, BinaryCryptoFinding,
-    BinaryEvidence, BinaryScanRun,
+    BinaryEvidence, BinaryScanRun, BinaryTwinEdge,
 )
 from db.repositories.performance_repository import _aware
 
@@ -262,3 +262,78 @@ class BinaryIntelligenceRepository:
                 "analysis coverage is not finding confidence — no "
                 "finding is never proof of absence (§7)"),
         }
+
+    # ---- Digital Twin relationship edges (§8) ----------------------
+
+    def record_twin_edges(self, *, tenant_id: str, run_id: str,
+                          artifact_id: str, artifact_sha256: str,
+                          edges: list) -> dict:
+        """Persist BOM relationships as twin edges. Every edge keeps its
+        provenance and evidence class; an indicator edge gets NO twin
+        predicate — the twin vocabulary has no 'indicates' (§5/§8)."""
+        written = 0
+        for edge in edges:
+            payload = edge.as_dict() if hasattr(edge, "as_dict") else dict(edge)
+            relationship = payload.get("relationship_type", "")
+            predicate = {
+                "dependsOn": "depends_on",
+                "provides": "provided_by",
+                "uses": "uses_algorithm",
+            }.get(relationship)
+            subject = payload.get("source", "")
+            object_ = payload.get("target", "")
+            if relationship == "provides":
+                # the twin predicate reads 'target provided_by source' —
+                # the BOM relationship_type keeps the original direction
+                subject, object_ = object_, subject
+            row = BinaryTwinEdge(
+                edge_id=f"bedge-{uuid.uuid4().hex[:16]}",
+                tenant_id=tenant_id,
+                run_id=run_id,
+                artifact_id=artifact_id,
+                artifact_sha256=artifact_sha256,
+                subject=subject,
+                relationship_type=relationship,
+                twin_predicate=predicate,
+                object=object_,
+                provenance=payload.get("provenance", "unresolved"),
+                evidence_class=payload.get("evidence_class", "unknown"),
+                limitations=payload.get("limitations") or [],
+                observed_at=_aware(datetime.now(timezone.utc)),
+            )
+            self.db.add(row)
+            written += 1
+        self.db.flush()
+        return {"edges_written": written,
+                "note": "every edge carries its provenance; an indicator "
+                        "edge has no twin predicate — an indicator is not "
+                        "a relationship claim (§5)"}
+
+    def list_twin_edges(self, tenant_id: str, *,
+                        artifact_id: str | None = None,
+                        run_id: str | None = None) -> list[dict]:
+        query = self.db.query(BinaryTwinEdge).filter(
+            BinaryTwinEdge.tenant_id == tenant_id)
+        if artifact_id is not None:
+            query = query.filter(BinaryTwinEdge.artifact_id == artifact_id)
+        if run_id is not None:
+            query = query.filter(BinaryTwinEdge.run_id == run_id)
+        rows = query.order_by(BinaryTwinEdge.created_at).all()
+        out = []
+        for row in rows:
+            out.append({
+                "edge_id": row.edge_id,
+                "run_id": row.run_id,
+                "artifact_id": row.artifact_id,
+                "artifact_sha256": row.artifact_sha256,
+                "subject": row.subject,
+                "relationship_type": row.relationship_type,
+                "twin_predicate": row.twin_predicate,
+                "object": row.object,
+                "provenance": row.provenance,
+                "evidence_class": row.evidence_class,
+                "limitations": row.limitations or [],
+                "observed_at": (row.observed_at.isoformat()
+                                if row.observed_at else None),
+            })
+        return out

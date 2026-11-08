@@ -58,7 +58,7 @@ from db.models.vendor_profile import VendorProfileRevision
 from db.models.user import AuditLog, MfaRecoveryCode, User, UserSession
 from db.models.binary_intelligence import (
     BinaryAnalysisCoverage, BinaryArtifact, BinaryCryptoFinding,
-    BinaryEvidence, BinaryScanRun,
+    BinaryEvidence, BinaryScanRun, BinaryTwinEdge,
 )
 from db.models.performance import (
     PerformanceAggregate, PerformanceAlert, PerformanceAsset,

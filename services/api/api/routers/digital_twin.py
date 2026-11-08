@@ -69,6 +69,7 @@ SNAPSHOT_CAPS = {
     "certificate_usages": 20000,
     "business_processes": 20000,
     "vendor_crypto": 20000,
+    "binary_relationships": 20000,
 }
 
 
@@ -279,6 +280,17 @@ def _snapshot(db: Session) -> dict:
         .limit(SNAPSHOT_CAPS["evidence"] + 1).all()
     )
     evidence_rows = evidence_page[:SNAPSHOT_CAPS["evidence"]]
+    # binary Digital Twin edges (docs/binary-intelligence §8): every
+    # edge carries provenance and evidence class; an indicator edge has
+    # no twin predicate
+    binary_edge_rows = []
+    try:
+        from db.models.binary_intelligence import BinaryTwinEdge
+        binary_edge_rows = load(BinaryTwinEdge, "binary_relationships",
+                                "dependencies",
+                                BinaryTwinEdge.created_at)
+    except Exception:
+        collections["binary_relationships"] = collection_read(0, 0, more=False)
     collections["evidence_system_pairs"] = collection_read(len(evidence_rows), SNAPSHOT_CAPS["evidence"], more=len(evidence_page) > len(evidence_rows), unit="evidence/system pairs")
     evidence = [
         {

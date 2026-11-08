@@ -28,7 +28,7 @@ from db.models.cryptolog import (  # noqa: F401
 )
 from db.models.binary_intelligence import (  # noqa: F401
     BinaryAnalysisCoverage, BinaryArtifact, BinaryCryptoFinding,
-    BinaryEvidence, BinaryScanRun,
+    BinaryEvidence, BinaryScanRun, BinaryTwinEdge,
 )
 from db.models.performance import (  # noqa: F401
     PerformanceAggregate, PerformanceAlert, PerformanceAsset,

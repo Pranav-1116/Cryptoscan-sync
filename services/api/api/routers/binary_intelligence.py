@@ -203,6 +203,12 @@ def _persist(db: Session, tenant_id: str, result, response: Response
     repository.record_coverage(
         tenant_id=tenant_id, run_id=result.scan_id,
         coverage=result.coverage)
+    if result.bom is not None:
+        repository.record_twin_edges(
+            tenant_id=tenant_id, run_id=result.scan_id,
+            artifact_id=result.identity.artifact_id,
+            artifact_sha256=result.identity.sha256,
+            edges=result.bom.relationships)
 
     payload = result.as_dict()
     return ScanAccepted(
@@ -488,3 +494,44 @@ def process_job(job_id: str, response: Response,
     if summary["status"] == "failed":
         raise HTTPException(status_code=422, detail=summary["reason"])
     return _persist(db, summary["tenant_id"], captured["result"], response)
+
+
+class TwinEdgeOut(BaseModel):
+    edge_id: str
+    run_id: str
+    subject: str
+    relationship_type: str
+    twin_predicate: Optional[str] = None
+    object: str
+    provenance: str
+    evidence_class: str
+    limitations: List[str] = Field(default_factory=list)
+    observed_at: Optional[str] = None
+
+
+class TwinEdgesOut(BaseModel):
+    artifact_id: str
+    edges: List[TwinEdgeOut]
+    note: str
+
+
+@router.get("/artifacts/{artifact_id}/twin", response_model=TwinEdgesOut)
+def artifact_twin_edges(artifact_id: str, tenant_id: str = Query(...),
+                        db: Session = Depends(get_db_session),
+                        user: str = Depends(get_current_user)
+                        ) -> TwinEdgesOut:
+    """The Digital Twin relationship slice of this artifact (§8): every
+    edge carries its provenance and evidence class. An indicator edge
+    has NO twin predicate — the twin vocabulary has no 'indicates', and
+    inventing one would promote an indicator into a relationship claim
+    (§5)."""
+    repository = _repo(db)
+    if repository.get_artifact(tenant_id, artifact_id) is None:
+        raise HTTPException(status_code=404, detail="artifact not found")
+    rows = repository.list_twin_edges(tenant_id, artifact_id=artifact_id)
+    return TwinEdgesOut(
+        artifact_id=artifact_id,
+        edges=[TwinEdgeOut(**row) for row in rows],
+        note="graph relationships need evidence — edges come from "
+             "observed binary evidence with provenance, never from names "
+             "or co-occurrence (§8)")

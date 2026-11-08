@@ -156,3 +156,40 @@ class BinaryAnalysisCoverage(BaseModel, TenantScoped):
         Index("ix_binary_analysis_coverage_tenant_run",
               "tenant_id", "run_id", unique=True),
     )
+
+
+class BinaryTwinEdge(BaseModel, TenantScoped):
+    """Digital Twin relationship edge derived from binary evidence
+    (docs/binary-intelligence/01_PRODUCT_SPEC.md §8).
+
+    Every edge carries its provenance class and the evidence class that
+    supports it. An indicator edge has NO twin predicate — the twin
+    vocabulary has no 'indicates', and inventing one would promote an
+    indicator into a relationship claim (§5).
+    """
+    __tablename__ = "binary_twin_edges"
+    __table_args__ = (
+        Index("uq_binary_twin_edges_tenant_edge",
+              "tenant_id", "edge_id", unique=True),
+        Index("ix_binary_twin_edges_tenant_artifact",
+              "tenant_id", "artifact_id"),
+    )
+
+    edge_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    artifact_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    artifact_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    subject: Mapped[str] = mapped_column(String(200), nullable=False)
+    relationship_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    twin_predicate: Mapped[Optional[str]] = mapped_column(
+        String(40), nullable=True,
+        comment="mapped twin vocabulary name; NULL when the evidence "
+                "supports no relationship claim")
+    object: Mapped[str] = mapped_column(String(200), nullable=False)
+    provenance: Mapped[str] = mapped_column(String(40), nullable=False)
+    evidence_class: Mapped[str] = mapped_column(String(40), nullable=False)
+    limitations: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    observed_at: Mapped[object] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+        default=lambda: __import__("datetime").datetime(
+            __import__("datetime").timezone.utc))

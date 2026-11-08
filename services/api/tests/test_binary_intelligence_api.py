@@ -34,7 +34,7 @@ def api():
     from db.connection.session import Base
     from db.models.binary_intelligence import (
         BinaryAnalysisCoverage, BinaryArtifact, BinaryCryptoFinding,
-        BinaryEvidence, BinaryScanRun,
+        BinaryEvidence, BinaryScanRun, BinaryTwinEdge,
     )
 
     engine = create_engine(
@@ -43,7 +43,7 @@ def api():
     Base.metadata.create_all(engine, tables=[
         BinaryArtifact.__table__, BinaryScanRun.__table__,
         BinaryCryptoFinding.__table__, BinaryEvidence.__table__,
-        BinaryAnalysisCoverage.__table__])
+        BinaryAnalysisCoverage.__table__, BinaryTwinEdge.__table__])
     session = sessionmaker(bind=engine)()
 
     from api import dependencies
@@ -295,3 +295,52 @@ def test_scan_runs_record_stage_timings(api):
                   "total_seconds"):
         assert stage in timings, f"§13 measures {stage}"
     assert timings["total_seconds"] > 0
+
+
+def test_twin_edges_persist_with_provenance_and_honest_predicates(api):
+    created = _submit(api, elf_crypto_sample())
+    artifact_id = created.json()["artifact"]["artifact_id"]
+    body = api.get(f"/api/v1/binary/artifacts/{artifact_id}/twin",
+                   params={"tenant_id": "tenant_001"}).json()
+    edges = body["edges"]
+    assert edges, "scan relationships are persisted as twin edges"
+    assert "never from names or co-occurrence" in body["note"]
+
+    by_type = {}
+    for e in edges:
+        by_type.setdefault(e["relationship_type"], []).append(e)
+    dep = by_type["dependsOn"][0]
+    assert dep["subject"] == "payments-engine" and dep["object"] == "libcrypto.so.3"
+    assert dep["twin_predicate"] == "depends_on"
+    assert dep["provenance"] == "static_dependency"
+    assert dep["evidence_class"] == "observed"
+
+    provides = next(e for e in by_type["provides"]
+                    if e["subject"] == "AES-256-GCM")
+    assert provides["object"] == "OpenSSL", \
+        "the twin predicate reads 'algorithm provided_by library'"
+    assert provides["twin_predicate"] == "provided_by"
+    assert provides["relationship_type"] == "provides", \
+        "the BOM direction survives in relationship_type"
+
+    indicates = [e for e in edges if e["relationship_type"] == "indicates"]
+    assert all(e["twin_predicate"] is None for e in indicates), \
+        "an indicator edge has NO twin predicate — an indicator is not " \
+        "a relationship claim (§5)"
+
+    cross = api.get(f"/api/v1/binary/artifacts/{artifact_id}/twin",
+                    params={"tenant_id": "tenant_002"})
+    assert cross.status_code == 404
+
+
+def test_scan_rejects_malformed_input_safely(api):
+    # base64 that decodes to garbage is a NOT_DETECTED finding, not a crash
+    created = _submit(api, b"\x00\x01\x02not-an-executable", name="junk.bin")
+    assert created.status_code == 201
+    body = created.json()
+    assert body["findings"][0]["confidence"] == "not_detected" or \
+        body["artifact"]["detected_format"] == "unknown"
+    assert body["status"] == "completed"
+    if body["artifact"]["detected_format"] == "unknown":
+        assert "never guessed" in body["artifact"]["format_reason"], \
+            "unknown is named with its reason, never guessed"
