@@ -1,0 +1,109 @@
+{
+  "schema": "zelnx.public-source-baseline/1",
+  "subject": "Emirates NBD",
+  "prepared_for": "ZELNX (zelnx.com) — post-quantum migration assessment",
+  "prepared_on": "2026-11-07",
+  "method": "desk research of public sources only: bank and vendor press releases, trade press, vendor customer stories, public job adverts. No scanning, probing or non-public data was used.",
+  "status": "outside-in baseline. It is NOT a CBOM: public sources do not disclose algorithms, keys, certificates or HSMs.",
+  "confidence_key": {
+    "high": "published by the bank or the vendor itself (press release / customer story)",
+    "medium": "reported by established trade press",
+    "low": "third-party aggregator, job advert or undated page; use only as a lead to verify"
+  },
+  "currency_rule": "Dates are publication dates; a disclosed product may since have been replaced. Treat dated disclosures as 'was deployed' and confirm current state with the bank.",
+  "organisation_profile": [
+    {"attribute": "Group", "detail": "Leading banking group in the MENAT region; presence in 13 countries; over 20 million customers.", "refs": ["13"]},
+    {"attribute": "Digital brands", "detail": "Liv. (digital-only bank); API developer portal for corporate clients.", "refs": ["9", "25"]},
+    {"attribute": "Subsidiary", "detail": "Emirates Islamic Bank went live on Finacle in 2016 (first Islamic site for that platform).", "refs": ["2"]},
+    {"attribute": "Footprint", "detail": "A bank job advert cites 853 branches and 4,213 ATMs/SDMs across the group.", "refs": ["18"]},
+    {"attribute": "Markets with core migrated", "detail": "Singapore (Nov 2018), UK (Jul 2019), Saudi Arabia (phase 3, Jan 2020); target of one platform for all entities by end-2020.", "refs": ["3"]}
+  ],
+  "disclosures": [
+    {"item_id": "finacle-core", "name": "Infosys Finacle (EdgeVerve)", "category": "core_banking", "role": "Group core banking", "disclosed": "Finacle used at home and across international entities; migration of all entities to one updated platform; award for core implementation (2020).", "refs": ["3", "4", "24"], "confidence": "high_medium", "confidence_basis": "bank_or_vendor_published", "as_of": "2020 and later"},
+    {"item_id": "tcs-bancs", "name": "TCS BaNCS for Payments", "category": "payments", "role": "Payments processing", "disclosed": "Selected as core payments platform to standardise payments across India, Egypt, Saudi Arabia, Singapore, UK and UAE.", "refs": ["2"], "confidence": "medium", "confidence_basis": "trade_press", "as_of": "date not shown in snippet"},
+    {"item_id": "intellect-transaction", "name": "Intellect Design Arena", "category": "transaction_banking", "role": "Transaction banking", "disclosed": "Technology selected to overhaul wholesale/transaction banking as part of an AED 1 billion digitisation commitment.", "refs": ["5"], "confidence": "medium", "confidence_basis": "trade_press", "as_of": "date not shown"},
+    {"item_id": "calypso-treasury", "name": "Calypso (treasury)", "category": "treasury", "role": "Treasury front-to-back", "disclosed": "End-to-end upgrade consolidating treasury products into a single core system across markets.", "refs": ["6"], "confidence": "medium", "confidence_basis": "trade_press", "as_of": "date not shown"},
+    {"item_id": "pinelabs-credit", "name": "Pine Labs Credit+", "category": "merchant_acquiring", "role": "Merchant acquiring / credit", "disclosed": "Partnership to deliver in-store and online merchant acquiring solution.", "refs": ["7"], "confidence": "medium", "confidence_basis": "trade_press", "as_of": "date not shown"},
+    {"item_id": "silent-eight", "name": "Silent Eight", "category": "compliance_ai", "role": "AML / sanctions screening", "disclosed": "AI and machine-learning platform to automate screening alert disposition; proof of value on the bank's screening alerts.", "refs": ["8"], "confidence": "high", "confidence_basis": "bank_or_vendor_published", "as_of": "2024 announcement"},
+    {"item_id": "ms-copilot", "name": "Microsoft 365 Copilot, GitHub Copilot X, ChatGPT use cases", "category": "productivity_ai", "role": "Productivity and developer AI", "disclosed": "Announced July 2023; 'more than a thousand developers' on Copilot X; hackathon with McKinsey and QuantumBlack.", "refs": ["10"], "confidence": "high", "confidence_basis": "bank_or_vendor_published", "as_of": "2023-07"},
+    {"item_id": "openai-models", "name": "OpenAI models", "category": "enterprise_ai", "role": "Enterprise / sovereign AI", "disclosed": "Reported as first MENA bank to use OpenAI sovereign AI infrastructure, connecting models to internal systems and APIs.", "refs": ["12"], "confidence": "medium", "confidence_basis": "trade_press", "as_of": "date not shown"},
+    {"item_id": "aggregator-stack", "name": "Cloudera / Hadoop; Bloomberg; SAP", "category": "data_platform", "role": "Data platform; market data; enterprise apps", "disclosed": "Listed by a procurement-research aggregator as detected products. Not confirmed by the bank here.", "refs": ["20"], "confidence": "low", "confidence_basis": "aggregator", "as_of": "undated"},
+    {"item_id": "api-portal", "name": "API banking platform", "category": "open_banking", "role": "Open/API banking", "disclosed": "API developer portal described as the region's most comprehensive; vendor not named.", "refs": ["25"], "confidence": "medium", "confidence_basis": "trade_press", "as_of": "date not shown; vendor unknown"},
+
+    {"item_id": "ncr-atm", "name": "NCR (ATM estate)", "category": "atm", "role": "ATM / self-service hardware, software, services", "disclosed": "Chosen as unified end-to-end self-service vendor; APTRA software; Windows 7 platform at the time of the 2014 announcement.", "refs": ["1"], "confidence": "high", "confidence_basis": "bank_or_vendor_published", "as_of": "2014-02", "currency_note": "treat as 'was deployed'; confirm current state with the bank"},
+    {"item_id": "dell-powermax", "name": "Dell PowerMax", "category": "storage", "role": "Enterprise storage", "disclosed": "Customer story: bank's core runs on PowerMax; 30% data-centre cost reduction; response times down to 1 ms.", "refs": ["17"], "confidence": "high", "confidence_basis": "bank_or_vendor_published", "as_of": "date not shown"},
+    {"item_id": "vmware", "name": "VMware", "category": "virtualisation", "role": "Virtualisation", "disclosed": "Trend Micro story states the IT environment is VMware.", "refs": ["16"], "confidence": "low_medium", "confidence_basis": "vendor_story_undated", "as_of": "undated, likely old", "currency_note": "treat as 'was deployed'; confirm current state with the bank"},
+    {"item_id": "private-cloud", "name": "In-house private cloud", "category": "private_cloud", "role": "Private cloud platform", "disclosed": "Bank launched own private cloud, claimed as a regional banking first; underlying vendors not named in the retrieved text.", "refs": ["21"], "confidence": "medium", "confidence_basis": "trade_press", "as_of": "circa 2018"},
+    {"item_id": "du-datacentres", "name": "du Tier III data centres", "category": "hosting", "role": "Third-party hosting", "disclosed": "du hosts the bank's first third-party data centre and a further Tier III data hall in Dubai (announced Oct 2023).", "refs": ["13"], "confidence": "high", "confidence_basis": "bank_or_vendor_published", "as_of": "2023-10"},
+    {"item_id": "moro-avaya", "name": "Moro Hub (DEWA)", "category": "cloud_contact_centre", "role": "Cloud hosting / contact-centre platform", "disclosed": "Moro Connect cloud contact-centre built on Avaya OneCloud for the bank.", "refs": ["14"], "confidence": "high", "confidence_basis": "bank_or_vendor_published", "as_of": "2021-02"},
+    {"item_id": "azure-aws", "name": "Microsoft Azure; AWS", "category": "public_cloud", "role": "Public cloud", "disclosed": "Azure powers Liv.; AWS used for ML, analytics, IoT and NLP in retail banking.", "refs": ["9", "11"], "confidence": "high_medium", "confidence_basis": "bank_or_vendor_published", "as_of": "Azure 2021-07; AWS date not shown"},
+
+    {"item_id": "cisco-sonic", "name": "Cisco + SONiC SDN fabric", "category": "network", "role": "Data-centre network", "disclosed": "Job advert for a Lead Technology Engineer to build and maintain an 'ENBD SDN-Fabric' using Enterprise SONiC and legacy networking; stack described as Cisco and SONiC.", "refs": ["18"], "confidence": "low_medium", "confidence_basis": "job_advert", "as_of": "undated", "currency_note": "job advert shows practices at the time of posting and may describe a specific team, not the whole bank"},
+    {"item_id": "ipsec-routing", "name": "IPsec, ACLs, routing authentication", "category": "network_security_practices", "role": "Network security practices", "disclosed": "Job advert lists network-security responsibilities including IPsec, ACLs and routing protocol authentication across bank data centres, server rooms and IDFs (owned or rented).", "refs": ["19"], "confidence": "low_medium", "confidence_basis": "job_advert", "as_of": "undated", "currency_note": "job advert shows practices at the time of posting and may describe a specific team, not the whole bank"},
+    {"item_id": "du-voice", "name": "du (voice)", "category": "telecom_voice", "role": "Telecom / hosting and voice", "disclosed": "du provides data-centre hosting; du also launched 'Next Gen Voice' cloud-native communications platform with the bank (per aggregator).", "refs": ["13", "20"], "confidence": "low", "confidence_basis": "aggregator", "as_of": "undated (voice)"},
+    {"item_id": "avaya-moro-connect", "name": "Avaya / Moro Connect", "category": "unified_comms", "role": "Unified communications / contact centre", "disclosed": "Long-standing Avaya relationship; cloud CCaaS delivered through Moro Hub in 2021.", "refs": ["14"], "confidence": "high", "confidence_basis": "bank_or_vendor_published", "as_of": "2021-02"},
+
+    {"item_id": "trendmicro-deepsec", "name": "Trend Micro Deep Security", "category": "workload_security", "role": "Server / workload protection", "disclosed": "Customer story: in use about five years at the time, with plan to extend to the VMware platform.", "refs": ["16"], "confidence": "high", "confidence_basis": "bank_or_vendor_published", "as_of": "undated", "currency_note": "treat as 'was deployed'; confirm current state with the bank"},
+    {"item_id": "data443", "name": "Data443 Risk Mitigation", "category": "data_security", "role": "Data security / classification", "disclosed": "Multi-year subscription agreement spanning the bank's technology landscape, supporting a 'cloud first' migration of data and users.", "refs": ["15"], "confidence": "medium", "confidence_basis": "trade_press", "as_of": "date not shown"}
+  ],
+  "crypto_siting": [
+    {"area": "Core banking (Finacle) and payments (TCS BaNCS)", "crypto_assets_typically_present": ["TLS between tiers", "database/TDE keys", "service-account keys", "message signing for payment channels", "HSM-backed key use"], "basis_for_inference": "Core and payments platforms are disclosed [2][3].", "question_to_confirm": "Which HSMs and key hierarchies protect core and payments? Which TLS versions between tiers?"},
+    {"area": "ATM estate (NCR APTRA)", "crypto_assets_typically_present": ["PIN and terminal key management", "key-loading protocols", "TLS to the ATM switch", "EMV key material"], "basis_for_inference": "ATM vendor and software disclosed [1].", "question_to_confirm": "Current ATM software/OS, key-loading method, and migration plan for terminal keys."},
+    {"area": "Public cloud (Azure, AWS)", "crypto_assets_typically_present": ["Cloud KMS keys or BYOK", "TLS certificates", "storage encryption", "workload identities"], "basis_for_inference": "Azure and AWS use disclosed [9][11].", "question_to_confirm": "Who holds the keys for each cloud workload? Are customer-managed keys used?"},
+    {"area": "Hosted/private DC (du, in-house cloud)", "crypto_assets_typically_present": ["Inter-site links encryption", "hypervisor and storage encryption", "certificate authorities for internal services"], "basis_for_inference": "Third-party and private DCs disclosed [13][21].", "question_to_confirm": "How are DC-to-DC and DC-to-branch links encrypted?"},
+    {"area": "Network (SDN fabric, IPsec)", "crypto_assets_typically_present": ["IPsec/IKE algorithms and groups", "routing authentication keys", "VPN certificates"], "basis_for_inference": "Job advert cites IPsec and routing authentication [19].", "question_to_confirm": "IKE version, DH groups, and authentication method for all VPNs."},
+    {"area": "API banking and AI integrations", "crypto_assets_typically_present": ["API gateway certificates", "mTLS", "OAuth/JWT signing keys", "secrets for AI-to-system connectors"], "basis_for_inference": "API portal and OpenAI integration disclosed [12][25].", "question_to_confirm": "Where are API signing keys held? How are AI connector secrets managed?"},
+    {"area": "Contact centre (Avaya / Moro)", "crypto_assets_typically_present": ["TLS and SRTP for voice", "SIP trunk certificates", "recording encryption"], "basis_for_inference": "Cloud contact centre disclosed [14].", "question_to_confirm": "Voice-encryption settings and recording-storage encryption."},
+    {"area": "Data protection (Data443, Trend Micro)", "crypto_assets_typically_present": ["Agent-to-server TLS", "encryption of data at rest where the product applies it"], "basis_for_inference": "Products disclosed [15][16].", "question_to_confirm": "Which datasets are encrypted by these products and with which keys?"}
+  ],
+  "unverified_claims": [
+    {"claim_id": "qkd-pilot-toshiba", "statement": "ENBD ran a quantum key distribution (QKD) pilot with a Toshiba system between two Dubai branches.", "source": "22", "source_quality": "low", "status": "unverified", "treatment": "could not be confirmed by the bank or Toshiba; treat it as a question to ask the bank, not as fact"}
+  ],
+  "gaps": [
+    {"gap_id": "gap-crypto-detail", "statement": "No public source gives ENBD's cryptographic algorithms, key lengths, certificate inventory, PKI, HSM vendor or TLS configuration. A CBOM cannot be completed from public data."},
+    {"gap_id": "gap-dated-items", "statement": "Dated items (NCR 2014, Trend Micro, VMware) may no longer reflect the estate."},
+    {"gap_id": "gap-aggregator-data", "statement": "Aggregator data (Cloudera, Bloomberg, SAP) [20] is unconfirmed."},
+    {"gap_id": "gap-job-adverts", "statement": "Job adverts show practices at the time of posting and may describe a specific team, not the whole bank."},
+    {"gap_id": "gap-missing-vendor-classes", "statement": "Network, firewall, SIEM/SOC, identity, PAM and HSM vendors are absent from public sources. Do not assume any."}
+  ],
+  "data_requests": [
+    {"request_id": "req-hsm-inventory", "category": "hsm_inventory", "item": "HSM inventory: vendor, model, firmware, partitions, key hierarchies, FIPS 140 level, which applications use each."},
+    {"request_id": "req-pki", "category": "pki", "item": "PKI: internal and external CAs, hierarchy depth, signature algorithms, certificate templates, lifetimes, revocation method."},
+    {"request_id": "req-certificate-inventory", "category": "certificate_inventory", "item": "Certificate inventory for internet-facing, internal, mobile-app, API and device certificates, with key type and size."},
+    {"request_id": "req-tls-ssh-baselines", "category": "tls_ssh", "item": "TLS and SSH configuration baselines per tier (load balancers, API gateways, middleware, databases), including minimum versions and cipher suites."},
+    {"request_id": "req-network-crypto", "category": "network_crypto", "item": "Network crypto: IPsec/IKE parameters, site-to-site and partner VPNs, wireless authentication (802.1X / EAP method), routing authentication."},
+    {"request_id": "req-payment-card-crypto", "category": "payment_card_crypto", "item": "Payment and card crypto: PIN/key management, key-exchange methods for ATMs and terminals, card-scheme and interbank connectivity, message signing."},
+    {"request_id": "req-core-db-encryption", "category": "core_db_encryption", "item": "Core and database encryption: transparent data encryption, tokenisation, backup encryption, and who holds the keys."},
+    {"request_id": "req-cloud-kms", "category": "cloud_kms", "item": "Cloud key management: KMS or BYOK/HYOK arrangements for each cloud and hosted facility, with key location and rotation."},
+    {"request_id": "req-supply-chain", "category": "software_supply_chain", "item": "Software supply chain: crypto libraries and versions per application (SBOM), code-signing keys, and CI/CD secrets handling."},
+    {"request_id": "req-vendor-pqc-roadmaps", "category": "vendor_pqc_roadmaps", "item": "Vendor contracts and roadmaps: each vendor's PQC readiness statement and the date they will support NIST FIPS 203/204/205."},
+    {"request_id": "req-data-retention", "category": "data_retention", "item": "Data-retention classes: which data must stay confidential for 10+ years (the 'harvest now, decrypt later' exposure)."}
+  ],
+  "references": {
+    "1": "NCR press release, 20 Feb 2014 - Emirates NBD selects NCR as unified preferred technology partner. https://investor.ncrvoyix.com/news-releases/news-release-details/emirates-nbd-selects-ncr-its-unified-preferred-technology",
+    "2": "FinTech Futures - Emirates NBD upgrades payments system with TCS. https://fintechfutures.com/?p=15159034",
+    "3": "FinTech Futures, 6 Jan 2020 - Emirates NBD completes third phase of core banking upgrade. https://www.fintechfutures.com/core-banking-technology/emirates-nbd-completes-third-phase-of-its-core-banking-systems-upgrade",
+    "4": "The Asian Banker, Nov 2020 - Emirates NBD and Infosys Finacle core banking award. https://theasianbanker.com/press-releases/emirates-nbd-and-infosys-finance-win-best-core-banking-technology-implementation-in-the-middle-east-award-for-rationalising-processes-and-cost-through-use-of-agile-technology-2020",
+    "5": "Finextra - Emirates NBD overhauls wholesale banking operations (Intellect). https://finextra.com/newsarticle/33436/emirates-nbd-overhauls-wholesale-banking-operations",
+    "6": "Finextra - Emirates NBD goes end-to-end with Calypso treasury tech. https://finextra.com/pressarticle/77391/emirates-nbd-goes-end-to-end-with-calypso-treasury-tech",
+    "7": "Finextra - Emirates NBD to implement Pine Labs Credit+ platform. https://www.finextra.com/pressarticle/100793/emirates-nbd-to-implement-pine-labs-credit-platform",
+    "8": "Financial IT, 2 Feb 2024 - Emirates NBD partners with Silent Eight. https://financialit.net/news/machine-learning/emirates-nbd-partners-silent-eight-automate-alert-disposition-and-enhance",
+    "9": "Microsoft News, 15 Jul 2021 - Liv. elevates digital banking with Azure. https://news.microsoft.com/en-xm/2021/07/15/emirates-nbds-liv-elevates-digital-banking-experiences-with-microsoft-azure-cloud-services/",
+    "10": "Intelligent CIO, 14 Jul 2023 - Emirates NBD adopts Microsoft 365 Copilot, GitHub Copilot X, ChatGPT. https://www.intelligentcio.com/me/2023/07/14/emirates-nbd-adopts-microsoft-365-copilot-github-copilot-x-chatgpt-to-harness-generative-ai/",
+    "11": "Technology Magazine - Emirates NBD partners with AWS. https://technologymagazine.com/enterprise-it/emirates-nbd-partners-aws-create-ai-enabled-bank-future",
+    "12": "FF News - Emirates NBD first MENA bank to use OpenAI sovereign AI infrastructure. https://ffnews.com/news/emirates-nbd-becomes-first-mena-bank-to-harness-openai-s-sovereign-ai-infrastruc-09cf5332",
+    "13": "Zawya, Oct 2023 - du announces strategic win with Emirates NBD (Tier III data center). https://zawya.com/en/press-release/companies-news/du-announces-strategic-win-with-emirates-nbd-to-host-a-tier-iii-data-center-cdgl5g7s",
+    "14": "Finextra, Feb 2021 - Emirates NBD to implement cloud communications package from Moro. https://www.finextra.com/pressarticle/86178/emirates-nbd-to-implement-cloud-communications-package-from-moro",
+    "15": "Stock Titan - Data443 deploys data product for Emirates NBD. https://www.stocktitan.net/news/ATDS/data443-deploys-market-leading-data-product-for-flagship-global-bank-q3293dmeu62i.html",
+    "16": "Trend Micro customer story - Emirates NBD. https://trendmicro.com/tr_tr/about/customer-stories/emirates-nbd.html",
+    "17": "Dell customer story - Emirates NBD (PowerMax). https://www.dell.com/en-ca/lp/customer-stories-emirates-nbd",
+    "18": "Job advert (Foundit) - Lead Technology Engineer, Network, Emirates NBD. https://www.foundit.in/job/lead-technology-engineer-network-emirates-nbd-bengaluru-bangalore-43835762",
+    "19": "Job advert (Foundit Gulf) - Technology Engineer, Emirates NBD Dubai. https://www.founditgulf.com/job/technology-engineer-uae-national-emirates-nbd-dubai-69418154",
+    "20": "RFP.wiki - Emirates NBD technology stack (aggregator). https://www.rfp.wiki/financial-services-banking-fintech/core-banking-systems/emirates-nbd",
+    "21": "Intelligent CIO Middle East, issue 30 - Emirates NBD Group launches private cloud. https://me.magazine.intelligentcio.com/intelligent-cio-middle-east-issue-30/0062109001525980808/p11",
+    "22": "UAE Free Zone Finder - quantum startup guide 2026 (UNVERIFIED claim of QKD pilot). https://uaefreezonefinder.com/uae-quantum-computing-startup-guide-2026/",
+    "23": "Gulf News - Emirates Islamic digitisation and core platform. https://gulfnews.com/amp/story/business%2Fbanking%2Fdigitisation-its-all-in-the-family-1.2130607",
+    "24": "EdgeVerve / Finacle case study - Emirates NBD. https://www.casestudies.com/company/edgeverve/case-study/emirates-nbd-customer-case-study",
+    "25": "Business Chief - Emirates NBD generative AI and API developer portal. https://businesschief.ae/technology/emirates-nbd-to-transform-operations-with-generative-ai"
+  }
+}
