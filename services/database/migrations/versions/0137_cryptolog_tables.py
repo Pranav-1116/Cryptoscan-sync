@@ -130,6 +130,15 @@ def upgrade() -> None:
     op.create_index("ix_cryptolog_checkpoints_checkpoint_ref", "cryptolog_checkpoints",
                     ["checkpoint_ref"], unique=True)
 
+    # tenant-scoped chronological reads — the composite prefix covers the
+    # models' declared tenant_id indexes (model/migration index parity)
+    op.create_index("ix_cryptolog_event_corrections_tenant_created",
+                    "cryptolog_event_corrections", ["tenant_id", "created_at"])
+    op.create_index("ix_cryptolog_alerts_tenant_created",
+                    "cryptolog_alerts", ["tenant_id", "created_at"])
+    op.create_index("ix_cryptolog_checkpoints_tenant_created",
+                    "cryptolog_checkpoints", ["tenant_id", "created_at"])
+
 
 def downgrade() -> None:
     op.drop_table("cryptolog_checkpoints")
