@@ -379,3 +379,145 @@ def test_comparison_reports_indicator_drift_never_behavior_drift():
     added = next(d for d in body["deltas"] if d["change"] == "added")
     assert "not proof of new runtime behavior" in added["caveat"]
     assert "never drift of runtime behavior" in body["note"]
+
+
+# --- Phase 4 formats: Mach-O, .NET, WASM, static archives -----------
+
+def _macho64(*, libs=("_EVP_aes_256_gcm",), dylib=b"/usr/lib/libcrypto.dylib"):
+    import struct as _s
+    name = dylib + b"\x00"
+    lc1 = _s.pack(">IIIIII", 0xC, 24 + len(name), 24, 2, 0x1000, 0) + name
+    strtab = b"\x00" + b"\x00".join(x.encode() for x in libs) + b"\x00"
+    lc2 = _s.pack(">IIIIII", 0x2, 24, 0x100, len(libs), 0x200, len(strtab))
+    hdr = _s.pack(">IIIIIIII", 0xFEEDFACF, 0x01000007, 3, 2, 2,
+                  len(lc1) + len(lc2), 0, 0)
+    body = hdr + lc1 + lc2
+    body += b"\x00" * (0x100 - len(body))
+    for i, symbol in enumerate(libs):
+        body += _s.pack(">IBBHQ", 1 + sum(len(x) + 1 for x in libs[:i]),
+                        0, 0, 0, 0)
+    body += b"\x00" * (0x200 - len(body)) + strtab
+    return body
+
+
+def test_macho_parses_headers_libraries_and_symbols():
+    from binary_intelligence.macho import parse_macho
+    report = parse_macho(_macho64())
+    assert report.valid and report.bitness == 64
+    assert report.architecture == "x86-64" and report.filetype == "execute"
+    assert report.libraries == ["/usr/lib/libcrypto.dylib"]
+    assert "_EVP_aes_256_gcm" in report.symbols
+    broken = parse_macho(b"\xfe\xed\xfa\xcf" + b"\xff" * 4)
+    assert broken.valid is False and "refused" in broken.reason
+
+
+def test_wasm_imports_are_extracted_and_bounded():
+    from binary_intelligence.wasm import parse_wasm
+    body = bytes([1, 5]) + b"envis" + bytes([3]) + b"ctx" + bytes([0])
+    module = b"\x00asm\x01\x00\x00\x00" + bytes([2, len(body)]) + body
+    report = parse_wasm(module)
+    assert report.valid and report.imports == ["envis.ctx"]
+    assert any(section["name"] == "import"
+               for section in report.sections)
+    truncated = parse_wasm(b"\x00asm\x01\x00\x00\x00" + bytes([2, 200]) + b"x")
+    assert any("unknown, never guessed" in limitation
+               for limitation in truncated.limitations), \
+        "a truncated section is named as unknown, never guessed as parsed"
+    malformed = parse_wasm(b"\x00asm\x01\x00\x00\x00" +
+                           bytes([2, 7]) +
+                           bytes([255, 255, 255, 255, 255, 0, 0]))
+    assert any("never guessed" in limitation
+               for limitation in malformed.limitations), \
+        "malformed import data is named unknown, never guessed"
+    broken = parse_wasm(b"\x00asm\x01\x00\x00\x00" +
+                        bytes([2, 255, 255, 255, 255, 255, 255]))
+    assert broken.valid is False and "refused" in broken.reason
+
+
+def test_static_archive_members_are_inventoried_with_bounded_reads():
+    from binary_intelligence.archive import parse_archive
+
+    def member(name: str, blob: bytes) -> bytes:
+        header = (name.ljust(16).encode() + b"0".ljust(12) +
+                  b"0".ljust(6) + b"0".ljust(6) + b"644".ljust(8) +
+                  str(len(blob)).encode().ljust(10) + b"\x60\x0a")
+        padding = b"\x00" if len(blob) % 2 else b""
+        return header + blob + padding
+
+    archive = (b"!<arch>\n" + member("a.o/", elf_crypto_sample()[:200]) +
+               member("b.o/", b"plain data member"))
+    report = parse_archive(archive)
+    assert report.valid
+    assert [m["name"] for m in report.members] == ["a.o", "b.o"]
+    kinds = {m["name"]: m["kind"] for m in report.members}
+    assert kinds["a.o"] == "elf"
+    broken = parse_archive(b"not an archive")
+    assert broken.valid is False
+
+
+# --- §13: production orchestration ---------------------------------
+
+def test_worker_queue_is_bounded_and_counts_backpressure():
+    from binary_intelligence.orchestrator import (
+        ScanJob, ScanJobQueue, WorkerLimits,
+    )
+    with pytest.raises(ValueError, match="positive"):
+        WorkerLimits(max_seconds_per_job=0)
+    queue = ScanJobQueue(limits=WorkerLimits(max_queue_depth=2,
+                                             max_seconds_per_job=60))
+    for i in range(3):
+        accepted, reason = queue.submit(ScanJob(
+            job_id=f"j{i}", tenant_id="t", data=elf_crypto_sample(),
+            original_filename="x", source_type="upload", uploaded_by="u"))
+        if i < 2:
+            assert accepted and reason == "queued"
+        else:
+            assert not accepted and "backpressure" in reason
+    assert queue.refused_count == 1
+    assert "never silently" in queue.as_dict()["note"]
+
+    big_ok, big_reason = queue.submit(ScanJob(
+        job_id="big", tenant_id="t", data=b"x" * 100,
+        original_filename="x", source_type="upload", uploaded_by="u"))
+    # queue is full so it refuses before size; with a fresh queue:
+    fresh = ScanJobQueue(limits=WorkerLimits(max_artifact_bytes=10))
+    ok, reason = fresh.submit(ScanJob(
+        job_id="big", tenant_id="t", data=b"x" * 100,
+        original_filename="x", source_type="upload", uploaded_by="u"))
+    assert not ok and "above the worker limit" in reason
+
+
+def test_process_job_runs_under_limits_and_records_stage_timings():
+    from binary_intelligence.orchestrator import (
+        ScanJob, ScanJobQueue, WorkerLimits,
+    )
+    queue = ScanJobQueue(limits=WorkerLimits(max_queue_depth=4,
+                                             max_seconds_per_job=60))
+    queue.submit(ScanJob(
+        job_id="job-1", tenant_id="t1", data=elf_crypto_sample(),
+        original_filename="payments-engine", source_type="upload",
+        uploaded_by="auditor"))
+    assert queue.process_job("missing") is None
+    captured = {}
+    summary = queue.process_job("job-1", on_result=lambda r: captured.update(r=r))
+    assert summary["status"] == "completed"
+    assert captured["r"].findings
+    timings = summary["timings"]
+    for stage in ("file_intake_and_hash_seconds",
+                  "format_identification_and_structure_seconds",
+                  "symbol_string_extraction_seconds",
+                  "cryptographic_detection_seconds",
+                  "certificate_analysis_seconds",
+                  "total_seconds"):
+        assert stage in timings, f"§13 measures {stage}"
+    assert timings["total_seconds"] > 0
+    assert queue.processed_count == 1
+
+    # wall-clock breach is a reported failure, never a silent truncation
+    strict = ScanJobQueue(limits=WorkerLimits(max_queue_depth=4,
+                                              max_seconds_per_job=0.000001))
+    strict.submit(ScanJob(
+        job_id="job-2", tenant_id="t1", data=elf_crypto_sample(),
+        original_filename="x", source_type="upload", uploaded_by="u"))
+    failed = strict.process_job("job-2")
+    assert failed["status"] == "failed" and "wall-clock limit" in failed["reason"]

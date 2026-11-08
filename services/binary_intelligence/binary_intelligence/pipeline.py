@@ -18,7 +18,11 @@ from binary_intelligence.detection import (
     SCANNER_NAME, StaticExtraction, build_coverage, detect_crypto,
     not_detected_finding,
 )
+from binary_intelligence.archive import parse_archive
+from binary_intelligence.dotnet import parse_dotnet
 from binary_intelligence.elf import parse_elf
+from binary_intelligence.macho import parse_macho
+from binary_intelligence.wasm import parse_wasm
 from binary_intelligence.java import parse_class, parse_jar
 from binary_intelligence.evidence import CoverageReport, CryptoFinding
 from binary_intelligence.formats import BinaryFormat
@@ -43,6 +47,7 @@ class ScanResult:
     coverage: CoverageReport
     pqc_assessment: Dict[str, Any]
     bom: Optional[Any] = None
+    timings: Dict[str, float] = field(default_factory=dict)
     notes: List[str] = field(default_factory=list)
 
     def as_dict(self) -> Dict[str, Any]:
@@ -60,6 +65,7 @@ class ScanResult:
             "coverage": self.coverage.as_dict(),
             "pqc_assessment": self.pqc_assessment,
             "bom": self.bom.as_dict() if self.bom is not None else None,
+            "timings": self.timings,
             "notes": self.notes,
         }
 
@@ -96,10 +102,21 @@ def run_scan(*, tenant_id: str, data: bytes, original_filename: str,
         raise ValueError(
             f"unknown scan profile {profile!r} — profiles are "
             f"{PROFILES}; a deep scan is never the default (§12)")
+    import time as _time
+    timings: Dict[str, float] = {}
+    _stage_start = _time.perf_counter()
+
+    def _mark(stage: str) -> None:
+        nonlocal _stage_start
+        now = _time.perf_counter()
+        timings[stage] = round(now - _stage_start, 6)
+        _stage_start = now
+
     identity = artifact_identity(
         tenant_id=tenant_id, data=data,
         original_filename=original_filename, source_type=source_type,
         uploaded_by=uploaded_by, source_location=source_location)
+    _mark("file_intake_and_hash_seconds")
     scan_id = f"bscan-{uuid.uuid4().hex[:12]}"
     notes: List[str] = [
         "static analysis only — the artifact was never executed (§14)",
@@ -135,6 +152,48 @@ def run_scan(*, tenant_id: str, data: bytes, original_filename: str,
             extraction.stripped = not bool(report.exported_functions)
         else:
             failures.append(f"PE parsing refused: {report.reason}")
+        # a .NET assembly is a PE with a CLR header (Phase 4)
+        dotnet = parse_dotnet(data)
+        if dotnet.valid:
+            structural["dotnet"] = dotnet.as_dict()
+            extraction.symbols.extend(dotnet.type_names)
+            if dotnet.runtime_version:
+                extraction.version_strings.append(dotnet.runtime_version)
+            if dotnet.assembly_name:
+                extraction.dependencies.append(dotnet.assembly_name)
+    elif identity.detected_format in (BinaryFormat.MACHO,
+                                     BinaryFormat.MACHO_FAT):
+        report = parse_macho(data)
+        structural["macho"] = report.as_dict()
+        if report.valid:
+            extraction.symbols = list(report.symbols)
+            extraction.dependencies = list(report.libraries)
+            extraction.sections = [{"executable": True,
+                                    "name": seg.get("name", "?")}
+                                   for seg in report.segments]
+            extraction.version_strings.append(
+                f"Mach-O {report.architecture} {report.filetype}")
+            if any("libcrypto" in lib or "libSystem" in lib
+                   for lib in report.libraries):
+                pass    # dependency detection handles the mapping
+        else:
+            failures.append(f"Mach-O parsing refused: {report.reason}")
+    elif identity.detected_format is BinaryFormat.STATIC_ARCHIVE:
+        report = parse_archive(data)
+        structural["archive"] = report.as_dict()
+        if report.valid:
+            extraction.imports = list(report.imported_symbols)
+            extraction.dependencies = list(report.dependencies)
+        else:
+            failures.append(f"archive refused: {report.reason}")
+    elif identity.detected_format is BinaryFormat.WASM:
+        report = parse_wasm(data)
+        structural["wasm"] = report.as_dict()
+        if report.valid:
+            extraction.symbols = list(report.imports)
+            extraction.exports = list(report.exports)
+        else:
+            failures.append(f"WASM refused: {report.reason}")
     elif identity.detected_format in (BinaryFormat.JAVA_CLASS,
                                      BinaryFormat.ZIP_ARCHIVE):
         if identity.detected_format is BinaryFormat.JAVA_CLASS:
@@ -171,6 +230,7 @@ def run_scan(*, tenant_id: str, data: bytes, original_filename: str,
         failures.append(
             f"no structural parser for {identity.detected_format.value}")
 
+    _mark("format_identification_and_structure_seconds")
     # Stage 3: bounded strings
     extraction.strings = _bounded_strings(data)
     for text in extraction.strings:
@@ -179,13 +239,16 @@ def run_scan(*, tenant_id: str, data: bytes, original_filename: str,
                                       "Bouncy-Castle", "go.buildid")):
             extraction.version_strings.append(text)
 
+    _mark("symbol_string_extraction_seconds")
     # Stage 5: detection
     findings = detect_crypto(identity, extraction)
+    _mark("cryptographic_detection_seconds")
     if not findings:
         findings = [not_detected_finding(identity)]
 
     # Stage 6: certificates and private-key boundary
     certs, private_events = inspect_certificates(data)
+    _mark("certificate_analysis_seconds")
 
     # coverage (§7) — separate from confidence
     coverage = build_coverage(
@@ -223,6 +286,8 @@ def run_scan(*, tenant_id: str, data: bytes, original_filename: str,
             "(§10/§17 Phase 5); this run completed standard static "
             "analysis and reports deep analysis as NOT completed")
 
+    _mark("coverage_pqc_bom_seconds")
+    timings["total_seconds"] = round(sum(timings.values()), 6)
     return ScanResult(
         scan_id=scan_id, identity=identity, profile=profile,
         status="completed",
@@ -233,4 +298,5 @@ def run_scan(*, tenant_id: str, data: bytes, original_filename: str,
         coverage=coverage,
         pqc_assessment=pqc.as_dict(),
         bom=bom,
+        timings=timings,
         notes=notes)

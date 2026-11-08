@@ -350,6 +350,16 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/binary/scan/async",
+      "reason": "operator surface: authorized binary artifact submission for static analysis; never executes the artifact, immutable digest identity, tenant-scoped"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/binary/scan/jobs/{job_id}/process",
+      "reason": "operator surface: authorized binary artifact submission for static analysis; never executes the artifact, immutable digest identity, tenant-scoped"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/business/owners",
       "reason": "operator surface: business process and owner registry"
     },

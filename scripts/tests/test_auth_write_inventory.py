@@ -149,8 +149,13 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # rescan (POST /api/v1/binary/artifacts/{id}/rescan — same-bytes
     # digest check, a changed artifact is a NEW artifact, never a
     # rescan; decided family policy entry).
-    assert len(rows) <= 354, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 354. "
+    # 356: a deliberate regeneration added the Binary Intelligence async
+    # job family (POST /api/v1/binary/scan/async — bounded worker queue
+    # with counted backpressure; POST /api/v1/binary/scan/jobs/{id}/
+    # process — worker-driven execution under declared limits, the
+    # artifact is never executed; decided family policy entry).
+    assert len(rows) <= 356, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 356. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

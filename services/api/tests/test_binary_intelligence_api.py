@@ -245,3 +245,53 @@ def test_rescan_requires_the_same_bytes(api):
                                  sample + b"\x00").decode()})
     assert changed.status_code == 422
     assert "NEW artifact" in changed.json()["detail"]
+
+
+def test_async_queue_process_and_backpressure(api):
+    from api.routers.binary_intelligence import WORKER_QUEUE
+    sample = elf_crypto_sample()
+    queued = api.post("/api/v1/binary/scan/async", json={
+        "tenant_id": "tenant_001",
+        "artifact_base64": base64.b64encode(sample).decode(),
+        "original_filename": "payments-engine",
+        "source_type": "upload", "scan_profile": "standard"})
+    assert queued.status_code == 202, queued.text
+    job_id = queued.json()["job_id"]
+    assert queued.json()["status"] == "queued"
+    assert "backpressure" in queued.json()["queue"]["note"] or \
+        "never silently" in queued.json()["queue"]["note"]
+
+    missing = api.post("/api/v1/binary/scan/jobs/bjob-missing/process")
+    assert missing.status_code == 404
+
+    done = api.post(f"/api/v1/binary/scan/jobs/{job_id}/process")
+    assert done.status_code == 201, done.text
+    body = done.json()
+    assert body["status"] == "completed"
+    assert body["finding_count"] > 0
+    assert body["artifact"]["sha256"] == \
+        __import__("hashlib").sha256(sample).hexdigest()
+    assert body["coverage"]["total_bytes"] == len(sample), \
+        "the worker persists through the same write path as sync scans"
+
+    again = api.post(f"/api/v1/binary/scan/jobs/{job_id}/process")
+    assert again.status_code == 404, "a job is processed exactly once"
+
+    status = api.get("/api/v1/binary/worker/status")
+    assert status.status_code == 200
+    assert status.json()["queue"]["processed_total"] == 1
+    assert "refusals" in status.json()["note"] or "numbers" in status.json()["note"]
+
+
+def test_scan_runs_record_stage_timings(api):
+    created = _submit(api, elf_crypto_sample())
+    artifact_id = created.json()["artifact"]["artifact_id"]
+    scan_id = created.json()["scan_id"]
+    status = api.get(f"/api/v1/binary/scans/{scan_id}",
+                     params={"tenant_id": "tenant_001"}).json()
+    timings = (status.get("structural_report") or {}).get("timings") or {}
+    for stage in ("file_intake_and_hash_seconds",
+                  "cryptographic_detection_seconds",
+                  "total_seconds"):
+        assert stage in timings, f"§13 measures {stage}"
+    assert timings["total_seconds"] > 0

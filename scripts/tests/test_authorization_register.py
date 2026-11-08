@@ -82,7 +82,10 @@ MIN_TENANT_ROLE_GATED = 17
 # 349 -> 350: a deliberate regeneration added the Binary Intelligence
 # rescan (POST /api/v1/binary/artifacts/{id}/rescan — new scan runs
 # under the same immutable artifact identity).
-MAX_SESSION_ONLY_WRITES = 350
+# 350 -> 352: a deliberate regeneration added the Binary Intelligence
+# async job family (POST /api/v1/binary/scan/async queueing and
+# POST /api/v1/binary/scan/jobs/{id}/process worker execution).
+MAX_SESSION_ONLY_WRITES = 352
 
 
 @pytest.fixture(scope="module")

@@ -21,10 +21,18 @@ from db.repositories.binary_intelligence_repository import (
     BinaryIntelligenceRepository,
 )
 from binary_intelligence.comparison import compare_findings
+from binary_intelligence.orchestrator import (
+    ScanJob, ScanJobQueue, WorkerLimits,
+)
 from binary_intelligence.pipeline import PROFILES, run_scan
 from db.models.binary_intelligence import BinaryArtifact, BinaryScanRun
 
 router = APIRouter(prefix="/binary", tags=["binary-intelligence"])
+
+#: the process-local bounded job queue (§12 async / §13 resources). A
+#: deployment runs worker processes that call POST /binary/scan/
+#: jobs/{job_id}/process — or imports this queue directly.
+WORKER_QUEUE = ScanJobQueue()
 
 
 class ScanRequest(BaseModel):
@@ -36,6 +44,18 @@ class ScanRequest(BaseModel):
     source_type: str = "upload"
     source_location: Optional[str] = None
     scan_profile: str = "standard"
+
+
+class QueuedJobOut(BaseModel):
+    job_id: str
+    status: str
+    queue: Dict[str, Any]
+    note: str
+
+
+class WorkerStatusOut(BaseModel):
+    queue: Dict[str, Any]
+    note: str
 
 
 class ArtifactOut(BaseModel):
@@ -151,12 +171,20 @@ def submit_scan(body: ScanRequest, response: Response,
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    return _persist(db, body.tenant_id, result, response)
+
+
+def _persist(db: Session, tenant_id: str, result, response: Response
+             ) -> ScanAccepted:
+    """Persist one ScanResult: artifact identity, run, findings,
+    evidence and coverage — the single write path for sync and worker
+    scans alike."""
     repository = _repo(db)
     registered = repository.register_artifact(result.identity)
     if registered["outcome"] == "existing":
         response.status_code = 200
     repository.record_scan(
-        tenant_id=body.tenant_id, scan_id=result.scan_id,
+        tenant_id=tenant_id, scan_id=result.scan_id,
         artifact_id=result.identity.artifact_id,
         artifact_sha256=result.identity.sha256,
         scan_profile=result.profile,
@@ -165,14 +193,15 @@ def submit_scan(body: ScanRequest, response: Response,
         status=result.status,
         structural_report={
             **result.structural_report,
-            "bom": result.bom.as_dict() if result.bom is not None else None},
+            "bom": result.bom.as_dict() if result.bom is not None else None,
+            "timings": result.timings},
         pqc_assessment=result.pqc_assessment,
         scanned_at=datetime.now(timezone.utc))
     repository.record_findings(
-        tenant_id=body.tenant_id, run_id=result.scan_id,
+        tenant_id=tenant_id, run_id=result.scan_id,
         findings=result.findings)
     repository.record_coverage(
-        tenant_id=body.tenant_id, run_id=result.scan_id,
+        tenant_id=tenant_id, run_id=result.scan_id,
         coverage=result.coverage)
 
     payload = result.as_dict()
@@ -395,3 +424,67 @@ def rescan_artifact(artifact_id: str, body: RescanRequest,
     result = submit_scan(scan_request, response, db=db, user=user)
     response.status_code = 201    # a rescan records a NEW scan run
     return result
+
+
+@router.get("/worker/status", response_model=WorkerStatusOut)
+def worker_status(db: Session = Depends(get_db_session),
+                  user: str = Depends(get_current_user)) -> WorkerStatusOut:
+    """Bounded-queue and worker-limit introspection (§13)."""
+    return WorkerStatusOut(
+        queue=WORKER_QUEUE.as_dict(),
+        note="measure queue depth, refusals and failure rate — production "
+             "operations need the numbers, not vibes (§13)")
+
+
+@router.post("/scan/async", response_model=QueuedJobOut, status_code=202)
+def submit_scan_async(body: ScanRequest,
+                      db: Session = Depends(get_db_session),
+                      user: str = Depends(get_current_user)
+                      ) -> QueuedJobOut:
+    """Submit for ASYNC processing (§12): the job enters the bounded
+    worker queue; a worker executes it via POST /binary/scan/
+    jobs/{job_id}/process. Backpressure refuses and counts — never
+    silently drops."""
+    import uuid as _uuid
+    try:
+        data = base64.b64decode(body.artifact_base64, validate=True)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="artifact bytes did not decode — content is "
+                   "validated, never assumed") from exc
+    job_id = f"bjob-{_uuid.uuid4().hex[:12]}"
+    accepted, reason = WORKER_QUEUE.submit(ScanJob(
+        job_id=job_id, tenant_id=body.tenant_id, data=data,
+        original_filename=body.original_filename,
+        source_type=body.source_type, uploaded_by=user,
+        source_location=body.source_location,
+        profile=body.scan_profile))
+    if not accepted:
+        raise HTTPException(status_code=429, detail=reason)
+    return QueuedJobOut(
+        job_id=job_id, status="queued",
+        queue=WORKER_QUEUE.as_dict(),
+        note="accepted into the bounded worker queue; a worker executes "
+             "it via POST /binary/scan/jobs/{job_id}/process (§12)")
+
+
+@router.post("/scan/jobs/{job_id}/process", response_model=ScanAccepted,
+             status_code=201)
+def process_job(job_id: str, response: Response,
+                db: Session = Depends(get_db_session),
+                user: str = Depends(get_current_user)) -> ScanAccepted:
+    """Execute one queued scan job (§12 asynchronous jobs) and persist
+    through the same write path as synchronous scans. Runs under the
+    worker's declared limits; the artifact is never executed."""
+    captured: dict = {}
+
+    def _on_result(result) -> None:
+        captured["result"] = result
+
+    summary = WORKER_QUEUE.process_job(job_id, on_result=_on_result)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="no such queued job")
+    if summary["status"] == "failed":
+        raise HTTPException(status_code=422, detail=summary["reason"])
+    return _persist(db, summary["tenant_id"], captured["result"], response)
