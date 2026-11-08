@@ -132,6 +132,15 @@ POLICY: dict[str, str] = {
     "/api/v1/performance": "operator surface: performance metric ingestion "
                            "from authorized monitoring sources; read-only "
                            "collection, tenant-isolated, idempotent",
+    # The Binary Intelligence family (docs/binary-intelligence/
+    # 01_PRODUCT_SPEC.md) accepts authorized artifacts for STATIC
+    # analysis: the artifact is never executed, identity is immutable
+    # SHA-256, findings carry evidence class and usage status, and
+    # private-key contents are never findings. Authenticated-only so
+    # every submission is attributable to the session principal.
+    "/api/v1/binary": "operator surface: authorized binary artifact "
+                      "submission for static analysis; never executes the "
+                      "artifact, immutable digest identity, tenant-scoped",
     # The roadmap family computes over posted rows and recorded state
     # (reconciliation, projection, migration planning, gates, vendor and
     # qualification registers). Answers are computed in the caller's tenant

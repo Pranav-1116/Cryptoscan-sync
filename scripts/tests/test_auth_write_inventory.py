@@ -140,8 +140,13 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # performance_metric_definitions registry, idempotent taxonomy
     # registration under the decided family); it carries its policy
     # reason in `102-authenticated-only-writes.json`.
-    assert len(rows) <= 352, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 352. "
+    # 353: a deliberate regeneration added the Binary Intelligence scan
+    # submission (POST /api/v1/binary/scan — docs/binary-intelligence/
+    # 01_PRODUCT_SPEC.md §12 static analysis, artifact never executed,
+    # immutable digest identity under the decided family); it carries
+    # its policy reason in `102-authenticated-only-writes.json`.
+    assert len(rows) <= 353, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 353. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

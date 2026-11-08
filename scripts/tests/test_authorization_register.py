@@ -76,7 +76,10 @@ MIN_TENANT_ROLE_GATED = 17
 # 347 -> 348: a deliberate regeneration added the ZELNX Performance
 # metric definitions sync (POST /api/v1/performance/definitions — §5
 # registry rows written under the decided family entry).
-MAX_SESSION_ONLY_WRITES = 348
+# 348 -> 349: a deliberate regeneration added the Binary Intelligence
+# scan submission (POST /api/v1/binary/scan — artifact identity, scan
+# runs, findings and evidence written under the decided family entry).
+MAX_SESSION_ONLY_WRITES = 349
 
 
 @pytest.fixture(scope="module")

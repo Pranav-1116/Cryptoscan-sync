@@ -23,6 +23,7 @@ from api.middleware.request_id_middleware import RequestIDMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routers import (
     accuracy,
+    binary_intelligence,
     collector_authority,
     collector_depth,
     failure_matrix,
@@ -640,6 +641,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(audit_export.router, prefix=prefix)
     app.include_router(cryptolog.router, prefix=prefix)
     app.include_router(performance.router, prefix=prefix)
+    app.include_router(binary_intelligence.router, prefix=prefix)
     app.include_router(events.router, prefix=prefix)
     app.include_router(realtime_router.router, prefix=prefix)
     app.include_router(notifications.router, prefix=prefix)

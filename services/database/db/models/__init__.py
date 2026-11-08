@@ -56,6 +56,10 @@ from db.models.vendor import SystemVendor, Vendor
 from db.models.vendor_crypto import VendorCryptoInventory
 from db.models.vendor_profile import VendorProfileRevision
 from db.models.user import AuditLog, MfaRecoveryCode, User, UserSession
+from db.models.binary_intelligence import (
+    BinaryAnalysisCoverage, BinaryArtifact, BinaryCryptoFinding,
+    BinaryEvidence, BinaryScanRun,
+)
 from db.models.performance import (
     PerformanceAggregate, PerformanceAlert, PerformanceAsset,
     PerformanceBaseline, PerformanceBenchmarkRun,

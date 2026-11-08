@@ -26,6 +26,10 @@ from db.models.repo_configuration import RepoConfiguration  # noqa: F401
 from db.models.cryptolog import (  # noqa: F401
     CryptoLogAlert, CryptoLogCheckpoint, CryptoLogCorrection, CryptoLogEvent,
 )
+from db.models.binary_intelligence import (  # noqa: F401
+    BinaryAnalysisCoverage, BinaryArtifact, BinaryCryptoFinding,
+    BinaryEvidence, BinaryScanRun,
+)
 from db.models.performance import (  # noqa: F401
     PerformanceAggregate, PerformanceAlert, PerformanceAsset,
     PerformanceBaseline, PerformanceBenchmarkRun,
