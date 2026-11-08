@@ -3,8 +3,9 @@ import { Badge, Panel, PageHead } from "../components/ui.jsx";
 import {
   apiBinaryArtifactScan, apiBinaryBom, apiBinaryComparison,
   apiBinaryCoverage, apiBinaryDrift, apiBinaryEstate, apiBinaryFindings,
-  apiBinaryHistory,
-  type BinaryDriftSeries, type BinaryEstate, type BinaryHistory,
+  apiBinaryFirmwareScan, apiBinaryHistory,
+  type BinaryDriftSeries, type BinaryEstate, type BinaryFirmwareReport,
+  type BinaryHistory,
   type ApiResult, type BinaryBom, type BinaryComparison,
   type BinaryCoverage, type BinaryFinding, type BinaryScanResult,
 } from "../lib/api.js";
@@ -18,7 +19,8 @@ import {
 
 type View =
   | "submit" | "analysis" | "findings" | "pqc" | "evidence"
-  | "comparison" | "coverage" | "twin" | "drift" | "history" | "estate";
+  | "comparison" | "coverage" | "twin" | "drift" | "history" | "estate"
+  | "firmware";
 
 const VIEWS: Array<{ key: View; label: string }> = [
   { key: "submit", label: "Artifact Inventory & Scan" },
@@ -32,6 +34,7 @@ const VIEWS: Array<{ key: View; label: string }> = [
   { key: "drift", label: "Drift Series" },
   { key: "history", label: "History" },
   { key: "estate", label: "Estate View" },
+  { key: "firmware", label: "Firmware" },
 ];
 
 const CONTROL_STYLE: React.CSSProperties = {
@@ -136,6 +139,7 @@ export default function Binary() {
   const [history, setHistory] = useState<ApiResult<BinaryHistory> | null>(null);
   const [estate, setEstate] = useState<ApiResult<BinaryEstate> | null>(null);
   const [subject, setSubject] = useState("");
+  const [firmware, setFirmware] = useState<ApiResult<BinaryFirmwareReport> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedEvidence, setSelectedEvidence] = useState<BinaryFinding | null>(null);
 
@@ -833,6 +837,101 @@ export default function Binary() {
                 ))}
               </div>
               <p style={{ fontSize: 11, color: "var(--muted)" }}>{estate.data.note}</p>
+            </div>
+          ) : null}
+        </Panel>
+      ) : null}
+
+      {view === "firmware" ? (
+        <Panel title="Firmware Analysis">
+          <p style={{ marginTop: 0, fontSize: 12, color: "var(--muted)" }}>
+            Bounded signature analysis via the Binwalk tool — the tool runs
+            under a hard timeout; the artifact itself is never executed.
+            Third-party output is a LEAD, never definitive evidence; carved
+            content is untrusted; firmware version data is not proof of
+            firmware contents.
+          </p>
+          <label style={{ fontSize: 11, color: "var(--muted)" }}>
+            Firmware image{" "}
+            <input
+              type="file"
+              aria-label="Firmware image"
+              disabled={!tenant || busy}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file || !tenant) return;
+                void (async () => {
+                  setBusy(true);
+                  try {
+                    const buffer = await file.arrayBuffer();
+                    const bytes = new Uint8Array(buffer);
+                    let binary = "";
+                    for (let i = 0; i < bytes.length; i += 0x8000) {
+                      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+                    }
+                    setFirmware(await apiBinaryFirmwareScan({
+                      tenant_id: tenant,
+                      artifact_base64: btoa(binary),
+                      original_filename: file.name,
+                      source_type: "firmware",
+                    }));
+                  } finally {
+                    setBusy(false);
+                  }
+                })();
+              }}
+            />
+          </label>
+          {firmware && firmware.data === null ? (
+            <ReadFailed error={firmware.error || "read failed"} detail={firmware.detail} />
+          ) : null}
+          {firmware?.data ? (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8, fontSize: 12 }}>
+                <Badge tone={firmware.data.analysis_completed ? "green" : "amber"}>
+                  {firmware.data.analysis_completed ? "analysis completed" : "NOT COMPLETED"}
+                </Badge>
+                <span style={{ color: "var(--muted)" }}>
+                  {firmware.data.tool_name} {firmware.data.tool_version}
+                  {!firmware.data.tool_available ? " — tool unavailable" : ""}
+                </span>
+                <span style={{ color: "var(--muted)" }}>
+                  {firmware.data.leads.length} lead(s) · {firmware.data.carved.length} carved
+                </span>
+              </div>
+              {firmware.data.leads.map((lead, i) => (
+                <div key={i} style={{ fontSize: 11, borderTop: "1px solid var(--rule)", paddingTop: 6, marginTop: 6 }}>
+                  <span style={{ fontFamily: "var(--mono)" }}>0x{lead.offset.toString(16)}</span>
+                  <Badge tone={lead.validated ? "gray" : "amber"}>{lead.kind}</Badge>
+                  <span style={{ marginLeft: 8, color: "var(--muted)" }}>{lead.description}</span>
+                  <div style={{ color: "var(--muted)", fontStyle: "italic" }}>{lead.validation_note}</div>
+                </div>
+              ))}
+              {firmware.data.carved.map((c) => (
+                <div key={c.index} style={{ fontSize: 11, borderTop: "1px solid var(--rule)", paddingTop: 6, marginTop: 6 }}>
+                  <span style={{ fontFamily: "var(--mono)" }}>
+                    carved@0x{c.offset.toString(16)} · {c.kind} · {c.size} bytes · {c.sha256.slice(0, 16)}…
+                  </span>
+                  {(c.findings ?? []).map((f, i) => (
+                    <div key={i} style={{ marginLeft: 12 }}>
+                      {[f.algorithm, f.variant].filter(Boolean).join(" · ") || f.subject}
+                      {" — "}
+                      <span style={{ fontFamily: "var(--mono)" }}>{f.confidence}</span>,{" "}
+                      <span style={{ fontFamily: "var(--mono)" }}>{f.usage_status}</span>
+                    </div>
+                  ))}
+                  {(c.notes ?? []).map((n, i) => (
+                    <div key={`n${i}`} style={{ marginLeft: 12, color: "var(--muted)", fontStyle: "italic" }}>{n}</div>
+                  ))}
+                </div>
+              ))}
+              <p style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>
+                {firmware.data.limitations.join(" · ")}
+              </p>
+              {(firmware.data.notes ?? []).map((n, i) => (
+                <p key={i} style={{ fontSize: 11, color: "var(--muted)" }}>{n}</p>
+              ))}
+              <p style={{ fontSize: 11, color: "var(--muted)" }}>{firmware.data.note}</p>
             </div>
           ) : null}
         </Panel>

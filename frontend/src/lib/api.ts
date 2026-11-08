@@ -8780,3 +8780,39 @@ export const apiBinaryEstate = (
   p: { tenant_id: string },
 ): Promise<ApiResult<BinaryEstate>> =>
   call<BinaryEstate>(`/api/v1/binary/estate${binaryQuery(p)}`);
+
+
+export interface BinaryFirmwareLead {
+  offset: number;
+  kind: string;
+  description: string;
+  validated: boolean;
+  validation_note: string;
+}
+
+export interface BinaryFirmwareReport {
+  tool_name: string;
+  tool_version: string;
+  tool_available: boolean;
+  analysis_completed: boolean;
+  leads: BinaryFirmwareLead[];
+  carved: Array<{
+    index: number; offset: number; size: number; sha256: string; kind: string;
+    findings: Array<{ subject: string; algorithm: string; variant: string; confidence: string; usage_status: string; key_size_bits: number | null }>;
+    notes: string[];
+  }>;
+  limitations: string[];
+  notes: string[];
+  note: string;
+}
+
+export const apiBinaryFirmwareScan = (body: {
+  tenant_id: string;
+  artifact_base64: string;
+  original_filename?: string;
+  source_type?: string;
+}): Promise<ApiResult<BinaryFirmwareReport>> =>
+  call<BinaryFirmwareReport>("/api/v1/binary/firmware/scan", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });

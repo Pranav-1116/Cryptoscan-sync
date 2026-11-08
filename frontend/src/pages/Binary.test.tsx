@@ -369,3 +369,78 @@ describe("Binary Intelligence Phase-6 views (§17)", () => {
     expect(screen.queryByText(/running cryptography is/)).not.toBeInTheDocument();
   });
 });
+
+describe("Binary Intelligence firmware view (§10/§14)", () => {
+  it("leads are leads, tool absence is NOT COMPLETED, never a clean result", async () => {
+    mockFetch({
+      "/api/v1/binary/firmware/scan": {
+        tool_name: "binwalk",
+        tool_version: "2.4.3",
+        tool_available: true,
+        analysis_completed: true,
+        leads: [
+          {
+            offset: 18, kind: "compressed_image",
+            description: "gzip compressed data",
+            validated: true,
+            validation_note: "offset within bounds and description present — normalized from third-party output",
+          },
+        ],
+        carved: [
+          {
+            index: 0, offset: 18, size: 74,
+            sha256: "f".repeat(64), kind: "compressed_image",
+            findings: [
+              { subject: "carved@0x12", algorithm: "AES", variant: "AES-256-GCM", confidence: "indicated", usage_status: "unresolved", key_size_bits: null },
+            ],
+            notes: ["findings are from the STATIC pipeline over carved bytes — the carved content is untrusted and was never executed (§14)"],
+          },
+        ],
+        limitations: ["carved total reached the bounded size limit — the remainder is inventoried as leads only (§14)"],
+        notes: ["binwalk output validated and normalized into leads; a lead is not evidence — findings come from the static pipeline over carved components (§10), and carved content is untrusted"],
+        note: "third-party tool output is a LEAD, never definitive evidence (§10); carved contents remain untrusted (§14); firmware version data is not proof of firmware contents",
+      },
+    });
+    renderPage();
+    setTenant();
+    fireEvent.click(screen.getByText("Firmware"));
+    const input = screen.getByLabelText("Firmware image");
+    const file = new File([new Uint8Array([0x93, 0x94, 0x00])], "firmware-v2.1.bin");
+    fireEvent.change(input, { target: { files: [file] } });
+    expect(await screen.findByText("analysis completed")).toBeInTheDocument();
+    expect(screen.getByText("compressed_image")).toBeInTheDocument();
+    expect(screen.getByText(/normalized from third-party output/)).toBeInTheDocument();
+    expect(screen.getAllByText(/carved content is untrusted/).length)
+      .toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/not proof of firmware contents/).length)
+      .toBeGreaterThanOrEqual(1);
+  });
+
+  it("a missing tool renders NOT COMPLETED, never a clean result", async () => {
+    mockFetch({
+      "/api/v1/binary/firmware/scan": {
+        tool_name: "binwalk",
+        tool_version: "",
+        tool_available: false,
+        analysis_completed: false,
+        leads: [],
+        carved: [],
+        limitations: [],
+        notes: ["binwalk is not installed in this deployment — firmware signature analysis is reported as NOT COMPLETED, never as 'no firmware found' (§7)"],
+        note: "third-party tool output is a LEAD, never definitive evidence (§10); carved contents remain untrusted (§14); firmware version data is not proof of firmware contents",
+      },
+    });
+    renderPage();
+    setTenant();
+    fireEvent.click(screen.getByText("Firmware"));
+    const input = screen.getByLabelText("Firmware image");
+    const file = new File([new Uint8Array([0x00])], "image.bin");
+    fireEvent.change(input, { target: { files: [file] } });
+    const badge = await screen.findAllByText("NOT COMPLETED");
+    expect(badge.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/never as 'no firmware found'/).length)
+      .toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/tool unavailable/).length)
+      .toBeGreaterThanOrEqual(1);
+  });
+});
