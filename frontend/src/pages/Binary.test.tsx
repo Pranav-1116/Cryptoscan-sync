@@ -244,3 +244,128 @@ describe("Binary Intelligence (§16)", () => {
     expect(screen.queryByText("0 findings")).not.toBeInTheDocument();
   });
 });
+
+describe("Binary Intelligence Phase-6 views (§17)", () => {
+  it("drift reports indicator drift with caveats, never behavior drift", async () => {
+    mockFetch({
+      "/api/v1/binary/drift": {
+        subject: "payments-engine",
+        points: [
+          {
+            artifact_id: "bin-old", sha256: "a".repeat(64),
+            received_at: "2026-11-01", original_filename: "payments-engine",
+            source_type: "vendor", source_location: null,
+            detected_format: "elf", scan_count: 1, delta_vs_previous: null,
+          },
+          {
+            artifact_id: "bin-new", sha256: "b".repeat(64),
+            received_at: "2026-11-08", original_filename: "payments-engine",
+            source_type: "vendor", source_location: null,
+            detected_format: "elf", scan_count: 1,
+            delta_vs_previous: {
+              summary: { added: 1, removed: 1, changed: 0, unchanged: 1 },
+              deltas: [
+                {
+                  change: "added", algorithm: "ML-KEM", variant: "ML-KEM-768",
+                  detail: "absent in base, present in compared artifact",
+                  caveat: "a new static indicator is not proof of new runtime behavior (§5)",
+                },
+                {
+                  change: "removed", algorithm: "RSA", variant: "",
+                  detail: "present in base, absent in compared artifact",
+                  caveat: "an indicator can disappear because symbols were stripped or code was packed — removal of the capability is not proven",
+                },
+              ],
+            },
+          },
+        ],
+        summary: { added: 1, removed: 1, changed: 0, unchanged: 1 },
+        limitations: [
+          "a series groups by subject name — the same name may be different software; grouping is metadata, not proof of common origin (§8)",
+        ],
+        note: "drift is reported for static INDICATORS, never for runtime behavior (§6) — a change may come from a new compiler, a new signature-database version, or packing — each delta carries its caveat",
+      },
+    });
+    renderPage();
+    setTenant();
+    fireEvent.click(screen.getByText("Drift Series"));
+    fireEvent.change(screen.getByLabelText("Subject"), { target: { value: "payments-engine" } });
+    fireEvent.click(screen.getByText("load series"));
+    expect(await screen.findByText("bin-old")).toBeInTheDocument();
+    expect(screen.getByText(/no predecessor to compare/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/ML-KEM-768/)).length)
+      .toBeGreaterThanOrEqual(1);
+    expect(
+      screen.getByText(/not proof of new runtime behavior/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/removal of the capability is not proven/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/not proof of common origin/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/never for runtime behavior/)).toBeInTheDocument();
+  });
+
+  it("history shows the artifact is immutable — runs differ, the artifact does not", async () => {
+    mockFetch({
+      "/api/v1/binary/artifacts/bin-1/history": {
+        artifact_id: "bin-1",
+        runs: [
+          { scan_id: "s1", scan_profile: "standard", scanner_version: "v", signature_database_version: "fp/1", status: "completed", scanned_at: "t1" },
+          { scan_id: "s2", scan_profile: "quick", scanner_version: "v", signature_database_version: "fp/1", status: "completed", scanned_at: "t2" },
+        ],
+        finding_timeline: [
+          {
+            finding_type: "cryptographic_algorithm", algorithm: "AES",
+            variant: "AES-256-GCM", first_seen: "t1", first_scan: "s1",
+            last_seen: "t2", last_scan: "s2",
+            observations: [
+              { scan_id: "s1", scanned_at: "t1", evidence_class: "indicated", usage_status: "statically_referenced", signature_database_version: "fp/1" },
+              { scan_id: "s2", scanned_at: "t2", evidence_class: "indicated", usage_status: "statically_referenced", signature_database_version: "fp/1" },
+            ],
+          },
+        ],
+        limitations: ["the artifact is immutable — differences between runs are differences of scanner, profile or signature database"],
+        note: "the timeline shows when an INDICATOR was recorded under which scanner and signature-database version — a change between runs may be a new signature, not a change in the artifact (the artifact is immutable)",
+      },
+    });
+    renderPage();
+    setTenant();
+    setArtifact("bin-1");
+    fireEvent.click(screen.getByText("History"));
+    fireEvent.click(screen.getByText("load history"));
+    const immutable = await screen.findAllByText(/the artifact is immutable/);
+    expect(immutable.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/not a change in the artifact/).length)
+      .toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/2 observation\(s\) across runs/)).toBeInTheDocument();
+  });
+
+  it("estate counts recorded findings and says so", async () => {
+    mockFetch({
+      "/api/v1/binary/estate": {
+        findings_total: 7,
+        by_format: { elf: 5, pe: 2 },
+        by_source_type: { upload: 7 },
+        by_library: { OpenSSL: 4, "(unattributed)": 3 },
+        by_algorithm: { AES: 3, RSA: 2, "SHA-2": 2 },
+        quantum_vulnerable_findings: 2,
+        pqc_family_findings: 0,
+        note: "grouping is metadata-based vendor intelligence — shared names or libraries are not proof of common origin or common behavior (§8); counts are counts of RECORDED FINDINGS, not of running cryptography",
+      },
+    });
+    renderPage();
+    setTenant();
+    fireEvent.click(screen.getByText("Estate View"));
+    fireEvent.click(screen.getByText("load estate"));
+    expect(await screen.findByText("recorded findings")).toBeInTheDocument();
+    expect(screen.getByText("quantum-vulnerable indicators")).toBeInTheDocument();
+    expect(screen.getByText("OpenSSL")).toBeInTheDocument();
+    expect(screen.getAllByText(/RECORDED FINDINGS/).length)
+      .toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/not proof of common origin/).length)
+      .toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/running cryptography is/)).not.toBeInTheDocument();
+  });
+});

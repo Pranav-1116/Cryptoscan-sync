@@ -8713,3 +8713,70 @@ export const apiBinaryComparison = (
   p: { tenant_id: string; against_artifact_id: string },
 ): Promise<ApiResult<BinaryComparison>> =>
   call<BinaryComparison>(`/api/v1/binary/artifacts/${encodeURIComponent(artifactId)}/comparison${binaryQuery(p)}`);
+
+export interface BinaryDriftPoint {
+  artifact_id: string;
+  sha256: string;
+  received_at: string | null;
+  original_filename: string;
+  source_type: string;
+  source_location: string | null;
+  detected_format: string;
+  scan_count: number;
+  delta_vs_previous: {
+    summary: Record<string, number>;
+    deltas: Array<{ change: string; algorithm: string; variant: string; detail: string; caveat: string }>;
+  } | null;
+}
+
+export interface BinaryDriftSeries {
+  subject: string;
+  points: BinaryDriftPoint[];
+  summary: Record<string, number>;
+  limitations: string[];
+  note: string;
+}
+
+export interface BinaryHistory {
+  artifact_id: string;
+  runs: Array<Record<string, unknown>>;
+  finding_timeline: Array<{
+    finding_type: string;
+    algorithm: string;
+    variant: string;
+    first_seen: string | null;
+    first_scan: string;
+    last_seen: string | null;
+    last_scan: string;
+    observations: Array<Record<string, unknown>>;
+  }>;
+  limitations: string[];
+  note: string;
+}
+
+export interface BinaryEstate {
+  findings_total: number;
+  by_format: Record<string, number>;
+  by_source_type: Record<string, number>;
+  by_library: Record<string, number>;
+  by_algorithm: Record<string, number>;
+  quantum_vulnerable_findings: number;
+  pqc_family_findings: number;
+  note: string;
+}
+
+export const apiBinaryDrift = (
+  p: { tenant_id: string; subject?: string; source_location?: string },
+): Promise<ApiResult<BinaryDriftSeries>> =>
+  call<BinaryDriftSeries>(`/api/v1/binary/drift${binaryQuery(p)}`);
+
+export const apiBinaryHistory = (
+  artifactId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<BinaryHistory>> =>
+  call<BinaryHistory>(`/api/v1/binary/artifacts/${encodeURIComponent(artifactId)}/history${binaryQuery(p)}`);
+
+export const apiBinaryEstate = (
+  p: { tenant_id: string },
+): Promise<ApiResult<BinaryEstate>> =>
+  call<BinaryEstate>(`/api/v1/binary/estate${binaryQuery(p)}`);

@@ -2,7 +2,9 @@ import React, { useCallback, useState } from "react";
 import { Badge, Panel, PageHead } from "../components/ui.jsx";
 import {
   apiBinaryArtifactScan, apiBinaryBom, apiBinaryComparison,
-  apiBinaryCoverage, apiBinaryFindings,
+  apiBinaryCoverage, apiBinaryDrift, apiBinaryEstate, apiBinaryFindings,
+  apiBinaryHistory,
+  type BinaryDriftSeries, type BinaryEstate, type BinaryHistory,
   type ApiResult, type BinaryBom, type BinaryComparison,
   type BinaryCoverage, type BinaryFinding, type BinaryScanResult,
 } from "../lib/api.js";
@@ -16,7 +18,7 @@ import {
 
 type View =
   | "submit" | "analysis" | "findings" | "pqc" | "evidence"
-  | "comparison" | "coverage" | "twin";
+  | "comparison" | "coverage" | "twin" | "drift" | "history" | "estate";
 
 const VIEWS: Array<{ key: View; label: string }> = [
   { key: "submit", label: "Artifact Inventory & Scan" },
@@ -27,6 +29,9 @@ const VIEWS: Array<{ key: View; label: string }> = [
   { key: "comparison", label: "Version Comparison" },
   { key: "coverage", label: "Coverage" },
   { key: "twin", label: "Digital Twin" },
+  { key: "drift", label: "Drift Series" },
+  { key: "history", label: "History" },
+  { key: "estate", label: "Estate View" },
 ];
 
 const CONTROL_STYLE: React.CSSProperties = {
@@ -127,6 +132,10 @@ export default function Binary() {
   const [coverage, setCoverage] = useState<ApiResult<BinaryCoverage> | null>(null);
   const [bom, setBom] = useState<ApiResult<{ bom: BinaryBom; note: string }> | null>(null);
   const [comparison, setComparison] = useState<ApiResult<BinaryComparison> | null>(null);
+  const [drift, setDrift] = useState<ApiResult<BinaryDriftSeries> | null>(null);
+  const [history, setHistory] = useState<ApiResult<BinaryHistory> | null>(null);
+  const [estate, setEstate] = useState<ApiResult<BinaryEstate> | null>(null);
+  const [subject, setSubject] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [selectedEvidence, setSelectedEvidence] = useState<BinaryFinding | null>(null);
 
@@ -190,6 +199,27 @@ export default function Binary() {
     }));
     setBusy(false);
   }, [tenant, artifactId, againstId]);
+
+  const loadDrift = useCallback(async () => {
+    if (!tenant) return;
+    setBusy(true);
+    setDrift(await apiBinaryDrift({ tenant_id: tenant, subject: subject || undefined }));
+    setBusy(false);
+  }, [tenant, subject]);
+
+  const loadHistory = useCallback(async () => {
+    if (!tenant || !artifactId) return;
+    setBusy(true);
+    setHistory(await apiBinaryHistory(artifactId, { tenant_id: tenant }));
+    setBusy(false);
+  }, [tenant, artifactId]);
+
+  const loadEstate = useCallback(async () => {
+    if (!tenant) return;
+    setBusy(true);
+    setEstate(await apiBinaryEstate({ tenant_id: tenant }));
+    setBusy(false);
+  }, [tenant]);
 
   return (
     <div data-page="binary" style={{ padding: 16 }}>
@@ -601,6 +631,208 @@ export default function Binary() {
               <p style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>
                 {coverage.data.note}
               </p>
+            </div>
+          ) : null}
+        </Panel>
+      ) : null}
+
+      {view === "drift" ? (
+        <Panel title="Drift Series">
+          <p style={{ marginTop: 0, fontSize: 12, color: "var(--muted)" }}>
+            Artifacts grouped by subject (filename / source location),
+            compared consecutively — drift of static INDICATORS, never
+            drift of runtime behavior; every delta carries its caveat.
+          </p>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+            <label style={{ fontSize: 11, color: "var(--muted)" }}>
+              Subject{" "}
+              <input
+                aria-label="Subject"
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                style={CONTROL_STYLE}
+                placeholder="payments-engine"
+              />
+            </label>
+            <button
+              onClick={() => void loadDrift()}
+              disabled={!tenant || busy}
+              style={{ ...CONTROL_STYLE, cursor: "pointer" }}
+            >
+              load series
+            </button>
+          </div>
+          {drift && drift.data === null ? (
+            <ReadFailed error={drift.error || "read failed"} detail={drift.detail} />
+          ) : null}
+          {drift?.data ? (
+            <div>
+              <div style={{ display: "flex", gap: 16, marginBottom: 8, flexWrap: "wrap" }}>
+                {Object.entries(drift.data.summary).map(([k, v]) => (
+                  <div key={k}>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: 18 }}>{v}</div>
+                    <div style={{ fontSize: 11, color: "var(--muted)" }}>{k}</div>
+                  </div>
+                ))}
+              </div>
+              {drift.data.points.map((point) => (
+                <div key={point.artifact_id} style={{ borderTop: "1px solid var(--rule)", paddingTop: 8, marginTop: 8 }}>
+                  <div style={{ fontSize: 12, fontFamily: "var(--mono)" }}>
+                    {point.artifact_id}
+                    <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 11 }}>
+                      {point.detected_format} · {point.received_at ?? "unknown time"} · {point.scan_count} scan(s)
+                    </span>
+                  </div>
+                  {point.delta_vs_previous === null ? (
+                    <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic", marginLeft: 12 }}>
+                      the first version has no predecessor to compare
+                    </div>
+                  ) : (
+                    (point.delta_vs_previous.deltas ?? [])
+                      .filter((d) => d.change !== "unchanged")
+                      .map((d, i) => (
+                        <div key={i} style={{ fontSize: 11, marginLeft: 12, marginTop: 4 }}>
+                          <Badge tone={d.change === "added" ? "green" : d.change === "removed" ? "amber" : "gray"}>
+                            {d.change}
+                          </Badge>
+                          <span style={{ fontFamily: "var(--mono)", marginLeft: 8 }}>
+                            {[d.algorithm, d.variant].filter(Boolean).join(" · ")}
+                          </span>
+                          <div style={{ color: "var(--muted)", fontStyle: "italic" }}>{d.caveat}</div>
+                        </div>
+                      ))
+                  )}
+                </div>
+              ))}
+              {drift.data.points.length === 0 ? (
+                <p style={{ fontSize: 12, color: "var(--muted)" }}>
+                  no artifacts in this series — empty, never zero-filled with guesses
+                </p>
+              ) : null}
+              <p style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>
+                {drift.data.limitations.join(" · ")}
+              </p>
+              <p style={{ fontSize: 11, color: "var(--muted)" }}>{drift.data.note}</p>
+            </div>
+          ) : null}
+        </Panel>
+      ) : null}
+
+      {view === "history" ? (
+        <Panel title="History — one immutable artifact">
+          <p style={{ marginTop: 0, fontSize: 12, color: "var(--muted)" }}>
+            How findings moved across scan runs of ONE immutable artifact —
+            a change between runs is a change of scanner, profile or
+            signature database, never of the artifact.
+          </p>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <button
+              onClick={() => void loadHistory()}
+              disabled={!tenant || !artifactId || busy}
+              style={{ ...CONTROL_STYLE, cursor: "pointer" }}
+            >
+              load history
+            </button>
+          </div>
+          {history && history.data === null ? (
+            <ReadFailed error={history.error || "read failed"} detail={history.detail} />
+          ) : null}
+          {history?.data ? (
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 8 }}>
+                <span style={{ color: "var(--muted)" }}>Runs: </span>
+                <span style={{ fontFamily: "var(--mono)" }}>{history.data.runs.length}</span>
+                <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 11 }}>
+                  {(history.data.runs as Array<Record<string, string>>)
+                    .map((r) => r.scan_profile).join(", ")}
+                </span>
+              </div>
+              {history.data.finding_timeline.map((entry) => (
+                <div key={`${entry.algorithm}-${entry.variant}`}
+                     style={{ borderTop: "1px solid var(--rule)", paddingTop: 8, marginTop: 8 }}>
+                  <div style={{ fontSize: 12, fontFamily: "var(--mono)" }}>
+                    {[entry.algorithm, entry.variant].filter(Boolean).join(" · ") || entry.finding_type}
+                    <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 11 }}>
+                      first seen {entry.first_seen ?? "unknown"} ({entry.first_scan}) ·
+                      last seen {entry.last_seen ?? "unknown"} ({entry.last_scan})
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--muted)", marginLeft: 12 }}>
+                    {entry.observations.length} observation(s) across runs —
+                    evidence class per run:{" "}
+                    {(entry.observations as Array<Record<string, string>>)
+                      .map((o) => o.evidence_class).join(", ")}
+                  </div>
+                </div>
+              ))}
+              <p style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>
+                {history.data.limitations.join(" · ")}
+              </p>
+              <p style={{ fontSize: 11, color: "var(--muted)" }}>{history.data.note}</p>
+            </div>
+          ) : null}
+        </Panel>
+      ) : null}
+
+      {view === "estate" ? (
+        <Panel title="Estate View — recorded findings">
+          <p style={{ marginTop: 0, fontSize: 12, color: "var(--muted)" }}>
+            Findings grouped by format, source, library and algorithm.
+            Counts are counts of RECORDED findings, never of running
+            cryptography; grouping is metadata, not proof of common origin.
+          </p>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <button
+              onClick={() => void loadEstate()}
+              disabled={!tenant || busy}
+              style={{ ...CONTROL_STYLE, cursor: "pointer" }}
+            >
+              load estate
+            </button>
+          </div>
+          {estate && estate.data === null ? (
+            <ReadFailed error={estate.error || "read failed"} detail={estate.detail} />
+          ) : null}
+          {estate?.data ? (
+            <div>
+              <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 18 }}>{estate.data.findings_total}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>recorded findings</div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 18 }}>{estate.data.quantum_vulnerable_findings}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>quantum-vulnerable indicators</div>
+                </div>
+                <div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: 18 }}>{estate.data.pqc_family_findings}</div>
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>PQC indicators</div>
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                {([
+                  ["by_format", "Format"],
+                  ["by_source_type", "Source"],
+                  ["by_library", "Library"],
+                  ["by_algorithm", "Algorithm"],
+                ] as const).map(([key, label]) => (
+                  <div key={key}>
+                    <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 4 }}>{label}</div>
+                    {Object.entries(estate.data![key]).map(([name, count]) => (
+                      <div key={name} style={{ fontSize: 12, display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ fontFamily: "var(--mono)" }}>{name}</span>
+                        <span style={{ fontFamily: "var(--mono)", color: "var(--muted)" }}>{count}</span>
+                      </div>
+                    ))}
+                    {Object.keys(estate.data![key]).length === 0 ? (
+                      <div style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>
+                        empty — never zero-filled with guesses
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: 11, color: "var(--muted)" }}>{estate.data.note}</p>
             </div>
           ) : null}
         </Panel>
