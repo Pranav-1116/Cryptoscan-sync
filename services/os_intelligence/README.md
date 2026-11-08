@@ -61,6 +61,19 @@ are kept distinct.
 - hardware trust facts (TPM device presence, RNG device presence) —
   device presence is metadata, never a trust verdict.
 
+## BOM integration (delivered)
+
+`bom.py` projects one collection into the SHARED BOM ecosystem (§15
+step 6) — never a seventh disconnected BOM: `sbom` (OS, kernel,
+modules, provider modules), `cbom` (every registered implementation
+with the generic name distinct from the driver), `hbom` (hardware trust
+facts + acceleration indicators), `techbom` (the union). The
+provides/uses discipline is structural: the kernel PROVIDES a
+implementation; this engine emits NO 'uses' edge, ever, and never
+infers application↔kernel relationships from same-host co-location
+(§8). Versions the sources do not report stay unknown — module
+versions are never guessed.
+
 ## Console (delivered)
 
 `/os-kernel-intelligence` — nine views (hosts & identity, kernel crypto
@@ -94,4 +107,6 @@ X=observed; business impact is never invented (B stays
 - Secure Boot state, certificate metadata, provider-version
   vulnerability correlation: not collected (OS-CRYPTO-008/010/011
   report NOT EVALUABLE);
-- SBOM/CBOM/HBOM/TechBOM registration: not implemented.
+- SBOM/CBOM/HBOM/TechBOM registration into the external CycloneDX
+  export pipeline: the local projection (bom.py) is delivered; the
+  export-schedule wiring is not.

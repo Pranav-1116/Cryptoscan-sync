@@ -300,3 +300,47 @@ class TestRuleFindingsAtIntake:
             assert not_evaluable, "missing sources are honest"
             for r in not_evaluable:
                 assert "never" in r["evaluation_note"].lower()
+
+class TestBomProjection:
+
+    @pytest.mark.asyncio
+    async def test_bom_projection_round_trip(self, app_db, tmp_path):
+        """§15 step 6: one recorded collection projects into the shared
+        BOM ecosystem — no 'uses' edge, no fabricated versions."""
+        app, _db = app_db
+        inventory = _real_inventory(tmp_path)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            await _post_collection(client, inventory)
+            resp = await client.get(
+                "/api/v1/os-intelligence/assets/host-under-test/bom",
+                params={"tenant_id": "t1", "kind": "cbom"})
+            assert resp.status_code == 200, resp.text
+            bom = resp.json()
+            assert bom["schema"] == "cryptoscan.os-bom/1"
+            assert bom["kind"] == "cbom"
+            assert bom["components"], "the recorded host registers "
+            assert all(c["properties"]["runtime_usage_confirmed"] is False
+                       for c in bom["components"])
+            assert all(r["relationship"] != "uses"
+                       for r in bom["relationships"])
+            assert "co-location" in bom["note"]
+            tech = (await client.get(
+                "/api/v1/os-intelligence/assets/host-under-test/bom",
+                params={"tenant_id": "t1", "kind": "techbom"})).json()
+            assert tech["coverage"]["projections"] == \
+                ["sbom", "cbom", "hbom"]
+
+    @pytest.mark.asyncio
+    async def test_unknown_bom_kind_refused_never_guessed(self, app_db,
+                                                          tmp_path):
+        app, _db = app_db
+        inventory = _real_inventory(tmp_path)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            await _post_collection(client, inventory)
+            resp = await client.get(
+                "/api/v1/os-intelligence/assets/host-under-test/bom",
+                params={"tenant_id": "t1", "kind": "vbom"})
+            assert resp.status_code == 422
+            assert "validated, never assumed" in resp.text

@@ -22,6 +22,7 @@ from api.dependencies import get_current_user, get_db_session
 from db.repositories.os_intelligence_repository import (
     OSIntelligenceRepository,
 )
+from os_intelligence.bom import BOM_KINDS, build_bom
 from os_intelligence.rules import CATALOGUE, evaluate as evaluate_rules
 
 router = APIRouter(prefix="/os-intelligence",
@@ -181,6 +182,33 @@ class FindingListOut(BaseModel):
                  "'no issues'")
 
 
+class BomComponentOut(BaseModel):
+    type: str
+    name: str
+    version: str = ""
+    properties: Dict[str, Any] = {}
+
+
+class BomRelationshipOut(BaseModel):
+    source: str
+    relationship: str
+    target: str
+    provenance: str
+    limitations: List[str] = []
+
+
+class BomOut(BaseModel):
+    schema_name: str = Field(..., alias="schema")
+    kind: str
+    subject: str
+    components: List[BomComponentOut] = []
+    relationships: List[BomRelationshipOut] = []
+    coverage: Dict[str, Any] = {}
+    note: str
+
+    model_config = {"populate_by_name": True}
+
+
 class RuleFindingOut(BaseModel):
     finding_type: str
     host_id: Optional[str] = None
@@ -273,6 +301,37 @@ def submit_collection(body: CollectionSubmission, response: Response,
         inventory=inventory)
     response.status_code = 201
     return CollectionAccepted(**result)
+
+
+@router.get("/assets/{asset_id}/bom", response_model=BomOut)
+def asset_bom(asset_id: str, kind: str = Query("techbom"),
+              tenant_id: str = Query(...),
+              db: Session = Depends(get_db_session),
+              user=Depends(get_current_user)) -> BomOut:
+    """Project one recorded collection into the shared BOM ecosystem
+    (§15 step 6): sbom, cbom, hbom or techbom. Components are
+    registrations and metadata — never proof of runtime use; the
+    engine emits NO 'uses' edge (§8). An unknown kind is refused,
+    never guessed."""
+    if kind not in BOM_KINDS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown BOM kind {kind!r} — expected one of "
+                   f"{list(BOM_KINDS)}; content is validated, never "
+                   "assumed")
+    repo = _repo(db)
+    collection_id = _collection_or_404(repo, tenant_id, asset_id)
+    asset = repo.get_asset(tenant_id, asset_id)
+    inventory = {
+        "host_id": asset_id,
+        "identity": asset or {},
+        "crypto_api": repo.list_capabilities(tenant_id, collection_id),
+        "modules": repo.list_modules(tenant_id, collection_id),
+        "hardware_trust": repo.list_trust(tenant_id, collection_id),
+        "coverage": repo.get_coverage(tenant_id, collection_id) or {},
+    }
+    bom = build_bom(kind, inventory).as_dict()
+    return BomOut(**bom)
 
 
 @router.get("/rules", response_model=RuleCatalogueOut)

@@ -18,7 +18,9 @@ coverage (docs/os-kernel-intelligence/01_PRODUCT_SPEC.md).
    observation type, source, digest, classification, limitations;
 4. ONE canonical model — DONE: OSInventory/OSFinding (§10 shape);
 5. Linux read-only collection first — DONE (§15 step 5);
-6. integrate SBOM/CBOM/HBOM/TechBOM — NOT IMPLEMENTED;
+6. integrate SBOM/CBOM/HBOM/TechBOM — DONE: bom.py projects one
+   collection into the shared BOM ecosystem (sbom/cbom/hbom/techbom,
+   provides/uses discipline, no uses edges, no co-location edges);
 7. test against actual local Linux configuration — DONE: the test
    battery runs the collector against the LIVE host and against the
    recorded real-host corpus;
