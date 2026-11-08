@@ -61,11 +61,27 @@ are kept distinct.
 - hardware trust facts (TPM device presence, RNG device presence) —
   device presence is metadata, never a trust verdict.
 
+## OS-CRYPTO rules (delivered)
+
+The OS-CRYPTO-001…018 catalogue (§9) evaluates over every collection:
+detections, never automatic vulnerability verdicts. A rule whose
+evidence source is missing reports NOT EVALUABLE with the missing
+source named — never a clean result. Severity is computed by
+risk.py (R=f(S,E,X,B,C), model os-risk/1.0) with preserved factors and
+a written derivation — never a multiplied "scientifically validated
+score". 'critical' is reachable only through B=registered_high with
+X=observed; business impact is never invented (B stays
+"requires_registered_mapping" until a registered mapping supplies it).
+
 ## Not implemented (recorded, never hidden)
 
 - runtime monitoring (Tier 2, eBPF): not implemented — no runtime events
   are collected;
 - Windows / macOS collectors: not implemented;
 - TLS configuration/observation correlation (the three distinct TLS
-  findings — supported / enabled / observed): not implemented;
+  findings — supported / enabled / observed): not implemented
+  (OS-CRYPTO-006 reports NOT EVALUABLE, never clean);
+- Secure Boot state, certificate metadata, provider-version
+  vulnerability correlation: not collected (OS-CRYPTO-008/010/011
+  report NOT EVALUABLE);
 - SBOM/CBOM/HBOM/TechBOM registration: not implemented.

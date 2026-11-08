@@ -22,6 +22,7 @@ from api.dependencies import get_current_user, get_db_session
 from db.repositories.os_intelligence_repository import (
     OSIntelligenceRepository,
 )
+from os_intelligence.rules import CATALOGUE, evaluate as evaluate_rules
 
 router = APIRouter(prefix="/os-intelligence",
                    tags=["os-kernel-intelligence"])
@@ -180,6 +181,46 @@ class FindingListOut(BaseModel):
                  "'no issues'")
 
 
+class RuleFindingOut(BaseModel):
+    finding_type: str
+    host_id: Optional[str] = None
+    algorithm: str = ""
+    implementation: str = ""
+    evidence_source: str = ""
+    observation_type: str
+    runtime_usage_confirmed: bool = False
+    evidence_class: str
+    severity_label: Optional[str] = None
+    severity_factors: Optional[Dict[str, Any]] = None
+    risk_model_version: Optional[str] = None
+    details: Dict[str, Any] = {}
+    limitations: List[str] = []
+
+
+class RuleResultOut(BaseModel):
+    rule_id: str
+    detection: str
+    potential_impact: str
+    status: str
+    evaluation_note: str
+    findings: List[RuleFindingOut] = []
+
+
+class RuleCatalogueOut(BaseModel):
+    rules: List[Dict[str, str]]
+    note: str = ("OS-CRYPTO detections, not automatic vulnerability "
+                 "verdicts (§9); severity is computed (R=f(S,E,X,B,C)) "
+                 "with preserved factors — never a multiplied "
+                 "'scientifically validated score'; a not_evaluable "
+                 "rule is never a clean result (§2.1)")
+
+
+class RuleEvaluationOut(BaseModel):
+    rule_model_version: str
+    results: List[RuleResultOut]
+    note: str
+
+
 class CoverageOut(BaseModel):
     sources_attempted: List[str] = []
     sources_collected: List[str] = []
@@ -217,12 +258,56 @@ def submit_collection(body: CollectionSubmission, response: Response,
             detail="collection package must carry a coverage section — "
                    "an unverifiable package is never recorded as valid "
                    "(§2.1)")
+    # Run the OS-CRYPTO catalogue over the collected inventory: the
+    # results are detections, never verdicts (§9), and every finding
+    # carries its computed severity factors. The submission body's own
+    # findings are preserved; rule findings are appended.
+    rule_report = evaluate_rules(inventory)
+    rule_findings = [f for r in rule_report.results for f in r.findings]
+    inventory = dict(inventory)
+    inventory["findings"] = list(inventory.get("findings") or []) + \
+        rule_findings
     result = _repo(db).record_collection(
         tenant_id=body.tenant_id,
         asset_id=body.asset_id,
         inventory=inventory)
     response.status_code = 201
     return CollectionAccepted(**result)
+
+
+@router.get("/rules", response_model=RuleCatalogueOut)
+def rule_catalogue(user=Depends(get_current_user)) -> RuleCatalogueOut:
+    """The OS-CRYPTO-001…018 catalogue (§9)."""
+    return RuleCatalogueOut(
+        rules=[{"rule_id": r[0], "detection": r[1],
+                "potential_impact": r[2]} for r in CATALOGUE])
+
+
+@router.get("/assets/{asset_id}/rule-evaluation",
+            response_model=RuleEvaluationOut)
+def asset_rule_evaluation(asset_id: str, tenant_id: str = Query(...),
+                          db: Session = Depends(get_db_session),
+                          user=Depends(get_current_user)
+                          ) -> RuleEvaluationOut:
+    """Re-evaluate the catalogue over the asset's latest recorded
+    collection. Results are detections, never verdicts."""
+    repo = _repo(db)
+    collection_id = _collection_or_404(repo, tenant_id, asset_id)
+    coverage = repo.get_coverage(tenant_id, collection_id)
+    asset = repo.get_asset(tenant_id, asset_id)
+    inventory = {
+        "host_id": asset_id,
+        "identity": asset or {},
+        "crypto_api": repo.list_capabilities(tenant_id, collection_id),
+        "modules": repo.list_modules(tenant_id, collection_id),
+        "config_flags": {f["flag"]: f["value"] for f in
+                         repo.list_config_flags(tenant_id, collection_id)},
+        "storage": repo.list_storage(tenant_id, collection_id),
+        "hardware_trust": repo.list_trust(tenant_id, collection_id),
+        "coverage": coverage or {},
+    }
+    report = evaluate_rules(inventory)
+    return RuleEvaluationOut(**report.as_dict())
 
 
 @router.get("/assets", response_model=AssetListOut)

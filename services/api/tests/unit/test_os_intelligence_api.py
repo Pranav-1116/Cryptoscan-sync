@@ -237,3 +237,66 @@ class TestLiveHost:
                 params={"tenant_id": "t1"})).json()["capabilities"]
             assert caps
             assert all(c["runtime_usage_confirmed"] is False for c in caps)
+
+class TestRuleFindingsAtIntake:
+
+    @pytest.mark.asyncio
+    async def test_rule_findings_persisted_with_computed_severity(
+            self, app_db, tmp_path):
+        """§9: catalogue detections are stored at intake as findings —
+        detections, never verdicts — with computed severity factors."""
+        app, _db = app_db
+        inventory = _real_inventory(tmp_path)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await _post_collection(client, inventory)
+            assert resp.status_code == 201, resp.text
+            findings = (await client.get(
+                "/api/v1/os-intelligence/assets/host-under-test/findings",
+                params={"tenant_id": "t1"})).json()["findings"]
+            rule_rows = [f for f in findings
+                         if f["finding_type"].startswith("OS-CRYPTO-")]
+            assert rule_rows, "catalogue detections persisted at intake"
+            for f in rule_rows:
+                assert f["runtime_usage_confirmed"] is False
+                if f["severity_label"]:
+                    assert f["risk_model_version"] == "os-risk/1.0"
+                    factors = f["severity_factors"]["factors"]
+                    assert "S_security_significance" in factors
+                    assert "score" not in f["severity_factors"], \
+                        "never a multiplied numeric score"
+
+    @pytest.mark.asyncio
+    async def test_rule_catalogue_is_typed_and_never_verdicts(self, app_db):
+        app, _db = app_db
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await client.get("/api/v1/os-intelligence/rules")
+            assert resp.status_code == 200
+            data = resp.json()
+            assert len(data["rules"]) == 18
+            assert [r["rule_id"] for r in data["rules"]][0] == \
+                "OS-CRYPTO-001"
+            assert "never a multiplied" in data["note"] or \
+                "not automatic" in data["note"]
+
+    @pytest.mark.asyncio
+    async def test_rule_evaluation_route_reports_not_evaluable_honestly(
+            self, app_db, tmp_path):
+        app, _db = app_db
+        inventory = _real_inventory(tmp_path)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            await _post_collection(client, inventory)
+            resp = await client.get(
+                "/api/v1/os-intelligence/assets/host-under-test/"
+                "rule-evaluation",
+                params={"tenant_id": "t1"})
+            assert resp.status_code == 200
+            results = resp.json()["results"]
+            assert len(results) == 18
+            not_evaluable = [r for r in results
+                             if r["status"] == "not_evaluable"]
+            assert not_evaluable, "missing sources are honest"
+            for r in not_evaluable:
+                assert "never" in r["evaluation_note"].lower()

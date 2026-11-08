@@ -27,11 +27,8 @@ coverage (docs/os-kernel-intelligence/01_PRODUCT_SPEC.md).
 
 ## 3. Future phases (recorded, not delivered)
 
-- DB persistence (os_assets…os_coverage) and API routes;
-- OS-CRYPTO-001…018 detection rules as evidence-backed checks;
-- risk model R=f(S,E,X,B,C) with preserved factors and model version
-  (never a multiplied "scientifically validated score");
-- Tier 2 eBPF runtime monitoring with filters/retention/sampling;
+- Tier 2 eBPF runtime monitoring with filters/retention/sampling
+  (OS-CRYPTO-017 stays NOT EVALUABLE until separately approved);
 - Windows (CNG/BCrypt/NCrypt/Schannel/CryptoAPI/CSP/KSP) and macOS
   (Security framework/Keychain APIs — protected storage files are never
   scraped) adapters.
