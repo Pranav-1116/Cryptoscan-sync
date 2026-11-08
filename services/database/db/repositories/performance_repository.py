@@ -9,8 +9,9 @@ reconstructed as zero on the way out.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
+import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -320,3 +321,134 @@ class PerformanceRepository:
             }
             for r in rows
         ]
+
+    # --- metric definitions (§5: performance_metric_definitions) -------
+
+    def sync_metric_definitions(self, tenant_id: str,
+                                definitions: Sequence[Any],
+                                ) -> Dict[str, Any]:
+        """Idempotently register the taxonomy as definitions rows. A
+        metric is defined before it is ingested — a guessed unit is not
+        a defined unit. Re-running the sync inserts nothing twice."""
+        inserted = 0
+        existing = {row.metric_name: row
+                    for row in self.db.scalars(
+                        select(PerformanceMetricDefinition).where(
+                            PerformanceMetricDefinition.tenant_id
+                            == tenant_id))}
+        for definition in definitions:
+            if definition.name in existing:
+                continue
+            self.db.add(PerformanceMetricDefinition(
+                tenant_id=tenant_id,
+                metric_name=definition.name,
+                domain=definition.domain,
+                unit=definition.unit,
+                metric_type=definition.metric_type.value,
+                description=definition.what_it_tells))
+            inserted += 1
+        self.db.commit()
+        return {"registered": len(existing) + inserted, "inserted": inserted}
+
+    def list_metric_definitions(self, tenant_id: str,
+                               *, domain: Optional[str] = None
+                               ) -> List[Dict[str, Any]]:
+        stmt = select(PerformanceMetricDefinition).where(
+            PerformanceMetricDefinition.tenant_id == tenant_id)
+        if domain:
+            stmt = stmt.where(PerformanceMetricDefinition.domain == domain)
+        rows = self.db.scalars(
+            stmt.order_by(PerformanceMetricDefinition.metric_name))
+        return [{
+            "metric_name": row.metric_name,
+            "domain": row.domain,
+            "unit": row.unit,
+            "metric_type": row.metric_type,
+            "description": row.description,
+        } for row in rows]
+
+    # --- collector health (§9: stale collectors are detected) ---------
+
+    def record_collector_report(self, tenant_id: str, collector_id: str,
+                                *, status: str,
+                                last_report_at: Optional[datetime] = None,
+                                detail: Optional[str] = None
+                                ) -> Dict[str, Any]:
+        """Upsert one collector's heartbeat. Idempotent per collector."""
+        row = self.db.scalars(
+            select(PerformanceCollectorHealth).where(
+                PerformanceCollectorHealth.tenant_id == tenant_id,
+                PerformanceCollectorHealth.collector_id == collector_id
+            )).first()
+        if row is None:
+            row = PerformanceCollectorHealth(
+                tenant_id=tenant_id, collector_id=collector_id,
+                status=status, last_report_at=last_report_at,
+                detail=detail)
+            self.db.add(row)
+        else:
+            row.status = status
+            row.last_report_at = last_report_at or row.last_report_at
+            row.detail = detail
+        self.db.commit()
+        return {"collector_id": collector_id, "status": status}
+
+    def list_collector_health(self, tenant_id: str, *,
+                              stale_after_seconds: float,
+                              now: datetime) -> List[Dict[str, Any]]:
+        """Every collector with its status. A collector that has not
+        reported within ``stale_after_seconds`` is named STALE — its
+        missing telemetry is never interpreted as zero."""
+        from datetime import timedelta
+        cutoff = now - timedelta(seconds=stale_after_seconds)
+        rows = self.db.scalars(
+            select(PerformanceCollectorHealth).where(
+                PerformanceCollectorHealth.tenant_id == tenant_id).order_by(
+                PerformanceCollectorHealth.collector_id))
+        out: List[Dict[str, Any]] = []
+        for row in rows:
+            reported = _aware(row.last_report_at)
+            effective = row.status
+            if reported is not None and reported < cutoff:
+                effective = "stale"
+            elif reported is None:
+                effective = "unknown"
+            out.append({
+                "collector_id": row.collector_id,
+                "status": effective,
+                "last_report_at": reported,
+                "detail": row.detail,
+                "stale": effective == "stale",
+                "note": "a stale collector is detected and named — its "
+                        "missing metrics are never read as zero",
+            })
+        return out
+
+    def query_samples_cursor(self, tenant_id: str, *, metric_name: Optional[str],
+                             asset_id: Optional[str],
+                             window_start: Optional[datetime],
+                             window_end: Optional[datetime],
+                             after: Optional[Tuple[datetime, str]],
+                             limit: int) -> List[PerformanceMetric]:
+        """Raw samples in (observed_at, metric_id) order, resuming
+        strictly after the cursor. A cursor is an exact position in that
+        order — rows are never skipped or repeated across pages."""
+        stmt = select(PerformanceMetricRow).where(
+            PerformanceMetricRow.tenant_id == tenant_id)
+        if metric_name is not None:
+            stmt = stmt.where(PerformanceMetricRow.metric_name == metric_name)
+        if asset_id is not None:
+            stmt = stmt.where(PerformanceMetricRow.asset_id == asset_id)
+        if window_start is not None:
+            stmt = stmt.where(PerformanceMetricRow.observed_at >= window_start)
+        if window_end is not None:
+            stmt = stmt.where(PerformanceMetricRow.observed_at <= window_end)
+        if after is not None:
+            cursor_time, cursor_id = after
+            stmt = stmt.where(sa.or_(
+                PerformanceMetricRow.observed_at > cursor_time,
+                sa.and_(PerformanceMetricRow.observed_at == cursor_time,
+                        PerformanceMetricRow.metric_id > cursor_id)))
+        stmt = stmt.order_by(PerformanceMetricRow.observed_at,
+                             PerformanceMetricRow.metric_id).limit(limit)
+        return [row_to_metric(r) for r in self.db.execute(stmt).scalars()]

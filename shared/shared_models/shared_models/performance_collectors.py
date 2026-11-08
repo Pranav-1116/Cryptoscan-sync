@@ -299,3 +299,183 @@ def _metric(*, metric_name: str, value: Optional[float], quality: QualityStatus,
         source_id=source_id, observed_at=observed_at,
         interval_seconds=interval_seconds, labels=dict(labels),
         quality_status=quality)
+
+
+# --- cAdvisor (containers, §2G / §4) --------------------------------
+
+_CADVISOR_FAMILY_MAP = {
+    "container_memory_working_set_bytes": "container.memory_bytes",
+}
+
+_CADVISOR_RATE_DERIVED = {
+    "container_cpu_usage_seconds_total",
+    "container_network_receive_bytes_total",
+    "container_network_transmit_bytes_total",
+    "container_cpu_cfs_throttled_periods_total",
+}
+
+
+def _gauge_translation(payload: Mapping[str, Any], *, family_map: Mapping[str, str],
+                       rate_derived: set, asset_id: str, tenant_id: str,
+                       source_id: str, observed_at: datetime,
+                       interval_seconds: float, mapping_table: str
+                       ) -> TranslationResult:
+    """Shared gauge mapping: documented table in, refusals out —
+    rate-derived counters need two snapshots and unknown families are
+    never guessed."""
+    result = TranslationResult()
+    for family, value, labels in _sample_rows(payload):
+        mapped = family_map.get(family)
+        if mapped is None:
+            if family in rate_derived:
+                _refuse(result.refused, family,
+                        "rate-derived counter — two snapshots are "
+                        "required; a rate is never guessed from one sample")
+            else:
+                _refuse(result.refused, family,
+                        f"not in the {mapping_table} mapping table — "
+                        "a unit is never guessed")
+            continue
+        metric_id = _metric_id(source_id, family, labels, observed_at)
+        try:
+            metric = _metric(metric_name=mapped, value=value,
+                             quality=QualityStatus.VALID,
+                             unit=_unit_of(mapped), asset_id=asset_id,
+                             tenant_id=tenant_id, source_id=source_id,
+                             observed_at=observed_at, metric_id=metric_id,
+                             labels=labels,
+                             interval_seconds=interval_seconds)
+        except ValueError as exc:
+            _refuse(result.refused, family, str(exc))
+            continue
+        result.metrics.append(metric)
+    return result
+
+
+def translate_cadvisor(payload: Mapping[str, Any], *, asset_id: str,
+                       tenant_id: str, source_id: str,
+                       observed_at: datetime, interval_seconds: float = 60.0,
+                       ) -> TranslationResult:
+    """Translate a cAdvisor scrape (§2G). Gauge families map through the
+    documented table; rate-derived CPU/network counters are refused with
+    their reason — a rate needs two snapshots, never one."""
+    return _gauge_translation(
+        payload, family_map=_CADVISOR_FAMILY_MAP,
+        rate_derived=_CADVISOR_RATE_DERIVED, asset_id=asset_id,
+        tenant_id=tenant_id, source_id=source_id, observed_at=observed_at,
+        interval_seconds=interval_seconds, mapping_table="cAdvisor")
+
+
+# --- kube-state-metrics (§2G / §4) ----------------------------------
+
+_KUBE_STATE_FAMILY_MAP = {
+    "kube_pod_container_status_restarts_total": "k8s.pod_restarts",
+    "kube_pod_status_phase": "process.health",
+}
+
+
+def translate_kube_state_metrics(payload: Mapping[str, Any], *, asset_id: str,
+                                 tenant_id: str, source_id: str,
+                                 observed_at: datetime,
+                                 interval_seconds: float = 60.0,
+                                 ) -> TranslationResult:
+    """Translate a kube-state-metrics scrape (§2G). Restart counts and
+    pod phases map through the documented table; unknown families are
+    refused, never guessed."""
+    return _gauge_translation(
+        payload, family_map=_KUBE_STATE_FAMILY_MAP,
+        rate_derived=set(), asset_id=asset_id,
+        tenant_id=tenant_id, source_id=source_id, observed_at=observed_at,
+        interval_seconds=interval_seconds,
+        mapping_table="kube-state-metrics")
+
+
+# --- Windows Exporter (§4) ------------------------------------------
+
+_WINDOWS_FAMILY_MAP = {
+    "windows_logical_disk_size_bytes": "storage.capacity_bytes",
+    "windows_logical_disk_free_bytes": "storage.available_bytes",
+}
+
+_WINDOWS_RATE_DERIVED = {
+    "windows_cpu_time_total",
+    "windows_net_bytes_received_total",
+    "windows_net_bytes_sent_total",
+}
+
+
+def translate_windows_exporter(payload: Mapping[str, Any], *, asset_id: str,
+                               tenant_id: str, source_id: str,
+                               observed_at: datetime,
+                               interval_seconds: float = 60.0,
+                               ) -> TranslationResult:
+    """Translate a Windows Exporter scrape (§4). Disk gauges map through
+    the documented table; CPU time and network byte counters are
+    rate-derived and refused."""
+    return _gauge_translation(
+        payload, family_map=_WINDOWS_FAMILY_MAP,
+        rate_derived=_WINDOWS_RATE_DERIVED, asset_id=asset_id,
+        tenant_id=tenant_id, source_id=source_id, observed_at=observed_at,
+        interval_seconds=interval_seconds,
+        mapping_table="Windows Exporter")
+
+
+# --- SNMPv3 network telemetry (§3 / §4) -----------------------------
+
+_SNMP_FAMILY_MAP = {
+    "ifOperStatus": "network.tunnel_health",
+    "ifInErrors": "network.interface_errors",
+    "ifSpeed": "network.bandwidth_mbps",
+}
+
+#: SNMP raw units and their documented conversion. ifSpeed is bits/sec;
+#: the metric's unit is Mbps, so the value is divided by a documented
+#: factor — the conversion is declared here, never guessed.
+_SNMP_UNIT_CONVERSIONS = {
+    "ifSpeed": 1_000_000.0,
+}
+
+_SNMP_RATE_DERIVED = {
+    "ifHCInOctets",
+    "ifHCOutOctets",
+    "ifInOctets",
+    "ifOutOctets",
+}
+
+
+def translate_snmp(payload: Mapping[str, Any], *, asset_id: str,
+                   tenant_id: str, source_id: str,
+                   observed_at: datetime, interval_seconds: float = 60.0,
+                   ) -> TranslationResult:
+    """Translate SNMPv3 network telemetry (§3/§4). Interface state,
+    errors and link capacity map with documented unit conversions;
+    octet counters are rate-derived and refused — throughput is never
+    guessed from one sample."""
+    result = TranslationResult()
+    for family, value, labels in _sample_rows(payload):
+        mapped = _SNMP_FAMILY_MAP.get(family)
+        if mapped is None:
+            if family in _SNMP_RATE_DERIVED:
+                _refuse(result.refused, family,
+                        "rate-derived counter — two snapshots are "
+                        "required; throughput is never guessed from one "
+                        "sample")
+            else:
+                _refuse(result.refused, family,
+                        "not in the SNMP mapping table — a unit is "
+                        "never guessed")
+            continue
+        divisor = _SNMP_UNIT_CONVERSIONS.get(family, 1.0)
+        metric_id = _metric_id(source_id, family, labels, observed_at)
+        try:
+            metric = _metric(metric_name=mapped, value=value / divisor,
+                             quality=QualityStatus.VALID,
+                             unit=_unit_of(mapped), asset_id=asset_id,
+                             tenant_id=tenant_id, source_id=source_id,
+                             observed_at=observed_at, metric_id=metric_id,
+                             labels=labels, interval_seconds=interval_seconds)
+        except ValueError as exc:
+            _refuse(result.refused, family, str(exc))
+            continue
+        result.metrics.append(metric)
+    return result

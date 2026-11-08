@@ -135,8 +135,13 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # write (POST /api/v1/performance/benchmarks — Phase 5 controlled
     # benchmarks, recorded under the decided family); it carries its
     # policy reason in `102-authenticated-only-writes.json`.
-    assert len(rows) <= 351, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 351. "
+    # 352: a deliberate regeneration added the ZELNX Performance metric
+    # definitions sync (POST /api/v1/performance/definitions — §5
+    # performance_metric_definitions registry, idempotent taxonomy
+    # registration under the decided family); it carries its policy
+    # reason in `102-authenticated-only-writes.json`.
+    assert len(rows) <= 352, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 352. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

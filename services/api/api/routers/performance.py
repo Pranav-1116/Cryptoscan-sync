@@ -13,6 +13,7 @@ from authorized monitoring sources. It is not a load-testing engine.
 
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -643,3 +644,176 @@ def benchmarks(body: BenchmarkIn, response: Response,
         executed_at=run.executed_at,
         note="controlled benchmark performance — never production traffic "
              "performance (docs/performance/01_PRODUCT_SPEC.md §2.F)")
+
+
+# --- §5 registries and §6 cursor pagination --------------------------
+
+
+class MetricDefinitionOut(BaseModel):
+    metric_name: str
+    domain: str
+    unit: str
+    metric_type: str
+    description: str
+
+
+class DefinitionSyncResult(BaseModel):
+    registered: int
+    inserted: int
+    note: str
+
+
+class CollectorHealthOut(BaseModel):
+    collector_id: str
+    status: str
+    last_report_at: Optional[datetime] = None
+    detail: Optional[str] = None
+    stale: bool
+    note: str
+
+
+class CollectorHealthReport(BaseModel):
+    collectors: List[CollectorHealthOut]
+    stale_detected: int
+    note: str
+
+
+class SampleOut(BaseModel):
+    metric_id: str
+    asset_id: str
+    metric_name: str
+    metric_type: str
+    metric_value: Optional[float] = None
+    unit: str
+    source_id: str
+    observed_at: datetime
+    interval_seconds: Optional[float] = None
+    labels: Dict[str, str] = Field(default_factory=dict)
+    evidence_id: Optional[str] = None
+    quality_status: str
+
+
+class SamplePage(BaseModel):
+    samples: List[SampleOut]
+    next_cursor: Optional[str] = None
+    window_start: Optional[datetime] = None
+    window_end: Optional[datetime] = None
+    returned: int
+    note: str
+
+
+def _encode_cursor(observed_at: datetime, metric_id: str) -> str:
+    raw = f"{observed_at.isoformat()}|{metric_id}".encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii")
+
+
+def _decode_cursor(cursor: str) -> Tuple[datetime, str]:
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8")
+        time_part, metric_id = raw.split("|", 1)
+        return datetime.fromisoformat(time_part), metric_id
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="cursor is not a position this API issued — cursors "
+                   "are opaque and exact, never guessed") from exc
+
+
+@router.get("/definitions", response_model=List[MetricDefinitionOut])
+def metric_definitions(tenant_id: str = Query(...),
+                       domain: Optional[str] = Query(None),
+                       db: Session = Depends(get_db_session),
+                       user: str = Depends(get_current_user)
+                       ) -> List[MetricDefinitionOut]:
+    """The registered metric definitions: unit, source and meaning for
+    every ingested name. A guessed unit is not a defined unit."""
+    return [MetricDefinitionOut(**row) for row in
+            _repo(db).list_metric_definitions(tenant_id, domain=domain)]
+
+
+@router.post("/definitions", response_model=DefinitionSyncResult,
+             status_code=201)
+def sync_metric_definitions(
+        body: Dict[str, Any], response: Response,
+        db: Session = Depends(get_db_session),
+        user: str = Depends(get_current_user)) -> DefinitionSyncResult:
+    """Idempotently register the metric taxonomy as definitions. The
+    taxonomy is the source of truth — the sync inserts nothing twice."""
+    from shared_models.performance_taxonomy import DEFINITIONS
+    tenant_id = body.get("tenant_id") or ""
+    if not tenant_id:
+        raise HTTPException(status_code=422, detail="tenant_id is required")
+    result = _repo(db).sync_metric_definitions(tenant_id, DEFINITIONS)
+    if result["inserted"] == 0:
+        response.status_code = 200
+    return DefinitionSyncResult(
+        registered=result["registered"], inserted=result["inserted"],
+        note="units and meanings come from the taxonomy registry — a "
+             "guessed unit is not a defined unit")
+
+
+@router.get("/collectors", response_model=CollectorHealthReport)
+def collector_health(tenant_id: str = Query(...),
+                     stale_after_seconds: float = Query(300, gt=0),
+                     db: Session = Depends(get_db_session),
+                     user: str = Depends(get_current_user)
+                     ) -> CollectorHealthReport:
+    """Collector heartbeats. A collector that has not reported within
+    the threshold is named STALE — its missing telemetry is never
+    interpreted as zero."""
+    rows = _repo(db).list_collector_health(
+        tenant_id, stale_after_seconds=stale_after_seconds,
+        now=datetime.now(timezone.utc))
+    return CollectorHealthReport(
+        collectors=[CollectorHealthOut(**row) for row in rows],
+        stale_detected=sum(1 for row in rows if row["stale"]),
+        note="detect stale collectors instead of interpreting missing "
+             "metrics as zero (docs/performance/01_PRODUCT_SPEC.md §9)")
+
+
+@router.get("/samples", response_model=SamplePage)
+def query_samples(tenant_id: str = Query(...),
+                  window_start: Optional[datetime] = Query(None),
+                  window_end: Optional[datetime] = Query(None),
+                  metric_name: Optional[str] = Query(None),
+                  asset_id: Optional[str] = Query(None),
+                  cursor: Optional[str] = Query(None),
+                  limit: int = Query(100, gt=0, le=500),
+                  db: Session = Depends(get_db_session),
+                  user: str = Depends(get_current_user)) -> SamplePage:
+    """Raw metric samples with cursor pagination (§6): time ranges,
+    tenant authorization and a sensible maximum query window. The
+    cursor is an exact position — a page is never skipped or repeated."""
+    if (window_start is None) != (window_end is None):
+        raise HTTPException(
+            status_code=422,
+            detail="window_start and window_end arrive together or not "
+                   "at all — a half-open window is not a window")
+    if window_start is not None and window_end is not None:
+        try:
+            window_check(window_start, window_end)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    after = _decode_cursor(cursor) if cursor else None
+    rows = _repo(db).query_samples_cursor(
+        tenant_id, metric_name=metric_name, asset_id=asset_id,
+        window_start=window_start, window_end=window_end,
+        after=after, limit=limit + 1)
+    page = rows[:limit]
+    next_cursor = None
+    if len(rows) > limit and page:
+        next_cursor = _encode_cursor(page[-1].observed_at, page[-1].metric_id)
+    return SamplePage(
+        samples=[SampleOut(
+            metric_id=row.metric_id, asset_id=row.asset_id,
+            metric_name=row.metric_name, metric_type=row.metric_type,
+            metric_value=row.metric_value, unit=row.unit,
+            source_id=row.source_id, observed_at=row.observed_at,
+            interval_seconds=row.interval_seconds,
+            labels=dict(row.labels), evidence_id=row.evidence_id,
+            quality_status=row.quality_status.value) for row in page],
+        next_cursor=next_cursor,
+        window_start=window_start, window_end=window_end,
+        returned=len(page),
+        note="cursor pagination over raw samples — time-bounded, "
+             "tenant-scoped, never truncated silently")

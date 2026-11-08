@@ -73,7 +73,10 @@ MIN_TENANT_ROLE_GATED = 17
 # 346 -> 347: a deliberate regeneration added the ZELNX Performance
 # benchmark write (POST /api/v1/performance/benchmarks — Phase 5
 # controlled benchmark runs recorded under the decided family entry).
-MAX_SESSION_ONLY_WRITES = 347
+# 347 -> 348: a deliberate regeneration added the ZELNX Performance
+# metric definitions sync (POST /api/v1/performance/definitions — §5
+# registry rows written under the decided family entry).
+MAX_SESSION_ONLY_WRITES = 348
 
 
 @pytest.fixture(scope="module")

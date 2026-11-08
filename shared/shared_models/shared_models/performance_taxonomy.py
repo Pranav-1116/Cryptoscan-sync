@@ -177,6 +177,24 @@ DEFINITIONS: Tuple[MetricDefinition, ...] = (
        "Forecasted resource exhaustion"),
     _d("performance.regression_ms", "capacity", "ms", "gauge",
        "Performance regression"),
+    # B. storage — consumption by subsystem (§2B)
+    _d("storage.database_bytes", "storage", "bytes", "gauge",
+       "Database storage consumption"),
+    _d("storage.object_bytes", "storage", "bytes", "gauge",
+       "Object storage consumption"),
+    _d("storage.log_bytes", "storage", "bytes", "gauge",
+       "Log and evidence storage growth"),
+    _d("storage.backup_bytes", "storage", "bytes", "gauge",
+       "Backup storage consumption"),
+    # E. database — operations detail (§2E)
+    _d("db.slow_queries", "database", "count", "gauge",
+       "Slow queries"),
+    _d("db.restore_duration_seconds", "database", "seconds", "gauge",
+       "Restore performance"),
+    # F. cryptographic — utilization (§2F)
+    _d("crypto.hsm_utilization_pct", "cryptography", "percent", "gauge",
+       "HSM utilization"),
+
 )
 
 _BY_NAME: Dict[str, MetricDefinition] = {d.name: d for d in DEFINITIONS}
