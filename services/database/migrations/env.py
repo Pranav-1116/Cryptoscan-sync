@@ -134,7 +134,12 @@ def run_migrations_online() -> None:
                 return None
             row = connection.exec_driver_sql("SELECT version_num FROM alembic_version").first()
             return str(row[0]) if row else None
-        except Exception:
+        except Exception as exc:
+            # A read that cannot complete is not the same as "no version
+            # yet" — say so instead of swallowing it into a quiet None.
+            import logging
+            logging.getLogger("alembic.env").warning(
+                "could not read alembic_version: %s: %s", type(exc).__name__, exc)
             return None
 
     def _mode() -> str:
