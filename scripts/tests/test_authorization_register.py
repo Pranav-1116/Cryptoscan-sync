@@ -85,7 +85,9 @@ MIN_TENANT_ROLE_GATED = 17
 # 350 -> 352: a deliberate regeneration added the Binary Intelligence
 # async job family (POST /api/v1/binary/scan/async queueing and
 # POST /api/v1/binary/scan/jobs/{id}/process worker execution).
-MAX_SESSION_ONLY_WRITES = 352
+# 352 -> 353: a deliberate regeneration added the bounded firmware
+# signature analysis (POST /api/v1/binary/firmware/scan).
+MAX_SESSION_ONLY_WRITES = 353
 
 
 @pytest.fixture(scope="module")

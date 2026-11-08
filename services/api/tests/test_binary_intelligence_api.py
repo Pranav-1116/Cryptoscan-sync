@@ -494,3 +494,28 @@ def test_scan_emits_one_cryptolog_notification_not_an_evidence_copy(api):
     severities = {r.severity for r in rows}
     assert "MEDIUM" in severities, \
         "a private-key detection event computes MEDIUM"
+
+
+def test_firmware_endpoint_returns_leads_never_evidence(api):
+    import gzip
+    payload = (b"\x93\x94\x95HEADER" +
+               gzip.compress(b"rootfs contents " * 500) + b"trailing")
+    created = api.post("/api/v1/binary/firmware/scan", json={
+        "tenant_id": "tenant_001",
+        "artifact_base64": base64.b64encode(payload).decode(),
+        "original_filename": "firmware-v2.1.bin",
+        "source_type": "firmware"})
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["tool_name"] == "binwalk"
+    assert body["analysis_completed"] is True
+    assert body["leads"] and body["leads"][0]["validated"] is True
+    assert body["carved"] and body["carved"][0]["kind"] == "compressed_image"
+    assert "never definitive evidence" in body["note"]
+    assert "untrusted" in body["note"]
+    assert "not proof of firmware contents" in body["note"]
+
+    bad = api.post("/api/v1/binary/firmware/scan", json={
+        "tenant_id": "tenant_001", "artifact_base64": "!!!bad!!!"})
+    assert bad.status_code == 422
+    assert "never assumed" in bad.json()["detail"]

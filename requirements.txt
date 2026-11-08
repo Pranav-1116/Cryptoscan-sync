@@ -47,3 +47,9 @@ jsonschema>=4.25.1,<5
 
 # Required URI format checking: without this, JSF algorithm oneOf is misvalidated.
 rfc3986-validator>=0.1.1,<0.2
+
+# Firmware signature analysis (docs/binary-intelligence §10/§14): the
+# Binwalk TOOL runs in a bounded subprocess — the analyzed artifact is
+# never executed, and its output is leads, never evidence. PyPI's
+# binwalk packaging is broken; the maintained fork is the source.
+binwalk @ git+https://github.com/OSPG/binwalk.git

@@ -521,3 +521,65 @@ def test_process_job_runs_under_limits_and_records_stage_timings():
         original_filename="x", source_type="upload", uploaded_by="u"))
     failed = strict.process_job("job-2")
     assert failed["status"] == "failed" and "wall-clock limit" in failed["reason"]
+
+
+# --- §10/§14: bounded firmware extraction (third-party = leads) -----
+
+def test_firmware_analysis_normalizes_third_party_output_into_leads():
+    import gzip
+    from adapters.firmware import analyze_firmware
+    payload = (b"\x93\x94\x95HEADER" +
+               gzip.compress(b"rootfs contents " * 500) + b"trailing")
+    report = analyze_firmware(payload)
+    body = report.as_dict()
+    assert body["tool_name"] == "binwalk"
+    assert body["analysis_completed"] is True
+    assert body["tool_available"] is True
+    assert any("a lead is not evidence" in note for note in body["notes"])
+    gzip_leads = [l for l in body["leads"] if l["kind"] == "compressed_image"]
+    assert gzip_leads, "the embedded gzip stream is discovered and normalized"
+    assert gzip_leads[0]["validated"] is True
+    assert "third-party output" in gzip_leads[0]["validation_note"]
+    assert body["carved"] and body["carved"][0]["sha256"], \
+        "carved components are inventoried by digest — contents remain " \
+        "untrusted (§14)"
+    assert "never definitive evidence" in body["note"]
+
+
+def test_firmware_never_claims_absence_and_degrades_honestly():
+    from adapters.firmware import analyze_firmware, FirmwareReport
+    clean = analyze_firmware(b"\x00" * 4096)
+    body = clean.as_dict()
+    assert body["analysis_completed"] is True
+    assert body["leads"] == [], \
+        "no signatures found — never 'no firmware found' (§7)"
+    assert "a lead is not evidence" in " ".join(body["notes"])
+
+    empty = analyze_firmware(b"")
+    assert empty.analysis_completed is False
+    assert "no firmware to analyze" in empty.notes[0]
+
+    oversized = analyze_firmware(b"\x00" * 10)
+    # a bounded refusal for oversized input
+    from adapters import firmware as fw
+    original = fw.MAX_FIRMWARE_BYTES
+    try:
+        fw.MAX_FIRMWARE_BYTES = 5
+        refused = analyze_firmware(b"\x00" * 10)
+        assert refused.analysis_completed is False
+        assert "bounded limit" in refused.notes[0]
+    finally:
+        fw.MAX_FIRMWARE_BYTES = original
+
+
+def test_firmware_missing_tool_is_not_a_clean_result(monkeypatch):
+    from adapters import firmware as fw
+    monkeypatch.setattr(fw.shutil, "which", lambda name: None)
+    import sys
+    monkeypatch.setattr("pathlib.Path.exists", lambda self: False)
+    report = fw.analyze_firmware(b"\x00" * 128)
+    assert report.analysis_completed is False
+    assert report.tool_available is False
+    assert "NOT COMPLETED" in report.notes[0], \
+        "a missing tool is never a clean result — 'no firmware found' " \
+        "would be a lie (§7)"

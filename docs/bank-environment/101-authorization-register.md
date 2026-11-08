@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 963 |
+| session | 964 |
 | role | 342 |
 | permission | 74 |
 | tenant-role | 17 |
 
-**1396** operations; **356** of them change state with nothing but the session gate — the exact list, with the policy
+**1397** operations; **357** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -46,9 +46,9 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `exceptions` | 6 |
 | `runtime` | 6 |
 | `automation` | 5 |
+| `binary` | 5 |
 | `host-evidence` | 5 |
 | `resource-monitoring` | 5 |
-| `binary` | 4 |
 | `performance` | 4 |
 | `traffic-control` | 4 |
 | `business` | 3 |
@@ -147,6 +147,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/banking/mainframe/analyze` | `api.routers.banking.banking_mainframe_analyze` |
 | POST | `/api/v1/banking/mainframe/ingest` | `api.routers.banking.banking_mainframe_ingest` |
 | POST | `/api/v1/binary/artifacts/{artifact_id}/rescan` | `api.routers.binary_intelligence.rescan_artifact` |
+| POST | `/api/v1/binary/firmware/scan` | `api.routers.binary_intelligence.firmware_scan` |
 | POST | `/api/v1/binary/scan` | `api.routers.binary_intelligence.submit_scan` |
 | POST | `/api/v1/binary/scan/async` | `api.routers.binary_intelligence.submit_scan_async` |
 | POST | `/api/v1/binary/scan/jobs/{job_id}/process` | `api.routers.binary_intelligence.process_job` |

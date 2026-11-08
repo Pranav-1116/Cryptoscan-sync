@@ -665,3 +665,48 @@ def estate_view(tenant_id: str = Query(...),
     repository = _repo(db)
     rows = repository.list_findings_with_artifacts(tenant_id)
     return EstateOut(**build_estate(findings_with_artifacts=rows))
+
+
+class FirmwareLeadOut(BaseModel):
+    offset: int
+    kind: str
+    description: str
+    validated: bool
+    validation_note: str
+
+
+class FirmwareReportOut(BaseModel):
+    tool_name: str
+    tool_version: str
+    tool_available: bool
+    analysis_completed: bool
+    leads: List[FirmwareLeadOut]
+    carved: List[Dict[str, Any]]
+    limitations: List[str]
+    notes: List[str]
+    note: str
+
+
+@router.post("/firmware/scan", response_model=FirmwareReportOut, status_code=201)
+def firmware_scan(body: ScanRequest,
+                  db: Session = Depends(get_db_session),
+                  user: str = Depends(get_current_user)) -> FirmwareReportOut:
+    """Bounded firmware signature analysis (§10/§14): the Binwalk tool
+    runs under a hard wall-clock timeout — the artifact itself is never
+    executed. Third-party output is validated and normalized into LEADS
+   , never definitive evidence; carved contents remain untrusted; a
+    missing tool reports the analysis as NOT COMPLETED, never as a
+    clean result."""
+    from adapters.firmware import analyze_firmware
+    try:
+        data = base64.b64decode(body.artifact_base64, validate=True)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="artifact bytes did not decode — content is "
+                   "validated, never assumed") from exc
+    try:
+        report = analyze_firmware(data)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return FirmwareReportOut(**report.as_dict())

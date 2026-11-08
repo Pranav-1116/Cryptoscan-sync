@@ -154,8 +154,13 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # with counted backpressure; POST /api/v1/binary/scan/jobs/{id}/
     # process — worker-driven execution under declared limits, the
     # artifact is never executed; decided family policy entry).
-    assert len(rows) <= 356, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 356. "
+    # 357: a deliberate regeneration added the bounded firmware
+    # signature analysis (POST /api/v1/binary/firmware/scan — Binwalk
+    # tool runs under a hard timeout, the artifact is never executed,
+    # third-party output is leads never evidence (§10); decided family
+    # policy entry).
+    assert len(rows) <= 357, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 357. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 
