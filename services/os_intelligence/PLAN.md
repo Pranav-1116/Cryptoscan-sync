@@ -25,6 +25,9 @@ coverage (docs/os-kernel-intelligence/01_PRODUCT_SPEC.md).
    battery runs the collector against the LIVE host and against the
    recorded real-host corpus;
 8. eBPF runtime — NOT IMPLEMENTED (Tier 2, separately approved);
+   Certificate metadata (OS-CRYPTO-008's source) — DELIVERED
+   (openssl x509 + certutil -store parsers, os_certificates migration
+   0144, /assets/{id}/certificates);
 9. Windows/macOS after shared model validation — WINDOWS AND MACOS
    ADAPTERS DONE against documented output formats (fixture-
    validated; live-host validation and fleet qualification NOT DONE
