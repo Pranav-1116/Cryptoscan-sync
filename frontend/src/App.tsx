@@ -13,6 +13,7 @@ import ErrorBoundary from "./components/ErrorBoundary.js";
 import { AuthProvider, RequireAuth } from "./lib/auth.js";
 
 // Generated from src/pages/ — one entry per page file.
+const Binary = lazy(() => import("./pages/Binary"));
 const Accuracy = lazy(() => import("./pages/Accuracy"));
 const Intelligence = lazy(() => import("./pages/Intelligence"));
 const Admin = lazy(() => import("./pages/Admin"));
@@ -182,6 +183,7 @@ function RoutedPages() {
       <Route path="/certificates" element={<Certificates />} />
       <Route path="/cryptolog" element={<CryptoLog />} />
       <Route path="/performance" element={<Performance />} />
+      <Route path="/binary-intelligence" element={<Binary />} />
       <Route path="/cloud" element={<Cloud />} />
       <Route path="/cmdb" element={<Cmdb />} />
       <Route path="/launch-readiness" element={<LaunchReadiness />} />

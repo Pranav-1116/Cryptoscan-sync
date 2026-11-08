@@ -4,7 +4,7 @@
 > `scripts/gen_capability_maturity.py`. Served live at
 > `GET /api/v1/platform/capabilities`.
 
-**95 shipped surfaces, all supported.** The navigation carries no maturity
+**96 shipped surfaces, all supported.** The navigation carries no maturity
 badges: a product's sidebar is not the place to negotiate what is proven. What
 used to be a `beta` or `preview` label is now the **stated limit** column below,
 which is the part that actually told an operator something. A support statement
@@ -77,6 +77,7 @@ role-guarded actions.
 | `/supervision` | Governance | Supervisory-review view for regulators; a read model over evidence, early. |
 | `/trust` | Governance | Trust-score surface; scoring inputs still being defined. |
 | `/agility` | Intelligence | Crypto-agility scoring; 900 LOC, 37 tests; scoring model still being calibrated. |
+| `/binary-intelligence` | Intelligence | Binary Intelligence (docs/binary-intelligence/01_PRODUCT_SPEC.md): evidence-backed cryptographic discovery from compiled artifacts — format identity from content, immutable SHA-256 identity, bounded parsers that fail safe, capability-versus-usage classification, confidence separate from coverage, provides/uses relationships with provenance, private-key contents never as findings, and static analysis that never executes the artifact. Deep reverse-engineering, dynamic analysis and universal firmware support remain external capabilities. |
 | `/cbom` | Intelligence | Shared Technology BOM (SBOM/CBOM/HBOM/VBOM), snapshots and signed exports; system CBOMs carry real estate dependency edges (SystemAsset + SystemDependency, both directions) and scan CBOMs carry the scanner's observed cascade (providers, waves); the unified cross-BOM cascade answers 'what breaks if X changes' across code, network, system graph, process, hardware, vendor and library layers over the digital-twin snapshot, with persisted run history, run-to-run diffs across every layer, migration-wave grouping, point-in-time replay over captured twin snapshots, and watched targets that alert when the blast radius changes; the Dependency Graph page manages edges and runs cascades in the UI; binary scans additionally expose static NBOM and vulnerability sidecars through Applications. |
 | `/crypto` | Intelligence | Algorithm registry + normalized crypto view (114 normalization tests). |
 | `/crypto-assets` | Intelligence | Crypto inventory from the normalized findings table. |

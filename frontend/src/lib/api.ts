@@ -8540,3 +8540,176 @@ export const apiPerformanceSlo = (p: PerformanceWindow): Promise<ApiResult<Array
   window_seconds: number; comparator: string; compliance: string; note: string;
 }>>> =>
   call(`/api/v1/performance/slo${performanceQuery(p)}`);
+
+/* --- Binary Intelligence (docs/binary-intelligence/01_PRODUCT_SPEC.md §12)
+   --- */
+
+export interface BinaryArtifact {
+  artifact_id: string;
+  sha256: string;
+  file_size: number;
+  detected_format: string;
+  format_reason: string;
+  original_filename: string;
+  source_type: string;
+  source_location?: string | null;
+  uploaded_by: string;
+  received_at?: string | null;
+}
+
+export interface BinaryEvidence {
+  type: string;
+  location: string;
+  description: string;
+  excerpt: string;
+}
+
+export interface BinaryFinding {
+  finding_id: string;
+  subject: string;
+  finding_type: string;
+  algorithm: string;
+  variant: string;
+  operation: string;
+  mode_or_padding: string;
+  key_size_bits: number | null;
+  library: string;
+  detection_method: string;
+  evidence: BinaryEvidence[];
+  confidence: string;
+  usage_status: string;
+  runtime_confirmed: boolean;
+  quantum_vulnerable: boolean;
+  pqc_family: boolean;
+  limitations: string[];
+  scanner_version: string;
+  signature_database_version: string;
+}
+
+export interface BinaryCoverage {
+  total_bytes: number;
+  bytes_inspected: number;
+  coverage_fraction: number;
+  sections_total: number;
+  sections_inspected: number;
+  executable_sections: number;
+  symbols_found: number;
+  symbols_stripped: boolean;
+  unresolved_dependencies: string[];
+  unsupported_regions: string[];
+  extraction_failures: string[];
+  deep_analysis_completed: boolean;
+  packed_or_encrypted_suspected: boolean;
+  analysis_timeouts: number;
+  note: string;
+}
+
+export interface BinaryPqcAssessment {
+  quantum_vulnerable_algorithm_indicators: string;
+  quantum_vulnerable_algorithms: string[];
+  pqc_implementation_indicators: string;
+  pqc_algorithms: string[];
+  migration_blockers: string[];
+  cryptographic_library: string;
+  static_linking: string;
+  source_availability: string;
+  vendor_replacement_dependency: string;
+  migration_readiness: string;
+  limitations: string[];
+  note: string;
+}
+
+export interface BinaryBomRelationship {
+  source: string;
+  relationship_type: string;
+  target: string;
+  provenance: string;
+  evidence_class: string;
+  limitations: string[];
+}
+
+export interface BinaryBom {
+  schema: string;
+  artifact_id: string;
+  artifact_sha256: string;
+  subject: string;
+  components: Array<{ type: string; name: string; version: string; properties: Record<string, unknown> }>;
+  relationships: BinaryBomRelationship[];
+  sbom_components: Array<Record<string, unknown>>;
+  cbom_assets: Array<Record<string, unknown>>;
+  limitations: string[];
+}
+
+export interface BinaryScanResult {
+  scan_id: string;
+  artifact: BinaryArtifact;
+  scan_profile: string;
+  status: string;
+  scanner_version: string;
+  signature_database_version: string;
+  finding_count: number;
+  findings: BinaryFinding[];
+  certificates: Array<Record<string, unknown>>;
+  private_key_events: Array<Record<string, unknown>>;
+  coverage: BinaryCoverage;
+  pqc_assessment: BinaryPqcAssessment;
+  notes: string[];
+}
+
+export interface BinaryComparison {
+  base_artifact_id: string;
+  against_artifact_id: string;
+  deltas: Array<{ change: string; algorithm: string; variant: string; detail: string; caveat: string }>;
+  summary: Record<string, number>;
+  note: string;
+}
+
+const binaryQuery = performanceQuery;
+
+export const apiBinaryArtifactScan = (body: {
+  tenant_id: string;
+  artifact_base64: string;
+  original_filename: string;
+  source_type?: string;
+  scan_profile?: string;
+}): Promise<ApiResult<BinaryScanResult>> =>
+  call<BinaryScanResult>("/api/v1/binary/scan", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+export const apiBinaryArtifact = (
+  artifactId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<BinaryArtifact>> =>
+  call<BinaryArtifact>(`/api/v1/binary/artifacts/${encodeURIComponent(artifactId)}${binaryQuery(p)}`);
+
+export const apiBinaryFindings = (
+  artifactId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<{ artifact_id: string; findings: Array<BinaryFinding & { evidence: BinaryEvidence[] }>; note: string }>> =>
+  call(`/api/v1/binary/artifacts/${encodeURIComponent(artifactId)}/findings${binaryQuery(p)}`);
+
+export const apiBinaryCoverage = (
+  artifactId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<BinaryCoverage>> =>
+  call<BinaryCoverage>(`/api/v1/binary/artifacts/${encodeURIComponent(artifactId)}/coverage${binaryQuery(p)}`);
+
+export const apiBinaryPqc = (
+  artifactId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<{ findings: Array<{ quantum_vulnerable: boolean; pqc_family: boolean; algorithm: string; variant: string; confidence: string; usage_status: string; limitations: string[] }>; note: string }>> =>
+  call(`/api/v1/binary/artifacts/${encodeURIComponent(artifactId)}/findings${binaryQuery(p)}`);
+
+export const apiBinaryBom = (
+  artifactId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<{ artifact_id: string; bom: BinaryBom; note: string }>> =>
+  call(`/api/v1/binary/artifacts/${encodeURIComponent(artifactId)}/bom${binaryQuery(p)}`);
+
+export const apiBinaryComparison = (
+  artifactId: string,
+  p: { tenant_id: string; against_artifact_id: string },
+): Promise<ApiResult<BinaryComparison>> =>
+  call<BinaryComparison>(`/api/v1/binary/artifacts/${encodeURIComponent(artifactId)}/comparison${binaryQuery(p)}`);

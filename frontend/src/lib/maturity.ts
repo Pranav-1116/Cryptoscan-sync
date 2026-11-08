@@ -32,6 +32,7 @@ export const CAPABILITIES_JSON = {
   "audit": "ga",
   "automation": "ga",
   "banking-regulatory": "ga",
+  "binary-intelligence": "ga",
   "catalog": "ga",
   "cbom": "ga",
   "certificates": "ga",
@@ -169,6 +170,10 @@ export const CAPABILITY_LIMITS = {
   "banking-regulatory": {
     "area": "Governance",
     "limit": "Banking/SWIFT CSP mapping over the policy engine; regulator-specific packs still growing."
+  },
+  "binary-intelligence": {
+    "area": "Intelligence",
+    "limit": "Binary Intelligence (docs/binary-intelligence/01_PRODUCT_SPEC.md): evidence-backed cryptographic discovery from compiled artifacts \u2014 format identity from content, immutable SHA-256 identity, bounded parsers that fail safe, capability-versus-usage classification, confidence separate from coverage, provides/uses relationships with provenance, private-key contents never as findings, and static analysis that never executes the artifact. Deep reverse-engineering, dynamic analysis and universal firmware support remain external capabilities."
   },
   "catalog": {
     "area": "Discovery",
