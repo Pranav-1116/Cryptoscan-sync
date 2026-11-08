@@ -31,8 +31,8 @@ superseded, not silently edited:
 
 ## Console surfaces
 
-- **Computed from `shared/shared_models/capability_maturity.py`: 94 classified
-  surfaces (94 GA / 0 Beta / 0 Preview).**
+- **Computed from `shared/shared_models/capability_maturity.py`: 95 classified
+  surfaces (95 GA / 0 Beta / 0 Preview).**
 
 Stale surface-count claims superseded by the count above:
 

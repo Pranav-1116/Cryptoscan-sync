@@ -77,6 +77,7 @@ export const CAPABILITIES_JSON = {
   "onboarding": "ga",
   "operator-decisions": "ga",
   "organization": "ga",
+  "performance": "ga",
   "platform-p2": "ga",
   "pqc": "ga",
   "pqc-map": "ga",
@@ -348,6 +349,10 @@ export const CAPABILITY_LIMITS = {
   "organization": {
     "area": "Administration",
     "limit": "Org structure + business context seed."
+  },
+  "performance": {
+    "area": "Intelligence",
+    "limit": "ZELNX Performance Intelligence (docs/performance/01_PRODUCT_SPEC.md): tenant-scoped, time-bounded metric views with missing telemetry named unknown \u2014 never zero; bandwidth capacity never shown as throughput; alerts that state proven AND not-proven with computed severity; forecasts labelled forecast, not fact; controlled benchmarks never presented as production performance; investigations that end at correlation, never causation. Real bank collection overhead measurement and HSM/KMS/PQC benchmarks remain external acts."
   },
   "platform-p2": {
     "area": "Administration",

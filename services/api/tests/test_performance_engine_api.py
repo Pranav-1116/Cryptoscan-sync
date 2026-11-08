@@ -229,3 +229,34 @@ def test_benchmarks_are_controlled_and_never_invented(api):
         "tenant_id": "tenant_001", "algorithm": "ML-KEM-768", "sample_count": 5})
     assert unsupported.status_code == 422
     assert "external act" in unsupported.json()["detail"]
+
+
+def test_infrastructure_and_cloud_views_are_named_domains(api):
+    _seed(api, metric_id="m-cpu", metric_name="cpu.utilization_pct",
+          metric_type="gauge", metric_value=37.5, unit="percent")
+    _seed(api, metric_id="m-pod", metric_name="k8s.pod_restarts",
+          metric_type="counter", metric_value=2.0, unit="count")
+    infra = api.get("/api/v1/performance/infrastructure", params={
+        "tenant_id": "tenant_001", "window_start": START, "window_end": END})
+    assert infra.status_code == 200, infra.text
+    body = infra.json()
+    assert body["domain"] == "infrastructure"
+    assert "cpu.utilization_pct" in body["metrics"]
+    assert "k8s.pod_restarts" not in body["metrics"], \
+        "a domain view names its own domain only"
+    cloud = api.get("/api/v1/performance/cloud", params={
+        "tenant_id": "tenant_001", "window_start": START, "window_end": END})
+    assert cloud.json()["domain"] == "container_cloud"
+    assert "k8s.pod_restarts" in cloud.json()["metrics"]
+
+
+def test_slo_absence_is_not_compliance(api):
+    res = api.get("/api/v1/performance/slo", params={
+        "tenant_id": "tenant_001", "window_start": START, "window_end": END})
+    assert res.status_code == 200
+    assert res.json() == [], "no policies is an honest empty list"
+    empty = api.get("/api/v1/performance/benchmarks",
+                    params={"tenant_id": "tenant_001"})
+    assert empty.status_code == 200
+    assert empty.json()["runs"] == []
+    assert "never production traffic performance" in empty.json()["note"]
