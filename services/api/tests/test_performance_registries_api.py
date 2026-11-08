@@ -23,8 +23,8 @@ from sqlalchemy.pool import StaticPool
 def api():
     from db.connection.session import Base
     from db.models.performance import (
-        PerformanceCollectorHealth, PerformanceMetric,
-        PerformanceMetricDefinition,
+        PerformanceBenchmarkRun, PerformanceCollectorHealth,
+        PerformanceMetric, PerformanceMetricDefinition,
     )
 
     engine = create_engine(
@@ -32,7 +32,8 @@ def api():
         poolclass=StaticPool)
     Base.metadata.create_all(engine, tables=[
         PerformanceMetric.__table__, PerformanceMetricDefinition.__table__,
-        PerformanceCollectorHealth.__table__])
+        PerformanceCollectorHealth.__table__,
+        PerformanceBenchmarkRun.__table__])
     session = sessionmaker(bind=engine)()
 
     from api import dependencies
@@ -195,3 +196,32 @@ def test_samples_are_windowed_tenant_scoped_and_cursor_exact(api):
     assert bad_cursor.status_code == 422
     assert "opaque" in bad_cursor.json()["detail"] or \
         "guessed" in bad_cursor.json()["detail"]
+
+
+def test_benchmark_runs_paginate_by_cursor_newest_first(api):
+    ids = []
+    for i in range(5):
+        run = api.post("/api/v1/performance/benchmarks", json={
+            "tenant_id": "tenant_001", "algorithm": "Ed25519",
+            "sample_count": 2})
+        assert run.status_code == 201, run.text
+        ids.append(run.json()["run_id"])
+
+    page1 = api.get("/api/v1/performance/benchmarks", params={
+        "tenant_id": "tenant_001", "limit": 2}).json()
+    assert len(page1["runs"]) == 2 and page1["next_cursor"]
+    page2 = api.get("/api/v1/performance/benchmarks", params={
+        "tenant_id": "tenant_001", "limit": 2,
+        "cursor": page1["next_cursor"]}).json()
+    assert len(page2["runs"]) == 2 and page2["next_cursor"]
+    page3 = api.get("/api/v1/performance/benchmarks", params={
+        "tenant_id": "tenant_001", "limit": 2,
+        "cursor": page2["next_cursor"]}).json()
+    assert len(page3["runs"]) == 1 and page3["next_cursor"] is None
+
+    seen = [r["run_id"] for page in (page1, page2, page3)
+            for r in page["runs"]]
+    assert sorted(seen) == sorted(ids), \
+        "pages never skip or repeat runs"
+    assert all(r["measurement_kind"] == "controlled_benchmark"
+               for page in (page1, page2, page3) for r in page["runs"])

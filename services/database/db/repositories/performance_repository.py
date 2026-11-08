@@ -209,11 +209,20 @@ class PerformanceRepository:
         return {"outcome": INSERTED, "accepted_id": run.run_id}
 
     def list_benchmark_runs(self, tenant_id: str, *,
-                            limit: int = 50) -> List[Dict[str, Any]]:
+                            limit: int = 50,
+                            after: Optional[Tuple[datetime, str]] = None
+                            ) -> List[Dict[str, Any]]:
+        stmt = select(PerformanceBenchmarkRun).where(
+            PerformanceBenchmarkRun.tenant_id == tenant_id)
+        if after is not None:
+            cursor_time, cursor_id = after
+            stmt = stmt.where(sa.or_(
+                PerformanceBenchmarkRun.executed_at < cursor_time,
+                sa.and_(PerformanceBenchmarkRun.executed_at == cursor_time,
+                        PerformanceBenchmarkRun.run_id < cursor_id)))
         rows = self.db.execute(
-            select(PerformanceBenchmarkRun).where(
-                PerformanceBenchmarkRun.tenant_id == tenant_id)
-            .order_by(PerformanceBenchmarkRun.executed_at.desc())
+            stmt.order_by(PerformanceBenchmarkRun.executed_at.desc(),
+                          PerformanceBenchmarkRun.run_id.desc())
             .limit(limit)
         ).scalars()
         return [

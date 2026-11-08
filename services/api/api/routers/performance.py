@@ -563,6 +563,7 @@ class SlaPolicyOut(BaseModel):
 
 class BenchmarkListOut(BaseModel):
     runs: List[Dict[str, Any]]
+    next_cursor: Optional[str] = None
     note: str
 
 
@@ -610,11 +611,21 @@ def slo(tenant_id: str = Query(...),
 @router.get("/benchmarks", response_model=BenchmarkListOut)
 def list_benchmarks(tenant_id: str = Query(...),
                     limit: int = Query(50, ge=1, le=200),
+                    cursor: Optional[str] = Query(None),
                     db: Session = Depends(get_db_session),
                     user: str = Depends(get_current_user)) -> BenchmarkListOut:
-    runs = _repo(db).list_benchmark_runs(tenant_id, limit=limit)
+    """Controlled benchmark runs, newest first, with cursor pagination
+    (§6: time ranges, cursor pagination, tenant authorization)."""
+    after = _decode_cursor(cursor) if cursor else None
+    rows = _repo(db).list_benchmark_runs(tenant_id, limit=limit + 1,
+                                         after=after)
+    runs = rows[:limit]
+    next_cursor = None
+    if len(rows) > limit and runs:
+        last = runs[-1]
+        next_cursor = _encode_cursor(last["executed_at"], last["run_id"])
     return BenchmarkListOut(
-        runs=runs,
+        runs=runs, next_cursor=next_cursor,
         note="every run is controlled benchmark performance — never "
              "production traffic performance (docs/performance/"
              "01_PRODUCT_SPEC.md §2.F)")
