@@ -27,6 +27,7 @@ const Certificates = lazy(() => import("./pages/Certificates"));
 const Cloud = lazy(() => import("./pages/Cloud"));
 const Cmdb = lazy(() => import("./pages/Cmdb"));
 const CryptoLog = lazy(() => import("./pages/CryptoLog"));
+const Performance = lazy(() => import("./pages/Performance"));
 const AssuranceCoverage = lazy(() => import("./pages/AssuranceCoverage"));
 const Audit = lazy(() => import("./pages/Audit"));
 const AssuranceQualification = lazy(() => import("./pages/AssuranceQualification"));
@@ -180,6 +181,7 @@ function RoutedPages() {
       <Route path="/cbom" element={<Cbom />} />
       <Route path="/certificates" element={<Certificates />} />
       <Route path="/cryptolog" element={<CryptoLog />} />
+      <Route path="/performance" element={<Performance />} />
       <Route path="/cloud" element={<Cloud />} />
       <Route path="/cmdb" element={<Cmdb />} />
       <Route path="/launch-readiness" element={<LaunchReadiness />} />

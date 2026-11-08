@@ -8312,3 +8312,231 @@ export const apiCryptologRetentionPlan = (filters: {
       end_occurred: filters.end_occurred,
     }),
   });
+
+/* ZELNX Performance Intelligence (docs/performance/01_PRODUCT_SPEC.md).
+   Every query is tenant-scoped and time-bounded; a failed read is a
+   failure, never zeros; an unknown tile is unknown, never zero. */
+
+export interface PerformanceTile {
+  value: number | null;
+  unit: string;
+  state: string;
+  derived?: boolean;
+  note?: string | null;
+}
+
+export interface PerformanceSummary {
+  sample_count: number;
+  value_count: number;
+  unknown_count: number;
+  coverage: string;
+  average: number | null;
+  minimum: number | null;
+  maximum: number | null;
+  p50: number | null;
+  p95: number | null;
+  p99: number | null;
+}
+
+export interface PerformanceOverview {
+  storage_usage_pct: PerformanceTile;
+  network_throughput_mbps: PerformanceTile;
+  api_p95_latency_ms: PerformanceTile;
+  requests_per_sec: PerformanceTile;
+  note: string;
+}
+
+export interface PerformanceNetwork {
+  bandwidth_capacity_mbps: PerformanceTile;
+  observed_throughput_mbps: PerformanceTile;
+  rtt_ms: PerformanceSummary | null;
+  metrics: Record<string, PerformanceSummary>;
+  note: string;
+}
+
+export interface PerformanceStorage {
+  tiles: Record<string, PerformanceTile>;
+  metrics: Record<string, PerformanceSummary>;
+  note: string;
+}
+
+export interface PerformanceApplications {
+  requests_per_sec: PerformanceTile;
+  latency_p50_ms: PerformanceTile;
+  latency_p95_ms: PerformanceTile;
+  latency_p99_ms: PerformanceTile;
+  error_rate_pct: PerformanceTile;
+  metrics: Record<string, PerformanceSummary>;
+  note: string;
+}
+
+export interface PerformanceDatabases {
+  connections_active: PerformanceTile;
+  query_time_ms: PerformanceSummary | null;
+  metrics: Record<string, PerformanceSummary>;
+  note: string;
+}
+
+export interface PerformanceCryptography {
+  tls_handshake_ms: PerformanceSummary | null;
+  hsm_operation_latency_ms: PerformanceSummary | null;
+  metrics: Record<string, PerformanceSummary>;
+  measurement_kind: string;
+  note: string;
+}
+
+export interface PerformanceDomain {
+  domain: string;
+  metrics: Record<string, PerformanceSummary>;
+  note: string;
+}
+
+export interface PerformanceAsset {
+  asset_id: string;
+  identity: Record<string, unknown> | null;
+  metrics: Record<string, PerformanceSummary>;
+  note: string;
+}
+
+export interface PerformanceAlert {
+  metric_name: string;
+  severity: string;
+  severity_factors: Record<string, unknown>;
+  proven: string[];
+  not_proven: string[];
+  supporting_measurements: PerformanceSummary;
+  window_start: string;
+  window_end: string;
+}
+
+export interface PerformanceBaseline {
+  metric_name: string;
+  asset_id: string | null;
+  method: string;
+  window_start: string;
+  window_end: string;
+  sample_count: number;
+  median: number | null;
+  p95: number | null;
+  mad: number | null;
+  note: string;
+}
+
+export interface PerformanceCapacity {
+  metric_name: string;
+  status: string;
+  method: string;
+  sample_count: number;
+  growth_per_second: number | null;
+  estimated_seconds_to_exhaustion: number | null;
+  disclaimer: string;
+  note: string;
+}
+
+export interface PerformanceInvestigation {
+  investigation: string;
+  conclusion: string;
+  change: Record<string, unknown>;
+  before: PerformanceSummary;
+  after: PerformanceSummary;
+  difference_p95: number | null;
+  affected_assets: string[];
+  evidence: { proven: string[]; not_proven: string[] };
+  note: string;
+}
+
+export interface PerformanceBenchmarkRun {
+  run_id: string;
+  measurement_kind: string;
+  approved: boolean;
+  method: Record<string, unknown>;
+  results: Array<{ operation: string; mean_ms: number; min_ms: number; max_ms: number; samples: number }>;
+  executed_at: string | null;
+  note?: string;
+}
+
+export interface PerformanceHealth {
+  engine: string;
+  status: string;
+  collectors: Array<{ collector_id: string; status: string; last_report_at: string | null; detail: string | null }>;
+  checked_at: string;
+  note: string;
+}
+
+export interface PerformanceWindow {
+  tenant_id: string;
+  window_start: string;
+  window_end: string;
+}
+
+const performanceQuery = (params: object): string => {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params as Record<string, unknown>)) {
+    if (value !== undefined && value !== null && String(value) !== "") query.set(key, String(value));
+  }
+  const suffix = query.toString();
+  return suffix ? `?${suffix}` : "";
+};
+
+export const apiPerformanceOverview = (p: PerformanceWindow): Promise<ApiResult<PerformanceOverview>> =>
+  call<PerformanceOverview>(`/api/v1/performance/overview${performanceQuery(p)}`);
+
+export const apiPerformanceNetwork = (p: PerformanceWindow): Promise<ApiResult<PerformanceNetwork>> =>
+  call<PerformanceNetwork>(`/api/v1/performance/network${performanceQuery(p)}`);
+
+export const apiPerformanceStorage = (p: PerformanceWindow): Promise<ApiResult<PerformanceStorage>> =>
+  call<PerformanceStorage>(`/api/v1/performance/storage${performanceQuery(p)}`);
+
+export const apiPerformanceApplications = (p: PerformanceWindow): Promise<ApiResult<PerformanceApplications>> =>
+  call<PerformanceApplications>(`/api/v1/performance/applications${performanceQuery(p)}`);
+
+export const apiPerformanceDatabases = (p: PerformanceWindow): Promise<ApiResult<PerformanceDatabases>> =>
+  call<PerformanceDatabases>(`/api/v1/performance/databases${performanceQuery(p)}`);
+
+export const apiPerformanceCryptography = (p: PerformanceWindow): Promise<ApiResult<PerformanceCryptography>> =>
+  call<PerformanceCryptography>(`/api/v1/performance/cryptography${performanceQuery(p)}`);
+
+export const apiPerformanceInfrastructure = (p: PerformanceWindow): Promise<ApiResult<PerformanceDomain>> =>
+  call<PerformanceDomain>(`/api/v1/performance/infrastructure${performanceQuery(p)}`);
+
+export const apiPerformanceCloud = (p: PerformanceWindow): Promise<ApiResult<PerformanceDomain>> =>
+  call<PerformanceDomain>(`/api/v1/performance/cloud${performanceQuery(p)}`);
+
+export const apiPerformanceAsset = (assetId: string, p: PerformanceWindow): Promise<ApiResult<PerformanceAsset>> =>
+  call<PerformanceAsset>(`/api/v1/performance/assets/${encodeURIComponent(assetId)}${performanceQuery(p)}`);
+
+export const apiPerformanceAlerts = (p: PerformanceWindow & { metric_name?: string }): Promise<ApiResult<PerformanceAlert[]>> =>
+  call<PerformanceAlert[]>(`/api/v1/performance/alerts${performanceQuery(p)}`);
+
+export const apiPerformanceBaselines = (p: PerformanceWindow & { metric_name?: string }): Promise<ApiResult<PerformanceBaseline[]>> =>
+  call<PerformanceBaseline[]>(`/api/v1/performance/baselines${performanceQuery(p)}`);
+
+export const apiPerformanceCapacity = (p: PerformanceWindow & { metric_name?: string; capacity_value?: number }): Promise<ApiResult<PerformanceCapacity[]>> =>
+  call<PerformanceCapacity[]>(`/api/v1/performance/capacity${performanceQuery(p)}`);
+
+export const apiPerformanceInvestigation = (p: {
+  tenant_id: string; metric_name: string; change_time: string;
+  change_description: string; evidence_ids?: string;
+}): Promise<ApiResult<PerformanceInvestigation>> =>
+  call<PerformanceInvestigation>(`/api/v1/performance/reports${performanceQuery(p)}`);
+
+export const apiPerformanceBenchmarks = (p: { tenant_id: string }): Promise<ApiResult<{ runs: PerformanceBenchmarkRun[]; note: string }>> =>
+  call<{ runs: PerformanceBenchmarkRun[]; note: string }>(`/api/v1/performance/benchmarks${performanceQuery(p)}`);
+
+export const apiPerformanceRunBenchmark = (body: {
+  tenant_id: string; algorithm: string; sample_count?: number;
+}): Promise<ApiResult<PerformanceBenchmarkRun>> =>
+  call<PerformanceBenchmarkRun>("/api/v1/performance/benchmarks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+export const apiPerformanceHealth = (p: { tenant_id?: string }): Promise<ApiResult<PerformanceHealth>> =>
+  call<PerformanceHealth>(`/api/v1/performance/health${performanceQuery(p)}`);
+
+export const apiPerformanceSlo = (p: PerformanceWindow): Promise<ApiResult<Array<{
+  policy_key: string; metric_name: string; objective: number;
+  window_seconds: number; comparator: string; compliance: string; note: string;
+}>>> =>
+  call(`/api/v1/performance/slo${performanceQuery(p)}`);

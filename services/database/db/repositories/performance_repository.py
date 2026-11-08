@@ -304,3 +304,19 @@ class PerformanceRepository:
         self.db.add(row)
         self.db.commit()
         return {"outcome": INSERTED, "accepted_id": row.id}
+
+    def list_slo_policies(self, tenant_id: str) -> List[Dict[str, Any]]:
+        rows = self.db.execute(
+            select(PerformanceSloPolicy).where(
+                PerformanceSloPolicy.tenant_id == tenant_id)
+        ).scalars()
+        return [
+            {
+                "policy_key": r.policy_key,
+                "metric_name": r.metric_name,
+                "objective": r.objective,
+                "window_seconds": r.window_seconds,
+                "comparator": r.comparator,
+            }
+            for r in rows
+        ]

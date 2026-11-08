@@ -34,7 +34,7 @@ from shared_models.performance_intelligence import (
 )
 from shared_models.performance_metrics import PerformanceMetric
 from shared_models.performance_views import (
-    application_view, cryptography_view, database_view,
+    application_view, cryptography_view, database_view, domain_view,
     network_view, overview as view_overview, storage_view,
     summarize_metric as summarize, window_check,
 )
@@ -548,6 +548,75 @@ def reports(tenant_id: str = Query(...),
         after_start=after_start, after_end=after_end,
         affected_assets=asset_ids)
     return InvestigationOut(**report)
+
+
+class SlaPolicyOut(BaseModel):
+    policy_key: str
+    metric_name: str
+    objective: float
+    window_seconds: int
+    comparator: str
+    compliance: str
+    note: str
+
+
+class BenchmarkListOut(BaseModel):
+    runs: List[Dict[str, Any]]
+    note: str
+
+
+@router.get("/infrastructure", response_model=DomainResponse)
+def infrastructure(tenant_id: str = Query(...),
+                   window: Tuple[datetime, datetime] = Depends(_window_params),
+                   db: Session = Depends(get_db_session),
+                   user: str = Depends(get_current_user)) -> DomainResponse:
+    window_start, window_end = window
+    rows = _tenant_rows(db, tenant_id, window_start, window_end)
+    return DomainResponse(**domain_view(rows, "infrastructure"))
+
+
+@router.get("/cloud", response_model=DomainResponse)
+def cloud(tenant_id: str = Query(...),
+          window: Tuple[datetime, datetime] = Depends(_window_params),
+          db: Session = Depends(get_db_session),
+          user: str = Depends(get_current_user)) -> DomainResponse:
+    window_start, window_end = window
+    rows = _tenant_rows(db, tenant_id, window_start, window_end)
+    return DomainResponse(**domain_view(rows, "container_cloud"))
+
+
+@router.get("/slo", response_model=List[SlaPolicyOut])
+def slo(tenant_id: str = Query(...),
+        window: Tuple[datetime, datetime] = Depends(_window_params),
+        db: Session = Depends(get_db_session),
+        user: str = Depends(get_current_user)) -> List[SlaPolicyOut]:
+    """SLO and SLA management: stored policies with live compliance.
+    A policy match is not automatically proof of compliance — the note
+    says what window was compared and what remains unproven."""
+    rows = _repo(db).list_slo_policies(tenant_id)
+    return [SlaPolicyOut(
+        policy_key=policy["policy_key"],
+        metric_name=policy["metric_name"],
+        objective=policy["objective"],
+        window_seconds=policy["window_seconds"],
+        comparator=policy["comparator"],
+        compliance="not-evaluated",
+        note="a policy match is not automatically proof of compliance; "
+             "evaluation compares the stated window only")
+        for policy in rows]
+
+
+@router.get("/benchmarks", response_model=BenchmarkListOut)
+def list_benchmarks(tenant_id: str = Query(...),
+                    limit: int = Query(50, ge=1, le=200),
+                    db: Session = Depends(get_db_session),
+                    user: str = Depends(get_current_user)) -> BenchmarkListOut:
+    runs = _repo(db).list_benchmark_runs(tenant_id, limit=limit)
+    return BenchmarkListOut(
+        runs=runs,
+        note="every run is controlled benchmark performance — never "
+             "production traffic performance (docs/performance/"
+             "01_PRODUCT_SPEC.md §2.F)")
 
 
 @router.post("/benchmarks", response_model=BenchmarkRunOut, status_code=201)
