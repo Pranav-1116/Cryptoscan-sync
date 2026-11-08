@@ -68,11 +68,15 @@ class CarvedComponent:
     size: int
     sha256: str
     kind: str
+    findings: List[Dict[str, Any]] = field(default_factory=list)
+    component_notes: List[str] = field(default_factory=list)
 
     def as_dict(self) -> Dict[str, Any]:
         return {
             "index": self.index, "offset": self.offset, "size": self.size,
             "sha256": self.sha256, "kind": self.kind,
+            "findings": self.findings,
+            "notes": self.component_notes,
         }
 
 
@@ -163,8 +167,38 @@ def _run_binwalk(path: Path, *, timeout_seconds: float
     return True, version, rows, None
 
 
-def analyze_firmware(data: bytes, *, timeout_seconds: float = MAX_SCAN_SECONDS
-                     ) -> FirmwareReport:
+MAX_COMPONENT_ANALYSES = 8
+
+
+def _analyze_component(blob: bytes, offset: int) -> Tuple[List[Dict[str, Any]], List[str]]:
+    """Feed one carved component through the static pipeline (§17 Phase
+    4: extracted components feed cryptographic discovery). Bounded in
+    count at the caller; findings carry sub-artifact provenance."""
+    from binary_intelligence.pipeline import run_scan
+    try:
+        result = run_scan(
+            tenant_id="firmware-component", data=blob,
+            original_filename=f"carved@0x{offset:x}",
+            source_type="firmware", uploaded_by="firmware-analysis")
+    except ValueError as exc:
+        return [], [f"component refused safely: {exc}"]
+    findings = []
+    for finding in result.findings:
+        findings.append({
+            "subject": finding.subject,
+            "algorithm": finding.algorithm,
+            "variant": finding.variant,
+            "confidence": finding.evidence_class.value,
+            "usage_status": finding.usage_status.value,
+            "key_size_bits": finding.key_size_bits,
+        })
+    return findings, [
+        "findings are from the STATIC pipeline over carved bytes — the "
+        "carved content is untrusted and was never executed (§14)"]
+
+
+def analyze_firmware(data: bytes, *, timeout_seconds: float = MAX_SCAN_SECONDS,
+                     analyze_components: bool = True) -> FirmwareReport:
     """Bounded firmware analysis. Malformed or oversized input is
     refused with its reason; a missing tool reports the analysis as NOT
     COMPLETED — never a clean result."""
@@ -227,15 +261,24 @@ def analyze_firmware(data: bytes, *, timeout_seconds: float = MAX_SCAN_SECONDS
                     "remainder is inventoried as leads only (§14)")
                 break
             blob = data[lead.offset:lead.offset + size]
-            report.carved.append(CarvedComponent(
+            component = CarvedComponent(
                 index=index, offset=lead.offset, size=size,
                 sha256=hashlib.sha256(blob).hexdigest(),
-                kind=lead.kind))
+                kind=lead.kind)
+            if analyze_components and index < MAX_COMPONENT_ANALYSES:
+                component.findings, component.component_notes = \
+                    _analyze_component(blob, lead.offset)
+            elif analyze_components:
+                component.component_notes.append(
+                    f"component analysis beyond the bounded count "
+                    f"{MAX_COMPONENT_ANALYSES} is not performed — the "
+                    "remainder is inventoried, never guessed")
+            report.carved.append(component)
             total_carved += size
 
     report.analysis_completed = True
     report.notes.append(
         "binwalk output validated and normalized into leads; a lead is "
-        "not evidence — findings require the static pipeline over "
-        "carved components (§10)")
+        "not evidence — findings come from the static pipeline over "
+        "carved components (§10), and carved content is untrusted")
     return report

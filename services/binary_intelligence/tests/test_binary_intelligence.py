@@ -583,3 +583,28 @@ def test_firmware_missing_tool_is_not_a_clean_result(monkeypatch):
     assert "NOT COMPLETED" in report.notes[0], \
         "a missing tool is never a clean result — 'no firmware found' " \
         "would be a lie (§7)"
+
+
+def test_carved_components_feed_cryptographic_discovery():
+    """§17 Phase 4: extracted embedded components feed component
+    inventory AND cryptographic discovery — with sub-artifact
+    provenance, from untrusted, never-executed bytes."""
+    import gzip
+    from adapters.firmware import analyze_firmware
+    payload = (b"\x93\x94FW-HDR" + elf_crypto_sample() +
+               gzip.compress(b"rootfs " * 200) + b"tail")
+    report = analyze_firmware(payload)
+    body = report.as_dict()
+    kinds = {c["kind"] for c in body["carved"]}
+    assert "executable" in kinds or "compressed_image" in kinds
+    elf_component = next(
+        (c for c in body["carved"] if c["kind"] == "executable"), None)
+    assert elf_component is not None, \
+        "binwalk discovers the embedded ELF inside the firmware image"
+    algorithms = {f["algorithm"] for f in elf_component["findings"]}
+    assert {"AES", "RSA", "SHA-2"} <= algorithms, \
+        "carved component findings come from the static pipeline (§10)"
+    for finding in elf_component["findings"]:
+        assert "confidence" in finding and "usage_status" in finding
+    assert any("untrusted and was never executed" in note
+               for note in elf_component["notes"])
