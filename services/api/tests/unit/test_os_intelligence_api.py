@@ -465,3 +465,51 @@ class TestWindowsPackage:
             assert tls, "weak TLS permitted by configuration fires"
             assert tls[0]["details"]["observed_runtime_negotiation"] == \
                 "Not established"
+
+class TestMacosPackage:
+
+    @pytest.mark.asyncio
+    async def test_macos_collection_round_trips_the_canonical_model(
+            self, app_db):
+        """§15 step 4/9: the macOS package records through the same
+        canonical path. PROVENANCE: fixtures reconstructed from
+        documented output formats — NOT macOS fleet qualification
+        (§12). Protected storage files are never scraped."""
+        import sys
+        sys.path.insert(0, str(_SERVICES / "os_intelligence"))
+        from os_intelligence.macos import collect_macos
+
+        app, _db = app_db
+        mac_fixtures = (_SERVICES / "os_intelligence" / "tests" /
+                        "fixtures" / "macos")
+        captured = {
+            name: (mac_fixtures / f"{name}.txt").read_text()
+            for name in ("sw_vers", "uname", "csrutil", "spctl",
+                         "fdesetup", "kmutil")
+        }
+        inventory = collect_macos("mac-host-under-test", captured)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await _post_collection(
+                client, inventory, asset_id="mac-host-under-test")
+            assert resp.status_code == 201, resp.text
+            assets = (await client.get(
+                "/api/v1/os-intelligence/assets",
+                params={"tenant_id": "t1"})).json()["assets"]
+            mac = [a for a in assets
+                   if a["asset_id"] == "mac-host-under-test"][0]
+            assert mac["os_pretty_name"] == "macOS"
+            assert mac["environment_development_only"] is True
+            caps = (await client.get(
+                "/api/v1/os-intelligence/assets/mac-host-under-test/"
+                "crypto-capabilities",
+                params={"tenant_id": "t1"})).json()
+            assert caps["capabilities"] == []
+            assert "not proof of runtime use" in caps["note"] or \
+                "never" in caps["note"]
+            findings = (await client.get(
+                "/api/v1/os-intelligence/assets/mac-host-under-test/"
+                "findings",
+                params={"tenant_id": "t1"})).json()["findings"]
+            assert all(f["runtime_usage_confirmed"] is False
+                       for f in findings)

@@ -113,12 +113,29 @@ status is "validated against documented output formats"; live-Windows
 validation and enterprise Windows fleet qualification are NOT DONE and
 never claimed. ETW runtime tracing is Tier 2 and NOT implemented.
 
+## macOS adapter (delivered with stated provenance)
+
+`macos.py` normalizes captured macOS command outputs (sw_vers/uname
+identity, csrutil SIP, spctl Gatekeeper, fdesetup FileVault METADATA,
+kmutil kernel extensions) into the SAME canonical model. Per the spec
+boundary (§5/§7): Security framework / Keychain command OUTPUTS only —
+protected storage files and keychain databases are NEVER scraped. The
+crypto provider inventory is recorded UNAVAILABLE ("macOS exposes no
+/proc/crypto equivalent — never 'no providers'"). OS-CRYPTO-010 now
+evaluates the Windows-collected Secure Boot state; on macOS the note
+keeps SIP as a distinct claim.
+
+PROVENANCE (§12): fixtures RECONSTRUCTED from documented output
+formats — NOT captured from a live macOS host; live validation and
+fleet qualification are NOT DONE and never claimed.
+
 ## Not implemented (recorded, never hidden)
 
 - runtime monitoring (Tier 2, eBPF): not implemented — no runtime events
   are collected;
-- macOS collector: not implemented (Security framework/Keychain APIs
-  only — protected storage files are never scraped);
+- macOS live-host validation and fleet qualification: NOT DONE (the
+  adapter is fixture-validated against documented output formats
+  only);
 - Windows live-host validation and fleet qualification: NOT DONE (the
   adapter is fixture-validated against documented output formats
   only);

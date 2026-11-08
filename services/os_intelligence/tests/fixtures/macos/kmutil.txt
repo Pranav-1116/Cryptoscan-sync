@@ -1,0 +1,2 @@
+   42    0 0xffffff8002c00000 0x10000    0x10000    com.apple.iokit.IOHIDFamily (2.0.0)
+   87    0 0xffffff8003200000 0x8000     0x8000     com.apple.kec.corecrypto (13.0)

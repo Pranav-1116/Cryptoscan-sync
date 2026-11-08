@@ -580,7 +580,16 @@ def evaluate(inventory: Dict[str, Any],
 
     # --- OS-CRYPTO-009: TPM unavailable or misconfigured ---------------
     tpm = next((t for t in trust if t.get("subject") == "tpm"), None)
-    if tpm is None:
+    if tpm is None and trust:
+        subjects = sorted({str(t.get("subject")) for t in trust})
+        results.append(_not_evaluable(
+            "OS-CRYPTO-009", *_BY_ID["OS-CRYPTO-009"],
+            "a TPM trust fact",
+            "no TPM subject was collected on this platform; recorded "
+            f"hardware trust subjects are {subjects} — distinct "
+            "claims, never substitutes; the absence of a TPM fact is "
+            "never 'no hardware trust' (§2.1)"))
+    elif tpm is None:
         results.append(_not_evaluable(
             "OS-CRYPTO-009", *_BY_ID["OS-CRYPTO-009"],
             "hardware trust facts",
@@ -619,11 +628,60 @@ def evaluate(inventory: Dict[str, Any],
             "assessed by device presence alone", []))
 
     # --- OS-CRYPTO-010: Secure Boot disabled -------------------------
-    results.append(_not_evaluable(
-        "OS-CRYPTO-010", *_BY_ID["OS-CRYPTO-010"],
-        "Secure Boot state",
-        "the OS engine does not read EFI Secure Boot state in this "
-        "phase; an unread state is never reported as 'disabled'"))
+    secure_boot = next((t for t in trust
+                        if t.get("subject") == "secure_boot"), None)
+    if secure_boot is None:
+        other_subjects = sorted({str(t.get("subject")) for t in trust})
+        detail = (f" — recorded hardware trust subjects are "
+                  f"{other_subjects}; they are distinct claims and "
+                  "never substitutes for Secure Boot state"
+                  if other_subjects else "")
+        results.append(_not_evaluable(
+            "OS-CRYPTO-010", *_BY_ID["OS-CRYPTO-010"],
+            "EFI Secure Boot state",
+            "no Secure Boot state source was collected" + detail +
+            "; an unread state is never reported as 'disabled'"))
+    elif secure_boot.get("state") == "disabled":
+        results.append(_wrap("OS-CRYPTO-010", "evaluated",
+            "Secure Boot reported disabled by the firmware interface",
+            [_finding(
+                rule_id="OS-CRYPTO-010",
+                detection="Secure Boot disabled",
+                subject=subject,
+                evidence_source="firmware interface "
+                                "(Confirm-SecureBootUEFI)",
+                observation_type="configuration_state",
+                evidence_class="observed",
+                details={"state": "disabled",
+                         "condition": "Secure Boot is reported "
+                                      "disabled by the firmware "
+                                      "interface",
+                         "risk": "boot integrity concern — the boot "
+                                 "chain's measured-boot guarantee is "
+                                 "not active on this host",
+                         "recommendation": "confirm the expected boot "
+                             "integrity policy for this host class "
+                             "with the system owner"},
+                limitations=["a firmware configuration state is not a "
+                             "defect verdict (§1) — Secure Boot "
+                             "disablement can be an intentional "
+                             "configuration",
+                             "this says nothing about the integrity "
+                             "of any specific boot"],
+                risk=assess(security_significance="high",
+                            evidence_class="observed",
+                            exposure="configuration_only"))]))
+    elif secure_boot.get("state") == "enabled":
+        results.append(_wrap(
+            "OS-CRYPTO-010", "evaluated",
+            "Secure Boot reported enabled by the firmware interface — "
+            "a configuration state, never a trust verdict (§12)", []))
+    else:
+        results.append(_wrap(
+            "OS-CRYPTO-010", "evaluated",
+            "Secure Boot availability is NOT ESTABLISHED from the "
+            "collected source — recorded as unavailable, never as "
+            "'disabled' (§2.1)", []))
 
     # --- OS-CRYPTO-011: provider version vulnerable ------------------
     results.append(_not_evaluable(
