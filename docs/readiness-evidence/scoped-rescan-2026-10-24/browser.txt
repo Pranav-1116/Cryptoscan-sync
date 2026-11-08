@@ -1,6 +1,0 @@
-2026-10-24 10:11:08 [warning  ] cannot_extract_git_metadata    error=/home/user/rescan-source-3ecvf39p
-2026-10-24 10:11:08 [info     ] starting_file_discovery        root=/home/user/rescan-source-3ecvf39p
-2026-10-24 10:11:08 [info     ] file_discovery_complete        files_found=2 files_skipped=0 root=/home/user/rescan-source-3ecvf39p
-2026-10-24 10:11:08 [info     ] starting_file_discovery        root=/home/user/rescan-source-3ecvf39p
-2026-10-24 10:11:08 [info     ] file_discovery_complete        files_found=2 files_skipped=0 root=/home/user/rescan-source-3ecvf39p
-6 scoped rescan browser/parser/PG checks passed; no complete-coverage claim.

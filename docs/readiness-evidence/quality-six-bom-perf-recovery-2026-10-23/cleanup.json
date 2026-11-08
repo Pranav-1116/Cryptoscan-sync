@@ -1,9 +1,0 @@
-{
-  "recorded_utc": "2026-10-23T09:07:27.691589+00:00",
-  "created_quality_databases_remaining_before_shutdown": 0,
-  "redis_keys_remaining_before_shutdown": 0,
-  "postgres_process": "STOPPED; native server logged database system is shut down",
-  "redis_process": "STOPPED; native server logged ready to exit",
-  "customer_deployments_touched": false,
-  "test_keys_sql_dumps_and_rdb_committed": false
-}
