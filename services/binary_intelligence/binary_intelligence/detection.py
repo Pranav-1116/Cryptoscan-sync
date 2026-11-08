@@ -50,6 +50,10 @@ def _norm_symbol(raw: str) -> str:
     decorations; JCA-style names carry dots — both are matched
     exactly after stripping only well-known decorations."""
     name = raw
+    # Java internal class names: javax/crypto/Cipher -> javax.crypto.Cipher
+    name = name.replace("/", ".")
+    if name.startswith("L") and name.endswith(";"):
+        name = name[1:-1].replace("/", ".")
     if name.startswith("_"):
         name = name[1:]
     # ELF versioned symbols: name@@GLIBC_2.2.5
@@ -95,6 +99,15 @@ def detect_crypto(identity: ArtifactIdentity, extraction: StaticExtraction,
             if indicator is None:
                 # JCA-style getInstance("...") callers use dotted names
                 indicator = BY_SYMBOL.get(raw)
+            class_level = False
+            if indicator is None:
+                # a class-level reference (javax.crypto.Cipher) matches
+                # the catalogue entry that begins with it
+                matches = [ind for sym, ind in BY_SYMBOL.items()
+                           if sym.startswith(name + ".")]
+                if matches:
+                    indicator = matches[0]
+                    class_level = True
             if indicator is None:
                 continue
             key = (indicator.algorithm_family, indicator.operation,
@@ -102,8 +115,14 @@ def detect_crypto(identity: ArtifactIdentity, extraction: StaticExtraction,
             evidence = EvidenceItem(
                 evidence_type="function_reference",
                 location=f"{location}: {raw}",
-                description="Recognized cryptographic function reference",
+                description=("Recognized cryptographic class reference"
+                             if class_level else
+                             "Recognized cryptographic function reference"),
                 excerpt=raw[:120])
+            class_limitation = [] if not class_level else [
+                "a class-level reference establishes the interface is "
+                "available to the code — which method is invoked, and "
+                "with what parameters, is unproven"]
             existing = findings.get(key)
             if existing is not None:
                 existing.evidence.append(evidence)
@@ -133,7 +152,9 @@ def detect_crypto(identity: ArtifactIdentity, extraction: StaticExtraction,
                     "a function reference is an indicator of capability "
                     "or reference — it is not proof that the algorithm "
                     "runs at runtime (§5)",
-                ] + ([_STRING_LIMITATION] if bucket == extraction.symbols else []))
+                ] + class_limitation
+                  + ([_STRING_LIMITATION]
+                     if bucket == extraction.symbols else []))
 
     # 2. dependencies -> library findings (provides, not uses)
     for dep in extraction.dependencies:
@@ -208,6 +229,18 @@ def detect_crypto(identity: ArtifactIdentity, extraction: StaticExtraction,
         "SLH-DSA": ("SLH-DSA", "", "digital_signature", "", None),
         "RSA-2048": ("RSA", "RSA-2048", "digital_signature", "", 2048),
         "RSA-4096": ("RSA", "RSA-4096", "digital_signature", "", 4096),
+        # JCA transformation strings (Java) — still only indicators
+        "AES/GCM/NoPadding": ("AES", "AES-GCM", "encryption", "GCM", None),
+        "AES/CBC/PKCS5Padding": ("AES", "AES-CBC", "encryption", "CBC", None),
+        "AES/CTR/NoPadding": ("AES", "AES-CTR", "encryption", "CTR", None),
+        "RSA/ECB/PKCS1Padding": ("RSA", "", "encryption", "PKCS1", None),
+        "RSA/ECB/OAEPWithSHA-256AndMGF1Padding": (
+            "RSA", "", "encryption", "OAEP-SHA-256", None),
+        "SHA256withRSA": ("RSA", "", "digital_signature", "PKCS1-SHA-256",
+                          None),
+        "SHA512withECDSA": ("ECDSA", "", "digital_signature", "", None),
+        "HmacSHA256": ("HMAC", "HMAC-SHA-256", "mac", "", None),
+        "PBKDF2WithHmacSHA256": ("PBKDF2", "", "key_derivation", "", None),
     }
     for text in extraction.strings:
         for needle, (family, variant, operation, mode, bits) in _ALGO_STRINGS.items():

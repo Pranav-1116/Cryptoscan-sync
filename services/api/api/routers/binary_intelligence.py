@@ -20,7 +20,9 @@ from api.dependencies import get_current_user, get_db_session
 from db.repositories.binary_intelligence_repository import (
     BinaryIntelligenceRepository,
 )
+from binary_intelligence.comparison import compare_findings
 from binary_intelligence.pipeline import PROFILES, run_scan
+from db.models.binary_intelligence import BinaryArtifact, BinaryScanRun
 
 router = APIRouter(prefix="/binary", tags=["binary-intelligence"])
 
@@ -161,7 +163,9 @@ def submit_scan(body: ScanRequest, response: Response,
         scanner_version=result.as_dict()["scanner_version"],
         signature_database_version=result.as_dict()["signature_database_version"],
         status=result.status,
-        structural_report=result.structural_report,
+        structural_report={
+            **result.structural_report,
+            "bom": result.bom.as_dict() if result.bom is not None else None},
         pqc_assessment=result.pqc_assessment,
         scanned_at=datetime.now(timezone.utc))
     repository.record_findings(
@@ -273,3 +277,121 @@ def artifact_evidence(artifact_id: str, tenant_id: str = Query(...),
         out.extend(repository.list_evidence(
             tenant_id, finding_id=finding["finding_id"]))
     return out
+
+
+class BomOut(BaseModel):
+    artifact_id: str
+    bom: Dict[str, Any]
+    note: str
+
+
+class ComparisonOut(BaseModel):
+    base_artifact_id: str
+    against_artifact_id: str
+    deltas: List[Dict[str, Any]]
+    summary: Dict[str, int]
+    note: str
+
+
+class RescanRequest(BaseModel):
+    tenant_id: str
+    artifact_base64: str
+    scan_profile: str = "standard"
+
+
+@router.get("/artifacts/{artifact_id}/bom", response_model=BomOut)
+def artifact_bom(artifact_id: str, tenant_id: str = Query(...),
+                 db: Session = Depends(get_db_session),
+                 user: str = Depends(get_current_user)) -> BomOut:
+    """The SBOM/CBOM view of the artifact (§8): components, provides
+    and uses relationships with provenance. A `uses` edge appears only
+    when evidence supports it — co-occurrence never creates one (§5)."""
+    repository = _repo(db)
+    if repository.get_artifact(tenant_id, artifact_id) is None:
+        raise HTTPException(status_code=404, detail="artifact not found")
+    scans = repository.list_scans_for_artifact(tenant_id, artifact_id)
+    if not scans:
+        raise HTTPException(status_code=404, detail="no scan runs")
+    bom = (scans[-1].get("structural_report") or {}).get("bom")
+    if bom is None:
+        raise HTTPException(status_code=404,
+                            detail="no BOM on the latest scan run")
+    return BomOut(
+        artifact_id=artifact_id, bom=bom,
+        note="relationships carry provenance; a library PROVIDES an "
+             "algorithm and the application USES it only when evidence "
+             "supports the claim (docs/binary-intelligence/"
+             "01_PRODUCT_SPEC.md §5)")
+
+
+@router.get("/artifacts/{artifact_id}/comparison",
+            response_model=ComparisonOut)
+def artifact_comparison(artifact_id: str, tenant_id: str = Query(...),
+                        against_artifact_id: str = Query(...),
+                        db: Session = Depends(get_db_session),
+                        user: str = Depends(get_current_user)
+                        ) -> ComparisonOut:
+    """Compare artifact versions (§16 §6): drift of static INDICATORS,
+    never drift of behavior — a missing indicator may mean stripping,
+    not removal."""
+    repository = _repo(db)
+    base = repository.get_artifact(tenant_id, artifact_id)
+    against = repository.get_artifact(tenant_id, against_artifact_id)
+    if base is None or against is None:
+        raise HTTPException(status_code=404, detail="artifact not found")
+    base_findings = repository.list_findings(tenant_id,
+                                             artifact_id=artifact_id)
+    against_findings = repository.list_findings(
+        tenant_id, artifact_id=against_artifact_id)
+    report = compare_findings(
+        base_artifact_id=artifact_id, base_sha256=base["sha256"],
+        base_findings=base_findings,
+        against_artifact_id=against_artifact_id,
+        against_sha256=against["sha256"],
+        against_findings=against_findings)
+    body = report.as_dict()
+    return ComparisonOut(
+        base_artifact_id=artifact_id,
+        against_artifact_id=against_artifact_id,
+        deltas=body["deltas"], summary=body["summary"], note=body["note"])
+
+
+@router.post("/artifacts/{artifact_id}/rescan",
+             response_model=ScanAccepted, status_code=201)
+def rescan_artifact(artifact_id: str, body: RescanRequest,
+                    response: Response,
+                    db: Session = Depends(get_db_session),
+                    user: str = Depends(get_current_user)) -> ScanAccepted:
+    """Rescan the SAME artifact bytes with a (possibly new) profile
+    (§12). The platform stores metadata, not blobs — the caller
+    resubmits the bytes and the digest must match: a changed artifact
+    is a new artifact, never a rescan of this one."""
+    repository = _repo(db)
+    artifact = repository.get_artifact(body.tenant_id, artifact_id)
+    if artifact is None:
+        raise HTTPException(status_code=404, detail="artifact not found")
+    try:
+        import base64 as _b64
+        data = _b64.b64decode(body.artifact_base64, validate=True)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="artifact bytes did not decode — content is "
+                   "validated, never assumed") from exc
+    import hashlib
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != artifact["sha256"]:
+        raise HTTPException(
+            status_code=422,
+            detail="digest mismatch — a rescan is for the same bytes; a "
+                   "changed artifact is a NEW artifact, never a rescan")
+    scan_request = ScanRequest(
+        tenant_id=body.tenant_id,
+        artifact_base64=body.artifact_base64,
+        original_filename=artifact["original_filename"],
+        source_type=artifact["source_type"],
+        source_location=artifact["source_location"],
+        scan_profile=body.scan_profile)
+    result = submit_scan(scan_request, response, db=db, user=user)
+    response.status_code = 201    # a rescan records a NEW scan run
+    return result

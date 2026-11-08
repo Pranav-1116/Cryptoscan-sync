@@ -145,8 +145,12 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # 01_PRODUCT_SPEC.md §12 static analysis, artifact never executed,
     # immutable digest identity under the decided family); it carries
     # its policy reason in `102-authenticated-only-writes.json`.
-    assert len(rows) <= 353, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 353. "
+    # 354: a deliberate regeneration added the Binary Intelligence
+    # rescan (POST /api/v1/binary/artifacts/{id}/rescan — same-bytes
+    # digest check, a changed artifact is a NEW artifact, never a
+    # rescan; decided family policy entry).
+    assert len(rows) <= 354, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 354. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

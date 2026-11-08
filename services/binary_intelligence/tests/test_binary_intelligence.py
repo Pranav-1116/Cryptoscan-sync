@@ -242,3 +242,140 @@ def test_every_finding_carries_scanner_and_signature_versions():
         assert finding.signature_database_version == FINGERPRINT_DB_VERSION
         assert finding.scanner_version.startswith("cryptoscan-binary")
         assert finding.artifact_sha256 == ident.sha256
+
+
+# --- Java/JAR (MVP scope) and §14 archive limits --------------------
+
+def _minimal_class(*, string_const: str = "AES/GCM/NoPadding",
+                   class_ref: str = "javax/crypto/Cipher") -> bytes:
+    import struct as _s
+    utf8_a = string_const.encode()
+    utf8_b = class_ref.encode()
+    pool = (_s.pack(">BH", 1, len(utf8_a)) + utf8_a +
+            _s.pack(">BH", 1, len(utf8_b)) + utf8_b +
+            _s.pack(">BH", 7, 1) +
+            _s.pack(">BH", 7, 2) +
+            _s.pack(">BHH", 12, 1, 1) +
+            _s.pack(">BHH", 10, 4, 5))
+    out = (b"\xca\xfe\xba\xbe" + _s.pack(">HH", 0, 52) +
+           _s.pack(">H", 7) + pool +
+           _s.pack(">HHH", 0x21, 3, 3) +
+           _s.pack(">HHHH", 0, 0, 0, 0))
+    return out
+
+
+def _jar(entries: dict) -> bytes:
+    import io as _io
+    import zipfile as _zf
+    buffer = _io.BytesIO()
+    with _zf.ZipFile(buffer, "w") as archive:
+        for name, blob in entries.items():
+            archive.writestr(name, blob)
+    return buffer.getvalue()
+
+
+def test_java_class_parses_constant_pool_and_jca_transformation_strings():
+    from binary_intelligence.java import parse_class, parse_jar
+    report = parse_class(_minimal_class())
+    assert report.parse_status == "parsed"
+    assert "AES/GCM/NoPadding" in report.string_constants
+    assert any("javax/crypto/Cipher" in ref for ref in report.method_refs)
+
+    jar = parse_jar(_jar({
+        "META-INF/MANIFEST.MF":
+            "Manifest-Version: 1.0\nImplementation-Version: 2.1\n",
+        "com/bank/Payments.class": _minimal_class(),
+        "lib/inner.jar": b"PK\x03\x04inner",
+    }))
+    assert jar.valid and len(jar.classes) == 1
+    assert jar.manifest.get("Implementation-Version") == "2.1"
+    assert jar.embedded_archives == ["lib/inner.jar"], \
+        "a nested archive is inventoried, not unpacked (§14)"
+    assert any("bounded" in limitation or "depth" in limitation
+               for limitation in jar.limitations)
+
+
+def test_jar_extraction_is_bounded_against_archive_bombs():
+    from binary_intelligence.java import parse_jar
+    bomb = parse_jar(_jar({"a.class": b"x" * 10, "b.bin": b"y"}))
+    # entry-count limit
+    many = _jar({f"f{i}.txt": b"x" for i in range(5000)})
+    refused = parse_jar(many)
+    assert refused.valid is False and "bounded limit" in refused.reason
+    # traversal names are refused, never extracted
+    traversal = parse_jar(_jar({"../evil.class": _minimal_class(),
+                                "ok/META-INF/MANIFEST.MF": "Manifest-Version: 1.0\n"}))
+    assert any("traversal" in limitation
+               for limitation in traversal.limitations)
+    assert all(".." not in c.class_name for c in traversal.classes)
+    assert bomb.valid is True    # a small jar is fine
+
+
+def test_jca_transformation_strings_are_indicators_never_proof():
+    ident = _identity(elf_plain_sample(), name="app.jar")
+    from binary_intelligence.detection import detect_crypto, StaticExtraction
+    findings = detect_crypto(ident, StaticExtraction(
+        strings=["javax.crypto.Cipher transformation AES/GCM/NoPadding"]))
+    aes = next(f for f in findings if f.algorithm == "AES")
+    assert aes.variant == "AES-GCM"
+    assert aes.evidence_class == EvidenceClass.INDICATED
+    assert aes.usage_status == UsageStatus.UNRESOLVED, \
+        "a transformation string is an indicator, never proof of use"
+    assert aes.key_size_bits is None, "GCM string names no key size here"
+
+
+# --- §5/§8: provides vs uses in the BOM -----------------------------
+
+def test_bom_provides_and_uses_follow_evidence_not_co_occurrence():
+    from binary_intelligence.bom import build_bom
+    ident = _identity(elf_crypto_sample())
+    strong = detect_crypto(ident, StaticExtraction(
+        imports=["EVP_aes_256_gcm", "EVP_aes_256_gcm"],
+        dependencies=["libcrypto.so.3"]))
+    bom = build_bom(
+        artifact_id=ident.artifact_id, artifact_sha256=ident.sha256,
+        subject="payments-engine", findings=strong,
+        dependencies=["libcrypto.so.3"])
+    edges = {(r.relationship_type, r.source, r.target)
+             for r in bom.relationships}
+    assert ("dependsOn", "payments-engine", "libcrypto.so.3") in edges
+    assert ("provides", "OpenSSL", "AES-256-GCM") in edges
+    uses = [r for r in bom.relationships if r.relationship_type == "uses"]
+    assert len(uses) == 1 and uses[0].target == "AES-256-GCM"
+    assert any("runtime use is still unconfirmed" in limitation
+               for limitation in uses[0].limitations)
+
+    weak = detect_crypto(ident, StaticExtraction(imports=["RSA_new"]))
+    weak_bom = build_bom(
+        artifact_id=ident.artifact_id, artifact_sha256=ident.sha256,
+        subject="payments-engine", findings=weak, dependencies=[])
+    assert not any(r.relationship_type == "uses"
+                   for r in weak_bom.relationships), \
+        "co-occurrence or a single reference never creates a `uses` edge (§5)"
+    assert any(r.relationship_type == "indicates"
+               for r in weak_bom.relationships)
+    for asset in bom.cbom_assets:
+        assert "evidence_class" in asset and "usage_status" in asset
+    assert "never from names or co-occurrence" in " ".join(bom.limitations)
+
+
+# --- §16: version comparison ----------------------------------------
+
+def test_comparison_reports_indicator_drift_never_behavior_drift():
+    from binary_intelligence.comparison import compare_findings
+    ident = _identity(elf_crypto_sample())
+    old = detect_crypto(ident, StaticExtraction(imports=["EVP_aes_256_gcm"]))
+    new = detect_crypto(ident, StaticExtraction(imports=["EVP_sha256"]))
+    report = compare_findings(
+        base_artifact_id="bin-old", base_sha256="a" * 64,
+        base_findings=[f.as_dict() for f in old],
+        against_artifact_id="bin-new", against_sha256="b" * 64,
+        against_findings=[f.as_dict() for f in new])
+    body = report.as_dict()
+    assert body["summary"]["added"] >= 1 and body["summary"]["removed"] >= 1
+    removed = next(d for d in body["deltas"] if d["change"] == "removed")
+    assert "stripped" in removed["caveat"] or "not proven" in removed["caveat"], \
+        "a missing indicator never proves removal"
+    added = next(d for d in body["deltas"] if d["change"] == "added")
+    assert "not proof of new runtime behavior" in added["caveat"]
+    assert "never drift of runtime behavior" in body["note"]

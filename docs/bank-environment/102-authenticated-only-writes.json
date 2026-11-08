@@ -340,6 +340,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/binary/artifacts/{artifact_id}/rescan",
+      "reason": "operator surface: authorized binary artifact submission for static analysis; never executes the artifact, immutable digest identity, tenant-scoped"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/binary/scan",
       "reason": "operator surface: authorized binary artifact submission for static analysis; never executes the artifact, immutable digest identity, tenant-scoped"
     },

@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 953 |
+| session | 956 |
 | role | 342 |
 | permission | 74 |
 | tenant-role | 17 |
 
-**1386** operations; **353** of them change state with nothing but the session gate — the exact list, with the policy
+**1389** operations; **354** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -57,6 +57,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `hsm-scans` | 3 |
 | `ot` | 3 |
 | `sectors` | 3 |
+| `binary` | 2 |
 | `cloud-scans` | 2 |
 | `container` | 2 |
 | `digital-twin` | 2 |
@@ -65,7 +66,6 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `network-scans` | 2 |
 | `remediation` | 2 |
 | `anomaly` | 1 |
-| `binary` | 1 |
 | `certificates` | 1 |
 | `ci` | 1 |
 | `collectors` | 1 |
@@ -146,6 +146,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/banking/iso20022/parse` | `api.routers.banking.banking_iso20022_parse` |
 | POST | `/api/v1/banking/mainframe/analyze` | `api.routers.banking.banking_mainframe_analyze` |
 | POST | `/api/v1/banking/mainframe/ingest` | `api.routers.banking.banking_mainframe_ingest` |
+| POST | `/api/v1/binary/artifacts/{artifact_id}/rescan` | `api.routers.binary_intelligence.rescan_artifact` |
 | POST | `/api/v1/binary/scan` | `api.routers.binary_intelligence.submit_scan` |
 | POST | `/api/v1/business/owners` | `api.routers.business.create_owner` |
 | POST | `/api/v1/business/processes` | `api.routers.business.create_process` |

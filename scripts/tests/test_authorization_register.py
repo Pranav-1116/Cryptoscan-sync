@@ -79,7 +79,10 @@ MIN_TENANT_ROLE_GATED = 17
 # 348 -> 349: a deliberate regeneration added the Binary Intelligence
 # scan submission (POST /api/v1/binary/scan — artifact identity, scan
 # runs, findings and evidence written under the decided family entry).
-MAX_SESSION_ONLY_WRITES = 349
+# 349 -> 350: a deliberate regeneration added the Binary Intelligence
+# rescan (POST /api/v1/binary/artifacts/{id}/rescan — new scan runs
+# under the same immutable artifact identity).
+MAX_SESSION_ONLY_WRITES = 350
 
 
 @pytest.fixture(scope="module")

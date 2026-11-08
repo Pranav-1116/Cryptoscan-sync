@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+from binary_intelligence.bom import BinaryBom, build_bom
 from binary_intelligence.certificates import inspect_certificates
 from binary_intelligence.crypto_fingerprints import FINGERPRINT_DB_VERSION
 from binary_intelligence.detection import (
@@ -18,6 +19,7 @@ from binary_intelligence.detection import (
     not_detected_finding,
 )
 from binary_intelligence.elf import parse_elf
+from binary_intelligence.java import parse_class, parse_jar
 from binary_intelligence.evidence import CoverageReport, CryptoFinding
 from binary_intelligence.formats import BinaryFormat
 from binary_intelligence.identity import ArtifactIdentity, artifact_identity
@@ -40,6 +42,7 @@ class ScanResult:
     private_key_events: List[Dict[str, Any]]
     coverage: CoverageReport
     pqc_assessment: Dict[str, Any]
+    bom: Optional[Any] = None
     notes: List[str] = field(default_factory=list)
 
     def as_dict(self) -> Dict[str, Any]:
@@ -56,6 +59,7 @@ class ScanResult:
             "private_key_events": self.private_key_events,
             "coverage": self.coverage.as_dict(),
             "pqc_assessment": self.pqc_assessment,
+            "bom": self.bom.as_dict() if self.bom is not None else None,
             "notes": self.notes,
         }
 
@@ -131,6 +135,34 @@ def run_scan(*, tenant_id: str, data: bytes, original_filename: str,
             extraction.stripped = not bool(report.exported_functions)
         else:
             failures.append(f"PE parsing refused: {report.reason}")
+    elif identity.detected_format in (BinaryFormat.JAVA_CLASS,
+                                     BinaryFormat.ZIP_ARCHIVE):
+        if identity.detected_format is BinaryFormat.JAVA_CLASS:
+            class_report = parse_class(data)
+            structural["java_class"] = class_report.as_dict()
+            extraction.strings = list(class_report.string_constants)
+            extraction.symbols = (list(class_report.method_refs)
+                                  + list(class_report.field_refs))
+            extraction.version_strings.extend(class_report.class_refs[:200])
+            if class_report.parse_status not in ("parsed", "partial"):
+                failures.append(
+                    f"class parsing refused: {class_report.parse_status}")
+        else:
+            jar_report = parse_jar(data)
+            structural["jar"] = jar_report.as_dict()
+            for class_report in jar_report.classes:
+                extraction.strings.extend(class_report.string_constants)
+                extraction.symbols.extend(class_report.method_refs)
+                extraction.version_strings.extend(
+                    class_report.class_refs[:50])
+            for key, value in jar_report.manifest.items():
+                if key in ("Implementation-Version", "Specification-Version",
+                           "Main-Class", "Implementation-Title"):
+                    extraction.version_strings.append(f"{key}: {value}")
+            extraction.dependencies.extend(jar_report.embedded_archives)
+            if not jar_report.valid:
+                failures.append(f"jar refused: {jar_report.reason}")
+                notes.append(jar_report.reason)
     else:
         notes.append(
             f"format {identity.detected_format.value} has no structural "
@@ -173,6 +205,17 @@ def run_scan(*, tenant_id: str, data: bytes, original_filename: str,
         static_linking_suspected=bool(
             extraction.stripped and not extraction.dependencies))
 
+    # SBOM/CBOM integration (§8) — feeds the existing BOM ecosystem
+    bom = build_bom(
+        artifact_id=identity.artifact_id,
+        artifact_sha256=identity.sha256,
+        subject=identity.original_filename,
+        findings=findings,
+        dependencies=[d for d in extraction.dependencies
+                      if not d.endswith(".jar")],
+        embedded_archives=[d for d in extraction.dependencies
+                           if d.endswith(".jar")])
+
     if profile == "deep":
         notes.append(
             "deep analysis requested — advanced function analysis and "
@@ -189,4 +232,5 @@ def run_scan(*, tenant_id: str, data: bytes, original_filename: str,
         private_key_events=[p.as_dict() for p in private_events],
         coverage=coverage,
         pqc_assessment=pqc.as_dict(),
+        bom=bom,
         notes=notes)

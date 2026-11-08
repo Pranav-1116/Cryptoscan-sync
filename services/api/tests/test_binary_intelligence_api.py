@@ -182,3 +182,66 @@ def test_private_key_contents_never_appear_in_responses(api):
     assert created.json()["private_key_events"], \
         "presence IS recorded as a protected detection event"
     assert "never exported" in created.json()["private_key_events"][0]["note"]
+
+
+def test_bom_endpoint_honours_provides_and_uses_discipline(api):
+    created = _submit(api, elf_crypto_sample())
+    artifact_id = created.json()["artifact"]["artifact_id"]
+    body = api.get(f"/api/v1/binary/artifacts/{artifact_id}/bom",
+                   params={"tenant_id": "tenant_001"}).json()
+    assert body["bom"]["schema"].startswith("cryptoscan.binary-bom")
+    edges = {(r["relationship_type"], r["source"], r["target"])
+             for r in body["bom"]["relationships"]}
+    assert ("dependsOn", "payments-engine", "libcrypto.so.3") in edges
+    assert ("provides", "OpenSSL", "AES-256-GCM") in edges
+    uses = [r for r in body["bom"]["relationships"]
+            if r["relationship_type"] == "uses"]
+    assert uses == [], \
+        "ONE imported reference is only indicated — no `uses` edge is " \
+        "created from a single reference or co-occurrence (§5)"
+    assert any(r["relationship_type"] == "indicates"
+               and r["target"] == "AES-256-GCM"
+               for r in body["bom"]["relationships"]), \
+        "the single reference is an indicator edge, not a use claim"
+    assert "only when evidence supports the claim" in body["note"]
+    cross = api.get(f"/api/v1/binary/artifacts/{artifact_id}/bom",
+                    params={"tenant_id": "tenant_002"})
+    assert cross.status_code == 404
+
+
+def test_comparison_endpoint_reports_indicator_drift_only(api):
+    old = _submit(api, elf_crypto_sample(), name="v1")
+    new = _submit(api, pe_crypto_sample(), name="v2")
+    old_id = old.json()["artifact"]["artifact_id"]
+    new_id = new.json()["artifact"]["artifact_id"]
+    body = api.get(
+        f"/api/v1/binary/artifacts/{old_id}/comparison",
+        params={"tenant_id": "tenant_001",
+                "against_artifact_id": new_id}).json()
+    assert body["summary"].keys() >= {"added", "removed", "changed",
+                                      "unchanged"}
+    assert "never drift of runtime behavior" in body["note"]
+    for delta in body["deltas"]:
+        if delta["change"] in ("added", "removed"):
+            assert delta["caveat"], "every delta carries its caveat"
+
+
+def test_rescan_requires_the_same_bytes(api):
+    sample = elf_crypto_sample()
+    created = _submit(api, sample)
+    artifact_id = created.json()["artifact"]["artifact_id"]
+    ok = api.post(f"/api/v1/binary/artifacts/{artifact_id}/rescan", json={
+        "tenant_id": "tenant_001",
+        "artifact_base64": base64.b64encode(sample).decode(),
+        "scan_profile": "quick"})
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["scan_profile"] == "quick"
+    assert ok.json()["artifact"]["artifact_id"] == artifact_id
+    assert ok.json()["scan_id"] != created.json()["scan_id"]
+
+    changed = api.post(f"/api/v1/binary/artifacts/{artifact_id}/rescan",
+                       json={"tenant_id": "tenant_001",
+                             "artifact_base64": base64.b64encode(
+                                 sample + b"\x00").decode()})
+    assert changed.status_code == 422
+    assert "NEW artifact" in changed.json()["detail"]
