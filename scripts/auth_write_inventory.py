@@ -123,6 +123,15 @@ POLICY: dict[str, str] = {
     "/api/v1/cryptolog": "operator surface: cryptographic event ingestion and "
                          "deterministic alert lifecycle; records carry their "
                          "evidence and alerts say what is proven",
+    # The ZELNX Performance Intelligence family (docs/performance/
+    # 01_PRODUCT_SPEC.md) accepts measurements from authorized monitoring
+    # sources: read-only collection by default, tenant isolation on every
+    # metric, missing telemetry never zero, idempotent per metric_id.
+    # Authenticated-only so every measurement is attributable to the
+    # session principal of the collector.
+    "/api/v1/performance": "operator surface: performance metric ingestion "
+                           "from authorized monitoring sources; read-only "
+                           "collection, tenant-isolated, idempotent",
     # The roadmap family computes over posted rows and recorded state
     # (reconciliation, projection, migration planning, gates, vendor and
     # qualification registers). Answers are computed in the caller's tenant

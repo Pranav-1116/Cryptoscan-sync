@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 924 |
+| session | 927 |
 | role | 342 |
 | permission | 74 |
 | tenant-role | 17 |
 
-**1357** operations; **348** of them change state with nothing but the session gate — the exact list, with the policy
+**1360** operations; **350** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -62,6 +62,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `enterprise` | 2 |
 | `ingestion` | 2 |
 | `network-scans` | 2 |
+| `performance` | 2 |
 | `remediation` | 2 |
 | `anomaly` | 1 |
 | `certificates` | 1 |
@@ -361,6 +362,8 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/ot/metrics` | `api.routers.ot.render_ot_metrics` |
 | POST | `/api/v1/ot/safety/authorize` | `api.routers.ot_safety.authorize` |
 | POST | `/api/v1/ot/scan` | `api.routers.ot.scan_ot` |
+| POST | `/api/v1/performance/ingest` | `api.routers.performance.ingest_metric` |
+| POST | `/api/v1/performance/ingest/batch` | `api.routers.performance.ingest_batch` |
 | POST | `/api/v1/quantum/mosca` | `api.routers.quantum.quantum_mosca` |
 | POST | `/api/v1/remediation/fix-branch` | `api.routers.remediation.fix_branch` |
 | POST | `/api/v1/remediation/tasks` | `api.routers.remediation.create_task` |

@@ -1,0 +1,115 @@
+{
+  "schema": "cryptoscan.worker-pool-evidence/1",
+  "baseline_commit": "2f9551b02a2601affd100e558c7a4b1afbdba184",
+  "baseline_pool_sha256": "bf17a60f15e390c99e9b84f2b6f2d4783c962f3682f3d530fde349d2a401bd7b",
+  "independent_review": "PENDING",
+  "production_capacity_qualified": false,
+  "bank_approved": false,
+  "files": [
+    {
+      "path": "docs/operations/bank-original45-engineering-gaps.md",
+      "bytes": 16466,
+      "sha256": "154b931d5ad79362141f9c98c3421f6939dfe3be2714212658a67525d0ea14d3"
+    },
+    {
+      "path": "docs/operations/worker-pool-lifecycle.md",
+      "bytes": 6176,
+      "sha256": "aa522b009fbe549b51cd7277ba0e72ecd8d02a01bae820e126fa00e1db907b62"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/README.md",
+      "bytes": 4271,
+      "sha256": "9751dd177bc400e695c353e901126cefe19b6884a63474785daf29bfdfd59b60"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/baseline-repro.py",
+      "bytes": 1235,
+      "sha256": "c3dc2c64df150502a7bac414424ce50e19428220d5714100710079f4aa786f5f"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/baseline.txt",
+      "bytes": 7843,
+      "sha256": "77108eb900141c037c0cb77573637fa898de6f0bdca3156551cf696ad1ab8f58"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/cleanup.json",
+      "bytes": 611,
+      "sha256": "023fdbe594dd7c53e1af88c0b82ff58afb202f2c422df68cc4c741544ef39da0"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/dispatch.json",
+      "bytes": 3327,
+      "sha256": "a6741d6df0dc8204ee8cea39f1d1ae6310bbabd5ef32872d9e686912e02e3f05"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/dispatch.txt",
+      "bytes": 8796,
+      "sha256": "5516c4e7719be69d0b859801e21470a8fb52b2dd88557d9630683be98fb79e26"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/environment.txt",
+      "bytes": 1925,
+      "sha256": "a8b74e578ae2c330c87769f83953d6612d22cc7fa241b2441372c6ebb6d2bc4d"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/focused.txt",
+      "bytes": 100,
+      "sha256": "bcac9e2358a8558ae831ef42eba364f32673e93f043d6564ea042f72cc670784"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/focused.xml",
+      "bytes": 6417,
+      "sha256": "28a70c1f6a5eea353db0208a42af35616cb24469e5dc1a5cc8f3337b3ad340d2"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/lifecycle.json",
+      "bytes": 3240,
+      "sha256": "d1654a63f6032f80e01c229b960ba97fca2f4122d5c0839ce3edb32988d32ea9"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/lifecycle.txt",
+      "bytes": 115,
+      "sha256": "7d526527ccfe1218862763b169f7c8af82c2326a2c0bca444cae629608901a80"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/quality.txt",
+      "bytes": 49,
+      "sha256": "24228122f612ef1d81019aab62a57e37a6b8a1825a48031799f5d19aed1274e9"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/redis-source.json",
+      "bytes": 448,
+      "sha256": "d8350d7a6f2e71286000e2aaf1270279748dcd709af08d6b8f96b905ab7f2dc6"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/regression.txt",
+      "bytes": 6201,
+      "sha256": "210fa9de198e2a4c64107e1255366c63f9edaa4ff9f48846451aca565665f4d5"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24/regression.xml",
+      "bytes": 2443367,
+      "sha256": "270ada078e5c2ef70154c523d1a980911161109171fdd1c5c8b4f185143133ed"
+    },
+    {
+      "path": "docs/readiness-evidence/worker-pool-2026-10-24.md",
+      "bytes": 8902,
+      "sha256": "bfb150457f09df2a3f20ecd28560451525b715b457b330d7331b769b1a2f1245"
+    },
+    {
+      "path": "scripts/worker_pool_soak.py",
+      "bytes": 5493,
+      "sha256": "7466d5dc210df34fa416f8f2a96461138df621765e96f4bd5c634aafc181fce3"
+    },
+    {
+      "path": "services/worker/tests/unit/test_worker_pool_retention.py",
+      "bytes": 12038,
+      "sha256": "992bf9d679e9459bb5d5d85eff010e797dfdcad4096e851571221e2e3784791a"
+    },
+    {
+      "path": "services/worker/worker/core/pool.py",
+      "bytes": 6406,
+      "sha256": "2354c1a936f4bf7b0c0eb78b2bff073f27ddcf0ddbf2fc1e3497f5a6834296e3"
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "schema": "cryptoscan.reliability-drill/1",
+  "ran_at": "2026-10-05T02:34:42.469851+00:00",
+  "checks": [
+    {
+      "check": "auth: session established",
+      "ok": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "idempotency: both runs complete",
+      "ok": true,
+      "detail": "3.1s then 1.0s"
+    },
+    {
+      "check": "idempotency: each run gets its own scan id",
+      "ok": true,
+      "detail": "976cc0f6 != 1e38e9dc"
+    },
+    {
+      "check": "idempotency: identical input yields identical finding counts",
+      "ok": true,
+      "detail": "96 vs 96"
+    },
+    {
+      "check": "idempotency: evidence content hashes are stable across runs",
+      "ok": true,
+      "detail": "02de36d72668588c... vs 02de36d72668588c..."
+    },
+    {
+      "check": "idempotency: no duplicate content_hash within a scan",
+      "ok": true,
+      "detail": "0 duplicated (scan_id, content_hash) pairs \u2014 known open issue, inflates finding counts"
+    },
+    {
+      "check": "limits: a path outside the source roots is refused",
+      "ok": true,
+      "detail": "HTTP 400"
+    },
+    {
+      "check": "limits: a nonexistent path is refused",
+      "ok": true,
+      "detail": "HTTP 400"
+    },
+    {
+      "check": "limits: an empty target is refused",
+      "ok": true,
+      "detail": "HTTP 422"
+    },
+    {
+      "check": "limits: a traversal attempt is refused",
+      "ok": true,
+      "detail": "HTTP 422"
+    },
+    {
+      "check": "limits: API still healthy after bad input",
+      "ok": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "timeouts: an unreachable TLS target returns rather than hanging",
+      "ok": true,
+      "detail": "HTTP 200 after 5.1s"
+    },
+    {
+      "check": "timeouts: the unreachable host is not recorded as a successful probe",
+      "ok": true,
+      "detail": "probe_telemetry.ok=0 statuses=['TIMEOUT']"
+    },
+    {
+      "check": "restart: worker process found",
+      "ok": true,
+      "detail": "pid 83520"
+    },
+    {
+      "check": "restart: worker killed mid-scan",
+      "ok": true,
+      "detail": "SIGKILL 83520"
+    },
+    {
+      "check": "restart: worker comes back",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "restart: the in-flight job reaches a terminal state",
+      "ok": true,
+      "detail": "status=COMPLETED"
+    },
+    {
+      "check": "restart: the killed job did not produce duplicate scan rows",
+      "ok": true,
+      "detail": "scans 2 -> 3"
+    },
+    {
+      "check": "db outage: liveness stays up (the process is fine)",
+      "ok": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "db outage: readiness drops so a load balancer drains it",
+      "ok": true,
+      "detail": "HTTP 503"
+    },
+    {
+      "check": "db outage: readiness returns after the database comes back",
+      "ok": true,
+      "detail": "HTTP 200"
+    }
+  ],
+  "passed": 21,
+  "failed": 0,
+  "verdict": "PASS",
+  "scope": "Covers update.md section 4's idempotency, limits/timeouts and restart/recovery on one host. It does NOT cover load and soak: that section asks for 24-72 hours against the target topology, and a run that finishes in minutes on a laptop would produce numbers resembling a capacity qualification without being one. Use scripts/soak.py and scripts/load_test.py in the real environment for that."
+}

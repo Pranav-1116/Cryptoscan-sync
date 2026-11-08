@@ -66,7 +66,11 @@ MIN_TENANT_ROLE_GATED = 17
 # (export + verify — POST computations recorded under the decided family).
 # 344: a deliberate regeneration added the CryptoLog retention planning POST
 # (a projection computation under the decided family).
-MAX_SESSION_ONLY_WRITES = 344
+# 344 -> 346: a deliberate regeneration added the ZELNX Performance
+# ingest family (POST /api/v1/performance/ingest and /ingest/batch,
+# docs/performance/01_PRODUCT_SPEC.md Phase 1) — measurements written to
+# the caller's tenant context under the decided family policy entry.
+MAX_SESSION_ONLY_WRITES = 346
 
 
 @pytest.fixture(scope="module")

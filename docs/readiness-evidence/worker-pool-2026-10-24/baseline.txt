@@ -1,0 +1,134 @@
+FFFFFF                                                                   [100%]
+=================================== FAILURES ===================================
+____________ test_completed_futures_are_not_retained_across_batches ____________
+
+    def test_completed_futures_are_not_retained_across_batches():
+        pool = WorkerPool(handler=lambda descriptor: True, max_workers=2, queue_limit=4)
+        try:
+            # Repeat without recreating the pool, like a long-running worker.
+            for batch in range(8):
+                for number in range(128):
+                    pool.submit(job(batch * 128 + number))
+                pool.wait()
+>               assert len(pool.futures) <= 6, "Completed futures accumulate in the long-lived worker"
+E               AssertionError: Completed futures accumulate in the long-lived worker
+E               assert 128 <= 6
+E                +  where 128 = len([<Future at 0x7fe81a99d550 state=finished returned bool>, <Future at 0x7fe81a99d650 state=finished returned bool>, <Fu... <Future at 0x7fe81a99dc90 state=finished returned bool>, <Future at 0x7fe81a99de50 state=finished returned bool>, ...])
+E                +    where [<Future at 0x7fe81a99d550 state=finished returned bool>, <Future at 0x7fe81a99d650 state=finished returned bool>, <Fu... <Future at 0x7fe81a99dc90 state=finished returned bool>, <Future at 0x7fe81a99de50 state=finished returned bool>, ...] = <worker.core.pool.WorkerPool object at 0x7fe81a99d1d0>.futures
+
+services/worker/tests/unit/test_worker_pool_retention.py:23: AssertionError
+______ test_cancelled_queued_future_returns_its_capacity_without_running _______
+
+    def test_cancelled_queued_future_returns_its_capacity_without_running():
+        entered, release = threading.Event(), threading.Event()
+        ran = []
+
+        def handler(descriptor):
+            ran.append(descriptor.job_id)
+            entered.set()
+            assert release.wait(8)
+            return True
+
+        pool = WorkerPool(handler=handler, max_workers=1, queue_limit=1)
+        try:
+            running = pool.submit(job(0))
+            assert entered.wait(3)
+            cancelled = pool.submit(job(1))
+            assert cancelled.cancel()
+            with pytest.raises(CancelledError):
+                cancelled.result()
+            # Cancelled work still occupies an internal queue entry until consumed.
+            # Freeing this slot immediately would allow unbounded cancelled items.
+            assert not pool._semaphore.acquire(blocking=False)
+            assert cancelled in pool.futures and running in pool.futures
+            assert ran == ["synthetic-0"]
+            release.set()
+            assert running.result(timeout=3)
+            pool.wait()  # must drain the cancelled wrapper, not just public results
+            assert pool.submit(job(2)).result(timeout=3)
+        finally:
+            release.set()
+            pool.shutdown(wait=True)
+>       assert not pool.futures
+E       assert not [<Future at 0x7fe81a98e350 state=finished returned bool>, <Future at 0x7fe81a98e9d0 state=cancelled>, <Future at 0x7fe81a98e650 state=finished returned bool>]
+E        +  where [<Future at 0x7fe81a98e350 state=finished returned bool>, <Future at 0x7fe81a98e9d0 state=cancelled>, <Future at 0x7fe81a98e650 state=finished returned bool>] = <worker.core.pool.WorkerPool object at 0x7fe81a98ea50>.futures
+
+services/worker/tests/unit/test_worker_pool_retention.py:61: AssertionError
+------------------------------ Captured log call -------------------------------
+WARNING  worker.core.pool:<published-baseline-pool-2f9551b0>:106 exception_suppressed
+__________________ test_snapshot_cannot_mutate_pool_tracking ___________________
+
+    def test_snapshot_cannot_mutate_pool_tracking():
+        release = threading.Event()
+        pool = WorkerPool(handler=lambda descriptor: release.wait(5), max_workers=1, queue_limit=0)
+        try:
+            future = pool.submit(job(0))
+            snapshot = pool.futures
+            snapshot.clear()
+>           assert future in pool.futures
+E           assert <Future at 0x7fe81a983010 state=running> in []
+E            +  where [] = <worker.core.pool.WorkerPool object at 0x7fe81a983350>.futures
+
+services/worker/tests/unit/test_worker_pool_retention.py:75: AssertionError
+_______ test_negative_queue_limits_are_rejected_instead_of_stalling[-1] ________
+
+queue_limit = -1
+
+    @pytest.mark.parametrize("queue_limit", [-1, -10])
+    def test_negative_queue_limits_are_rejected_instead_of_stalling(queue_limit):
+>       with pytest.raises(ValueError, match="queue_limit"):
+E       Failed: DID NOT RAISE ValueError
+
+services/worker/tests/unit/test_worker_pool_retention.py:84: Failed
+_______ test_negative_queue_limits_are_rejected_instead_of_stalling[-10] _______
+
+queue_limit = -10
+
+    @pytest.mark.parametrize("queue_limit", [-1, -10])
+    def test_negative_queue_limits_are_rejected_instead_of_stalling(queue_limit):
+>       with pytest.raises(ValueError, match="queue_limit"):
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'queue_limit'
+E         Actual message: 'semaphore initial value must be >= 0'
+
+services/worker/tests/unit/test_worker_pool_retention.py:84: AssertionError
+____________ test_raising_done_callback_does_not_leak_pool_capacity ____________
+
+    def test_raising_done_callback_does_not_leak_pool_capacity():
+        release = threading.Event()
+        pool = WorkerPool(handler=lambda descriptor: release.wait(5), max_workers=1, queue_limit=0)
+        try:
+            future = pool.submit(job(0))
+
+            def bad_callback(done):
+                raise RuntimeError("synthetic acknowledgement observer failure")
+
+            future.add_done_callback(bad_callback)
+            release.set()
+            assert future.result(timeout=3)
+            pool.wait()
+            assert pool.submit(job(1)).result(timeout=3)
+        finally:
+            release.set()
+            pool.shutdown(wait=True)
+>       assert not pool.futures
+E       assert not [<Future at 0x7fe81a9ea7d0 state=finished returned bool>, <Future at 0x7fe81a9ea790 state=finished returned bool>]
+E        +  where [<Future at 0x7fe81a9ea7d0 state=finished returned bool>, <Future at 0x7fe81a9ea790 state=finished returned bool>] = <worker.core.pool.WorkerPool object at 0x7fe81a9e9e90>.futures
+
+services/worker/tests/unit/test_worker_pool_retention.py:106: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    concurrent.futures:_base.py:342 exception calling callback for <Future at 0x7fe81a9ea7d0 state=finished returned bool>
+Traceback (most recent call last):
+  File "/usr/lib/python3.11/concurrent/futures/_base.py", line 340, in _invoke_callbacks
+    callback(self)
+  File "/home/user/CryproScan/services/worker/tests/unit/test_worker_pool_retention.py", line 96, in bad_callback
+    raise RuntimeError("synthetic acknowledgement observer failure")
+RuntimeError: synthetic acknowledgement observer failure
+=========================== short test summary info ============================
+FAILED services/worker/tests/unit/test_worker_pool_retention.py::test_completed_futures_are_not_retained_across_batches
+FAILED services/worker/tests/unit/test_worker_pool_retention.py::test_cancelled_queued_future_returns_its_capacity_without_running
+FAILED services/worker/tests/unit/test_worker_pool_retention.py::test_snapshot_cannot_mutate_pool_tracking
+FAILED services/worker/tests/unit/test_worker_pool_retention.py::test_negative_queue_limits_are_rejected_instead_of_stalling[-1]
+FAILED services/worker/tests/unit/test_worker_pool_retention.py::test_negative_queue_limits_are_rejected_instead_of_stalling[-10]
+FAILED services/worker/tests/unit/test_worker_pool_retention.py::test_raising_done_callback_does_not_leak_pool_capacity
+6 failed in 0.12s

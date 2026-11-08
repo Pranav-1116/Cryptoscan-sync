@@ -1,0 +1,147 @@
+{
+  "schema": "SYNTHETIC_LB_ARTIFACT_INDEX_V1",
+  "parent_commit": "69d83ddc89d0ffa258b7a457bcebab33a0216fa0",
+  "independent_authenticity_verified": false,
+  "files": [
+    {
+      "path": "docs/readiness-evidence/load-balancer-sandbox-2026-10-26/config-collection-150.json",
+      "bytes": 963,
+      "sha256": "0532e615f6597a559e70fae5182ea5f43bacaa0d7d96644318cb16f9c4b7d302"
+    },
+    {
+      "path": "docs/readiness-evidence/load-balancer-sandbox-2026-10-26/config-findings-summary.json",
+      "bytes": 50013,
+      "sha256": "7a8b7f92805d208bf0bb480d4c460502b6988587c063fe27891354bbc6075bfd"
+    },
+    {
+      "path": "docs/readiness-evidence/load-balancer-sandbox-2026-10-26/generation-150.json",
+      "bytes": 425,
+      "sha256": "cbe037422be2842b5812649cfc7eed961e8861b49ab7852fd217fd4845d0f41b"
+    },
+    {
+      "path": "docs/readiness-evidence/load-balancer-sandbox-2026-10-26/live-failed-01.json",
+      "bytes": 457,
+      "sha256": "b55e41e59c968e8cf6c0f2cf6d832a4b6b573b0b578b0d5406be343ed6224251"
+    },
+    {
+      "path": "docs/readiness-evidence/load-balancer-sandbox-2026-10-26/live-failed-02.json",
+      "bytes": 457,
+      "sha256": "b6ff633032b45723eaa27a0908979f63b126a77d41d6fc13308b30da28d11270"
+    },
+    {
+      "path": "docs/readiness-evidence/load-balancer-sandbox-2026-10-26/live-namespace-earlier.json",
+      "bytes": 6174,
+      "sha256": "e51bbe75d7d1690469d860b19fe98518fc31eebd4ad03e3ec9b41ba0189f8dfb"
+    },
+    {
+      "path": "docs/readiness-evidence/load-balancer-sandbox-2026-10-26/live-namespace.json",
+      "bytes": 11772,
+      "sha256": "1f6a1807ffaea2ba8df0a5ad30fa460036393608e9d259da943f400584419b80"
+    },
+    {
+      "path": "docs/readiness-evidence/load-balancer-sandbox-2026-10-26/source-provenance.json",
+      "bytes": 1063,
+      "sha256": "d1e4e694d629242fe2b3f9a0724b9725d0e7826cd4fcefc6a590b5a3b26b8a12"
+    },
+    {
+      "path": "docs/readiness-evidence/load-balancer-sandbox-2026-10-26/tests.txt",
+      "bytes": 181,
+      "sha256": "d0c0d5856f729988a5cf7f5133f9cd643dcb3f628e06583e02e40e33933f8586"
+    },
+    {
+      "path": "docs/readiness-evidence/load-balancer-sandbox-2026-10-26/validation-150.json",
+      "bytes": 623,
+      "sha256": "752b9334bfe94dc3016aa3eab4f0f2ec74553a0c99f75cc30f58e9e0b4839991"
+    },
+    {
+      "path": "docs/readiness-evidence/load-balancer-sandbox-2026-10-26.md",
+      "bytes": 9969,
+      "sha256": "c272e4f978fa829d3021f610df1cff5d6905599a44e2946dc13596d8c3e5595f"
+    },
+    {
+      "path": "tools/banking_sandbox/cli.py",
+      "bytes": 2913,
+      "sha256": "39646ac4b2bfa61cdb60206f704ddc877f49273f813fbbab6a08a1153e41d707"
+    },
+    {
+      "path": "tools/banking_sandbox/common.py",
+      "bytes": 3284,
+      "sha256": "5cf72b8c0af78c9d51c0e110c67a045404ad02961c221f206c79d90ca8d6cbe7"
+    },
+    {
+      "path": "tools/banking_sandbox/dashboard.py",
+      "bytes": 10104,
+      "sha256": "ea0ef6c464756333a0a89f0e73f234a728030b5917a328d473ba2fa2b0aafbb2"
+    },
+    {
+      "path": "tools/banking_sandbox/docs/README.md",
+      "bytes": 5967,
+      "sha256": "312a00e18066fd93a3149b66eb2ae0a8726e1fc9b004f979a99c2b6359adf701"
+    },
+    {
+      "path": "tools/banking_sandbox/docs/load-balancers.md",
+      "bytes": 11259,
+      "sha256": "84699e08d2a9d33aa65096a3d6cf36b490b96f110440a30a0087fd56d5950e28"
+    },
+    {
+      "path": "tools/banking_sandbox/generator.py",
+      "bytes": 38303,
+      "sha256": "f93ba4ed6c0b765784bb59d7a49b73c260e816b57b19e3524c0e77abe00aeb41"
+    },
+    {
+      "path": "tools/banking_sandbox/harness.py",
+      "bytes": 4959,
+      "sha256": "c04a16285a5c517335d714cb2853de760f2bbd18adb9e2897680f061fc189121"
+    },
+    {
+      "path": "tools/banking_sandbox/load_balancers/catalog.py",
+      "bytes": 2369,
+      "sha256": "defb84682f5cdcfd62b03805ca2c03635ed4bf46c0dd9f700f2fb57b7b4144d3"
+    },
+    {
+      "path": "tools/banking_sandbox/load_balancers/configurations.py",
+      "bytes": 2228,
+      "sha256": "813eb4d01607ce27f8b72937cd3e6601a84e1457b442750cb4191da8431b26be"
+    },
+    {
+      "path": "tools/banking_sandbox/load_balancers/drift.py",
+      "bytes": 5011,
+      "sha256": "f57a5df608e9ecb54840203e598090553c063eb42158858fd9293b8b49dda747"
+    },
+    {
+      "path": "tools/banking_sandbox/load_balancers/generator.py",
+      "bytes": 29815,
+      "sha256": "a252f2855015faac4a026b87b2ea6c57f74c254d3e1f704444dcaa80bc2ecb38"
+    },
+    {
+      "path": "tools/banking_sandbox/load_balancers/live.py",
+      "bytes": 16197,
+      "sha256": "4cc6b538efd5639c04984268b98eed04d753aba00007848d0112635b1dc6b838"
+    },
+    {
+      "path": "tools/banking_sandbox/load_balancers/test_load_balancers.py",
+      "bytes": 8467,
+      "sha256": "7967af5879f9b598728e6bb7fc0e74f4a1eaffe4fa96794218e3732356e2a928"
+    },
+    {
+      "path": "tools/banking_sandbox/load_balancers/validator.py",
+      "bytes": 11282,
+      "sha256": "6fa2103e25c83e93b85c686881819a9608506d0fb20ed86edf11f41ffbe6603e"
+    },
+    {
+      "path": "tools/banking_sandbox/operations.py",
+      "bytes": 7372,
+      "sha256": "e55c279deda1a90b86820859d91f48f5660df421acbf6adfac8ebde08022941e"
+    },
+    {
+      "path": "tools/banking_sandbox/scan_child.py",
+      "bytes": 4166,
+      "sha256": "b812a7f58858a0f48ee3115b11e59612b15afcb7da12732877da4567be8d9539"
+    },
+    {
+      "path": "tools/banking_sandbox/validator.py",
+      "bytes": 10636,
+      "sha256": "29853ae4c68b254a6a6c8777c6f8aebc942206b9d3a4e09890517142cd7e414b"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "customer_deployments_modified": false,
+  "final_death_probe_records_and_removes_own_cwd_after_reap": true,
+  "owned_directories_remaining": [],
+  "owned_native_or_postgres_processes_remaining": [],
+  "owned_postgres_cleanup_reported": true,
+  "private_keys_persisted": false,
+  "supervisor_sigkill_can_leave_temporary_cwd": true,
+  "three_identified_empty_death_probe_cwds_manually_removed": true
+}

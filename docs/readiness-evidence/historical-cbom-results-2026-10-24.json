@@ -1,0 +1,88 @@
+{
+  "schema": "cryptoscan.historical-cbom-results/1",
+  "base_commit": "47055cfe5e77eb9a5c3dc3e4266685266ab6de36",
+  "scope": "DISPOSABLE_SYNTHETIC_ESTATES",
+  "bank_approved": false,
+  "whole_product_production_qualified": false,
+  "schema_head": "0107",
+  "new_migration": false,
+  "ci_run_claimed": false,
+  "performance_targets_remeasured": false,
+  "results": {
+    "python": {
+      "tests": 1020,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "frontend": {
+      "tests": 568,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "postgres": {
+      "tests": 27,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "browser": {
+      "checks": 17
+    },
+    "existing-browser": {
+      "checks": 16
+    }
+  },
+  "documentation_local_links_checked": 60,
+  "retained_text_normalization": "ANSI colour sequences, trailing whitespace and blank EOF lines removed; JSON/XML/images unchanged",
+  "remaining_limits": [
+    "mixed-evidence, unassigned and oversized review requires controlled investigation",
+    "original-45 and independent acceptance still incomplete",
+    "production settings, CI/images, capacity/DR/security/bank qualification not executed"
+  ],
+  "sha256": {
+    "PRODUCTION-READINESS.md": "be2997a11e9c951e1e826807655554bcbdc88afc6ace5ef48a10152969210d70",
+    "docs/operations/historical-cbom-reconciliation.md": "c1c405b54764163dedaaca5eb0525b767d426529c4e4d39f56241a962e547ab2",
+    "docs/operations/production-data-path-hardening.md": "e37cc4124471e4c25b1e4173faae4b36e59793b472efc2f01b72e9bda787f2a5",
+    "docs/readiness-evidence/historical-cbom-2026-10-24.md": "cfe2867148c6962410e96b7fc9eeda71eda98c94d52553d7035032c36d29fd95",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/README.md": "da995fc8eb5688e32784969d385d7dbd5f805c606ed996f412d4bbfbe35b7ce2",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/browser.json": "78fe717c1f41505cb0da6b14bf219ec4e56845cf681ed84774bd9929003ed1e5",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/browser.png": "b4f43af13d33625c31213b7728045287c0656377390353a4c5df674fe73b599a",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/browser.txt": "b41ae5b01160ebbc20c97c16947141b3f16ff9bb50d7901f56ac7441ce7c20ce",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/build.txt": "6f253b53d6c7a397ea74744f6f913d3bfeb47ecb12c734cd20e8d5acfb8daf55",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/cleanup.json": "82aa71ebc4eb27e90da04a20e4f405c9d39a03d1ac1f670176c5378b730d19b3",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/existing-browser.json": "3a4940907fc2e348ab92f67619bd0e31b2b63f0b1e00148477ade8ab1ef59179",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/existing-browser.txt": "ed87f0438fd95d41d265ded86ab0136d250dde53810913ad7ccc9d9f129e2707",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/frontend.txt": "60e921b1d6f2b6a495bb38d36fe1215580b38105b6d0ce8d71910f6ab27a0a5a",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/frontend.xml": "5bfea0aa22443ae99f5d8ca443be3f146b704b01cda89e1e4e3e440142dbd29b",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/postgres.txt": "9c3fe3c6a417284c189bb9d829b356fea12ccaf24e1bdc53e85f6f40d2c4c76a",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/postgres.xml": "d27f3804451c876d665119c33d4a9a7db20c52f8300f37eac09f1d698c1d14dc",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/python.txt": "e3c6f7aa5d95d20dbb36397d9036584e530e7d3835b690ff2dd273f4ea1c1adf",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/python.xml": "2659032155ee2978f2d842360226ea8de975817003f192a810a669b1be038d92",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/quality.txt": "bf23912326198fc1a383e85f2321e3253fefc7d9dbb45a72d9b7bd853eff693a",
+    "docs/readiness-evidence/historical-cbom-2026-10-24/typecheck.txt": "314f94ae3cd5021ad141d29b5adf1435a25c4e8e317f455a9bac06874456260f",
+    "docs/runbooks/historical-cbom-reconciliation.md": "6e2d02859ae28084056cdd4627d68617d596692ab42c171cf23f85deff618b56",
+    "frontend/src/components/CbomLegacyReview.test.tsx": "ac49e3967057dbdb5d5917f656b5c741f73d99bbc4490732eda1bb78b033d510",
+    "frontend/src/components/CbomLegacyReview.tsx": "b822208f1e893018ee3395284d4208fa4bb37b8d7a4e47df1bad14501f8ee707",
+    "frontend/src/lib/api.ts": "05fdff0e4cefdc8d96b3317031fb0df7d61d6b7b496ae6a7a09b878ca6d61ea5",
+    "frontend/src/pages/Cbom.tsx": "e6269d8816aedd44f20deb21858bbef06533d62bf9c3d09d1d45d17051121b68",
+    "scripts/legacy_cbom_e2e.py": "c63b1d4fbd788de0326c3ffa54f8fbe431e0c40a28c3754668936976b8c7f755",
+    "services/api/api/routers/cbom.py": "cf4d2a1902b8c0e0ec8977ca2844db77712ed8d38c19f7c0d3be67f676eed518",
+    "services/api/api/routers/cbom_legacy.py": "5ac2b5ce79f24d4cf66c595b16d12c2c9df0ff1718729e3a60fc433e91d4988f",
+    "services/api/api/routers/inventory.py": "5569aabf7f1f40a3e31c7f67292d14a778a2835bf9331788da7d7dd24e02dcb5",
+    "services/api/api/routers/systems.py": "381a9557a6de9954edba0f1239466ff0bc4913cdbfc4e2eb5d275772a870182b",
+    "services/api/api/routers/techbom.py": "93fc2e0a4c1ac6fdccb28160599dd569cf9d8d74fbe6a19f5c1f37c3604c8b75",
+    "services/api/tests/unit/test_cbom_legacy_reconciliation.py": "41913d8732f3c1ce9c58df6dfa6a63dd3597ed5f812e5b5f773f577e7570b983",
+    "services/cbom/cbom/component_registry.py": "e7471fe1c36ba1a1d0ccb8cc18701dd68c43ecef09163a95ec2d151cd71ae86f",
+    "services/cbom/cbom/cyclonedx16.py": "392faebe82ee06e512b31f2d519cb0f6ae8bcf002dc8626edc283115aec22b71",
+    "services/database/db/import_provenance.py": "7e2c4fdf50c8cfbe304d149c00721514f0612493b518009bbd0319cb589dbb5c",
+    "services/database/db/models/crypto_asset.py": "db8ee58b4ae618a3b1c65c1ebe83012ee876068fe6412fd851d4fc0d6ea5494f",
+    "services/database/db/repositories/asset_repository.py": "3a94a6a8008747834eedf51bf785f316b8bc72a5a97ff0a10f8b141204e9a28c",
+    "services/database/db/repositories/system_repository.py": "d80b51c9c8dfb4db6fa12f7c937b55ba1ddf497d3751976f4c0a21e52bb587d8",
+    "services/database/db/repositories/user_repository.py": "48f460240adc653bcea9e38443cd992edd7bda52770adf4f07c67e26bf29349a",
+    "services/database/tests/unit/test_import_provenance.py": "2d18d44193939bbed073ac4656a4e50740250104e4a766f0edb555d5f2a12575",
+    "services/database/tests/unit/test_provenance_postgres.py": "aecf1196be145246941338c86bc0840c3db0b467b59ba8f9ff19be21ca2cf524",
+    "shared/shared_models/shared_models/import_provenance.py": "9eb289ed4b16ae713066c4a557197cdf6b05856b804b6155c1c4d165718d00c6"
+  }
+}

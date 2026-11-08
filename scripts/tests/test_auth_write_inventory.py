@@ -126,8 +126,13 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # 348: a deliberate regeneration added the CryptoLog retention planning
     # POST (a projection computation, recorded under the decided family);
     # each carries its policy reason in `102-authenticated-only-writes.json`.
-    assert len(rows) <= 348, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 348. "
+    # 350: a deliberate regeneration added the ZELNX Performance ingest
+    # family (POST /api/v1/performance/ingest and /ingest/batch —
+    # docs/performance/01_PRODUCT_SPEC.md Phase 1 collection contracts,
+    # idempotent per-metric_id ingestion); each carries its policy reason
+    # in `102-authenticated-only-writes.json`.
+    assert len(rows) <= 350, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 350. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

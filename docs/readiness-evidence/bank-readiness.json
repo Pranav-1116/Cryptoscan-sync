@@ -1,0 +1,133 @@
+{
+  "schema": "cryptoscan.bank-readiness/1",
+  "captured_at": "2026-10-16T17:23:16.745004+00:00",
+  "repository": {
+    "commit": "176044d198d30797c5a734f297d66b30fd13ee73",
+    "branch": "arena/bb4b80dd-cryproscan",
+    "dirty": false
+  },
+  "artifact_generation_state": {
+    "commit": "176044d198d30797c5a734f297d66b30fd13ee73",
+    "branch": "arena/bb4b80dd-cryproscan",
+    "dirty": false
+  },
+  "command": "/home/user/venv-cs/bin/python scripts/bank_readiness.py --engineering docs/readiness-evidence/engineering-gate.json --postgresql-dr docs/readiness-evidence/postgres-dr-drill-2026-10-04.json --integrations docs/readiness-evidence/burn-in-2026-10-04.json --compliance docs/readiness-evidence/compliance-burn-2026-10-04.md --load-soak docs/readiness-evidence/load-test-2026-10-04.json --out docs/readiness-evidence/bank-readiness.json",
+  "environment": {
+    "environment": "development",
+    "ci": false
+  },
+  "required_categories": [
+    "engineering",
+    "postgresql_dr",
+    "hsm",
+    "integrations",
+    "compliance",
+    "load_soak",
+    "documentation",
+    "operational_policy",
+    "readiness_closure",
+    "external_attestations"
+  ],
+  "categories": [
+    {
+      "category": "engineering",
+      "status": "FAIL",
+      "detail": "artifact=docs/readiness-evidence/engineering-gate.json; sha256=1c81f4af72533db1c5e2bd427dcd9ff47d93161bbf11b0bed9d6711837a4c68d",
+      "artifact": "docs/readiness-evidence/engineering-gate.json",
+      "artifact_sha256": "1c81f4af72533db1c5e2bd427dcd9ff47d93161bbf11b0bed9d6711837a4c68d",
+      "observed_statuses": [
+        "FAIL",
+        "PASS",
+        "SKIP"
+      ]
+    },
+    {
+      "category": "postgresql_dr",
+      "status": "PASS",
+      "detail": "artifact=docs/readiness-evidence/postgres-dr-drill-2026-10-04.json; sha256=bbc19aae30c70c393692a94a937f151469a1caa4b23eb7ad581624496180d32e",
+      "artifact": "docs/readiness-evidence/postgres-dr-drill-2026-10-04.json",
+      "artifact_sha256": "bbc19aae30c70c393692a94a937f151469a1caa4b23eb7ad581624496180d32e",
+      "observed_statuses": [
+        "PASS"
+      ]
+    },
+    {
+      "category": "hsm",
+      "status": "SKIP",
+      "detail": "no external artifact supplied; this is not evidence"
+    },
+    {
+      "category": "integrations",
+      "status": "PASS",
+      "detail": "artifact=docs/readiness-evidence/burn-in-2026-10-04.json; sha256=6209c28768630338bd453650603ef873bab5c2e26bf5f4896cc6221a13c17004",
+      "artifact": "docs/readiness-evidence/burn-in-2026-10-04.json",
+      "artifact_sha256": "6209c28768630338bd453650603ef873bab5c2e26bf5f4896cc6221a13c17004",
+      "observed_statuses": [
+        "PASS"
+      ]
+    },
+    {
+      "category": "compliance",
+      "status": "PASS",
+      "detail": "artifact=docs/readiness-evidence/compliance-burn-2026-10-04.md; sha256=000ba1c84c2d8fec7f155e4804d769ac8d70ea8aa420d14adb98efba6271de32",
+      "artifact": "docs/readiness-evidence/compliance-burn-2026-10-04.md",
+      "artifact_sha256": "000ba1c84c2d8fec7f155e4804d769ac8d70ea8aa420d14adb98efba6271de32",
+      "observed_statuses": [
+        "PASS"
+      ]
+    },
+    {
+      "category": "load_soak",
+      "status": "PASS",
+      "detail": "artifact=docs/readiness-evidence/load-test-2026-10-04.json; sha256=0c10b82c66e8994a606d866f8a9928b3b56bb3637b55bce68d0c4a03a59bee2a",
+      "artifact": "docs/readiness-evidence/load-test-2026-10-04.json",
+      "artifact_sha256": "0c10b82c66e8994a606d866f8a9928b3b56bb3637b55bce68d0c4a03a59bee2a",
+      "observed_statuses": [
+        "PASS"
+      ]
+    },
+    {
+      "category": "documentation",
+      "status": "PASS",
+      "detail": "checked 391 Markdown files and required readiness documents",
+      "checked_files": 391,
+      "ignored_directories": [
+        ".git",
+        ".mypy_cache",
+        ".next",
+        ".nuxt",
+        ".pytest_cache",
+        ".venv",
+        "__pycache__",
+        "build",
+        "coverage",
+        "dist",
+        "node_modules",
+        "out",
+        "venv"
+      ]
+    },
+    {
+      "category": "operational_policy",
+      "status": "PASS",
+      "detail": "structural findings=0; status=draft",
+      "policy": "/home/user/CryproScan/config/operational-policy.yaml",
+      "policy_status": "draft",
+      "findings": [],
+      "approval_required": "run operational_policy_gate.py --strict for release approval"
+    },
+    {
+      "category": "readiness_closure",
+      "status": "SKIP",
+      "detail": "no P0/P1 closure manifest supplied; external evidence is not inferred"
+    },
+    {
+      "category": "external_attestations",
+      "status": "SKIP",
+      "detail": "no external artifact supplied; this is not evidence"
+    }
+  ],
+  "external_evidence_boundary": "PASS means only that the supplied artifact contained no FAIL/SKIP statuses. Missing customer/provider evidence is never inferred from source code, mocks, documentation or local SoftHSM.",
+  "verdict": "FAIL",
+  "deployment_recommendation": "do not approve production; remediation and/or evidence collection required"
+}

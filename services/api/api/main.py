@@ -108,6 +108,7 @@ from api.routers import (
     telecom,
     audit_export,
     cryptolog,
+    performance,
     pentest,
     repo_configs,
     runtime,
@@ -638,6 +639,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(telecom.router, prefix=prefix)
     app.include_router(audit_export.router, prefix=prefix)
     app.include_router(cryptolog.router, prefix=prefix)
+    app.include_router(performance.router, prefix=prefix)
     app.include_router(events.router, prefix=prefix)
     app.include_router(realtime_router.router, prefix=prefix)
     app.include_router(notifications.router, prefix=prefix)

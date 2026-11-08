@@ -1450,6 +1450,16 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/performance/ingest",
+      "reason": "operator surface: performance metric ingestion from authorized monitoring sources; read-only collection, tenant-isolated, idempotent"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/performance/ingest/batch",
+      "reason": "operator surface: performance metric ingestion from authorized monitoring sources; read-only collection, tenant-isolated, idempotent"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/quantum/mosca",
       "reason": "operator surface: quantum readiness"
     },

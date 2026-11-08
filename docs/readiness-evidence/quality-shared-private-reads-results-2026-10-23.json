@@ -1,0 +1,732 @@
+{
+  "schema": "cryptoscan.local-private-read-evidence/1",
+  "recorded_utc": "2026-10-23T08:23:18.190592+00:00",
+  "source_baseline": "8c1b2bcfed636c73addac4a62ae94ce3edabcbd2",
+  "branch": "arena/bb4b80dd-cryproscan",
+  "source_binding": "Source SHA256 below bind publication inputs; final revision is the containing publication commit. No deployment or independent approval implied.",
+  "environment": {
+    "node": "v22.22.3",
+    "npm": "10.9.8",
+    "vitest": "5.0.5",
+    "playwright-core": "1.64.1",
+    "sparticuz-chromium-package": "153.0.0",
+    "browser": "153.0.8010.0"
+  },
+  "frontend": {
+    "cases": 516,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "files": 49,
+    "wall_seconds": 130.79,
+    "react_act_warnings": 20,
+    "completion_evidence": "Complete final log and JUnit. Wrapper tool transport interrupted; still-running test process was not duplicated. Build/toolchain/browser subsequently invoked separately."
+  },
+  "new_regressions": [
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > clears loaded data and revalidates on current-window estate",
+      "time": "0.023661723",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > clears loaded data and revalidates on current-window auth",
+      "time": "0.005327956",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > clears loaded data and revalidates on storage cryptoscan_tenant",
+      "time": "0.004346362",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > clears loaded data and revalidates on storage zelinx_token",
+      "time": "0.003046139",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > clears loaded data and revalidates on storage zelinx_roles",
+      "time": "0.006808297",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > clears loaded data and revalidates on storage zelinx_user",
+      "time": "0.002866118",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > clears loaded data and revalidates on storage null",
+      "time": "0.00238187",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > clears loaded data and revalidates on visible resume",
+      "time": "0.002986502",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > clears loaded data and revalidates on persisted pageshow",
+      "time": "0.003860575",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > ignores old-context success even when abort is ignored",
+      "time": "0.002611058",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > ignores old-context failure even when abort is ignored",
+      "time": "0.001972881",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > does not resurrect an A/B/A response",
+      "time": "0.002940726",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > clears the old path immediately while its replacement is pending",
+      "time": "0.002290114",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > a null path clears data and cancels the previous request",
+      "time": "0.001791401",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > disabling a previously loaded path clears its data and error state",
+      "time": "0.001833023",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > null reads never fetch, even on resume or reload",
+      "time": "0.00171637",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > manual reload clears old data, and latest reload wins",
+      "time": "0.002463927",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > aborts on unmount and ignores a captured reload after unmount",
+      "time": "0.001515942",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > bounds an ignored-abort transport and discards its late success",
+      "time": "0.004000414",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > refreshes using the current token and estate rather than cached headers",
+      "time": "0.002640312",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > uses the current fallback on reload without fetching on fallback identity alone",
+      "time": "0.002147156",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > StrictMode remount rejects the first mount's late reply",
+      "time": "0.002697694",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > does not refetch for unrelated storage",
+      "time": "0.001637706",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > does not refetch for session storage",
+      "time": "0.001372417",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > does not refetch for hidden tab",
+      "time": "0.00138657",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > does not refetch for ordinary pageshow",
+      "time": "0.001292991",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > distinguishes HTTP 401 refusal/outage and clears earlier data",
+      "time": "0.002096477",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > distinguishes HTTP 403 refusal/outage and clears earlier data",
+      "time": "0.001672402",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > distinguishes HTTP 409 refusal/outage and clears earlier data",
+      "time": "0.001742041",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > distinguishes HTTP 503 refusal/outage and clears earlier data",
+      "time": "0.002204357",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > distinguishes malformed JSON from live or transport failure",
+      "time": "0.001650365",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > keeps transport outage empty and never invents data",
+      "time": "0.00160464",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > guards a late response body after headers have already arrived",
+      "time": "0.006413806",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > cleans its owned deadline and scope listeners on unmount",
+      "time": "0.003099823",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > shows the safe refusal reason rather than falsely calling it an outage",
+      "time": "0.020344051",
+      "status": "PASS"
+    },
+    {
+      "classname": "src/lib/useLive.scope.test.tsx",
+      "name": "useLive private read scope > preserves the exported liveGet nullable compatibility contract",
+      "time": "0.0008922",
+      "status": "PASS"
+    }
+  ],
+  "original_hook_comparison": {
+    "cases": 36,
+    "failures": 27,
+    "errors": 0,
+    "skipped": 0,
+    "passed": 9,
+    "source_sha256": "4ec2f8c455e0265c799afbd318cafa95024f0e5d0e7557aa0dc6c3f977c18257",
+    "saved_source_restored_exactly": true,
+    "case_results": [
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > clears loaded data and revalidates on current-window estate",
+        "time": "0.02738722",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > clears loaded data and revalidates on current-window auth",
+        "time": "0.004244629",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > clears loaded data and revalidates on storage cryptoscan_tenant",
+        "time": "0.007212228",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > clears loaded data and revalidates on storage zelinx_token",
+        "time": "0.002715438",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > clears loaded data and revalidates on storage zelinx_roles",
+        "time": "0.003994081",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > clears loaded data and revalidates on storage zelinx_user",
+        "time": "0.002255472",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > clears loaded data and revalidates on storage null",
+        "time": "0.002109367",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > clears loaded data and revalidates on visible resume",
+        "time": "0.002406373",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > clears loaded data and revalidates on persisted pageshow",
+        "time": "0.004278025",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > ignores old-context success even when abort is ignored",
+        "time": "0.002080666",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > ignores old-context failure even when abort is ignored",
+        "time": "0.001328404",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > does not resurrect an A/B/A response",
+        "time": "0.002519487",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > clears the old path immediately while its replacement is pending",
+        "time": "0.002149865",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > a null path clears data and cancels the previous request",
+        "time": "0.001842181",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > disabling a previously loaded path clears its data and error state",
+        "time": "0.001678883",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > null reads never fetch, even on resume or reload",
+        "time": "0.001516861",
+        "status": "PASS"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > manual reload clears old data, and latest reload wins",
+        "time": "0.001881566",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > aborts on unmount and ignores a captured reload after unmount",
+        "time": "0.001474987",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > bounds an ignored-abort transport and discards its late success",
+        "time": "0.003167072",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > refreshes using the current token and estate rather than cached headers",
+        "time": "0.001550111",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > uses the current fallback on reload without fetching on fallback identity alone",
+        "time": "0.001944791",
+        "status": "PASS"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > StrictMode remount rejects the first mount's late reply",
+        "time": "0.002261379",
+        "status": "PASS"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > does not refetch for unrelated storage",
+        "time": "0.001619657",
+        "status": "PASS"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > does not refetch for session storage",
+        "time": "0.001339594",
+        "status": "PASS"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > does not refetch for hidden tab",
+        "time": "0.001376481",
+        "status": "PASS"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > does not refetch for ordinary pageshow",
+        "time": "0.001185608",
+        "status": "PASS"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > distinguishes HTTP 401 refusal/outage and clears earlier data",
+        "time": "0.002081159",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > distinguishes HTTP 403 refusal/outage and clears earlier data",
+        "time": "0.001816201",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > distinguishes HTTP 409 refusal/outage and clears earlier data",
+        "time": "0.001595803",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > distinguishes HTTP 503 refusal/outage and clears earlier data",
+        "time": "0.001818953",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > distinguishes malformed JSON from live or transport failure",
+        "time": "0.001664577",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > keeps transport outage empty and never invents data",
+        "time": "0.012939464",
+        "status": "PASS"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > guards a late response body after headers have already arrived",
+        "time": "0.002102952",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > cleans its owned deadline and scope listeners on unmount",
+        "time": "0.00191887",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > shows the safe refusal reason rather than falsely calling it an outage",
+        "time": "0.021577803",
+        "status": "FAIL"
+      },
+      {
+        "classname": "src/lib/useLive.scope.test.tsx",
+        "name": "useLive private read scope > preserves the exported liveGet nullable compatibility contract",
+        "time": "0.000868893",
+        "status": "PASS"
+      }
+    ]
+  },
+  "built_browser": {
+    "schema": "cryptoscan.local-browser-exercise/1",
+    "browser": "153.0.8010.0",
+    "status": "PASS",
+    "scope": "Built console + stubbed HTTP, synthetic identities; not site acceptance",
+    "results": [
+      {
+        "name": "/operator-decisions: real cross-window storage clears old estate",
+        "status": "PASS",
+        "milliseconds": 603
+      },
+      {
+        "name": "/launch-readiness: real cross-window storage clears old estate",
+        "status": "PASS",
+        "milliseconds": 1570
+      },
+      {
+        "name": "/evidence: real cross-window storage clears old estate",
+        "status": "PASS",
+        "milliseconds": 1296
+      },
+      {
+        "name": "operator: same-turn native form submission is single-flight",
+        "status": "PASS",
+        "milliseconds": 1290
+      },
+      {
+        "name": "launch: same-turn native form submission is single-flight",
+        "status": "PASS",
+        "milliseconds": 1263
+      },
+      {
+        "name": "operator: late old-estate write never restores old receipt/draft",
+        "status": "PASS",
+        "milliseconds": 1168
+      },
+      {
+        "name": "launch: dependency failure warns of uncertain write, no auto retry",
+        "status": "PASS",
+        "milliseconds": 1393
+      },
+      {
+        "name": "session refusal removes private console content",
+        "status": "PASS",
+        "milliseconds": 1083
+      },
+      {
+        "name": "audit export: estate change cancels pending bytes before browser download",
+        "status": "PASS",
+        "milliseconds": 1423
+      },
+      {
+        "name": "/organization: shared GET hook revalidates after real cross-window estate change",
+        "status": "PASS",
+        "milliseconds": 1102
+      },
+      {
+        "name": "/reports: shared GET hook revalidates after real cross-window estate change",
+        "status": "PASS",
+        "milliseconds": 1110
+      }
+    ],
+    "page_errors": []
+  },
+  "original_hook_built_browser": {
+    "schema": "cryptoscan.local-browser-exercise/1",
+    "browser": "153.0.8010.0",
+    "status": "FAIL",
+    "scope": "Built console + stubbed HTTP, synthetic identities; not site acceptance",
+    "results": [
+      {
+        "name": "/operator-decisions: real cross-window storage clears old estate",
+        "status": "PASS",
+        "milliseconds": 628
+      },
+      {
+        "name": "/launch-readiness: real cross-window storage clears old estate",
+        "status": "PASS",
+        "milliseconds": 1571
+      },
+      {
+        "name": "/evidence: real cross-window storage clears old estate",
+        "status": "PASS",
+        "milliseconds": 1435
+      },
+      {
+        "name": "operator: same-turn native form submission is single-flight",
+        "status": "PASS",
+        "milliseconds": 1116
+      },
+      {
+        "name": "launch: same-turn native form submission is single-flight",
+        "status": "PASS",
+        "milliseconds": 1387
+      },
+      {
+        "name": "operator: late old-estate write never restores old receipt/draft",
+        "status": "PASS",
+        "milliseconds": 1525
+      },
+      {
+        "name": "launch: dependency failure warns of uncertain write, no auto retry",
+        "status": "PASS",
+        "milliseconds": 1335
+      },
+      {
+        "name": "session refusal removes private console content",
+        "status": "PASS",
+        "milliseconds": 1142
+      },
+      {
+        "name": "audit export: estate change cancels pending bytes before browser download",
+        "status": "PASS",
+        "milliseconds": 1414
+      },
+      {
+        "name": "/organization: shared GET hook revalidates after real cross-window estate change",
+        "status": "FAIL",
+        "milliseconds": 11080,
+        "error": "TimeoutError: locator.waitFor: Timeout 10000ms exceeded.\nCall log:\n  - waiting for getByText('synthetic-private-b').first() to be visible\n"
+      }
+    ],
+    "page_errors": []
+  },
+  "other_checks": {
+    "typecheck": "PASS",
+    "production_build": "PASS",
+    "production_build_seconds": 1.34,
+    "toolchain_passed": 7,
+    "toolchain_skipped": 0,
+    "node_harness_syntax": "PASS",
+    "whitespace": "PASS",
+    "dependency_lock_changed": false,
+    "documentation": {
+      "markdown_files": 408,
+      "local_links": 2010,
+      "local_anchors": 58,
+      "changed_shell_blocks_syntax_checked": 3,
+      "current_hashes_checked": 107,
+      "errors": []
+    }
+  },
+  "source_sha256": {
+    "frontend/src/lib/useLive.tsx": "e4cc43e09aea7829b45c17623f5331d666220c65de26159e9764e0085be78022",
+    "frontend/src/lib/useLive.scope.test.tsx": "3bff95044de7952d6d22fd6a2b100bfe339ee4e27fd555dd5de78832d4717880",
+    "frontend/scripts/critical-browser.mjs": "22712e0329d75354c7775f253c62f4e26759c427197d4c95de6a5c3455626765"
+  },
+  "built_asset_sha256": {
+    "assets/Accuracy-DaTti0HU.js": "cddd11bcb491f2fca0ff62c73b407719ca62109613f99fc1b1c7915b466f9e66",
+    "assets/Admin-DXDpUrmR.js": "8b79e22204bd5f2b8d813a2e33a9d377520fecfc260321f458acb150b067d600",
+    "assets/Agility-Cup5D5Ko.js": "4b1a4b0bfdaff2f6ac69646b09b2f1fd070db514c4ebd65d07a1cc057cdce72a",
+    "assets/Alerts-UQJkyalQ.js": "159303ead7f49d0f986e04021eec1510cfd05a18276f58951cc94b63e24fa3aa",
+    "assets/Assets-xnz5y47Z.js": "5192efe1ecdd078296c0acd1a48241aa0be0b2aae65c80ffe5f6bd145ac0f6df",
+    "assets/AuthenticatedDownload-TAAVLITo.js": "571ec5d3e22e831b6316ba5b9184ab5f4e7d977d8d98f6d7c282ac72bf3b2f15",
+    "assets/Automation-COBDX3Wo.js": "d7f6cc794510e73879cc0fcf1c27e725dfc9cef26ea81d5935b4aec95989d773",
+    "assets/BankingRegulatory-BpNUIlsT.js": "394b9a18a32148574e36845876c81f6ad4c19f46bed2bcc406395951d923696f",
+    "assets/Catalog-CQgQWJJd.js": "b7ce02822cb88d7fa7b3319f0a1b0aa97055f19084e9a2383efe8720f4870bda",
+    "assets/Cbom-BLsYyBk-.js": "59dbb2c56aa4709d053145540671c29977cb5953a23fe52ca775e6cb831a880f",
+    "assets/Certificates-BVfhK4Vc.js": "c01c59642206370f79ab0c2349385a73eeeba18191a38a3192958be002815d1b",
+    "assets/Cloud-DT1kcCSs.js": "d891a9d28775d3dd25d749133983e83c529e036eff326a17edbe4d7871f01ce2",
+    "assets/Cmdb-DKjLbWx5.js": "7541f41f520b682cfe348282392b0e4a2e9de598c48f8b5fbe36452358466ab6",
+    "assets/CommandCenter-BYEppcSR.js": "e628cf87ea286fb26ca12f7a0011b2d021dc909173d7409ec9df7c820f1705c2",
+    "assets/Compliance-DCkKyk7-.js": "a96388d667dc3c0b9863e9bb8ab0212d18a4165a20939d07844e39ddf1820e95",
+    "assets/Crypto-DlNhc1Yt.js": "e1012d103f91756f2e2b6fa18530ce2aa070a209ed7a763bf4b7434998e880ae",
+    "assets/CryptoAssets-BWVPgYxe.js": "20c81a14de0cc1e6d2dbef0bd750ecea392f8a114f1d95932564f95fa0899d29",
+    "assets/CryptoAssurance-D6nPc2MM.js": "e0aaac85897e0af0a09ccd35153b43a3a11238d9a4d9f8e161964d42c0857ce9",
+    "assets/CryptoChanges-2FMP2-hs.js": "e3f28fbb024d37d0ee54c2f792d7a62979ad982006d6faadae302b305caf669a",
+    "assets/DependencyGraph-DLMrKQLP.js": "e903d6e686ecd277290988d1e089047e4426217a181eaf54ca506f2ea57cc117",
+    "assets/DevSecOps-C2PbsTRD.js": "8ac0212bdd0e4533dfe6135dab0ca7f132b4b5f5b0d81cfc3dcbced6d5075115",
+    "assets/DigitalTwin-R10Mcswg.js": "eb4b172a12c7cdd8238f34984aff2d134e4272ecee544f710ff408e7ab587b5e",
+    "assets/Drift-C69NxUTK.js": "8b8ce6248e2115fbcf4afe0c5c2311356722a065dcaaf7c2b7ed011e7cfa9fc0",
+    "assets/Evidence-BA9yFBIW.js": "2e2b7fb4caabe362a17122f5f07266287447cf8438448b7565a7a9118ca45ea2",
+    "assets/Executive-DrZ1qfaw.js": "2eac0b410743e2bbd6a2cd35245f2b005278a9396f292b84e4725c74ff08961b",
+    "assets/Findings-DeUo1nra.js": "f487a120a98d9b94b6743a45f82b21800d760e0241c82978b595f2c225e626d1",
+    "assets/Governance-D6H_c6k4.js": "43fe772976bdd49ed354b2b021ceea4ba3181e7cf23002e55017a6b94d8b97a3",
+    "assets/Graph-29aopcqj.js": "6bd36e61a5b4ec717c317096ab054155b9096e28b8a8c1309c7aa1615a6873f4",
+    "assets/Hardware-NRiBayB9.js": "da0e7761a6be1472ac2b77908ab908bf075d115c76546dc91d12063d082479ea",
+    "assets/Hbom-MIoY90Ua.js": "1208e79fa4f650183b374a2318ef0f16fa34f0128c09bc171871eb82e69c47e2",
+    "assets/Identity-DRn-PFBE.js": "bb499cf8ffc2bc066d4a369756e3f70748c16d39787158468a7ed30d2cc8b762",
+    "assets/Integrations-D59CpDv2.js": "f81a53b58a348792af4a714fb52e39a8e85b3afe1ce04962991bbb7ffb532125",
+    "assets/InviteAccept-CmvJrALX.js": "a3561f0238985390f7341bdf78ee558270b4c828f58907f51c3d1afbacb8bf3c",
+    "assets/LaunchReadiness-BPyZCLZS.js": "3887b2ab631d81e4292caf544ea48492875b47e97bacc984ad6debef616c244f",
+    "assets/Libraries-BeiluemR.js": "1492d4ffe390366cacdd2423cc70e9acd4849e3e693d2461a7f4f4ef37132591",
+    "assets/LiveAssetIntelligence-DnERG5_v.js": "0a162cb5c30b340137812469bd896eee723ef4e9181aa56a4c34a39e82f2199f",
+    "assets/LiveEnvironment-ACw2Ug6E.js": "96e682cc6a88935a2d50c192c2a588bb0454d5c214a0dbf95c1c1c6916dfcc4d",
+    "assets/LiveScanners-DrMEsEBL.js": "1c77d1bfedaed51f1c22f13e843ee4a13184fef1ce19421a4d100c3e5f00139e",
+    "assets/LiveStream-ByQHFYr2.js": "3a209e0184711760a36d9a2a09c46f995fa748faeaacdacc2b660592f2b12f41",
+    "assets/Login-BZoqNGb3.js": "5c369f2301e5fddf636540232abb01d620d7f3de7154ede7f70f3199eb556fb1",
+    "assets/Migration-BKa8VJsP.js": "8124c0e2aa61befdaf34b5df081b85e20781fd24c78a096d331cba4023915c08",
+    "assets/Nbom-BlybPWM4.js": "52f7962fe76e6fb1a2f65836d5f04ed126d3dfe92654bb3b26c9e5dde4050993",
+    "assets/Network-CRMdhzQV.js": "23678099d8f52890cbead73a14fe0e935af8ac8e8831d5e268fa2150d6378a37",
+    "assets/Notifications-CJOcJvok.js": "7be053c4a6d59064f6cf3da1f131340441be7280ff5cdd4b8da6e52522beb86d",
+    "assets/Onboarding-e5VG7rQt.js": "9d72decdaa021bc443bf2f2528048bfc16139c51a66e73c7bfe1fda1e23f623d",
+    "assets/OperatorDecisions-BRarO9BT.js": "5be72e581873ab036158260c0d6df5a03ec3490c85293d1bc4769f2b0b7c6013",
+    "assets/Organization-Cbdzc10y.js": "4d679de3d24f0003d1f25dd2864c08f1b492527d52846350df6669b365f9d030",
+    "assets/PlatformP2-C3m3lP8g.js": "56a3702db334eb304309cd6bac2a717c3fb63e30a7ceee511dce35a5afc406ba",
+    "assets/Pqc-CQeg3JnO.js": "7e653180fad2cbee54f3a086032b6c8c6b80a44b9239624df1677e5bb89d2781",
+    "assets/PqcMap-CSJUz7Lg.js": "9e452d2eb992066d91d7955b40c05798895e49f1acb7864df8c4b7310bacf1c5",
+    "assets/Priorities-D7njKTPN.js": "4b3718899e934bf0981f978476ecd684575694f5bf70fa0140bd8ea24a341782",
+    "assets/PrivateScope-qWJJHeuJ.js": "d8125ffe757bb239ed226202ff7409a1092ad42603ca2611822babb141d76d40",
+    "assets/Protocols-5q2JmcWm.js": "c8b0949e63a767fba65de76173290ed99253223f4783c50547f82e7f478a41e0",
+    "assets/Register-DsCHlq3v.js": "9206b9a49428bedec8a69cfd3467d421e6686d1a8c22c8074241f44fa31838eb",
+    "assets/Remediation-CrA5ENRy.js": "9a4e2e7033f913fcdc0c7f2c798c4ad792215c7e285af6228c60f37bd0a861d1",
+    "assets/Reports-C5XaxMSq.js": "81caa5c8d29cb7b94b6a211e58d620decb66426d05998a142edf204d0aba6e4a",
+    "assets/ResetPassword-BFzk7Wrg.js": "8590ffc7343a5100f7889274be378346382bf2ae3b98608dcd02ec2f5b00ac9e",
+    "assets/Resilience-DtfWj7zv.js": "962b8ac0999b3284713a5f6a4dd16ca8640a595b7730a8b29ae66124e19454d9",
+    "assets/Risk-C2EQtPoB.js": "73ecd94f7bd23fc7477b584033577a12decd5979301ebf2a617242845e2cbacf",
+    "assets/RoleDashboard-BtGFkIjf.js": "9bd35d5b8b9ab4857493c1a17fca1594ebc5920478bc4a44e828193194445d56",
+    "assets/Runtime-qxBrJPyQ.js": "d311d12d74a1cd57f831a1f930a17894896ebd7de0e5d00e84ea26d9a9330bd2",
+    "assets/Scanners-DLP1j1aS.js": "f6c9f512b7e0b0b50fc0ca8c55d9778b024c56c0b99d4595a4be87b62d246ef8",
+    "assets/Scope-DDxfPuHN.js": "31a086af42b4aa8af448dbdd1381fb9d6eaa9de0bc92493c37f7bb5f702f6ade",
+    "assets/SearchResults-CwGoHNT3.js": "b15aee34f26e29c8497d4950355711c188d7e60e5444d3f04757cd60f556cfeb",
+    "assets/Sectors-Cn6q94L2.js": "c2890e1c50ba3ef6a28b7f7235ff6183cfb6ba231e466b3d8973621f965aa5b9",
+    "assets/Security-BJzY7ajr.js": "c37a34c63052754ae9dcf013189ac5969928426a94573aec941d80c9ce457cc6",
+    "assets/SecurityCenter-DPT4BBRZ.js": "da081d7f6f3b0f3f51df138b3e14e4b86c236eaedad8bebcd1053f3361928490",
+    "assets/SecurityIntelligence-B19Kfg58.js": "af15995d8aafc1484ab6379bd8e807bc1a8b032f384ff02f701d71ddc6838f34",
+    "assets/SecurityPolicy-CWv-Yx0H.js": "8b25ebb965e22fd09ac55a447331c2381c38d3f253841e4d63e3456c25ca0cc8",
+    "assets/Settings-DTFe10DV.js": "8f847adba1b71b124dfc4afcae253bc7379094a6c278735a132b7a46d353ed7c",
+    "assets/Supervision-BuvgsZoY.js": "002bd9ffb612ce74950363f642b5c403397df1028b3078ea4b07d158edfdc7c6",
+    "assets/SystemHealth-Ae-JWjqd.js": "2f4042d04aa8da2a11e4827a64aa4da55bd0d2f1a5efc68afb0bd650d862d78b",
+    "assets/Telecom-DbPg6tri.js": "6292c89a86363d1aa62840dcc8f7fc42aec243e6fc06692c5276601d9b8bb261",
+    "assets/Tenancy-TuG7wXDS.js": "6e9bffaac63b13e298b38aa4c412b04ed089cc641847b07201afeaff8d0b9599",
+    "assets/Timeline-C5IjCvaA.js": "211d738ea5582796601d39bf854040b4868a525f1bbbacbed1196a7a67a19a8f",
+    "assets/Trust-Bn5KNif7.js": "f773f20b986c132c51b8a01e4676c6861ef922f50cc58b85f215d58d67bdb7d3",
+    "assets/Vendor-BRf3TOc6.js": "72a03b5f8465793262982a19ac13892b241b637f9a1c8083c75dc05f07c65b63",
+    "assets/VendorDueDiligence-D8Pf4gnn.js": "74f1a7c5c815a37dbd76a15f047f2744460bc7151e3901135b7d78aade895ebc",
+    "assets/WhatIf-DypUOFbG.js": "537589e4a7a1dde28f40028c160ae543967cba049303c4072cc53f45c3b956ac",
+    "assets/api-Cs2IHSUp.js": "a297660a5a8b7ef712896b8084f9a481e456475622526c8f5bf03cdc7f028b9f",
+    "assets/index-CRsh6_Cj.css": "14ffb0fec10467285f57c326e2949c531637616c4f162add0415b6fc000220a1",
+    "assets/index-dNx1z_Qm.js": "12b62e9eb05bd29f146b08b83d63685014f5188f508144575dca9d9cd70b1dc8",
+    "assets/motion-YfRIqc8Y.js": "9834598333d5efd7f8be3541988954b81cd4aea1e6a10fb574ae3c64765c5c94",
+    "assets/rolldown-runtime-WkwZ5CU-.js": "2629f2ad3cb75a57d98de697127f5af7d777ef572bbcdfa6e3ce8f438cd4527e",
+    "assets/ui-CCNMwKJd.js": "e205118017e5356ef98d260fb31b82e81bba5a065cdc620b7a9f94259dd270c6",
+    "assets/useLive-DQZJtY47.js": "9b6028f5e92268c97338692a5b569667e1101e676c6c837e1ccb46bb0f7d8c7d",
+    "assets/vendor-icons-9wf5lCnO.js": "d6da360153ec1e3bcc0edf088a3cfd62b0a36b279cee37b3470c438b465d339b",
+    "assets/vendor-motion-qGfJwEv7.js": "46ae4d90c59110bea6d0266774a6daab8bbd60db08901610ea99e84b7ba2cba2",
+    "assets/vendor-react-MwcAOGhS.js": "84a1fa44647c621b3b3742458020bb2c419548a2b8820b890d4e8704bb31dc6e",
+    "index.html": "2597c518178177b409fbbf67d75dea25fc94ff2afda4feabd68cbd26a13b39c1"
+  },
+  "external_record_sha256": {
+    "/home/user/quality-tenth-frontend.log": "9a00887f5ea34eccdd91a3dd08a580b8a88fc4e9abf66c5b8826a031986d260c",
+    "/home/user/quality-tenth-frontend.xml": "02da63de1643548af4744d62062a94374916241f1784c7a50197ddfa995d2995",
+    "/home/user/quality-tenth-red.log": "bca69294a0c07fdeb6a9b3cfa56c728b1bb66c8935b484e60be7ef3834b5dca0",
+    "/home/user/quality-tenth-red.xml": "f2a95a75b2253309c13e1b3b33edd4186b9f8e9307c18d0e9fe66ec8f371e277",
+    "/home/user/quality-tenth-typecheck.log": "00d48cfff576795106b5dd2c6f7c9544879ff21a718ce93cacac140432ff2a08",
+    "/home/user/quality-tenth-build.log": "39624ac6c51e004af4dc0569f18a6f37bfd2700fc83a451f4485b3cfaf4062a0",
+    "/home/user/quality-tenth-toolchain.log": "ec8a041f5433882fd35648187a32344e54a21a80368fd8759d535a3400ea3caa",
+    "/home/user/quality-tenth-install.log": "d936a99ee51a4161173323598abe585c8b8ae05c95ece637ddfed705f9f25b9f",
+    "/home/user/quality-tenth-refusal-red.log": "0629fae71e2ce3a58990c735cd57aa4146990d2d79399dfc45668202e1371c6e",
+    "/home/user/quality-tenth-timeout-wording.log": "01b4b262938e1c22366a949358923ec82a6a907ac63b671dbb82868490ebe01d",
+    "/home/user/quality-tenth-browser.json": "2db58add98de24a88d1e2f0475a3c6219aeac95cc96409a992820c35b599162d",
+    "/home/user/quality-tenth-browser.err": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/user/quality-tenth-browser-red.json": "661e85f1dcf5c40bfdeb455aedecf9ffd416c20895706d2850cc795cebb10f54",
+    "/home/user/quality-tenth-browser-red.err": "fdcd8ee431945381d36b6cc5f9972b7aaaa8f55d2a25db0f5628e0f6117900ea"
+  },
+  "limitations": [
+    "Hook-owned GET state only; generic action callbacks, page-local forms and bespoke exports are not automatically fenced.",
+    "Real Chromium uses built console and synthetic intercepted HTTP, not a bank workstation or the native backend.",
+    "No backend/PostgreSQL/Redis/Docker/site/HA/PITR qualification executed in this increment. Prior dated results remain historical.",
+    "Schema head remains0106; no product dependency, workflow, collector, page, service or profile expansion.",
+    "No CI pass, signed release, SLA, deployment, different-human review or customer acceptance inferred."
+  ]
+}

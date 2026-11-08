@@ -1,0 +1,469 @@
+{
+  "schema": "cryptoscan.local-quality-evidence/1",
+  "recorded_utc": "2026-10-23T06:50:24.076878+00:00",
+  "source_baseline": "78d4df9114e7cd3e98609c38b1ae6cd5d40d3ea2",
+  "branch": "arena/bb4b80dd-cryproscan",
+  "source_binding": "Publication input SHA256 values below; final commit is the containing publication commit. No claim of site deployment or independent approval.",
+  "environment": {
+    "python": "3.11.2",
+    "node": "22.22.3",
+    "PostgreSQL": "16.14",
+    "SQLAlchemy": "2.0.52",
+    "Alembic": "1.19.1",
+    "pytest": "9.1.1",
+    "psycopg2-binary": "2.9.12",
+    "FastAPI": "0.141.1",
+    "playwright-core": "1.64.1",
+    "sparticuz-chromium-package": "153.0.0"
+  },
+  "postgres": {
+    "cases": 16,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "sha256": "ab9e2ee20a1b8ee84a3770731b2a471820a1075a865b3c8dda6973e8e7e9a688",
+    "file": "quality-ninth-pg-final.xml",
+    "suite_timestamps": [
+      "2026-10-23T06:42:51.319045+00:00"
+    ],
+    "case_results": [
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_competing_revision_writers",
+        "time": "4.077",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_duplicate_job_claim_is_single_winner",
+        "time": "1.357",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_unknown_reconciliation",
+        "time": "1.247",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_budget_rollback_on_claim_failure",
+        "time": "1.432",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_concurrent_withdrawal_waits_for_positive_proof[original]",
+        "time": "1.814",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_concurrent_withdrawal_waits_for_positive_proof[before_other]",
+        "time": "1.532",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_concurrent_withdrawal_waits_for_positive_proof[replacement]",
+        "time": "2.019",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_concurrent_withdrawal_waits_for_positive_proof[after_other]",
+        "time": "1.560",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_competing_approvals",
+        "time": "1.484",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_signed_in_supported_source_to_independent_proof[sha256-VERIFIED]",
+        "time": "5.363",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_signed_in_supported_source_to_independent_proof[sha384-INCONCLUSIVE]",
+        "time": "5.344",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_populated_outcome_migration",
+        "time": "3.425",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_dump_restore_retains_proof_and_unknown_reservations",
+        "time": "6.920",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_qualified_read_boundary_is_exact_and_resident[True]",
+        "time": "3.762",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_qualified_read_boundary_is_exact_and_resident[False]",
+        "time": "2.380",
+        "status": "PASS"
+      },
+      {
+        "classname": "services.api.tests.unit.test_workflow_postgres",
+        "name": "test_real_postgres_runtime_gate_refuses_missing_and_behind_without_schema_repair",
+        "time": "0.542",
+        "status": "PASS"
+      }
+    ],
+    "wall_seconds": 45.41,
+    "warnings": 17
+  },
+  "selected_api_security": {
+    "cases": 507,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "sha256": "89febb8bcf765fe427ffa54233e85653416a8dca04b0cad2e9860edab322bb1c",
+    "file": "quality-ninth-api-final.xml",
+    "suite_timestamps": [
+      "2026-10-23T06:31:58.901371+00:00"
+    ],
+    "wall_seconds": 245.82,
+    "warnings": 9,
+    "selected_files": [
+      "services/api/tests/unit/test_assurance_controlled_boundary.py",
+      "services/api/tests/unit/test_assurance_redis_clients.py",
+      "services/api/tests/unit/test_assurance_workflows.py",
+      "services/api/tests/unit/test_auth_account_lifecycle.py",
+      "services/api/tests/unit/test_auth_lifecycle.py",
+      "services/api/tests/unit/test_authorization_dependency_failure.py",
+      "services/api/tests/unit/test_certificate_estate_reads.py",
+      "services/api/tests/unit/test_cross_surface_estate_contract.py",
+      "services/api/tests/unit/test_estate.py",
+      "services/api/tests/unit/test_estate_due_scans.py",
+      "services/api/tests/unit/test_estate_history_contract.py",
+      "services/api/tests/unit/test_estate_replay.py",
+      "services/api/tests/unit/test_execution_controls.py",
+      "services/api/tests/unit/test_execution_process_recovery.py",
+      "services/api/tests/unit/test_execution_recovery_integrity.py",
+      "services/api/tests/unit/test_hbom_estate.py",
+      "services/api/tests/unit/test_launch_readiness.py",
+      "services/api/tests/unit/test_migration_execution.py",
+      "services/api/tests/unit/test_migration_execution_api.py",
+      "services/api/tests/unit/test_operator_decisions.py",
+      "services/api/tests/unit/test_operator_profile.py",
+      "services/api/tests/unit/test_parser_failure_execution_contract.py",
+      "services/api/tests/unit/test_readiness_assurance.py",
+      "services/api/tests/unit/test_remediation_endpoint.py",
+      "services/api/tests/unit/test_remediation_evidence_retraction.py",
+      "services/api/tests/unit/test_remediation_tasks.py",
+      "services/api/tests/unit/test_remediation_templates.py",
+      "services/api/tests/unit/test_source_algorithm_predicate.py",
+      "services/api/tests/unit/test_sse_estate_contract.py",
+      "services/api/tests/security/test_operator_release.py",
+      "services/api/tests/security/test_cross_tenant_scan_surface.py"
+    ]
+  },
+  "frontend": {
+    "cases": 480,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "sha256": "359ccb6274a3773089cd6a3be83b31b2458add84bcff641e3cef5c40e7a614fa",
+    "file": "quality-ninth-frontend-final.xml",
+    "suite_timestamps": [
+      "2026-10-23T06:44:57.593Z",
+      "2026-10-23T06:44:57.595Z",
+      "2026-10-23T06:44:57.597Z",
+      "2026-10-23T06:44:57.601Z",
+      "2026-10-23T06:44:57.602Z",
+      "2026-10-23T06:44:57.606Z",
+      "2026-10-23T06:44:57.607Z",
+      "2026-10-23T06:44:57.608Z",
+      "2026-10-23T06:44:57.608Z",
+      "2026-10-23T06:44:57.609Z",
+      "2026-10-23T06:44:57.610Z",
+      "2026-10-23T06:44:57.614Z",
+      "2026-10-23T06:44:57.616Z",
+      "2026-10-23T06:44:57.617Z",
+      "2026-10-23T06:44:57.618Z",
+      "2026-10-23T06:44:57.623Z",
+      "2026-10-23T06:44:57.624Z",
+      "2026-10-23T06:44:57.625Z",
+      "2026-10-23T06:44:57.627Z",
+      "2026-10-23T06:44:57.628Z",
+      "2026-10-23T06:44:57.633Z",
+      "2026-10-23T06:44:57.637Z",
+      "2026-10-23T06:44:57.638Z",
+      "2026-10-23T06:44:57.639Z",
+      "2026-10-23T06:44:57.641Z",
+      "2026-10-23T06:44:57.644Z",
+      "2026-10-23T06:44:57.654Z",
+      "2026-10-23T06:44:57.658Z",
+      "2026-10-23T06:44:57.662Z",
+      "2026-10-23T06:44:57.666Z",
+      "2026-10-23T06:44:57.667Z",
+      "2026-10-23T06:44:57.669Z",
+      "2026-10-23T06:44:57.671Z",
+      "2026-10-23T06:44:57.672Z",
+      "2026-10-23T06:44:57.673Z",
+      "2026-10-23T06:44:57.675Z",
+      "2026-10-23T06:44:57.677Z",
+      "2026-10-23T06:44:57.678Z",
+      "2026-10-23T06:44:57.684Z",
+      "2026-10-23T06:44:57.685Z",
+      "2026-10-23T06:44:57.686Z",
+      "2026-10-23T06:44:57.687Z",
+      "2026-10-23T06:44:57.692Z",
+      "2026-10-23T06:44:57.694Z",
+      "2026-10-23T06:44:57.695Z",
+      "2026-10-23T06:44:57.698Z",
+      "2026-10-23T06:44:57.700Z",
+      "2026-10-23T06:44:57.719Z"
+    ],
+    "wall_seconds": 129.52,
+    "new_regression_cases": 53,
+    "react_act_warnings": 20
+  },
+  "library": {
+    "cases": 930,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "sha256": "821111451b9328105fa222aa174d1f0bbc9bfa1de13e90022b2e8dbb920d4f8a",
+    "file": "quality-ninth-library-final.xml",
+    "suite_timestamps": [
+      "2026-10-23T06:42:48.462803+00:00"
+    ],
+    "passed": 929,
+    "default_live_deselections": 8,
+    "wall_seconds": 71.84,
+    "warnings": 147,
+    "skip_reason": "Existing test_disposable_postgres_requires_migrations_and_never_reconciles requires pg_virtualenv; not completed by this default selection."
+  },
+  "original_source_comparison": {
+    "cases": 53,
+    "failures": 48,
+    "passed": 5,
+    "restored_exact_bytes": 5
+  },
+  "built_browser": {
+    "schema": "cryptoscan.local-browser-exercise/1",
+    "browser": "153.0.8010.0",
+    "scope": "Built console + stubbed HTTP, synthetic identities; not site acceptance",
+    "results": [
+      {
+        "name": "/operator-decisions: real cross-window storage clears old estate",
+        "status": "PASS",
+        "milliseconds": 461
+      },
+      {
+        "name": "/launch-readiness: real cross-window storage clears old estate",
+        "status": "PASS",
+        "milliseconds": 1240
+      },
+      {
+        "name": "/evidence: real cross-window storage clears old estate",
+        "status": "PASS",
+        "milliseconds": 1294
+      },
+      {
+        "name": "operator: same-turn native form submission is single-flight",
+        "status": "PASS",
+        "milliseconds": 1286
+      },
+      {
+        "name": "launch: same-turn native form submission is single-flight",
+        "status": "PASS",
+        "milliseconds": 1340
+      },
+      {
+        "name": "operator: late old-estate write never restores old receipt/draft",
+        "status": "PASS",
+        "milliseconds": 1147
+      },
+      {
+        "name": "launch: dependency failure warns of uncertain write, no auto retry",
+        "status": "PASS",
+        "milliseconds": 1293
+      },
+      {
+        "name": "session refusal removes private console content",
+        "status": "PASS",
+        "milliseconds": 1222
+      },
+      {
+        "name": "audit export: estate change cancels pending bytes before browser download",
+        "status": "PASS",
+        "milliseconds": 1294
+      }
+    ],
+    "page_errors": []
+  },
+  "other_checks": {
+    "frontend_typecheck": "PASS",
+    "frontend_production_build": "PASS",
+    "build_seconds": 1.2,
+    "toolchain_passed": 7,
+    "toolchain_skipped": 0,
+    "configured_ruff": "PASS",
+    "pip_check": "PASS",
+    "node_harness_syntax": "PASS",
+    "documentation": {
+      "markdown_files": 407,
+      "local_links": 2000,
+      "anchors_checked": 58,
+      "changed_shell_blocks_syntax_checked": 14,
+      "current_evidence_hashes_checked": 126,
+      "errors": []
+    }
+  },
+  "source_sha256": {
+    "frontend/scripts/critical-browser.mjs": "4eb8b413487d5fd60f25e3b63e2403de2c3122f88719b72f3474480770c9bfb5",
+    "frontend/src/components/AuthenticatedDownload.scope.test.tsx": "23d0840779db83305b36727ff49fdd58bf92e9fefd4e6058d8efce777da9a1d8",
+    "frontend/src/components/AuthenticatedDownload.tsx": "a0625d252285bd3259a9935cd776758b1defd83164d079ae2f9cd8603d1dff00",
+    "frontend/src/components/PrivateScope.tsx": "50e2733eb870f0bcf8d748cc2ed97ef9d456bca04427557849bbbcaf8830da64",
+    "frontend/src/lib/api.ts": "a73a6d92ac917692462408f739a865aaa9ac13be1070ddffce9e06348d514845",
+    "frontend/src/lib/privateScope.ts": "85109b7452386108e3b45e46f4eebe65b9419fbfc54d7c50ac4fc72d4b7c0586",
+    "frontend/src/pages/CriticalScope.test.tsx": "6446a7255707131fa53931f76a4acc172394bb525ec9094866b061c60d2d3014",
+    "frontend/src/pages/Evidence.tsx": "42a28374b49a958121194b4c38ba5cee3b967ce7c6fe5a15024e341055ba555a",
+    "frontend/src/pages/LaunchReadiness.tsx": "00d6faaa0aca9b4b8927bc8d6c2032fc7f8810ce0c59e3617e9cc1fae934ea45",
+    "frontend/src/pages/OperatorDecisions.tsx": "75138f1a7a58126683889c3b189c918f681a2f966776f372c213695bc6753be5",
+    "scripts/operator_release.py": "a8821a19a217f3922f12196bad7092a5b9b5fdcfad70cb54319d4aa7bebe83e6",
+    "services/api/api/assurance/remediation.py": "5ec20eff4f12fce77063c6ead94ff59ac141e99fd56294916716601b9771c96a",
+    "services/api/api/middleware/controlled_surface.py": "3872a3a01a85c5fec2350b11848d09615be15b4194cd8eef13d2bbfe8d7ed089",
+    "services/api/api/routers/findings.py": "def56b7fb1fcdd396c095fcfd8566e5852f4ce972f5b9f55910ce15d0d1b28b4",
+    "services/api/api/routers/scans.py": "eb75b0eb28f7162a35ecde2c79d47e5851a7b64d809ab6fa91259fa0a8408c96",
+    "services/api/tests/security/test_cross_tenant_scan_surface.py": "aa5b143be6808f54c59151b5e309e288ba0651ed7ef482ce357e122c538ee906",
+    "services/api/tests/unit/test_source_algorithm_predicate.py": "130fe6aea5a3632cf16b82b5e534ae7243b344f2482f33c1f7aea5ef3b1ee581",
+    "services/api/tests/unit/test_workflow_postgres.py": "62939490fa2b32f36f20c67716f0272b70be09cf4f9b6c29e701fa4fe69a3204",
+    "services/database/db/repositories/scan_repository.py": "e628a047f3cfcad26b827f3a04f83e84a870ca58fff18e77ec357c22a63cda28",
+    "services/database/migrations/versions/0106_allow_unknown_job_outcomes.py": "b9db04212afb8d15c1fd04f13751c7c891077db597d2ec4d27fec4e5c21370bd"
+  },
+  "built_asset_sha256": {
+    "assets/Accuracy-tEPHjvra.js": "632fd72714f862e33b80fe142afb521ec8f71cd16f01579484fd62e9f2880805",
+    "assets/Admin-F5NNuCIQ.js": "6e208ab03e97123b684e6d0ea28fd4df2be12c7f86179428359d52c91e1ac6b1",
+    "assets/Agility-C55M4T0v.js": "9f8a09e0e8e6dd0e712b767c8c6247af1ca2dcb79dba2e3db651de73e7b43823",
+    "assets/Alerts-BOspTU4x.js": "64731f2e9300c1d3c3c17997275ca68fe7791426ebde8ec3b282e0c3b5073663",
+    "assets/Assets-X6W6LGEy.js": "32d1f2974829437e7b1862c66c1acddc48c828aa0782d5e79b5d3e82ad36e3fb",
+    "assets/AuthenticatedDownload-TAAVLITo.js": "571ec5d3e22e831b6316ba5b9184ab5f4e7d977d8d98f6d7c282ac72bf3b2f15",
+    "assets/Automation-CqSZmCtq.js": "37dfd7035d2e5933a19b09870145102f4f3f2d683456e3a5416a07e56c641020",
+    "assets/BankingRegulatory-CH_zDcs6.js": "81ac8139d5906551dc39afed5c7be3724817b3d6399d5ecf14a8d87379f46136",
+    "assets/Catalog-DDIN1cdK.js": "5e77c36115c7b7fc5faf996e436872284f5697a2daeb94bd94bfae701fedea06",
+    "assets/Cbom-DG7i_-ZQ.js": "7aceb197d854fc00f1027b068c81325d83926a524afc9f897f7ce2d5be15ed9f",
+    "assets/Certificates-7S4N824A.js": "7dad0af54e964b6e3b677f1422db69d94b43dbdbb18c60b1c4cb8a8a41bab276",
+    "assets/Cloud-IqTerMf5.js": "db6495366d0bbb8ac8dad0a622a857f239e1234ec69ff54c1cb4e2b3afdd680a",
+    "assets/Cmdb-Cxq0OXlP.js": "1ffd083b7b7731a8b0529d4ff219cbd20f87e279f835f81b55781cee4b17a57e",
+    "assets/CommandCenter-qeyvfu-p.js": "d4df4ac017b83752dbd71ad40f161378c88eb52483189565991d9b07798ff66a",
+    "assets/Compliance-pExCwn1M.js": "16beaca90003cf488f01cb9c923b73b292de9166d8c32d93f50e4653a6e6cbcc",
+    "assets/Crypto-DBffW2ms.js": "c30f043292aa36497574dd112b954b6560674c6b96ad4f68be703bd5ac8296eb",
+    "assets/CryptoAssets-DVzJKkW1.js": "2e6b1f86a0fe1852314f790ae83d8b9b586a0f37385fbb2bf5b358274e3babf5",
+    "assets/CryptoAssurance-CmaIWRGW.js": "105b21a2e18e76c068b065a7709d5501f14b2e203db985f922bede2a633e8a60",
+    "assets/CryptoChanges-hEdlmFlJ.js": "09928bfb5dfec0c9c19b28721d34d9dfe8c74c48ac285b36d25a1e6d4660591e",
+    "assets/DependencyGraph-CUL7sth3.js": "abf45674d8dc8851b45b558e6feef9c58b9af9e81dd9b79ae3c612f6f2066f74",
+    "assets/DevSecOps-DkSYybww.js": "41340b6ac32d6674260939a4b835737eb4bb68319b42be5c1bf509cbc7b7f9e1",
+    "assets/DigitalTwin-CjqNgypZ.js": "9b4ceeb8c9e9ff513b564c6298a46182c25a8fbb771a9882429c5e95561f97c3",
+    "assets/Drift-D2rQZ6bc.js": "a2e43a044300f230a87803ebda85e82bb29ba1721451036427f88901bdb8b48d",
+    "assets/Evidence-DYuqqo5v.js": "74088e51b5b6788faafd144b47db042d4725629fbcecc41941b64e80eead7531",
+    "assets/Executive-GlcB8Zie.js": "b815927ba1d4fe96b8ad8309755e1ea0ad74e9cc67e48393fe3feb09845ad0f5",
+    "assets/Findings-De5-E-KY.js": "ffe8ef61d2c0a1ae1b8797de9a1380a1a225d7f7355ab4a0a7d1a7bab00e60a4",
+    "assets/Governance-UvXoD473.js": "255a5b9e29273102e764fe55a9fef3d32b9b8b2a93b209add409f0af35e499c9",
+    "assets/Graph-DkBq4ogH.js": "57f14e89eead2f3c903627d1afefffc908cd1e09fbd2d4fa84068d7503ade0e8",
+    "assets/Hardware-xFIosLOp.js": "76d34475c20458fbad55c6c3c31b25f9604c9291a9119aa203d33ff842563a9f",
+    "assets/Hbom-B9Gx5GQC.js": "6b9583d39f1fd14fc53eaa356b136eaa30e45a352d01aa29fdc2a7a446a73609",
+    "assets/Identity-BO4s_-bL.js": "22afefe55ae0f762f4ed94b266b96eebf0ce1ec7edaf32de740fddf1c48d2262",
+    "assets/Integrations-BL945J4Y.js": "49baf2c47672d2ae14eae8b3739b679b19ea7d44a78ec8d44546aed2cb2c3fb1",
+    "assets/InviteAccept-CQiYoq9r.js": "d73752889669e45dc2335a74185d2213d6047b3db318bc253cfb83d77398b49d",
+    "assets/LaunchReadiness-CCRzfVQy.js": "2206d622ca62a8ad3dfadb8fe18d21665180d9d3f7e89f8e196a2147a6057b3e",
+    "assets/Libraries-Cp_1Jn0R.js": "657618b0f3f7185abbb11914ce63fed6488a73ae45fdb425539f4416a94adbf1",
+    "assets/LiveAssetIntelligence-CX6OZ2bj.js": "4bf999cbbfbef1a7aebd3b10a284d44659309f48b4701c7e3c74dcbd4d30a7b2",
+    "assets/LiveEnvironment-ChfDuKBu.js": "23dfe17517f7f141cf5e90723336b6cfdd0f61c4d9250285e759fe5be3df0713",
+    "assets/LiveScanners-C6Kn2tuT.js": "fd55dab70c7cf9389009101d3e20711ee0b847230ead7e3fa1edcb2cf8f6cc87",
+    "assets/LiveStream-DmurbKLL.js": "b0086b90253eddd3eb2e17b0a1f50e7aa5649bbe21f62ef8ad70806638e97bf1",
+    "assets/Login-NEyLvLub.js": "7e73e659c1bf8bed65fbc11b891f28e5881095f3a0375550027602a10b52b036",
+    "assets/Migration-m_8pPKHF.js": "28d4232c8332195c480c03d4d093e87eba51a3244e8b73453b9663baf514bf1c",
+    "assets/Nbom-Blr45qya.js": "30ff81c3363adcf00895dd34236bbde7051d29d73315038854fd5c5f3f9b0bd1",
+    "assets/Network-DrObxvW3.js": "d2476a554b256687a348786299ab81ea640ced11fe45fd372a38e78b88580221",
+    "assets/Notifications-DnFcd0rz.js": "1b760f42d01e93adf34d07b48c596b4f86bc73b35b4f38f8c7ff47531e718875",
+    "assets/Onboarding-BjSAQmHf.js": "d180303bba56867b17387680efcb760440d06ca0d77ce06a5aa0e67c67b85f68",
+    "assets/OperatorDecisions-Li_qvl2V.js": "677c4f73479f9896784f07157cace03abb1a17cf38d9f1e3636dcf2fcd847190",
+    "assets/Organization-CJtLNjne.js": "98ddc3aeba2b5f420e457cabf5e01a384146cd39baea77b234ba609dcbddd8bb",
+    "assets/PlatformP2-Bj1WT__m.js": "d88eaf12cc786112d42310ea943b4fb842eb3c28e0aa545f579287fd9ea26126",
+    "assets/Pqc-StCFQjoT.js": "a3620185742fb81a5fb6f276ebedd1db782651cc9f07820a6338b4b025e5f029",
+    "assets/PqcMap-eI9C0XSh.js": "57c97ab58d971d097c4df6b7bcdb250ec8304c86775b0b45414ce937a3aec317",
+    "assets/Priorities-Bwq933Bi.js": "49a1ed4c0e6bb9f259caf3e2868ae247e1ee729d32c7f800ed9c6e4db8c74cb2",
+    "assets/PrivateScope-qWJJHeuJ.js": "d8125ffe757bb239ed226202ff7409a1092ad42603ca2611822babb141d76d40",
+    "assets/Protocols-B81dmcnn.js": "c957b9bb81646781e59dbec1f02fca467fdc817d751e8653501e79dbe88ccef0",
+    "assets/Register-BfZx4DUQ.js": "36dd34d2cea8b126adc3748333b5092e2b6f22e1694f0f5d6db319e69296b8b0",
+    "assets/Remediation-B8ugOG73.js": "6cf381f4f43c0174315dec29da6f235b231ae9fdc937618f01ee724c88676db1",
+    "assets/Reports-bJ6oHbEo.js": "152f1670bc555b0e088d7a30caddba46a730a10d46e84dd0f403194d3b352207",
+    "assets/ResetPassword-DsVrjVcG.js": "53a9451ef984f814d68d3b5fd701258731729068f60d21bdeab2464fdb43cfba",
+    "assets/Resilience-D6gz2mtS.js": "7d97d7ee9cef5061e633ca717b7daaa9e9ec1f226e65aeca2e3f4d60c893d71b",
+    "assets/Risk-DdL5e56k.js": "8dbc46aad30c588b06edb69e71225cda1000369f1771d2bcb1108be6c75cd1c6",
+    "assets/RoleDashboard-36QGD4IQ.js": "35444b9e6aac229c940b9e9be2cd7a8d2e101e15ae470aceaf30b14b84ad3c89",
+    "assets/Runtime-BNlqQH2M.js": "491b9720bd444fa7d073d855ad7c9fe71cee5961c28e922b170e9fb5ffa9ad4c",
+    "assets/Scanners-DbpuNTVY.js": "7b9ec70066b48a2149dae0367ae897e01c71d24341c5acafd5271589c41c6b63",
+    "assets/Scope-CTQiaxg9.js": "6b5686be256cf8217305d5054759875c726a0877d838567024eee2296c14f777",
+    "assets/SearchResults-Bt8Mm8ds.js": "8ce05ce57caacfc15b98ca6d9c9d4657bb0e039ffaa5319030f25334d4ad8af2",
+    "assets/Sectors-BZrFQwwe.js": "c46083b8ae3a4ee7e9e6f94fb06718ed2c2310cd53bb4eecf2cb7afea59648c2",
+    "assets/Security-D9gaxJ5r.js": "2b3609bf5d50c97b25166b43837b064c555f29738c5c55dc29b6c912e3dbb3de",
+    "assets/SecurityCenter-BaaXT7vL.js": "89cc1014afcf26859044bf49729efea1f02b49be7ddad313ca7c7a917ecaa09c",
+    "assets/SecurityIntelligence-C844Tu5P.js": "76cb1d2f7de929b2f25fbec4fcd43fada52d1e9e7b137feef6618a022b00103e",
+    "assets/SecurityPolicy-DT7s4vkU.js": "3e41f76ddd677ae3427d5f54961aae3f7fcf9385cca1077d0db1daba9df2d3e0",
+    "assets/Settings-BhlRspwD.js": "4d964396d38066a570fee92991fdae3b7390e23a0d291e59c479ee3e34cd4acc",
+    "assets/Supervision-Gy4btTa4.js": "fa8a8da766d1cc1f590d8b553168e91739a71f4e204f9ee035537d2f5fe30306",
+    "assets/SystemHealth-7qFabWJn.js": "e01189e3d8ac4905660bef2b223f861e7e244fd59789630f9b6a59370d238986",
+    "assets/Telecom-CMLfp4eR.js": "44bbc4c326fe29704822c3056e4e3eed6912a00f505b25887742751a31ca92a5",
+    "assets/Tenancy-FgdCBFc3.js": "bf878ba31621707f5bee54dee65e0af380f7abd5cad96a7e2197a44c2e873dbd",
+    "assets/Timeline-aDOvGqJU.js": "a6e1a93816b46318209ef0db5774071231d85a81cd62613671ca7fb28811b4a1",
+    "assets/Trust-6ehSx4no.js": "467ee50533ee1db7a53b2f6e710d72e4b50dc0c500543eb2e8aa0094929642e6",
+    "assets/Vendor-ynX4l3Oq.js": "76de0defa6e3585ef41f18bf4a6bed9eb2e52bb4f4159ec5875a5cff41345e84",
+    "assets/VendorDueDiligence-MHCf3eE2.js": "892b848e8a9b0ed3d66320d025218474b1426ffd90449b129e0d421f74f87126",
+    "assets/WhatIf-Blu_RVNy.js": "8dd280e886c1be2898dbd459a6e3b4a5ad7cf9b255b4227cd8c045167996ca94",
+    "assets/api-Cs2IHSUp.js": "a297660a5a8b7ef712896b8084f9a481e456475622526c8f5bf03cdc7f028b9f",
+    "assets/index-CPU7DNa1.js": "1b54c0e277adf51f678a8f4e3b46fe82fd4b2d9b18b2e480cad54f98924119d2",
+    "assets/index-CRsh6_Cj.css": "14ffb0fec10467285f57c326e2949c531637616c4f162add0415b6fc000220a1",
+    "assets/motion-YfRIqc8Y.js": "9834598333d5efd7f8be3541988954b81cd4aea1e6a10fb574ae3c64765c5c94",
+    "assets/rolldown-runtime-WkwZ5CU-.js": "2629f2ad3cb75a57d98de697127f5af7d777ef572bbcdfa6e3ce8f438cd4527e",
+    "assets/ui-C10o5gam.js": "9dbe7618883290ac6d10bd5c47c623c208954b2aeeda77f73a66905a8a852e37",
+    "assets/useLive-sPStLwtH.js": "e2882fb5aa48c7234ef11d29870b2e5f20d0db0f73b0a119dddd67ef6ce3a488",
+    "assets/vendor-icons-9wf5lCnO.js": "d6da360153ec1e3bcc0edf088a3cfd62b0a36b279cee37b3470c438b465d339b",
+    "assets/vendor-motion-qGfJwEv7.js": "46ae4d90c59110bea6d0266774a6daab8bbd60db08901610ea99e84b7ba2cba2",
+    "assets/vendor-react-MwcAOGhS.js": "84a1fa44647c621b3b3742458020bb2c419548a2b8820b890d4e8704bb31dc6e",
+    "index.html": "e344c14ec18bb43f0acffa00a648d9d9082bc209bf0db401f6ebff680c582701"
+  },
+  "external_run_record_sha256": {
+    "/home/user/quality-ninth-pg-final.log": "f52556881eebbdec44fc48610575fc20e656ae49b3efda556c74212409d9e087",
+    "/home/user/quality-ninth-pg-final.xml": "ab9e2ee20a1b8ee84a3770731b2a471820a1075a865b3c8dda6973e8e7e9a688",
+    "/home/user/quality-ninth-api-final.log": "1bb4d427e16efa92bb1e2a73d54980df7c1c6807fb1f41072a07b2c7e0ed7412",
+    "/home/user/quality-ninth-api-final.xml": "89febb8bcf765fe427ffa54233e85653416a8dca04b0cad2e9860edab322bb1c",
+    "/home/user/quality-ninth-frontend-final.log": "f5c59ba0f6a2582240442423e00b390a2f0ef9747ab196059568783ea117e309",
+    "/home/user/quality-ninth-frontend-final.xml": "359ccb6274a3773089cd6a3be83b31b2458add84bcff641e3cef5c40e7a614fa",
+    "/home/user/quality-ninth-library-final.log": "c3eb3b1aab7cd9bcd8b952225c002e25fbdee2e19a0c09e8b24b9f4df470a36c",
+    "/home/user/quality-ninth-library-final.xml": "821111451b9328105fa222aa174d1f0bbc9bfa1de13e90022b2e8dbb920d4f8a",
+    "/home/user/quality-ninth-typecheck-final.log": "00d48cfff576795106b5dd2c6f7c9544879ff21a718ce93cacac140432ff2a08",
+    "/home/user/quality-ninth-build-final.log": "fa7216e055ca006a73effc2675ec3f6af678e081cd7b37e227e8f075f28bd2de",
+    "/home/user/quality-ninth-toolchain-final.log": "9641d836cf1d0f426487fb616e1ee9c303aba159bf0f4c943c8ec267457bfb3c",
+    "/home/user/quality-ninth-frontend-final-red.xml": "be496ee228cfe854eeff8edbcb227fcd7dcd3e3123ccc2c95bdd8322ec7089af",
+    "/home/user/quality-ninth-frontend-final-red.log": "36d943b3e5513c9520a0873d569199ee257002434e1559a80ad39d196e5d2cd0",
+    "/home/user/quality-ninth-browser-final.json": "34065aa108ef2ead3d2dcada93f68ed92bf1451332aedeff6b9071e6aaa38a99",
+    "/home/user/quality-ninth-browser-final.err": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/home/user/quality-ninth-launch-deadline-red.log": "735c62d784c8602c428e5c2660abff8d87a7c84205023e508951fafbb6bf36e6"
+  },
+  "limitations": [
+    "Overlapping selections are not additive.",
+    "Browser uses built console with synthetic intercepted HTTP, not the native backend or bank workstation.",
+    "Native source journey uses inline parser launcher, queue/control-plane doubles; not Docker/Redis/ingress acceptance.",
+    "Native recovery is isolated logical SQL restore, not encrypted DB-plus-blob, HA, WAL/PITR or RPO/RTO qualification.",
+    "No readiness gate rerun, CI success, SLA, deployment, independent review or customer acceptance is inferred."
+  ]
+}

@@ -1,0 +1,555 @@
+
+> zelinx-frontend@1.0.0 test
+> vitest run --reporter=default
+
+
+ RUN  v5.0.5 /home/user/CryproScan/frontend
+
+ ✓ src/pages/pages.smoke.test.tsx (79 tests) 9153ms
+   ✓ pages render offline (79)
+     ✓ Accuracy mounts without throwing and paints something 3302ms
+     ✓ Cbom mounts without throwing and paints something 332ms
+     ✓ Scope mounts without throwing and paints something 312ms
+ ✓ src/pages/OperatorDecisions.test.tsx (5 tests) 8544ms
+   ✓ Operator decisions (5)
+     ✓ does not substitute cached success on polling errors 316ms
+     ✓ bounds a long polling session without growing history or overlapping reads 7738ms
+stderr | src/pages/CriticalScope.test.tsx > Operator decisions fences an old form synchronously before scope-reset rendering
+Warning: An update to OperatorDecisionsPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at OperatorDecisionsPage (/home/user/CryproScan/frontend/src/pages/OperatorDecisions.tsx:46:71)
+    at PrivateScope (/home/user/CryproScan/frontend/src/components/PrivateScope.tsx:16:25)
+    at OperatorDecisions
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+Warning: An update to OperatorDecisionsPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at OperatorDecisionsPage (/home/user/CryproScan/frontend/src/pages/OperatorDecisions.tsx:46:71)
+    at PrivateScope (/home/user/CryproScan/frontend/src/components/PrivateScope.tsx:16:25)
+    at OperatorDecisions
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+Warning: An update to OperatorDecisionsPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at OperatorDecisionsPage (/home/user/CryproScan/frontend/src/pages/OperatorDecisions.tsx:46:71)
+    at PrivateScope (/home/user/CryproScan/frontend/src/components/PrivateScope.tsx:16:25)
+    at OperatorDecisions
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+
+stderr | src/pages/CriticalScope.test.tsx > Launch readiness fences an old form synchronously before scope-reset rendering
+Warning: An update to LaunchReadinessPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at LaunchReadinessPage (/home/user/CryproScan/frontend/src/pages/LaunchReadiness.tsx:61:71)
+    at PrivateScope (/home/user/CryproScan/frontend/src/components/PrivateScope.tsx:16:25)
+    at LaunchReadiness
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+Warning: An update to LaunchReadinessPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at LaunchReadinessPage (/home/user/CryproScan/frontend/src/pages/LaunchReadiness.tsx:61:71)
+    at PrivateScope (/home/user/CryproScan/frontend/src/components/PrivateScope.tsx:16:25)
+    at LaunchReadiness
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+
+stderr | src/pages/CriticalScope.test.tsx > Launch readiness fences an old form synchronously before scope-reset rendering
+Warning: An update to LaunchReadinessPage inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at LaunchReadinessPage (/home/user/CryproScan/frontend/src/pages/LaunchReadiness.tsx:61:71)
+    at PrivateScope (/home/user/CryproScan/frontend/src/components/PrivateScope.tsx:16:25)
+    at LaunchReadiness
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+
+ ✓ src/pages/CriticalScope.test.tsx (41 tests) 5509ms
+   ✓ Operator decisions private scope (9)
+     ✓ clears retained evidence/drafts after cryptoscan_tenant 547ms
+   ✓ Launch readiness mutation lock (3)
+     ✓ warns that a failed write has an uncertain outcome, without automatic retry 470ms
+ ✓ src/pages/Assets.test.tsx (21 tests) 4606ms
+   ✓ asset inventory from the live API (14)
+     ✓ renders sparse rows without inventing identity, crypto, ownership, dates, evidence, or verdicts 697ms
+     ✓ loads beyond 100 without duplicate IDs and reports the server total 1735ms
+     ✓ keeps loaded assets and exposes later-page failure with retry 1005ms
+ ✓ src/pages/Cbom.test.tsx (23 tests) 4823ms
+   ✓ Cbom — no fabricated components (6)
+     ✓ renders real identities from /cbom/query with their BOM badges 334ms
+     ✓ linkage filters only affect real fields 605ms
+   ✓ Cbom — pinned snapshots (3)
+     ✓ pins a scan's CBOM and lists the pinned rendering 571ms
+   ✓ Cbom — two-pin comparison (4)
+     ✓ switches to exact per-scan evidence keying on request 302ms
+ ✓ src/pages/Remediation.scope.test.tsx (29 tests) 4516ms
+   ✓ Remediation scope and asynchronous outcomes (29)
+     ✓ clears rows, counts and private drafts immediately on tenant change 847ms
+     ✓ does not let old verify success reload or clear the new scope 351ms
+ ✓ src/pages/Evidence.test.tsx (16 tests) 3386ms
+   ✓ Evidence workflow (12)
+     ✓ shows sparse server facts, not per-record seals or invented audit IPs 711ms
+     ✓ paginates scans and selected scan evidence without inventing IDs 1164ms
+     ✓ retains audit export, chain verification, event selection and pagination across tab switches 494ms
+ ✓ src/pages/Scanners.test.tsx (20 tests) 3386ms
+   ✓ scanner workflow truth (20)
+     ✓ does not treat an accepted discovery run as completed until its ID status is terminal 597ms
+ ✓ src/pages/CommandCenter.test.tsx (6 tests) 2042ms
+   ✓ CommandCenter source truth (6)
+     ✓ does not substitute zero or healthy/readiness claims when all endpoints are offline 591ms
+     ✓ distinguishes a live empty response with no scan baseline from measured zeros 436ms
+ ✓ src/pages/Drift.test.tsx (14 tests) 2471ms
+   ✓ drift feed and disposition truth (11)
+     ✓ shows source and observed fields and loads beyond the first 50 while scoping counts 877ms
+     ✓ shows paging failure without discarding loaded rows, then permits retry 607ms
+ ✓ src/components/Accessibility.test.tsx (16 tests) 1504ms
+   ✓ keyboard: skip link and main landmark (1)
+     ✓ renders the skip link as the first focusable element, targeting a focusable main 657ms
+   ✓ screen readers: navigation state (1)
+     ✓ marks the active nav link with aria-current=page and only that link 427ms
+ ✓ src/App.test.tsx (10 tests) 2178ms
+   ✓ app shell (7)
+     ✓ renders the layout around a page while offline 314ms
+     ✓ exposes global search as a keyboard-focusable button 446ms
+     ✓ supports keyboard navigation, browser history, and a direct workspace entry 368ms
+ ✓ src/pages/DependencyGraph.test.tsx (10 tests) 1287ms
+   ✓ DependencyGraph — honest blast radius and backend (8)
+     ✓ counts impacted systems from the real `systems` field with per-system hops 332ms
+ ✓ src/pages/Certificates.test.tsx (6 tests) 1228ms
+ ✓ src/pages/Notifications.test.tsx (8 tests) 1498ms
+   ✓ Notifications page (6)
+     ✓ delivers the in-app feed with the verification outcome as its flagship class 347ms
+     ✓ dispatches outward over the drain button and shows per-integration outcomes 357ms
+ ✓ src/pages/LaunchReadiness.usability.test.tsx (9 tests) 1418ms
+   ✓ Existing launch operator task safety (8)
+     ✓ names the selected estate next to the form and explains why an ID-bound action is unavailable 426ms
+ ✓ src/pages/Compliance.test.tsx (9 tests) 1491ms
+   ✓ Compliance — no false green (6)
+     ✓ an unmapped framework says nothing was evaluated instead of showing all rows 371ms
+ ✓ src/components/HostEvidencePanel.test.tsx (15 tests) 852ms
+ ✓ src/components/UnifiedCascadePanel.test.tsx (15 tests) 1563ms
+   ✓ cascade disjoint system classification (9)
+     ✓ renders direct, consumer and context lists separately and labels both totals 463ms
+ ✓ src/test/ui-copy.test.ts (1 test) 1167ms
+   ✓ operator-facing copy (1)
+     ✓ does not display raw API endpoints in text or descriptive props 1164ms
+ ✓ src/pages/Findings.test.tsx (6 tests) 1138ms
+   ✓ Findings page (6)
+     ✓ verifies one record against its own commitments and shows the verdict 468ms
+ ✓ src/components/AuthenticatedDownload.scope.test.tsx (12 tests) 825ms
+ ✓ src/pages/navigation.test.tsx (5 tests) 910ms
+   ✓ primary workspace CTAs (5)
+     ✓ opens inventory from a dashboard KPI rather than changing only the hash 514ms
+ ✓ src/pages/Cmdb.test.tsx (3 tests) 1291ms
+   ✓ Cmdb — per-asset risk explainability (§4.6) (3)
+     ✓ renders the unified risk rows with a Why? affordance per asset 650ms
+     ✓ Why? loads the chain: factor provenance, evidence trail, stored verdicts, owners, limitations 413ms
+ ✓ src/pages/LaunchReadiness.test.tsx (7 tests) 1414ms
+   ✓ Launch readiness (6)
+     ✓ preserves external assurance, SLA and bounded coverage limitations 305ms
+     ✓ does not keep operating success after a failed refresh 390ms
+ ✓ src/pages/Reports.test.tsx (3 tests) 823ms
+   ✓ Reports — report version authority (§4.4) (3)
+     ✓ pins the EXACT scan: form calls the pin endpoint with the named template 403ms
+ ✓ src/pages/Remediation.test.tsx (5 tests) 1053ms
+   ✓ Remediation — task lifecycle (5)
+     ✓ renders tasks with owner, source and the latest machine verification 325ms
+     ✓ expands a task and drives the lifecycle: complete calls the endpoint with the rescan id 504ms
+ ✓ src/pages/Hbom.test.tsx (6 tests) 984ms
+ ✓ src/components/CbomLegacyReview.test.tsx (7 tests) 864ms
+   ✓ Historical import reconciliation (6)
+     ✓ loads only on demand, requires human review and sends the source snapshot 474ms
+ ✓ src/components/CbomRescanInspection.test.tsx (10 tests) 777ms
+   ✓ Retained-source rescan inspection (10)
+     ✓ reads only on demand and never presents scoped verification as clean coverage 310ms
+ ✓ src/pages/NotificationReceipts.test.tsx (6 tests) 740ms
+   ✓ Read-only notification receipt inspection (6)
+     ✓ navigates keyset pages and returns to newest without appending duplicates 326ms
+ ✓ src/components/EdgeManagerPanel.test.tsx (4 tests) 725ms
+   ✓ requires retirement evidence and sends a revision instead of erasing rows 396ms
+ ✓ src/pages/Login.test.tsx (2 tests) 531ms
+   ✓ login brand reveal (2)
+     ✓ paints readable plaintext first, exposes it to assistive tech, and leaves sign-in controls usable 400ms
+ ✓ src/pages/Risk.test.tsx (4 tests) 488ms
+ ✓ src/App.navigation.test.tsx (4 tests) 300ms
+stderr | src/pages/Tenancy.test.tsx > OrgSwitcher — the tenant picker on the tenancy page > renders one button per membership and marks the active org
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+
+stderr | src/pages/Tenancy.test.tsx > OrgSwitcher — the tenant picker on the tenancy page > switching stores the org and every later call carries it as X-Tenant-ID
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+
+stderr | src/pages/Tenancy.test.tsx > OrgSwitcher — the tenant picker on the tenancy page > hides the platform estate option for non-admin members
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+
+stderr | src/pages/Tenancy.test.tsx > OrgSwitcher — the tenant picker on the tenancy page > offers the platform estate to platform admins and clears the header
+Warning: An update to Tenancy inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Tenancy (/home/user/CryproScan/frontend/src/pages/Tenancy.tsx:583:72)
+    at Suspense
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to Tenancy inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Tenancy (/home/user/CryproScan/frontend/src/pages/Tenancy.tsx:583:72)
+    at Suspense
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to Tenancy inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Tenancy (/home/user/CryproScan/frontend/src/pages/Tenancy.tsx:583:72)
+    at Suspense
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to Tenancy inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at Tenancy (/home/user/CryproScan/frontend/src/pages/Tenancy.tsx:583:72)
+    at Suspense
+    at Router (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7134:13)
+    at MemoryRouter (file:///home/user/CryproScan/frontend/node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:7044:3)
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+
+stderr | src/pages/Tenancy.test.tsx > OrgSwitcher — the tenant picker on the tenancy page > offers the platform estate to platform admins and clears the header
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+
+stderr | src/pages/Tenancy.test.tsx > OrgSwitcher — the tenant picker on the tenancy page > stays hidden when the user belongs to no organization
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+Warning: An update to RealtimeProvider inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at RealtimeProvider (/home/user/CryproScan/frontend/src/lib/realtime.tsx:158:29)
+    at I18nProvider (/home/user/CryproScan/frontend/src/i18n/I18n.tsx:39:25)
+
+ ✓ src/pages/Tenancy.test.tsx (5 tests) 287ms
+ ✓ src/pages/BankingRegulatory.claims.test.tsx (6 tests) 257ms
+ ✓ src/components/ui.test.tsx (11 tests) 434ms
+ ✓ src/components/CbomControlledHistory.test.tsx (5 tests) 463ms
+   ✓ Controlled historical decisions (5)
+     ✓ makes ownership an intentional snapshot-bound declaration, never clearance 306ms
+ ✓ src/pages/SearchResults.test.tsx (4 tests) 172ms
+ ✓ src/components/AnalysisCoveragePanel.test.tsx (5 tests) 179ms
+ ✓ src/pages/SystemHealth.test.tsx (3 tests) 304ms
+ ✓ src/pages/Priorities.test.tsx (4 tests) 290ms
+ ✓ src/pages/Accuracy.truth.test.tsx (3 tests) 172ms
+ ✓ src/lib/useLive.scope.test.tsx (36 tests) 148ms
+ ✓ src/lib/realtime.test.tsx (6 tests) 151ms
+ ✓ src/components/TraversalEvidencePanel.test.tsx (3 tests) 90ms
+ ✓ src/components/ProcessImpactPanel.test.tsx (3 tests) 81ms
+ ✓ src/lib/auth.test.tsx (8 tests) 92ms
+ ✓ src/i18n/I18n.test.tsx (4 tests) 67ms
+ ✓ src/components/OperationalImpactPanel.test.tsx (4 tests) 59ms
+ ✓ src/lib/api.test.ts (19 tests) 28ms
+ ✓ src/lib/maturity.test.ts (6 tests) 20ms
+ ✓ src/lib/requestFeedback.test.ts (16 tests) 10ms
+ ✓ src/lib/binary-scan-api.test.ts (3 tests) 16ms
+ ✓ src/lib/api.health.test.ts (6 tests) 16ms
+ ✓ src/components/PortfolioDependencyPanel.test.tsx (1 test) 7ms
+
+ Test Files  57 passed (57)
+      Tests  598 passed (598)
+   Start at  16:18:44
+   Duration  243.01s (import 36%, tests 34%, environment 24%, setup 5%, transform 1%)
+
+     Import  334 modules were evaluated 994 times · 82.96s total, 36% of tracked time
+             ~55.08s faster with isolate: false — shared modules are evaluated once per worker instead of once per file
+             learn more: https://vitest.dev/guide/improving-performance#test-isolation
+
+
+> zelinx-frontend@1.0.0 typecheck
+> tsc --noEmit
+
+
+> zelinx-frontend@1.0.0 build
+> vite build
+
+vite v8.3.4 building client environment for production...
+transforming...
+✓ 5091 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                  1.47 kB │ gzip:  0.75 kB
+dist/assets/index-MQOhKVDo.css                  51.86 kB │ gzip: 10.04 kB
+dist/assets/rolldown-runtime-WkwZ5CU-.js         0.59 kB │ gzip:  0.36 kB
+dist/assets/PrivateScope-CCWddIo9.js             0.75 kB │ gzip:  0.46 kB
+dist/assets/AuthenticatedDownload-ByhnB29s.js    0.90 kB │ gzip:  0.54 kB
+dist/assets/InviteAccept-BtRRDnJ0.js             1.56 kB │ gzip:  0.83 kB
+dist/assets/Libraries-U_Rvaujd.js                1.62 kB │ gzip:  0.85 kB
+dist/assets/Timeline-BPIswoLY.js                 2.18 kB │ gzip:  1.12 kB
+dist/assets/motion-YfRIqc8Y.js                   2.46 kB │ gzip:  1.15 kB
+dist/assets/CryptoChanges-D5F7KOTL.js            2.86 kB │ gzip:  1.39 kB
+dist/assets/Agility-VntdJQKa.js                  3.00 kB │ gzip:  1.33 kB
+dist/assets/useLive-THbY7y3b.js                  3.03 kB │ gzip:  1.36 kB
+dist/assets/Protocols-DEHmf3PO.js                3.07 kB │ gzip:  1.49 kB
+dist/assets/Admin-BlAh3EQk.js                    3.32 kB │ gzip:  1.51 kB
+dist/assets/Login-HiiX2hy5.js                    3.46 kB │ gzip:  1.36 kB
+dist/assets/PqcMap-CGzBqIsz.js                   3.68 kB │ gzip:  1.55 kB
+dist/assets/Governance-BY-t51ah.js               3.76 kB │ gzip:  1.36 kB
+dist/assets/Accuracy-CnjoniQA.js                 3.95 kB │ gzip:  1.76 kB
+dist/assets/Organization-yAXJ5hNQ.js             4.06 kB │ gzip:  1.65 kB
+dist/assets/ResetPassword-DZzwoDG-.js            4.23 kB │ gzip:  1.57 kB
+dist/assets/Nbom-BwMMORwO.js                     4.23 kB │ gzip:  1.66 kB
+dist/assets/SearchResults-CKfPBJT8.js            4.31 kB │ gzip:  1.92 kB
+dist/assets/LiveStream-B9zGbzOo.js               4.41 kB │ gzip:  2.02 kB
+dist/assets/CryptoAssets-B0g7LPTI.js             4.43 kB │ gzip:  1.80 kB
+dist/assets/Crypto-CVlfo7fz.js                   4.71 kB │ gzip:  1.69 kB
+dist/assets/Vendor-B-miqF6Q.js                   5.05 kB │ gzip:  1.88 kB
+dist/assets/RoleDashboard-C6bG6Rpc.js            5.19 kB │ gzip:  1.82 kB
+dist/assets/SystemHealth-CMPAY6cI.js             5.37 kB │ gzip:  1.73 kB
+dist/assets/Settings-Dx4ioarv.js                 5.43 kB │ gzip:  2.21 kB
+dist/assets/Register-DWduypq3.js                 5.59 kB │ gzip:  1.96 kB
+dist/assets/Priorities-D1aJpOAc.js               5.64 kB │ gzip:  2.19 kB
+dist/assets/Security-BJ2K5Ccx.js                 5.71 kB │ gzip:  2.22 kB
+dist/assets/Sectors-BiB0QBLw.js                  5.78 kB │ gzip:  1.99 kB
+dist/assets/Migration-DmgTc2qg.js                6.10 kB │ gzip:  2.33 kB
+dist/assets/Executive-Ck0OE7Vr.js                6.11 kB │ gzip:  2.50 kB
+dist/assets/Supervision-CX2Ic4XN.js              6.21 kB │ gzip:  1.91 kB
+dist/assets/Catalog-BeILCuxQ.js                  6.50 kB │ gzip:  1.97 kB
+dist/assets/Network-Dw5giHQe.js                  6.76 kB │ gzip:  2.84 kB
+dist/assets/Graph-vAlObh9I.js                    7.16 kB │ gzip:  2.90 kB
+dist/assets/ui-8Aa4nw8A.js                       7.34 kB │ gzip:  2.82 kB
+dist/assets/WhatIf-DnyW8AIk.js                   7.67 kB │ gzip:  2.87 kB
+dist/assets/Scope-GablNhcj.js                    7.93 kB │ gzip:  2.81 kB
+dist/assets/Tenancy-CXuw2u10.js                  8.70 kB │ gzip:  2.93 kB
+dist/assets/Pqc-Cttkv3gn.js                      8.76 kB │ gzip:  2.57 kB
+dist/assets/LiveScanners-BDvv0qkk.js             8.85 kB │ gzip:  3.33 kB
+dist/assets/Risk-DValGdTa.js                     8.94 kB │ gzip:  3.28 kB
+dist/assets/LiveEnvironment-Csxsn9oE.js          9.34 kB │ gzip:  3.34 kB
+dist/assets/Runtime-BIypckBa.js                  9.46 kB │ gzip:  3.50 kB
+dist/assets/Integrations-BDTLS9dT.js             9.57 kB │ gzip:  3.45 kB
+dist/assets/Cloud-DuzPpVeY.js                    9.58 kB │ gzip:  3.21 kB
+dist/assets/LaunchReadiness-BdOMa1kg.js          9.94 kB │ gzip:  3.85 kB
+dist/assets/SecurityPolicy-heIFygzn.js          10.15 kB │ gzip:  3.18 kB
+dist/assets/Identity-HlZMA4zu.js                10.40 kB │ gzip:  3.08 kB
+dist/assets/Reports-CeFVrMJt.js                 10.51 kB │ gzip:  3.65 kB
+dist/assets/Remediation-BIS2gcv2.js             10.63 kB │ gzip:  3.44 kB
+dist/assets/SecurityIntelligence-dyFhfsLg.js    10.73 kB │ gzip:  3.41 kB
+dist/assets/Automation-Dd3s7V7U.js              10.99 kB │ gzip:  3.88 kB
+dist/assets/VendorDueDiligence-B_akm_sd.js      11.36 kB │ gzip:  3.74 kB
+dist/assets/DigitalTwin-B-_apzfK.js             11.93 kB │ gzip:  4.03 kB
+dist/assets/Hardware-DoJ-q_3E.js                12.22 kB │ gzip:  4.09 kB
+dist/assets/BankingRegulatory-0k_uYE6_.js       12.38 kB │ gzip:  3.80 kB
+dist/assets/Notifications-GqeA2aWP.js           12.45 kB │ gzip:  4.49 kB
+dist/assets/Trust-C90J9H_B.js                   12.62 kB │ gzip:  3.98 kB
+dist/assets/Hbom-C1EOmSBD.js                    13.01 kB │ gzip:  3.97 kB
+dist/assets/SecurityCenter-BY4RljFD.js          13.15 kB │ gzip:  4.76 kB
+dist/assets/Alerts-AirNtS72.js                  13.43 kB │ gzip:  4.83 kB
+dist/assets/OperatorDecisions-DeLfBLSx.js       13.56 kB │ gzip:  4.97 kB
+dist/assets/Cmdb-BohdirM-.js                    14.07 kB │ gzip:  4.27 kB
+dist/assets/Compliance-DJgCSGvT.js              14.19 kB │ gzip:  4.29 kB
+dist/assets/CommandCenter-Cx8tet-G.js           14.76 kB │ gzip:  4.92 kB
+dist/assets/Telecom-B3KsCycS.js                 15.01 kB │ gzip:  3.79 kB
+dist/assets/CryptoAssurance-B4tfLPWg.js         15.25 kB │ gzip:  4.53 kB
+dist/assets/Findings-CItnAglI.js                15.63 kB │ gzip:  5.00 kB
+dist/assets/Drift-BtLEa7Eo.js                   17.07 kB │ gzip:  5.35 kB
+dist/assets/Resilience-BSlWb-S9.js              18.23 kB │ gzip:  5.13 kB
+dist/assets/Certificates-KEcPJK0o.js            19.22 kB │ gzip:  5.78 kB
+dist/assets/Scanners-CMQ6C7dn.js                20.87 kB │ gzip:  6.09 kB
+dist/assets/Evidence-CuAFiYL4.js                21.31 kB │ gzip:  6.24 kB
+dist/assets/Assets-CyPj2Wv2.js                  22.33 kB │ gzip:  6.49 kB
+dist/assets/PlatformP2-WLexxBkO.js              23.29 kB │ gzip:  6.83 kB
+dist/assets/Onboarding-BzLBhUd8.js              28.03 kB │ gzip:  7.50 kB
+dist/assets/LiveAssetIntelligence-rtEqg1gZ.js   43.03 kB │ gzip: 12.11 kB
+dist/assets/Cbom-xMvGw9xk.js                    53.79 kB │ gzip: 14.71 kB
+dist/assets/api-DXXRjetx.js                     59.74 kB │ gzip: 13.42 kB
+dist/assets/DependencyGraph-BkUQ9DwW.js         65.77 kB │ gzip: 16.63 kB
+dist/assets/DevSecOps-CBdUmxp6.js               70.71 kB │ gzip: 18.50 kB
+dist/assets/index-DU7ulhe9.js                   93.26 kB │ gzip: 28.11 kB
+dist/assets/vendor-motion-qGfJwEv7.js          137.33 kB │ gzip: 44.97 kB
+dist/assets/vendor-icons-9wf5lCnO.js           155.83 kB │ gzip: 37.06 kB
+dist/assets/vendor-react-MwcAOGhS.js           180.66 kB │ gzip: 59.65 kB
+
+✓ built in 1.39s
