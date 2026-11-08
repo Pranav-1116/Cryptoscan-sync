@@ -30,6 +30,10 @@ from db.models.binary_intelligence import (  # noqa: F401
     BinaryAnalysisCoverage, BinaryArtifact, BinaryCryptoFinding,
     BinaryEvidence, BinaryScanRun, BinaryTwinEdge,
 )
+from db.models.os_intelligence import (  # noqa: F401
+    OSCoverageRecord, OSCryptoCapability, OSConfigFlag, OSFindingRecord,
+    OSModuleRecord, OSStorageFact, OSTrustFact, OSAsset,
+)
 from db.models.performance import (  # noqa: F401
     PerformanceAggregate, PerformanceAlert, PerformanceAsset,
     PerformanceBaseline, PerformanceBenchmarkRun,

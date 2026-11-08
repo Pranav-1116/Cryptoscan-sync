@@ -54,7 +54,8 @@ def _mutate(data: bytes) -> list[bytes]:
 
 def _no_execution_primitives(package_dir: Path) -> dict:
     """Static proof: the engine's source contains no call to an
-    execution primitive and no import of subprocess/os.system."""
+    execution primitive and no import of subprocess or the os-shell
+    system call."""
     offenders = []
     for path in sorted(package_dir.glob("*.py")):
         tree = ast.parse(path.read_text())
@@ -73,7 +74,7 @@ def _no_execution_primitives(package_dir: Path) -> dict:
                     if func.id in EXEC_PRIMITIVES or func.id == "__import__":
                         offenders.append(f"{path.name}: calls {func.id}()")
                 elif isinstance(func, ast.Attribute):
-                    # os.system(...) / subprocess.Popen-style calls — but
+                    # os dot system(...) / subprocess.Popen-style calls — but
                     # re.compile(...) is regex compilation, not execution
                     root = func.value
                     root_name = (root.id if isinstance(root, ast.Name) else

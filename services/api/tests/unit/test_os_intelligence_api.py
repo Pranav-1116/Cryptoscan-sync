@@ -1,0 +1,239 @@
+"""OS & Kernel Intelligence API — acceptance tests.
+
+The request payload is a REAL collection: the collector runs against
+the recorded local-host corpus (fixtures of the actual Linux
+configuration) and the API records and serves it end to end
+(docs/os-kernel-intelligence/01_PRODUCT_SPEC.md §10/§12).
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from api.dependencies import get_current_user, get_db_session
+from api.main import create_app
+from db.connection.session import Base, configure_session
+
+_SERVICES = Path(__file__).resolve().parents[3]
+_FIXTURE = (_SERVICES / "os_intelligence" / "tests" / "fixtures" /
+            "host-linux-sample.txt").read_text()
+_EMPTY_ROOT = _SERVICES / "os_intelligence" / "tests" / "fixtures" / \
+    "empty-root"
+
+
+def _section(name: str) -> str:
+    return _FIXTURE.split(f"--- {name}")[1].split("\n---")[0].strip("\n")
+
+
+@pytest.fixture()
+def app_db():
+    engine = create_engine("sqlite:///:memory:",
+                           connect_args={"check_same_thread": False},
+                           poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    configure_session(engine)
+    session = sessionmaker(bind=engine, expire_on_commit=False)()
+    application = create_app()
+    application.dependency_overrides[get_current_user] = lambda: "operator"
+
+    def _session():
+        yield session
+
+    application.dependency_overrides[get_db_session] = _session
+    yield application, session
+    application.dependency_overrides.clear()
+
+
+def _real_inventory(tmp_path: Path) -> dict:
+    """Run the collector against the recorded local-host corpus."""
+    import sys
+    sys.path.insert(0, str(_SERVICES / "os_intelligence"))
+    from os_intelligence.collector import collect_linux
+
+    root = tmp_path / "root"
+    (root / "proc/sys/kernel").mkdir(parents=True)
+    (root / "etc").mkdir(parents=True)
+    (root / "proc/version").write_text(
+        "Linux version 6.1.158+ (user@host) (gcc 12) #1 SMP "
+        "PREEMPT_DYNAMIC Mon May 11 18:48:24 UTC 2026\n")
+    (root / "etc/os-release").write_text(_section("os-release"))
+    (root / "proc/cmdline").write_text(_section("cmdline"))
+    (root / "proc/sys/kernel/tainted").write_text(_section("tainted"))
+    (root / "proc/crypto").write_text(_section("proc-crypto"))
+    (root / "proc/modules").write_text(_section("proc-modules"))
+    (root / "proc/config.gz-or-boot-config").write_text(
+        _section("config-crypto"))
+    # deliberately leave proc/lsblk-f unwritten: one source must be
+    # genuinely unavailable so the round trip proves honest degradation
+    return collect_linux("host-under-test",
+                         source_root=str(root),
+                         collect_hardware_trust=False).as_dict()
+
+
+async def _post_collection(client, inventory, asset_id="host-under-test"):
+    return await client.post(
+        "/api/v1/os-intelligence/collections",
+        json={"tenant_id": "t1", "asset_id": asset_id,
+              "inventory": inventory})
+
+
+class TestCollectionLifecycle:
+
+    @pytest.mark.asyncio
+    async def test_real_collection_round_trip(self, app_db, tmp_path):
+        app, _db = app_db
+        inventory = _real_inventory(tmp_path)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await _post_collection(client, inventory)
+            assert resp.status_code == 201, resp.text
+            body = resp.json()
+            assert body["outcome"] == "recorded"
+            assert "never confirmed" in body["note"]
+
+            listed = await client.get("/api/v1/os-intelligence/assets",
+                                      params={"tenant_id": "t1"})
+            assert listed.status_code == 200
+            assets = listed.json()["assets"]
+            assert len(assets) == 1
+            asset = assets[0]
+            assert asset["kernel_release"] == "6.1.158+"
+            assert asset["os_id"] == "debian"
+            assert asset["environment_development_only"] is True
+            assert "enterprise qualification" in asset["qualification_note"]
+
+    @pytest.mark.asyncio
+    async def test_capabilities_carry_the_decisive_field(self, app_db,
+                                                         tmp_path):
+        app, _db = app_db
+        inventory = _real_inventory(tmp_path)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            await _post_collection(client, inventory)
+            resp = await client.get(
+                "/api/v1/os-intelligence/assets/host-under-test/"
+                "crypto-capabilities",
+                params={"tenant_id": "t1"})
+            assert resp.status_code == 200
+            data = resp.json()
+            assert "not proof of runtime use" in data["note"]
+            caps = data["capabilities"]
+            assert caps, "the recorded host has registered implementations"
+            for cap in caps:
+                assert cap["runtime_usage_confirmed"] is False, \
+                    "a registered implementation is never usage (§2.2)"
+            # one algorithm, several implementations — kept distinct
+            sha384 = [c for c in caps if c["algorithm"] == "sha384"]
+            assert len(sha384) >= 2
+            assert len({c["driver"] for c in sha384}) >= 2
+            # unknown key sizes are never guessed
+            shash = [c for c in caps if c["type"] == "shash"]
+            assert any(c["key_size_range"] is None for c in shash)
+
+    @pytest.mark.asyncio
+    async def test_coverage_never_zero_never_clean(self, app_db, tmp_path):
+        app, _db = app_db
+        inventory = _real_inventory(tmp_path)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            await _post_collection(client, inventory)
+            resp = await client.get(
+                "/api/v1/os-intelligence/assets/host-under-test/coverage",
+                params={"tenant_id": "t1"})
+            assert resp.status_code == 200
+            cov = resp.json()
+            # the storage source was deliberately not written: the
+            # unavailable read must be recorded with its reason
+            assert cov["sources_unavailable"], \
+                "unavailable sources are recorded, never dropped"
+            assert any("storage" in e["source"]
+                       for e in cov["sources_unavailable"])
+            assert "storage" not in cov["sources_collected"]
+            for entry in cov["sources_unavailable"]:
+                assert entry["reason"], "reason present, never bare zero"
+            assert "never treated as" in (cov["note"] or "").lower()
+            assert cov["source_digests"], \
+                "collected sources carry evidence digests"
+
+    @pytest.mark.asyncio
+    async def test_inventory_views_present(self, app_db, tmp_path):
+        app, _db = app_db
+        inventory = _real_inventory(tmp_path)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            await _post_collection(client, inventory)
+            base = "/api/v1/os-intelligence/assets/host-under-test/"
+            mods = (await client.get(base + "modules",
+                                     params={"tenant_id": "t1"})).json()
+            assert "may be built into the kernel" in mods["note"]
+            flags = (await client.get(base + "config-flags",
+                                      params={"tenant_id": "t1"})).json()
+            assert "never reported as" in flags["note"]
+            storage = (await client.get(base + "storage",
+                                        params={"tenant_id": "t1"})).json()
+            assert "no recovery keys" in storage["note"]
+            trust = (await client.get(base + "hardware-trust",
+                                      params={"tenant_id": "t1"})).json()
+            assert "never a trust verdict" in trust["note"]
+
+    @pytest.mark.asyncio
+    async def test_missing_asset_never_clean(self, app_db):
+        app, _db = app_db
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await client.get(
+                "/api/v1/os-intelligence/assets/no-such-host",
+                params={"tenant_id": "t1"})
+            assert resp.status_code == 404
+            assert "never a clean asset" in resp.text
+
+    @pytest.mark.asyncio
+    async def test_package_without_coverage_rejected(self, app_db):
+        app, _db = app_db
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await _post_collection(
+                client, {"identity": {"kernel_release": "6.1.0"}})
+            assert resp.status_code == 422
+            assert "never recorded as valid" in resp.text
+
+    @pytest.mark.asyncio
+    async def test_package_without_identity_rejected(self, app_db):
+        app, _db = app_db
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await _post_collection(client, {"coverage": {}})
+            assert resp.status_code == 422
+            assert "validated, never assumed" in resp.text
+
+
+class TestLiveHost:
+
+    @pytest.mark.asyncio
+    async def test_live_collection_accepted(self, app_db):
+        """§15 step 7: the actual local Linux configuration, collected
+        live, is accepted and served back without fabrication."""
+        import sys
+        sys.path.insert(0, str(_SERVICES / "os_intelligence"))
+        from os_intelligence.collector import collect_linux
+
+        if not Path("/proc/crypto").exists():
+            pytest.skip("live host exposes no /proc/crypto")
+        inventory = collect_linux("live-host").as_dict()
+        app, _db = app_db
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await _post_collection(client, inventory,
+                                         asset_id="live-host")
+            assert resp.status_code == 201, resp.text
+            caps = (await client.get(
+                "/api/v1/os-intelligence/assets/live-host/"
+                "crypto-capabilities",
+                params={"tenant_id": "t1"})).json()["capabilities"]
+            assert caps
+            assert all(c["runtime_usage_confirmed"] is False for c in caps)

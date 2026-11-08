@@ -159,8 +159,14 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # tool runs under a hard timeout, the artifact is never executed,
     # third-party output is leads never evidence (§10); decided family
     # policy entry).
-    assert len(rows) <= 357, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 357. "
+    # 358: a deliberate regeneration added the OS & Kernel Intelligence
+    # collection intake (POST /api/v1/os-intelligence/collections —
+    # docs/os-kernel-intelligence/01_PRODUCT_SPEC.md §7 mode-A read-only
+    # collection packages: metadata + digests, never key material,
+    # runtime usage never confirmed by OS collection (§2.2); decided
+    # family policy entry).
+    assert len(rows) <= 358, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 358. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

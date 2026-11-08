@@ -87,7 +87,10 @@ MIN_TENANT_ROLE_GATED = 17
 # POST /api/v1/binary/scan/jobs/{id}/process worker execution).
 # 352 -> 353: a deliberate regeneration added the bounded firmware
 # signature analysis (POST /api/v1/binary/firmware/scan).
-MAX_SESSION_ONLY_WRITES = 353
+# 353 -> 354: a deliberate regeneration added the OS & Kernel
+# Intelligence collection intake (POST /api/v1/os-intelligence/
+# collections — read-only collection packages, metadata only).
+MAX_SESSION_ONLY_WRITES = 354
 
 
 @pytest.fixture(scope="module")

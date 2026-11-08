@@ -141,6 +141,17 @@ POLICY: dict[str, str] = {
     "/api/v1/binary": "operator surface: authorized binary artifact "
                       "submission for static analysis; never executes the "
                       "artifact, immutable digest identity, tenant-scoped",
+    # The OS & Kernel Intelligence family (docs/os-kernel-intelligence/
+    # 01_PRODUCT_SPEC.md) accepts completed READ-ONLY collection packages
+    # (Tier 1, §11): metadata and digests only, never key material (§7),
+    # runtime usage never confirmed by OS collection (§2.2). The service
+    # reads no paths on behalf of a caller and performs no kernel
+    # instrumentation. Authenticated-only so every package is
+    # attributable to the session principal of the collector.
+    "/api/v1/os-intelligence": "operator surface: read-only OS/kernel "
+                               "collection package intake and inspection; "
+                               "metadata only, never key material, "
+                               "tenant-scoped",
     # The roadmap family computes over posted rows and recorded state
     # (reconciliation, projection, migration planning, gates, vendor and
     # qualification registers). Answers are computed in the caller's tenant

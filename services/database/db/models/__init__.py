@@ -60,6 +60,10 @@ from db.models.binary_intelligence import (
     BinaryAnalysisCoverage, BinaryArtifact, BinaryCryptoFinding,
     BinaryEvidence, BinaryScanRun, BinaryTwinEdge,
 )
+from db.models.os_intelligence import (
+    OSCoverageRecord, OSCryptoCapability, OSConfigFlag, OSFindingRecord,
+    OSModuleRecord, OSStorageFact, OSTrustFact, OSAsset,
+)
 from db.models.performance import (
     PerformanceAggregate, PerformanceAlert, PerformanceAsset,
     PerformanceBaseline, PerformanceBenchmarkRun,
