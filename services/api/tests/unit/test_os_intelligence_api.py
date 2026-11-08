@@ -513,3 +513,58 @@ class TestMacosPackage:
                 params={"tenant_id": "t1"})).json()["findings"]
             assert all(f["runtime_usage_confirmed"] is False
                        for f in findings)
+
+class TestCertificateMetadata:
+
+    @pytest.mark.asyncio
+    async def test_certificate_metadata_round_trips_without_key_material(
+            self, app_db):
+        """OS-CRYPTO-008's source (§7): public certificate metadata
+        only — private key material is NEVER stored or served. Unknown
+        dates stay UNKNOWN (§2.1)."""
+        import sys
+        sys.path.insert(0, str(_SERVICES / "os_intelligence"))
+        from os_intelligence.collector import collect_linux
+
+        app, _db = app_db
+        fx = (_SERVICES / "os_intelligence" / "tests" / "fixtures")
+        import os
+        import shutil
+        import tempfile
+        root = tempfile.mkdtemp()
+        try:
+            os.makedirs(f"{root}/proc")
+            os.makedirs(f"{root}/etc/ssl")
+            shutil.copy(fx / "host-linux-sample.txt",
+                        f"{root}/proc/version")
+            shutil.copy(fx / "certificates-openssl-real.txt",
+                        f"{root}/etc/ssl/cert-metadata")
+            inventory = collect_linux(
+                "cert-host", source_root=root,
+                collect_hardware_trust=False).as_dict()
+        finally:
+            shutil.rmtree(root)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await _post_collection(
+                client, inventory, asset_id="cert-host")
+            assert resp.status_code == 201, resp.text
+            certs = (await client.get(
+                "/api/v1/os-intelligence/assets/cert-host/certificates",
+                params={"tenant_id": "t1"})).json()
+            rows = certs["certificates"]
+            assert len(rows) == 2
+            isrg = [r for r in rows if "ISRG" in r["subject"]][0]
+            assert isrg["public_key_bits"] == 4096
+            assert isrg["evidence_class"] == "observed"
+            assert "private key material is NEVER collected" in str(
+                isrg["limitations"]) or \
+                "NEVER collected" in str(isrg["limitations"])
+            # never any key CONTENT anywhere in the response — the
+            # disclaimers may name 'private key material is NEVER
+            # collected', but no PEM block, key blob or password ever
+            # appears (§7)
+            blob = str(certs)
+            assert "-----BEGIN" not in blob
+            assert "recovery password" not in blob.lower()
+            assert "never 'not expired'" in certs["note"]

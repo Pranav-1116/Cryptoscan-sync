@@ -32,7 +32,7 @@ from db.models.binary_intelligence import (  # noqa: F401
 )
 from db.models.os_intelligence import (  # noqa: F401
     OSCoverageRecord, OSCryptoCapability, OSConfigFlag, OSFindingRecord,
-    OSModuleRecord, OSStorageFact, OSTrustFact, OSAsset, OSTwinEdge,
+    OSModuleRecord, OSStorageFact, OSTrustFact, OSAsset, OSAssetCertificate, OSTwinEdge,
 )
 from db.models.performance import (  # noqa: F401
     PerformanceAggregate, PerformanceAlert, PerformanceAsset,

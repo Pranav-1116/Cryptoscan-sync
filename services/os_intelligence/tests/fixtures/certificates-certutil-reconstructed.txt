@@ -1,0 +1,23 @@
+================ Certificate 0 ================
+Serial Number: 6d55f7be88214536a561d2611d50ac6c
+Issuer: CN=R3, O=Let's Encrypt, C=US
+ NotBefore: 1/1/2026 12:00 AM
+ NotAfter: 4/1/2026 12:00 AM
+Subject: CN=legacy.example.internal
+Signature Hash Algorithm: sha256RSA
+Key Provider: Microsoft Software Key Storage Provider
+Provider = Microsoft Software Key Storage Provider
+Private key is NOT plain text exportable
+Hash(sha256): 1122aabbccdd
+Cert Hash(sha256): 1122aabbccddeeff00112233445566778899aabbccddeeff0011223344556677
+Public Key Algorithm: RSA
+Public Key Length: 2048
+================ Certificate 1 ================
+Serial Number: 9f2c11ab
+Issuer: CN=Internal RCA, O=Example Org
+ NotBefore: 1/1/2025 12:00 AM
+ NotAfter: 1/1/2035 12:00 AM
+Subject: CN=internal-root.example.internal
+Cert Hash(sha256): aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899
+Public Key Algorithm: RSA
+Public Key Length: 4096

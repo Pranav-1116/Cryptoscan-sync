@@ -129,6 +129,24 @@ PROVENANCE (§12): fixtures RECONSTRUCTED from documented output
 formats — NOT captured from a live macOS host; live validation and
 fleet qualification are NOT DONE and never claimed.
 
+## Certificate metadata (OS-CRYPTO-008's source, §7)
+
+`certificates.py` normalizes certificate METADATA from two documented
+formats: `openssl x509 -noout` output (Linux + macOS — the fixture is
+REAL host corpus captured from this machine's actual CA bundle) and
+`certutil -store` blocks (Windows). PUBLIC attributes only: subject,
+issuer, validity dates, SHA-256 thumbprint, public key size — private
+keys are NEVER collected, exported, displayed or stored. Certificates
+persist to `os_certificates` (migration 0144) and serve via
+`GET /assets/{id}/certificates`.
+
+OS-CRYPTO-008 evaluates expiration from the collected dates
+(expired / ≤30 days = near_expiration). Unparseable validity dates are
+UNKNOWN — never 'not expired'; no certificate metadata is never
+'all valid'. Severity is computed by os-risk/1.0 — without a registered
+business mapping 'high' is UNREACHABLE and the derivation records the
+cap.
+
 ## Not implemented (recorded, never hidden)
 
 - runtime monitoring (Tier 2, eBPF): not implemented — no runtime events

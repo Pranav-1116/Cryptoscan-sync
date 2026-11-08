@@ -16,6 +16,7 @@ infers application↔kernel relationships from same-host co-location.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Sequence
 
 from .risk import RiskAssessment, assess
@@ -168,16 +169,42 @@ def _wrap(rule_id: str, status: str, note: str,
                       potential_impact=impact, status=status,
                       evaluation_note=note, findings=findings or [])
 
+_DATE_FORMATS = (
+    "%b %d %H:%M:%S %Y",        # openssl: Jun  4 11:04:38 2035 GMT
+    "%Y-%m-%d %H:%M:%S",
+    "%m/%d/%Y %I:%M %p",        # certutil (en-US locale)
+    "%m/%d/%Y %H:%M:%S",
+    "%Y-%m-%d",
+)
+
+
+def _parse_cert_date(value: str) -> Optional[date]:
+    """Parse a certificate validity date. Unparseable dates are
+    UNKNOWN — never guessed (§2.1)."""
+    text = value.strip()
+    if text.endswith("GMT"):
+        text = text[:-3].strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(" ".join(text.split()), fmt).date()
+        except ValueError:
+            continue
+    return None
+
 
 def evaluate(inventory: Dict[str, Any],
              *, baseline_modules: Optional[Sequence[str]] = None,
-             previous: Optional[Dict[str, Any]] = None) -> RuleReport:
+             previous: Optional[Dict[str, Any]] = None,
+             as_of: Optional["date"] = None) -> RuleReport:
     """Evaluate the catalogue against one collected inventory.
 
     Optional inputs change evaluability only — they never fabricate
     evidence: `baseline_modules` (declared expected modules, for
-    OS-CRYPTO-003) and `previous` (a prior collection, for OS-CRYPTO-
-    012/018 drift). Without them those rules stay not_evaluable."""
+    OS-CRYPTO-003), `previous` (a prior collection, for OS-CRYPTO-
+    012/018 drift) and `as_of` (the clock for certificate expiration
+    evaluation — tests pass a fixed date, production uses today).
+    Without them those rules stay not_evaluable."""
+    today = as_of or date.today()
     results: List[RuleResult] = []
     identity = inventory.get("identity", {}) or {}
     platform = str(identity.get("platform", "linux")).lower()
@@ -572,11 +599,83 @@ def evaluate(inventory: Dict[str, Any],
             findings))
 
     # --- OS-CRYPTO-008: certificate near expiration ------------------
-    results.append(_not_evaluable(
-        "OS-CRYPTO-008", *_BY_ID["OS-CRYPTO-008"],
-        "certificate metadata",
-        "the OS engine does not collect certificate metadata in this "
-        "phase"))
+    certs = inventory.get("certificates") or []
+    if not certs:
+        results.append(_not_evaluable(
+            "OS-CRYPTO-008", *_BY_ID["OS-CRYPTO-008"],
+            "certificate metadata",
+            "no certificate metadata was collected; an unread "
+            "certificate list is never 'all valid'"))
+    else:
+        findings = []
+        dated = 0
+        for cert in certs:
+            not_after = _parse_cert_date(str(cert.get("not_after", "")))
+            if not_after is None:
+                continue
+            dated += 1
+            days_remaining = (not_after - today).days
+            if days_remaining < 0:
+                state = "expired"
+            elif days_remaining <= 30:
+                state = "near_expiration"
+            else:
+                continue
+            findings.append(_finding(
+                rule_id="OS-CRYPTO-008",
+                detection="certificate near expiration",
+                subject=subject,
+                evidence_source="certificate metadata "
+                                "(public certificate object)",
+                observation_type="certificate_metadata",
+                evidence_class="observed",
+                details={
+                    "subject": cert.get("subject", "unknown"),
+                    "issuer": cert.get("issuer", "unknown"),
+                    "not_after": cert.get("not_after", "unknown"),
+                    "days_remaining": days_remaining,
+                    "state": state,
+                    "condition": f"certificate validity ends in "
+                                 f"{days_remaining} day(s) "
+                                 f"(state: {state})",
+                    "risk": "service continuity and trust concern — "
+                            "an expired or expiring certificate "
+                            "disrupts authenticated communication",
+                    "recommendation": "review certificate "
+                        "replacement and renewal with the certificate "
+                        "owner",
+                },
+                limitations=[
+                    "public certificate metadata only — private key "
+                    "protection and certificate usage are never "
+                    "inferred from the certificate (§7/§2.2)",
+                    "the certificate owner and the services using "
+                    "this certificate require correlation — no "
+                    "service mapping is assumed",
+                ],
+                risk=assess(
+                    security_significance="high" if state == "expired"
+                    else "medium",
+                    evidence_class="observed",
+                    exposure="observed")))
+        if dated == 0:
+            results.append(_not_evaluable(
+                "OS-CRYPTO-008", *_BY_ID["OS-CRYPTO-008"],
+                "certificate validity dates",
+                f"{len(certs)} certificate(s) were collected but "
+                "validity dates could not be parsed — expiration state "
+                "is UNKNOWN, never 'not expired' (§2.1)"))
+        elif findings:
+            results.append(_wrap("OS-CRYPTO-008", "evaluated",
+                f"{len(findings)} of {dated} dated certificate(s) are "
+                "expired or within 30 days of expiration", findings))
+        else:
+            results.append(_wrap(
+                "OS-CRYPTO-008", "evaluated",
+                f"no certificate among {dated} dated certificate(s) "
+                "is expired or within 30 days of expiration — 'not "
+                "detected' is never 'absent'; undated certificates "
+                "remain UNKNOWN (§2.1)", []))
 
     # --- OS-CRYPTO-009: TPM unavailable or misconfigured ---------------
     tpm = next((t for t in trust if t.get("subject") == "tpm"), None)

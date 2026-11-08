@@ -18,7 +18,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db.models.os_intelligence import (
-    OSCoverageRecord, OSCryptoCapability, OSConfigFlag, OSFindingRecord,
+    OSAssetCertificate, OSCoverageRecord, OSCryptoCapability,
+    OSConfigFlag, OSFindingRecord,
     OSModuleRecord, OSStorageFact, OSTrustFact, OSAsset, OSTwinEdge,
 )
 from os_intelligence.bom import build_bom
@@ -172,6 +173,30 @@ class OSIntelligenceRepository:
             source_digests=inventory.get("source_digests"),
             note=(coverage.get("note") or None)))
 
+        # Certificate metadata (OS-CRYPTO-008's source, §7): public
+        # attributes only — private key material is NEVER stored.
+        cert_seq = 0
+        for cert in (inventory.get("certificates") or [])[:2000]:
+            self.db.add(OSAssetCertificate(
+                tenant_id=tenant_id,
+                certificate_id=f"cert-{collection_id}-{cert_seq}",
+                collection_id=collection_id,
+                asset_id=asset_id,
+                subject=str(cert.get("subject") or "unknown"),
+                issuer=str(cert.get("issuer") or "unknown"),
+                not_before=cert.get("not_before"),
+                not_after=cert.get("not_after"),
+                thumbprint_sha256=cert.get("thumbprint_sha256"),
+                public_key_algorithm=cert.get("public_key_algorithm"),
+                public_key_bits=cert.get("public_key_bits"),
+                evidence_class=str(cert.get("evidence_class")
+                                   or "observed"),
+                evidence_source=cert.get("evidence_source"),
+                limitations=list(cert.get("limitations") or []),
+                collected_at=now,
+            ))
+            cert_seq += 1
+
         # Digital-twin edges (§8): derived from the BOM relationships —
         # provides/contains/anchors only, every edge evidence-backed.
         # Same-host co-location never creates an edge.
@@ -200,6 +225,32 @@ class OSIntelligenceRepository:
         self.db.commit()
         return {"collection_id": collection_id, "asset_id": asset_id,
                 "outcome": "recorded"}
+
+    def list_certificates(self, tenant_id: str, asset_id: str
+                          ) -> List[Dict[str, Any]]:
+        """Certificate metadata rows for one asset (§7: public
+        attributes only — private key material is never stored).
+        Unknown dates stay UNKNOWN — never 'not expired' (§2.1)."""
+        rows = self.db.scalars(
+            select(OSAssetCertificate).where(
+                OSAssetCertificate.tenant_id == tenant_id,
+                OSAssetCertificate.asset_id == asset_id).order_by(
+                OSAssetCertificate.collected_at.desc())).all()
+        return [{
+            "certificate_id": r.certificate_id,
+            "collection_id": r.collection_id,
+            "subject": r.subject,
+            "issuer": r.issuer,
+            "not_before": r.not_before,
+            "not_after": r.not_after,
+            "thumbprint_sha256": r.thumbprint_sha256,
+            "public_key_algorithm": r.public_key_algorithm,
+            "public_key_bits": r.public_key_bits,
+            "evidence_class": r.evidence_class,
+            "evidence_source": r.evidence_source,
+            "limitations": list(r.limitations or []),
+            "collected_at": _aware(r.collected_at).isoformat(),
+        } for r in rows]
 
     def list_twin_edges(self, tenant_id: str, collection_id: str
                         ) -> List[Dict[str, Any]]:

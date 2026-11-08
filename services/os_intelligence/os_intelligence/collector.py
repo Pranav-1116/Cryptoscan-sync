@@ -40,6 +40,7 @@ class OSInventory:
     config_flags: Dict[str, str] = field(default_factory=dict)
     storage: List[StorageEncryptionFact] = field(default_factory=list)
     hardware_trust: List[HardwareTrustFact] = field(default_factory=list)
+    certificates: List[Dict[str, Any]] = field(default_factory=list)
     coverage: CoverageReport = field(default_factory=CoverageReport)
     source_digests: Dict[str, str] = field(default_factory=dict)
 
@@ -56,6 +57,7 @@ class OSInventory:
             "config_flags": self.config_flags,
             "storage": [s.as_dict() for s in self.storage],
             "hardware_trust": [h.as_dict() for h in self.hardware_trust],
+            "certificates": self.certificates,
             "coverage": self.coverage.as_dict(),
             "source_digests": self.source_digests,
             "note": "read-only snapshot collection (Tier 1, §11) — a "
@@ -141,6 +143,17 @@ def collect_linux(host_id: str,
                         coverage, digests)
     storage = parse_lsblk(text) if text is not None else []
 
+    # certificate metadata (public objects only — §7: private keys are
+    # NEVER collected, exported, displayed or stored)
+    from .certificates import build_certificates
+    certificates: List[Dict[str, Any]] = []
+    text = _read_source("certificate_metadata",
+                        root / "etc/ssl/cert-metadata",
+                        coverage, digests)
+    if text is not None:
+        certificates = build_certificates("certificate_metadata",
+                                          text)
+
     hardware_trust: List[HardwareTrustFact] = []
     if collect_hardware_trust:
         # TPM: device presence via /dev (metadata only, no access to
@@ -189,6 +202,7 @@ def collect_linux(host_id: str,
         config_flags=config_flags,
         storage=storage,
         hardware_trust=hardware_trust,
+        certificates=certificates,
         coverage=coverage,
         source_digests=digests,
     )

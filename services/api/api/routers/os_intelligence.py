@@ -174,6 +174,30 @@ class FindingOut(BaseModel):
     limitations: List[str] = []
 
 
+class CertificateOut(BaseModel):
+    certificate_id: str
+    collection_id: str
+    subject: str
+    issuer: str
+    not_before: Optional[str] = None
+    not_after: Optional[str] = None
+    thumbprint_sha256: Optional[str] = None
+    public_key_algorithm: Optional[str] = None
+    public_key_bits: Optional[int] = None
+    evidence_class: str
+    evidence_source: Optional[str] = None
+    limitations: List[str] = []
+    collected_at: str
+
+
+class CertificateListOut(BaseModel):
+    certificates: List[CertificateOut]
+    note: str = ("public certificate metadata only — private key "
+                 "material is never collected, exported, displayed or "
+                 "stored (§7); unknown validity dates are UNKNOWN, "
+                 "never 'not expired' (§2.1)")
+
+
 class FindingListOut(BaseModel):
     findings: List[FindingOut]
     note: str = ("detections, not verdicts (§1); severity is computed "
@@ -469,6 +493,19 @@ def asset_findings(asset_id: str, tenant_id: str = Query(...),
     return FindingListOut(
         findings=[FindingOut(**f) for f in
                   repo.list_findings(tenant_id, collection_id)])
+
+
+@router.get("/assets/{asset_id}/certificates",
+            response_model=CertificateListOut)
+def asset_certificates(asset_id: str, tenant_id: str = Query(...),
+                       db: Session = Depends(get_db_session),
+                       user=Depends(get_current_user)
+                       ) -> CertificateListOut:
+    repo = _repo(db)
+    _collection_or_404(repo, tenant_id, asset_id)
+    return CertificateListOut(
+        certificates=[CertificateOut(**c) for c in
+                      repo.list_certificates(tenant_id, asset_id)])
 
 
 @router.get("/assets/{asset_id}/coverage", response_model=CoverageOut)

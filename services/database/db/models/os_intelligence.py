@@ -255,3 +255,43 @@ class OSTwinEdge(BaseModel, TenantScoped):
                                                 nullable=False)
     evidence_source: Mapped[Optional[str]] = mapped_column(String(200))
     limitations: Mapped[Optional[Any]] = mapped_column(JSON)
+
+
+class OSAssetCertificate(BaseModel, TenantScoped):
+    """Collected certificate METADATA (OS-CRYPTO-008's source, §7).
+
+    PUBLIC certificate attributes only — private keys are NEVER
+    collected, exported, displayed or stored. Unparseable validity
+    dates are stored as UNKNOWN — never 'not expired' (§2.1).
+    """
+
+    __tablename__ = "os_certificates"
+    __table_args__ = (
+        Index("ix_os_certificates_tenant_collected",
+              "tenant_id", "collected_at"),
+    )
+
+    certificate_id: Mapped[str] = mapped_column(String(80),
+                                                nullable=False,
+                                                unique=True)
+    collection_id: Mapped[str] = mapped_column(String(80),
+                                               nullable=False)
+    asset_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    subject: Mapped[str] = mapped_column(String(512), nullable=False,
+                                         default="unknown")
+    issuer: Mapped[str] = mapped_column(String(512), nullable=False,
+                                        default="unknown")
+    not_before: Mapped[Optional[str]] = mapped_column(String(64))
+    not_after: Mapped[Optional[str]] = mapped_column(String(64))
+    thumbprint_sha256: Mapped[Optional[str]] = mapped_column(
+        String(128))
+    public_key_algorithm: Mapped[Optional[str]] = mapped_column(
+        String(64))
+    public_key_bits: Mapped[Optional[int]] = mapped_column(Integer)
+    evidence_class: Mapped[str] = mapped_column(String(30),
+                                                nullable=False)
+    evidence_source: Mapped[Optional[str]] = mapped_column(
+        String(200))
+    limitations: Mapped[Optional[Any]] = mapped_column(JSON)
+    collected_at: Mapped[datetime] = mapped_column(DateTime,
+                                                   nullable=False)
