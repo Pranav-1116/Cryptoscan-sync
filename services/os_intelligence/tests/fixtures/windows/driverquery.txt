@@ -1,0 +1,9 @@
+Module Name:     acpi
+Display Name:    ACPI Driver/ACPI Embedded Controller
+Driver Type:     Kernel Mode Driver
+Started:         Running
+
+Module Name:     ksecdd
+Display Name:    Kernel Security Support Provider Interface
+Driver Type:     Kernel Mode Driver
+Started:         Running

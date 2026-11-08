@@ -1,0 +1,9 @@
+TpmPresent                : True
+TpmReady                  : True
+TpmEnabled                : True
+TpmActivated              : True
+TpmOwned                  : True
+ManufacturerIdTxt         : INTC
+ManufacturerVersion       : 600.1
+ManagedAuthLevel          : Delegate
+OwnerClearDisabled        : True

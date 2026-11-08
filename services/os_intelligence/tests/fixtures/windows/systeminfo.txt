@@ -1,0 +1,6 @@
+Host Name:                 WIN-PAYMENTS-01
+OS Name:                   Microsoft Windows Server 2022 Datacenter
+OS Version:                10.0.20348 N/A Build 20348
+OS Manufacturer:           Microsoft Corporation
+OS Configuration:          Standalone Server
+System Type:               x64-based PC

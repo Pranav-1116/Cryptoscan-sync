@@ -96,11 +96,32 @@ score". 'critical' is reachable only through B=registered_high with
 X=observed; business impact is never invented (B stays
 "requires_registered_mapping" until a registered mapping supplies it).
 
+## Windows adapter (delivered with stated provenance)
+
+`windows.py` normalizes captured Windows outputs (systeminfo, certutil
+-csplist CSP/KSP registrations, SCHANNEL protocol registry, cipher
+order, manage-bde BitLocker metadata, Get-Tpm, Confirm-SecureBootUEFI,
+driverquery) into the SAME canonical OSInventory model (§15 step 4).
+Rules evaluate with platform honesty: Linux-specific rules report
+NOT EVALUABLE ("Linux-specific source"), and OS-CRYPTO-006 implements
+the ENABLED-BY-CONFIG axis in the §9 example format — supported and
+observed-negotiated stay distinct and unestablished.
+
+PROVENANCE (§12): the test fixtures are RECONSTRUCTED from documented
+output formats — NOT captured from a live Windows host. The adapter
+status is "validated against documented output formats"; live-Windows
+validation and enterprise Windows fleet qualification are NOT DONE and
+never claimed. ETW runtime tracing is Tier 2 and NOT implemented.
+
 ## Not implemented (recorded, never hidden)
 
 - runtime monitoring (Tier 2, eBPF): not implemented — no runtime events
   are collected;
-- Windows / macOS collectors: not implemented;
+- macOS collector: not implemented (Security framework/Keychain APIs
+  only — protected storage files are never scraped);
+- Windows live-host validation and fleet qualification: NOT DONE (the
+  adapter is fixture-validated against documented output formats
+  only);
 - TLS configuration/observation correlation (the three distinct TLS
   findings — supported / enabled / observed): not implemented
   (OS-CRYPTO-006 reports NOT EVALUABLE, never clean);

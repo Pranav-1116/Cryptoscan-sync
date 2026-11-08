@@ -25,7 +25,10 @@ coverage (docs/os-kernel-intelligence/01_PRODUCT_SPEC.md).
    battery runs the collector against the LIVE host and against the
    recorded real-host corpus;
 8. eBPF runtime — NOT IMPLEMENTED (Tier 2, separately approved);
-9. Windows/macOS after shared model validation — NOT IMPLEMENTED.
+9. Windows/macOS after shared model validation — WINDOWS ADAPTER
+   DONE against documented output formats (fixture-validated; live
+   Windows validation and fleet qualification NOT DONE); macOS NOT
+   IMPLEMENTED.
 
 ## 3. Future phases (recorded, not delivered)
 

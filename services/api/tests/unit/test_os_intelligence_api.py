@@ -404,3 +404,64 @@ class TestTwinEdges:
                 assert e["evidence_class"]
             coverage = state["source_coverage"]["collections"]
             assert "os_relationships" in coverage
+
+class TestWindowsPackage:
+
+    @pytest.mark.asyncio
+    async def test_windows_collection_round_trips_the_canonical_model(
+            self, app_db):
+        """§15 step 4/step 9: one canonical model — a Windows package
+        records and serves through the same os_assets…os_coverage
+        path. PROVENANCE: fixture data reconstructed from documented
+        output formats — NOT a Windows fleet qualification (§12)."""
+        import sys
+        sys.path.insert(0, str(_SERVICES / "os_intelligence"))
+        from os_intelligence.windows import collect_windows
+
+        app, _db = app_db
+        win_fixtures = (_SERVICES / "os_intelligence" / "tests" /
+                        "fixtures" / "windows")
+        captured = {
+            "systeminfo": (win_fixtures / "systeminfo.txt").read_text(),
+            "certutil_csplist":
+                (win_fixtures / "certutil_csplist.txt").read_text(),
+            "reg_schannel_protocols":
+                (win_fixtures / "reg_schannel.txt").read_text(),
+            "manage_bde": (win_fixtures / "manage_bde.txt").read_text(),
+            "get_tpm": (win_fixtures / "get_tpm.txt").read_text(),
+            "confirm_secureboot":
+                (win_fixtures / "confirm_secureboot.txt").read_text(),
+            "driverquery": (win_fixtures / "driverquery.txt").read_text(),
+        }
+        inventory = collect_windows("win-host-under-test", captured)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await _post_collection(
+                client, inventory, asset_id="win-host-under-test")
+            assert resp.status_code == 201, resp.text
+            assets = (await client.get(
+                "/api/v1/os-intelligence/assets",
+                params={"tenant_id": "t1"})).json()["assets"]
+            win = [a for a in assets
+                   if a["asset_id"] == "win-host-under-test"][0]
+            assert win["kernel_release"] == "10.0.20348"
+            assert win["environment_development_only"] is True
+            caps = (await client.get(
+                "/api/v1/os-intelligence/assets/win-host-under-test/"
+                "crypto-capabilities",
+                params={"tenant_id": "t1"})).json()["capabilities"]
+            assert caps
+            assert all(c["runtime_usage_confirmed"] is False
+                       for c in caps)
+            findings = (await client.get(
+                "/api/v1/os-intelligence/assets/win-host-under-test/"
+                "findings",
+                params={"tenant_id": "t1"})).json()["findings"]
+            rule_rows = [f for f in findings
+                         if f["finding_type"].startswith("OS-CRYPTO-")]
+            assert rule_rows, "the shared rule catalogue evaluated"
+            tls = [f for f in rule_rows
+                   if f["finding_type"] == "OS-CRYPTO-006"]
+            assert tls, "weak TLS permitted by configuration fires"
+            assert tls[0]["details"]["observed_runtime_negotiation"] == \
+                "Not established"

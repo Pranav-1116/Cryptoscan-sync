@@ -1,0 +1,11 @@
+Microsoft Software Key Storage Provider
+Provider Type: 0
+Provider Type 00000000
+
+Microsoft Enhanced RSA and AES Cryptographic Provider
+Provider Type: 24
+Provider Type 00000018
+
+Microsoft Smart Card Key Storage Provider
+Provider Type: 0
+Provider Type 00000000

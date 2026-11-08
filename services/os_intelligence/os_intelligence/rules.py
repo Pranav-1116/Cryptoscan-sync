@@ -180,6 +180,7 @@ def evaluate(inventory: Dict[str, Any],
     012/018 drift). Without them those rules stay not_evaluable."""
     results: List[RuleResult] = []
     identity = inventory.get("identity", {}) or {}
+    platform = str(identity.get("platform", "linux")).lower()
     subject = str(inventory.get("host_id", "unknown"))
     crypto = inventory.get("crypto_api", []) or []
     modules = inventory.get("modules", []) or []
@@ -263,8 +264,15 @@ def evaluate(inventory: Dict[str, Any],
                                   evidence_class="not_detected"))]))
 
     # --- OS-CRYPTO-002: deprecated interface enabled -----------------
-    af_alg = flags.get("CONFIG_CRYPTO_USER_API")
-    if af_alg is None and "config_flags" not in collected:
+    af_alg = flags.get("CONFIG_CRYPTO_USER_API") if platform == "linux" \
+        else None
+    if platform != "linux":
+        results.append(_not_evaluable(
+            "OS-CRYPTO-002", *_BY_ID["OS-CRYPTO-002"],
+            "the Linux kernel configuration (CONFIG_CRYPTO_USER_API)",
+            "this source is Linux-specific and this is a "
+            f"{platform} collection — not_evaluable, never clean"))
+    elif af_alg is None and "config_flags" not in collected:
         results.append(_not_evaluable(
             "OS-CRYPTO-002", *_BY_ID["OS-CRYPTO-002"],
             "kernel configuration",
@@ -428,23 +436,107 @@ def evaluate(inventory: Dict[str, Any],
             "'not detected' is never 'absent' (§2.1)", []))
 
     # --- OS-CRYPTO-006: weak TLS -------------------------------------
-    results.append(_not_evaluable(
-        "OS-CRYPTO-006", *_BY_ID["OS-CRYPTO-006"],
-        "TLS configuration and runtime negotiation sources",
-        "the OS engine does not collect TLS configuration; the three "
-        "TLS findings (supported / enabled-by-config / observed-"
-        "negotiated) are distinct claims and none is available here"))
+    # The three TLS findings stay DISTINCT (§9): this rule reads the
+    # ENABLED-BY-CONFIG axis only. 'supported' and 'observed-
+    # negotiated' are never established here.
+    weak_tls_protocols = ("tls 1.0", "tls 1.1", "ssl 2.0", "ssl 3.0")
+    enabled_rows = [
+        (key, value) for key, value in flags.items()
+        if key.startswith("SCHANNEL\\")
+        and key.lower().split("\\")[1] in weak_tls_protocols
+        and key.lower().endswith("\\enabled")
+        and value == "enabled"]
+    schannel_collected = any(
+        k.startswith("SCHANNEL\\") for k in flags) or any(
+        "schannel" in str(u).lower()
+        for u in coverage.get("sources_unavailable", []) or [])
+    if not schannel_collected and platform == "linux":
+        results.append(_not_evaluable(
+            "OS-CRYPTO-006", *_BY_ID["OS-CRYPTO-006"],
+            "TLS configuration and runtime negotiation sources",
+            "the OS engine does not collect TLS configuration; the "
+            "three TLS findings (supported / enabled-by-config / "
+            "observed-negotiated) are distinct claims and none is "
+            "available here"))
+    elif not schannel_collected:
+        results.append(_not_evaluable(
+            "OS-CRYPTO-006", *_BY_ID["OS-CRYPTO-006"],
+            "the SCHANNEL protocol registry",
+            "the TLS configuration source is unavailable — "
+            "unavailable is never 'no weak protocol' (§2.1)"))
+    elif enabled_rows:
+        findings = []
+        for key, value in enabled_rows:
+            protocol = key.split("\\")[1]
+            side = key.split("\\")[2]
+            findings.append(_finding(
+                rule_id="OS-CRYPTO-006",
+                detection="TLS configuration allows weak protocols",
+                subject=subject,
+                evidence_source="SCHANNEL protocol registry "
+                                "(configuration state)",
+                observation_type="configuration_state",
+                evidence_class="observed",
+                details={
+                    "configured_protocol": protocol,
+                    "configured_side": side,
+                    "configured_state": value,
+                    "observed_runtime_negotiation": "Not established",
+                    "affected_service": "Requires correlation",
+                    "business_system": "Requires registered mapping",
+                    "condition": f"configuration PERMITS {protocol} "
+                                 f"on the {side} side",
+                    "risk": "legacy protocol exposure — a permitted "
+                            "protocol, not a witnessed negotiation",
+                    "recommendation": "review application "
+                        "compatibility, approved protocol policy and "
+                        "client dependencies",
+                },
+                limitations=[
+                    "this is the ENABLED-BY-CONFIG axis only — "
+                    "'supported' and 'observed-negotiated' are "
+                    "distinct TLS findings and are NOT established "
+                    "here (§9)",
+                    "no service was correlated with this "
+                    "configuration and no business mapping is "
+                    "assumed",
+                ],
+                risk=assess(security_significance="high",
+                            evidence_class="observed",
+                            exposure="configuration_only")))
+        results.append(_wrap("OS-CRYPTO-006", "evaluated",
+                             f"{len(enabled_rows)} weak protocol "
+                             "configuration state(s) permit legacy "
+                             "TLS", findings))
+    else:
+        results.append(_wrap(
+            "OS-CRYPTO-006", "evaluated",
+            "no weak protocol is ENABLED in the collected SCHANNEL "
+            "configuration — 'not detected' is never 'absent'; the "
+            "supported and observed-negotiated axes remain "
+            "unestablished (§9)", []))
 
     # --- OS-CRYPTO-007: disk encryption not established ---------------
-    if "storage_metadata" not in collected:
+    storage_sources = ("storage_metadata", "manage_bde")
+    if not any(src in collected for src in storage_sources) and \
+            not storage:
         results.append(_not_evaluable(
             "OS-CRYPTO-007", *_BY_ID["OS-CRYPTO-007"],
             "disk-encryption metadata",
             "the storage metadata source is unavailable"))
     else:
+        def _encryption_established(fact: Dict[str, Any]) -> bool:
+            # LUKS container metadata, or a Windows BitLocker
+            # conversion status of Fully Encrypted — either
+            # ESTABLISHES an encryption layer from the metadata.
+            if fact.get("fstype") in ("crypto_LUKS", "crypto_LUKS2"):
+                return True
+            meta = fact.get("metadata") or {}
+            status = str(meta.get("conversion_status", "")).lower()
+            return status == "fully encrypted"
+
         unestablished = [s for s in storage
-                         if s.get("fstype") not in
-                         ("crypto_LUKS", "crypto_LUKS2", "unavailable")]
+                         if not _encryption_established(s)]
         findings = [_finding(
             rule_id="OS-CRYPTO-007",
             detection="Disk encryption not established",
@@ -617,8 +709,19 @@ def evaluate(inventory: Dict[str, Any],
             "'not detected' is never 'absent' (§2.1)", []))
 
     # --- OS-CRYPTO-014: randomness configuration ---------------------
-    trust_cpu = flags.get("CONFIG_RANDOM_TRUST_CPU")
-    if trust_cpu == "not_set":
+    if platform != "linux":
+        results.append(_not_evaluable(
+            "OS-CRYPTO-014", *_BY_ID["OS-CRYPTO-014"],
+            "the Linux kernel entropy-trust configuration "
+            "(CONFIG_RANDOM_TRUST_CPU)",
+            "this source is Linux-specific and this is a "
+            f"{platform} collection — not_evaluable, never clean"))
+        trust_cpu = None
+    else:
+        trust_cpu = flags.get("CONFIG_RANDOM_TRUST_CPU")
+    if platform != "linux":
+        pass  # already reported not_evaluable above
+    elif trust_cpu == "not_set":
         results.append(_wrap("OS-CRYPTO-014", "evaluated",
             "CONFIG_RANDOM_TRUST_CPU explicitly not set", [_finding(
                 rule_id="OS-CRYPTO-014",
@@ -717,9 +820,18 @@ def evaluate(inventory: Dict[str, Any],
                                   evidence_class="not_detected"))]))
 
     # --- OS-CRYPTO-016: kernel crypto capability unavailable ----------
+    if platform != "linux":
+        results.append(_not_evaluable(
+            "OS-CRYPTO-016", *_BY_ID["OS-CRYPTO-016"],
+            "the Linux kernel configuration (CONFIG_CRYPTO_*)",
+            "this source is Linux-specific and this is a "
+            f"{platform} collection — not_evaluable, never clean"))
     explicitly_off = [k for k, v in flags.items()
-                      if v == "not_set" and k.startswith("CONFIG_CRYPTO")]
-    if explicitly_off:
+                      if v == "not_set" and k.startswith("CONFIG_CRYPTO")] \
+        if platform == "linux" else []
+    if platform != "linux":
+        pass  # already reported not_evaluable above
+    elif explicitly_off:
         results.append(_wrap("OS-CRYPTO-016", "evaluated",
             f"{len(explicitly_off)} CONFIG_CRYPTO_* flags explicitly "
             "not set", [_finding(
