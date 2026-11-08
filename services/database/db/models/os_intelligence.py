@@ -223,3 +223,35 @@ class OSCoverageRecord(BaseModel, TenantScoped):
               "collection_id", unique=True),
         Index("ix_os_coverage_tenant_asset", "tenant_id", "asset_id"),
     )
+
+class OSTwinEdge(BaseModel, TenantScoped):
+    """Digital Twin relationship edge derived from OS collection
+    evidence (docs/os-kernel-intelligence/01_PRODUCT_SPEC.md §8).
+
+    Every edge carries its provenance class and the evidence class that
+    supports it. The engine emits ONLY provides/contains/anchors
+    predicates — never 'uses', and never a predicate for an indicator:
+    the twin vocabulary has no 'indicates', and inventing one would
+    promote an indicator into a relationship claim. Same-host
+    co-location never creates an edge.
+    """
+
+    __tablename__ = "os_twin_edges"
+    __table_args__ = (
+        Index("uq_os_twin_edges_tenant_edge", "tenant_id", "edge_id",
+              unique=True),
+        Index("ix_os_twin_edges_tenant_asset", "tenant_id", "asset_id"),
+    )
+
+    edge_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(80), nullable=False,
+                                        index=True)
+    asset_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    source: Mapped[str] = mapped_column(String(160), nullable=False)
+    predicate: Mapped[str] = mapped_column(String(40), nullable=False)
+    target: Mapped[str] = mapped_column(String(160), nullable=False)
+    provenance: Mapped[str] = mapped_column(String(40), nullable=False)
+    evidence_class: Mapped[str] = mapped_column(String(30),
+                                                nullable=False)
+    evidence_source: Mapped[Optional[str]] = mapped_column(String(200))
+    limitations: Mapped[Optional[Any]] = mapped_column(JSON)

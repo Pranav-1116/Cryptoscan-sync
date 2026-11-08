@@ -344,3 +344,63 @@ class TestBomProjection:
                 params={"tenant_id": "t1", "kind": "vbom"})
             assert resp.status_code == 422
             assert "validated, never assumed" in resp.text
+
+class TestTwinEdges:
+
+    @pytest.mark.asyncio
+    async def test_intake_writes_evidence_backed_twin_edges(
+            self, app_db, tmp_path):
+        """§8: collection intake derives digital-twin edges with
+        provenance — provides/contains/anchors only, never 'uses'."""
+        app, db = app_db
+        inventory = _real_inventory(tmp_path)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            await _post_collection(client, inventory)
+        import sys
+        sys.path.insert(0, str(_SERVICES / "database"))
+        from db.repositories.os_intelligence_repository import (
+            OSIntelligenceRepository,
+        )
+        repo = OSIntelligenceRepository(db)
+        asset = repo.get_asset("t1", "host-under-test")
+        edges = repo.list_twin_edges("t1", asset["collection_id"])
+        assert edges, "the recorded host yields relationship edges"
+        for e in edges:
+            assert e["predicate"] in ("provides", "contains", "anchors"), \
+                f"forbidden predicate {e['predicate']!r} — this engine " \
+                "never emits 'uses' or indicator predicates (§8)"
+            assert e["provenance"] in (
+                "directly_observed", "static_dependency",
+                "configuration_derived", "inferred", "unresolved")
+            assert e["evidence_class"]
+            assert isinstance(e["limitations"], list)
+
+    @pytest.mark.asyncio
+    async def test_twin_snapshot_carries_os_relationships(
+            self, app_db, tmp_path):
+        """The captured twin snapshot round-trips the OS edges: an
+        immutable twin version answers with evidence-backed
+        relationships (§8)."""
+        app, db = app_db
+        inventory = _real_inventory(tmp_path)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            await _post_collection(client, inventory)
+            created = await client.post("/api/v1/digital-twin/snapshot")
+            assert created.status_code in (200, 201), created.text
+            version = created.json()["version"]
+            resp = await client.get(
+                f"/api/v1/digital-twin/snapshots/{version}")
+            assert resp.status_code == 200, resp.text
+            state = resp.json().get("state") or resp.json()
+            rels = state.get("os_relationships")
+            assert rels is not None, "the twin state exposes os_relationships"
+            assert rels, "the recorded host yields edges into the twin"
+            for e in rels:
+                assert e["predicate"] in ("provides", "contains",
+                                          "anchors")
+                assert e["provenance"]
+                assert e["evidence_class"]
+            coverage = state["source_coverage"]["collections"]
+            assert "os_relationships" in coverage

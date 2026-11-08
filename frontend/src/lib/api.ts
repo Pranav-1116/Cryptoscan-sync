@@ -8993,3 +8993,38 @@ export const apiOSRuleEvaluation = (
   p: { tenant_id: string },
 ): Promise<ApiResult<OSRuleEvaluation>> =>
   call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/rule-evaluation${osQuery(p)}`);
+
+export interface OSBomComponent {
+  type: string;
+  name: string;
+  version: string;
+  properties: Record<string, unknown> & {
+    runtime_usage_confirmed?: boolean;
+    key_size_bits?: number[] | null;
+    limitations?: string[];
+  };
+}
+
+export interface OSBomRelationship {
+  source: string;
+  relationship: string;
+  target: string;
+  provenance: string;
+  limitations: string[];
+}
+
+export interface OSBom {
+  schema: string;
+  kind: string;
+  subject: string;
+  components: OSBomComponent[];
+  relationships: OSBomRelationship[];
+  coverage: Record<string, unknown>;
+  note: string;
+}
+
+export const apiOSBom = (
+  assetId: string,
+  p: { tenant_id: string; kind: string },
+): Promise<ApiResult<OSBom>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/bom?tenant_id=${encodeURIComponent(p.tenant_id)}&kind=${encodeURIComponent(p.kind)}`);

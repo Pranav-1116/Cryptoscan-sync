@@ -354,3 +354,51 @@ describe("OS & Kernel Intelligence", () => {
     expect(screen.getByText(/never a trust verdict/)).toBeInTheDocument();
   });
 });
+
+  it("BOM view: versions never guessed, no uses edge ever drawn", async () => {
+    mockFetch({
+      "/api/v1/os-intelligence/assets/host-under-test/bom": {
+        schema: "cryptoscan.os-bom/1",
+        kind: "cbom",
+        subject: "host-under-test",
+        components: [
+          {
+            type: "crypto_implementation",
+            name: "sha384 (sha384-avx2)",
+            version: "",
+            properties: {
+              runtime_usage_confirmed: false,
+              key_size_bits: null,
+              limitations: ["key size unknown — never guessed"],
+            },
+          },
+        ],
+        relationships: [
+          {
+            source: "kernel",
+            relationship: "provides",
+            target: "sha384 (sha384-avx2)",
+            provenance: "directly_observed",
+            limitations: [
+              "'provides' means the implementation is registered — it is NOT a 'uses' claim about any application (§2.2)",
+            ],
+          },
+        ],
+        coverage: { sources_collected: ["proc_crypto"] },
+        note: "a projection of ONE read-only OS collection into the shared BOM ecosystem — components are registrations and metadata, never proof of runtime use (§2.2); this engine emits NO 'uses' edge (§8)",
+      },
+    });
+    renderPage();
+    setAsset();
+    fireEvent.click(screen.getByText("BOM Projection"));
+    await waitFor(() =>
+      expect(
+        screen.getAllByText("sha384 (sha384-avx2)").length,
+      ).toBeGreaterThan(0),
+    );
+    expect(screen.getAllByText("(never guessed)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/never proof of runtime use/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/provides/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/NOT a 'uses' claim/).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/— uses →/)).toHaveLength(0);
+  });

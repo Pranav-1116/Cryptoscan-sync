@@ -19,8 +19,9 @@ from sqlalchemy.orm import Session
 
 from db.models.os_intelligence import (
     OSCoverageRecord, OSCryptoCapability, OSConfigFlag, OSFindingRecord,
-    OSModuleRecord, OSStorageFact, OSTrustFact, OSAsset,
+    OSModuleRecord, OSStorageFact, OSTrustFact, OSAsset, OSTwinEdge,
 )
+from os_intelligence.bom import build_bom
 from db.repositories.performance_repository import _aware
 
 
@@ -171,9 +172,52 @@ class OSIntelligenceRepository:
             source_digests=inventory.get("source_digests"),
             note=(coverage.get("note") or None)))
 
+        # Digital-twin edges (§8): derived from the BOM relationships —
+        # provides/contains/anchors only, every edge evidence-backed.
+        # Same-host co-location never creates an edge.
+        edge_seq = 0
+        for rel in build_bom("techbom", {
+                "host_id": asset_id,
+                "identity": inventory.get("identity", {}),
+                "crypto_api": inventory.get("crypto_api", []),
+                "modules": inventory.get("modules", []),
+                "hardware_trust": inventory.get("hardware_trust", []),
+                "coverage": coverage}).as_dict()["relationships"]:
+            edge_seq += 1
+            self.db.add(OSTwinEdge(
+                tenant_id=tenant_id,
+                edge_id=f"osedg-{uuid.uuid4().hex[:16]}",
+                run_id=collection_id,
+                asset_id=asset_id,
+                source=str(rel["source"])[:160],
+                predicate=str(rel["relationship"])[:40],
+                target=str(rel["target"])[:160],
+                provenance=str(rel["provenance"])[:40],
+                evidence_class="observed",
+                evidence_source="OS read-only collection (Tier 1, §11)",
+                limitations=rel.get("limitations")))
+
         self.db.commit()
         return {"collection_id": collection_id, "asset_id": asset_id,
                 "outcome": "recorded"}
+
+    def list_twin_edges(self, tenant_id: str, collection_id: str
+                        ) -> List[Dict[str, Any]]:
+        rows = self.db.scalars(
+            select(OSTwinEdge).where(
+                OSTwinEdge.tenant_id == tenant_id,
+                OSTwinEdge.run_id == collection_id)).all()
+        return [{
+            "edge_id": r.edge_id,
+            "asset_id": r.asset_id,
+            "source": r.source,
+            "predicate": r.predicate,
+            "target": r.target,
+            "provenance": r.provenance,
+            "evidence_class": r.evidence_class,
+            "evidence_source": r.evidence_source,
+            "limitations": r.limitations or [],
+        } for r in rows]
 
     # --- queries -----------------------------------------------------
 

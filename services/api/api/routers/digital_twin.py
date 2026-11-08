@@ -70,6 +70,7 @@ SNAPSHOT_CAPS = {
     "business_processes": 20000,
     "vendor_crypto": 20000,
     "binary_relationships": 20000,
+    "os_relationships": 20000,
 }
 
 
@@ -291,6 +292,33 @@ def _snapshot(db: Session) -> dict:
                                 BinaryTwinEdge.created_at)
     except Exception:
         collections["binary_relationships"] = collection_read(0, 0, more=False)
+    # OS & Kernel digital-twin edges (docs/os-kernel-intelligence
+    # §8): evidence-backed relationship edges from read-only OS
+    # collections. Predicates are provides/contains/anchors ONLY —
+    # never 'uses' (read-only collection never confirms runtime use)
+    # and never a predicate for an indicator. Same-host co-location
+    # never creates an edge.
+    os_edge_rows = []
+    try:
+        from db.models.os_intelligence import OSTwinEdge
+        os_edge_rows = load(OSTwinEdge, "os_relationships",
+                            "os_relationships", OSTwinEdge.created_at)
+    except Exception:
+        collections["os_relationships"] = collection_read(0, 0, more=False)
+    os_relationships = [
+        {
+            "edge_id": edge.edge_id,
+            "asset_id": edge.asset_id,
+            "source": edge.source,
+            "predicate": edge.predicate,
+            "target": edge.target,
+            "provenance": edge.provenance,
+            "evidence_class": edge.evidence_class,
+            "evidence_source": edge.evidence_source,
+            "limitations": edge.limitations or [],
+        }
+        for edge in os_edge_rows
+    ]
     collections["evidence_system_pairs"] = collection_read(len(evidence_rows), SNAPSHOT_CAPS["evidence"], more=len(evidence_page) > len(evidence_rows), unit="evidence/system pairs")
     evidence = [
         {
@@ -515,6 +543,11 @@ def _snapshot(db: Session) -> dict:
         "system_asset_links": system_asset_links,
         "certificate_usage_records": certificate_usage_records,
         "crypto_hardware_links": crypto_hardware_links,
+        # OS & Kernel evidence-backed edges (docs/os-kernel-intelligence
+        # §8): every edge carries provenance + evidence class +
+        # limitations; predicates are provides/contains/anchors only —
+        # never 'uses', never an indicator predicate.
+        "os_relationships": os_relationships,
         "systems": systems,
         "certificates": certificates,
         "target_resolution_coverage": {"certificate_truncated": collections["certificates"]["truncated"],

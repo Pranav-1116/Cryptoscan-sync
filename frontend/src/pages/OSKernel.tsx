@@ -3,10 +3,10 @@ import { Badge, Panel, PageHead } from "../components/ui.jsx";
 import {
   apiOSAssets, apiOSAsset, apiOSCapabilities, apiOSModules,
   apiOSConfigFlags, apiOSStorage, apiOSHardwareTrust, apiOSFindings,
-  apiOSCoverage, apiOSRules, apiOSRuleEvaluation,
+  apiOSCoverage, apiOSRules, apiOSRuleEvaluation, apiOSBom,
   type ApiResult, type OSAssetRecord, type OSCapability, type OSCoverage,
   type OSFindingRecord, type OSModule, type OSConfigFlag,
-  type OSStorageFact, type OSTrustFact, type OSRuleEvaluation,
+  type OSStorageFact, type OSTrustFact, type OSRuleEvaluation, type OSBom,
 } from "../lib/api.js";
 
 /* OS & Kernel Intelligence (docs/os-kernel-intelligence/01_PRODUCT_SPEC.md):
@@ -18,7 +18,7 @@ import {
 
 type View =
   | "assets" | "capabilities" | "modules" | "config" | "storage"
-  | "trust" | "findings" | "coverage" | "rules";
+  | "trust" | "findings" | "coverage" | "rules" | "bom";
 
 const VIEWS: Array<{ key: View; label: string }> = [
   { key: "assets", label: "Hosts & Identity" },
@@ -30,6 +30,7 @@ const VIEWS: Array<{ key: View; label: string }> = [
   { key: "findings", label: "Findings" },
   { key: "coverage", label: "Coverage" },
   { key: "rules", label: "OS-CRYPTO Rules" },
+  { key: "bom", label: "BOM Projection" },
 ];
 
 const CONTROL_STYLE: React.CSSProperties = {
@@ -108,6 +109,8 @@ export default function OSKernel() {
   const [coverage, setCoverage] = useState<ApiResult<OSCoverage> | null>(null);
   const [rules, setRules] = useState<ApiResult<{ rules: Array<{ rule_id: string; detection: string; potential_impact: string }>; note: string }> | null>(null);
   const [evaluation, setEvaluation] = useState<ApiResult<OSRuleEvaluation> | null>(null);
+  const [bom, setBom] = useState<ApiResult<OSBom> | null>(null);
+  const [bomKind, setBomKind] = useState("techbom");
   const [busy, setBusy] = useState(false);
 
   const loadAssets = useCallback(async () => {
@@ -141,9 +144,11 @@ export default function OSKernel() {
         setCoverage(await apiOSCoverage(assetId, t)); break;
       case "rules":
         setEvaluation(await apiOSRuleEvaluation(assetId, t)); break;
+      case "bom":
+        setBom(await apiOSBom(assetId, { ...t, kind: bomKind })); break;
     }
     setBusy(false);
-  }, [assetId, tenant, view]);
+  }, [assetId, tenant, view, bomKind]);
 
   useEffect(() => {
     if (view === "rules" && !rules) {
@@ -564,6 +569,91 @@ export default function OSKernel() {
               collection.
             </p>
           )}
+        </Panel>
+      )}
+
+      {view === "bom" && (
+        <Panel title="BOM projection — the shared ecosystem, never a seventh BOM">
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            {["sbom", "cbom", "hbom", "techbom"].map((k) => (
+              <button
+                key={k}
+                onClick={() => setBomKind(k)}
+                style={{
+                  ...CONTROL_STYLE,
+                  cursor: "pointer",
+                  borderColor: bomKind === k ? "var(--accent)" : "var(--rule)",
+                }}
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+          {bom && bom.error && !bom.data ? <ReadFailed error={bom.error} /> : bom && bom.data ? (
+            <>
+              <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 8px" }}>
+                {bom.data.note}
+              </p>
+              <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>
+                {bom.data.components.length} component(s) ·{" "}
+                {bom.data.relationships.length} relationship(s) · schema{" "}
+                <span style={{ fontFamily: "var(--mono)" }}>{bom.data.schema}</span>
+              </div>
+              <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                <thead>
+                  <tr style={{ textAlign: "left", color: "var(--muted)" }}>
+                    <th>type</th><th>name</th><th>version</th><th>usage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bom.data.components.slice(0, 40).map((c, i) => (
+                    <tr key={i} style={{ borderTop: "1px solid var(--rule)" }}>
+                      <td>{c.type}</td>
+                      <td style={{ fontFamily: "var(--mono)" }}>{c.name}</td>
+                      <td>
+                        {c.version
+                          ? c.version
+                          : <Unknown why="this source reports no version — unknown, never guessed" />}
+                      </td>
+                      <td>
+                        <RuntimeFlag confirmed={!!c.properties.runtime_usage_confirmed} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {bom.data.components.length > 40 && (
+                <p style={{ fontSize: 11, color: "var(--muted)", marginTop: 6 }}>
+                  showing the first 40 of {bom.data.components.length} components —
+                  the remainder is in the API response.
+                </p>
+              )}
+              <div style={{ marginTop: 12, fontSize: 12 }}>
+                <strong>relationships:</strong>{" "}
+                {bom.data.relationships.length === 0
+                  ? <span style={{ color: "var(--muted)" }}>
+                      none — this engine never invents edges
+                    </span>
+                  : (
+                    <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                      {bom.data.relationships.slice(0, 20).map((r, i) => (
+                        <li key={i}>
+                          <span style={{ fontFamily: "var(--mono)" }}>{r.source}</span>
+                          {" —"}
+                          <span style={{ color: "var(--accent)" }}> {r.relationship} </span>
+                          {"→ "}
+                          <span style={{ fontFamily: "var(--mono)" }}>{r.target}</span>
+                          <span style={{ color: "var(--muted)", fontSize: 11 }}>
+                            {" "}({r.provenance})
+                          </span>
+                          <Notes notes={r.limitations} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+              </div>
+            </>
+          ) : <p style={{ fontSize: 12, color: "var(--muted)", margin: 0 }}>reading…</p>}
         </Panel>
       )}
     </div>
