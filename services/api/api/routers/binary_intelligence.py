@@ -212,6 +212,24 @@ def _persist(db: Session, tenant_id: str, result, response: Response
             artifact_id=result.identity.artifact_id,
             artifact_sha256=result.identity.sha256,
             edges=result.bom.relationships)
+    # Performance Intelligence integration (§13/§17): scanner
+    # measurements with defined units and provenance — never production
+    # traffic, never guessed units
+    from binary_intelligence.telemetry import scan_metrics
+    from db.repositories.performance_repository import PerformanceRepository
+    perf = PerformanceRepository(db)
+    for metric in scan_metrics(
+            tenant_id=tenant_id, scan_id=result.scan_id,
+            artifact_id=result.identity.artifact_id, result=result):
+        perf.insert_metric(metric)
+    # CryptoLog integration (§17 Phase 6): one NOTIFICATION event with
+    # evidence references — CryptoLog is not a second evidence store;
+    # its evidence level is STATIC, never runtime usage
+    from binary_intelligence.telemetry import scan_cryptolog_event
+    from db.repositories.cryptolog_repository import CryptoLogRepository
+    CryptoLogRepository(db).insert_event(
+        scan_cryptolog_event(tenant_id=tenant_id, scan_id=result.scan_id,
+                             result=result))
 
     payload = result.as_dict()
     return ScanAccepted(

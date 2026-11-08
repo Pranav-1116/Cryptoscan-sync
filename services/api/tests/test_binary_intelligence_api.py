@@ -44,6 +44,10 @@ def api():
         BinaryArtifact.__table__, BinaryScanRun.__table__,
         BinaryCryptoFinding.__table__, BinaryEvidence.__table__,
         BinaryAnalysisCoverage.__table__, BinaryTwinEdge.__table__])
+    from db.models.performance import PerformanceMetric
+    from db.models.cryptolog import CryptoLogEvent
+    Base.metadata.create_all(engine, tables=[
+        PerformanceMetric.__table__, CryptoLogEvent.__table__])
     session = sessionmaker(bind=engine)()
 
     from api import dependencies
@@ -417,3 +421,76 @@ def test_estate_groups_recorded_findings_never_running_crypto(api):
     assert cross.json()["findings_total"] == 0
     assert cross.json()["by_format"] == {}, \
         "an empty estate is empty, never zero-filled with guesses"
+
+
+def test_scan_telemetry_joins_performance_with_defined_units(api):
+    created = _submit(api, elf_crypto_sample())
+    scan_id = created.json()["scan_id"]
+    artifact_id = created.json()["artifact"]["artifact_id"]
+
+    from api.dependencies import get_db_session as _gds
+    from db.models.performance import PerformanceMetric
+    session = api.app.dependency_overrides[_gds]()
+    rows = session.query(PerformanceMetric).filter(
+        PerformanceMetric.metric_name.like("binary.scan.%")).all()
+    names = {r.metric_name for r in rows}
+    assert names == {
+        "binary.scan.duration_seconds",
+        "binary.scan.findings_recorded",
+        "binary.scan.evidence_items",
+        "binary.scan.coverage_pct",
+    }, "every metric has a defined unit from the taxonomy — a metric "
+    "outside the taxonomy is refused, never ingested with a guessed unit"
+    for row in rows:
+        assert row.unit in ("seconds", "count", "percent")
+        assert row.quality_status == "valid"
+        assert row.source_id == "cryptoscan-binary-intelligence"
+        assert row.evidence_id == scan_id, "provenance on every row"
+        assert row.asset_id == artifact_id
+        assert row.labels["profile"] == "standard"
+        assert row.labels["format"] == "elf"
+    assert any(r.metric_name == "binary.scan.findings_recorded"
+               and r.metric_value == created.json()["finding_count"]
+               for r in rows), \
+        "counts of RECORDED findings, never of running cryptography"
+    coverage = next(r for r in rows
+                    if r.metric_name == "binary.scan.coverage_pct")
+    assert coverage.metric_value == 100.0
+
+
+def test_scan_emits_one_cryptolog_notification_not_an_evidence_copy(api):
+    created = _submit(api, elf_crypto_sample())
+    scan_id = created.json()["scan_id"]
+    artifact_id = created.json()["artifact"]["artifact_id"]
+
+    from api.dependencies import get_db_session as _gds
+    from db.models.cryptolog import CryptoLogEvent
+    session = api.app.dependency_overrides[_gds]()
+    rows = session.query(CryptoLogEvent).all()
+    assert len(rows) == 1, "one notification event per scan"
+    event = rows[0]
+    assert event.event_type == "BINARY_CRYPTO_DISCOVERED"
+    assert event.logging_kind == "ACTIVITY"
+    assert event.category == "CRYPTO_DRIFT"
+    assert event.cryptographic_context["evidence_level"] == "STATIC", \
+        "static analysis never claims runtime usage"
+    assert event.severity == "LOW", \
+        "severity is COMPUTED from the result (quantum-vulnerable " \
+        "indicators present), never named freely"
+    assert event.asset_id == artifact_id
+    assert scan_id in event.evidence["evidence_ids"], \
+        "evidence REFERENCES, never contents — CryptoLog is not a " \
+        "second evidence store"
+    assert "findings_recorded" in event.cryptographic_context
+    assert "AES" not in str(event.cryptographic_context), \
+        "the event carries counts and references, not finding details"
+    assert event.attributes["coverage_is_not_confidence"] is True
+
+    # a private-key detection raises the COMPUTED severity
+    blob = (elf_plain_sample() +
+            b"-----BEGIN PRIVATE KEY-----\nX\n-----END PRIVATE KEY-----\n")
+    _submit(api, blob, name="with-key")
+    rows = session.query(CryptoLogEvent).all()
+    severities = {r.severity for r in rows}
+    assert "MEDIUM" in severities, \
+        "a private-key detection event computes MEDIUM"

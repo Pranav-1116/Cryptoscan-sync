@@ -106,8 +106,13 @@ def test_a_bounded_queue_refuses_and_counts_never_silently_drops():
 def test_every_taxonomy_metric_is_a_complete_definition():
     names = [d.name for d in DEFINITIONS]
     assert len(names) == len(set(names)), "a definition registers once"
-    assert len(names) == 76, \
-        f"the taxonomy covers §2 A–H; expected 76 metrics, found {len(names)}"
+    # 76 -> 80: the taxonomy gains the binary-intelligence scanner
+    # telemetry family (docs/binary-intelligence/01_PRODUCT_SPEC.md
+    # §13/§17 — measurements of the SCANNER under the cryptography
+    # domain; counts of recorded findings, never of running
+    # cryptography; coverage is not confidence).
+    assert len(names) == 80, \
+        f"the taxonomy covers §2 A–H plus binary scanner telemetry; expected 80 metrics, found {len(names)}"
     for definition in DEFINITIONS:
         assert definition.unit, f"{definition.name} has no unit"
         assert definition.what_it_tells, f"{definition.name} has no meaning"

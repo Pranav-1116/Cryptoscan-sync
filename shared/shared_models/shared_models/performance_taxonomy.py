@@ -194,6 +194,21 @@ DEFINITIONS: Tuple[MetricDefinition, ...] = (
     # F. cryptographic — utilization (§2F)
     _d("crypto.hsm_utilization_pct", "cryptography", "percent", "gauge",
        "HSM utilization"),
+    # I. binary intelligence telemetry (docs/binary-intelligence/
+    # 01_PRODUCT_SPEC.md §13/§17) — measurements of the SCANNER, never
+    # of production traffic; counts of recorded findings, never of
+    # running cryptography; coverage is not confidence.
+    _d("binary.scan.duration_seconds", "cryptography", "seconds", "gauge",
+       "Wall-clock duration of one static binary scan — a measurement of "
+       "the scanner, never of production traffic"),
+    _d("binary.scan.findings_recorded", "cryptography", "count", "gauge",
+       "Findings recorded by one scan — counts of recorded findings, "
+       "never of running cryptography"),
+    _d("binary.scan.evidence_items", "cryptography", "count", "gauge",
+       "Evidence items recorded by one scan"),
+    _d("binary.scan.coverage_pct", "cryptography", "percent", "gauge",
+       "Share of artifact bytes inspected — analysis coverage is not "
+       "finding confidence"),
 
 )
 
