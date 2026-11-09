@@ -1,0 +1,8 @@
+# PROVENANCE: RECONSTRUCTED capture format — includes collector loss
+# accounting (LOST|N). NOT captured from a live host; labelled.
+META|boot_id=7f3c9a10-0000-4000-8000-000000000002
+META|attached_points=tracepoint:crypto:crypto_alg_get
+META|started_at=2026-10-16T11:00:00Z
+EVT|1760000100100000000|4242|9001|sha256:aaaa1111|crypto_api_allocation||cbc(aes)|kernel|crypto-api|nginx
+LOST|7
+META|ended_at=2026-10-16T11:00:30Z

@@ -195,7 +195,8 @@ def _parse_cert_date(value: str) -> Optional[date]:
 def evaluate(inventory: Dict[str, Any],
              *, baseline_modules: Optional[Sequence[str]] = None,
              previous: Optional[Dict[str, Any]] = None,
-             as_of: Optional["date"] = None) -> RuleReport:
+             as_of: Optional["date"] = None,
+             runtime_session: Optional[Any] = None) -> RuleReport:
     """Evaluate the catalogue against one collected inventory.
 
     Optional inputs change evaluability only — they never fabricate
@@ -1028,12 +1029,70 @@ def evaluate(inventory: Dict[str, Any],
             "collected configuration", []))
 
     # --- OS-CRYPTO-017: runtime collector losing events ---------------
-    results.append(_not_evaluable(
-        "OS-CRYPTO-017", *_BY_ID["OS-CRYPTO-017"],
-        "a Tier-2 runtime event stream",
-        "Tier-2 runtime monitoring (eBPF) is NOT IMPLEMENTED and "
-        "separately approved (§11); there is no event stream whose "
-        "loss could be measured — this is never reported as 'healthy'"))
+    if runtime_session is None:
+        results.append(_not_evaluable(
+            "OS-CRYPTO-017", *_BY_ID["OS-CRYPTO-017"],
+            "a Tier-2 runtime event stream",
+            "no runtime session was collected — Tier-2 collection is "
+            "separately approved (§3) and this evaluation input is "
+            "absent; absence of a runtime session is never reported as "
+            "'healthy' and never as 'no event loss'"))
+    else:
+        loss = (runtime_session.loss_report()
+                if hasattr(runtime_session, "loss_report")
+                else dict(runtime_session))
+        lost = int(loss.get("events_lost") or 0)
+        accepted = int(loss.get("events_accepted") or 0)
+        if lost > 0:
+            results.append(_wrap("OS-CRYPTO-017", "evaluated",
+                f"{lost} runtime event(s) lost against {accepted} "
+                "accepted — observability gap", [_finding(
+                rule_id="OS-CRYPTO-017",
+                detection="Runtime collector losing events",
+                subject=subject,
+                evidence_source=str(loss.get("evidence_source")
+                                    or "Tier-2 runtime session "
+                                        "accounting"),
+                observation_type="runtime_session_accounting",
+                evidence_class="observed",
+                details={
+                    "events_lost": lost,
+                    "events_accepted": accepted,
+                    "loss_ratio": loss.get("loss_ratio"),
+                    "condition": f"the runtime collector lost "
+                                 f"{lost} event(s) during the "
+                                 "collected session",
+                    "risk": "observability gap — lost runtime events "
+                            "degrade usage coverage; capabilities "
+                            "without runtime events remain 'usage "
+                            "not confirmed', NEVER 'unused'",
+                    "recommendation": "review collector attach "
+                        "points, buffer sizing and drop accounting "
+                        "on the collection host",
+                },
+                limitations=[
+                    "lost-event counts come from the collector's own "
+                    "accounting — recorded, never guessed",
+                    "event loss is an observability gap, not evidence "
+                    "about the cryptography itself",
+                ],
+                risk=assess(security_significance="medium",
+                            evidence_class="observed",
+                            exposure="observed"))]))
+        elif accepted > 0:
+            results.append(_wrap(
+                "OS-CRYPTO-017", "evaluated",
+                f"no event loss observed in this runtime session "
+                f"({accepted} events accepted) — 'not detected' is "
+                "never 'absent'; coverage is per-session, not "
+                "continuous (§3)", []))
+        else:
+            results.append(_wrap(
+                "OS-CRYPTO-017", "evaluated",
+                "the collected runtime session accepted zero events "
+                "with zero loss — coverage for this session is "
+                "UNKNOWN; zero events is never 'no cryptographic "
+                "activity' (§2.1)", []))
 
     # --- OS-CRYPTO-018: HSM/TPM provider state changed ----------------
     if previous is None:

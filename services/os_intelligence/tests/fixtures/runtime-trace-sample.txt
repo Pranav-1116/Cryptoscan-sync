@@ -1,0 +1,14 @@
+# PROVENANCE: RECONSTRUCTED from the documented capture format of
+# tools/runtime_capture/crypto_trace.bt — NOT captured from a live
+# host (the development sandbox has no root and no bpftrace).
+# Synthetic stays labelled synthetic.
+META|boot_id=7f3c9a10-0000-4000-8000-000000000001
+META|kernel=6.1.158+
+META|attached_points=tracepoint:crypto:crypto_alg_get,tracepoint:crypto:crypto_alg_lookup
+META|started_at=2026-10-16T10:00:00Z
+EVT|1760000000100000000|4242|9001|sha256:aaaa1111|crypto_api_allocation|cbc(aes)|cbc-aes-aesni|kernel|crypto-api|nginx
+EVT|1760000000200000000|4242|9001|sha256:aaaa1111|hash_operation|sha256|sha256-generic|kernel|crypto-api|nginx
+EVT|1760000000300000000|7788|9002|sha256:bbbb2222|algorithm_selection|rsa|rsa-generic|kernel|crypto-api|openssl
+EVT|1760000000300000000|7788|9002|sha256:bbbb2222|algorithm_selection|rsa|rsa-generic|kernel|crypto-api|openssl
+EVT|1760000000400000000|7788|9002|sha256:bbbb2222|quantum_maybe|kyber|unknown|userspace|tls|curl
+META|ended_at=2026-10-16T10:00:30Z

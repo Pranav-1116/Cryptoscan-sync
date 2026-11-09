@@ -48,7 +48,7 @@ MAX_ENTRIES = 4096
 MAX_LINE = 4096
 
 SOURCES = (
-    "systeminfo", "ver", "certutil_csplist",
+    "systeminfo", "ver", "certutil_csplist", "certutil_store",
     "reg_schannel_protocols", "reg_cipher_order", "manage_bde",
     "get_tpm", "confirm_secureboot", "driverquery",
 )
@@ -450,6 +450,13 @@ def collect_windows(host_id: str, captured: Dict[str, str]
             if key.lower().endswith("functions"):
                 config_flags["CIPHER_ORDER\\functions"] = value[:200]
 
+    # --- certificates (public metadata only — §7) --------------------
+    from .certificates import build_certificates
+    certificates: List[Dict[str, Any]] = []
+    cert_text = source("certutil_store")
+    if cert_text is not None:
+        certificates = build_certificates("certutil_store", cert_text)
+
     # --- storage (BitLocker metadata) --------------------------------
     bde = source("manage_bde")
     storage: List[Dict[str, Any]] = []
@@ -514,6 +521,7 @@ def collect_windows(host_id: str, captured: Dict[str, str]
         "config_flags": config_flags,
         "storage": storage,
         "hardware_trust": hardware_trust,
+        "certificates": certificates,
         "coverage": coverage.as_dict(),
         "source_digests": digests,
         "note": ("Windows read-only collection normalized into the "

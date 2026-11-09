@@ -1,0 +1,61 @@
+/*
+ * Tier-2 runtime cryptographic observation — approved tracepoints /
+ * scoped eBPF (docs/os-kernel-intelligence/01_PRODUCT_SPEC.md §3,
+ * Level 2). METADATA EVENTS ONLY: no plaintext, keys, passwords,
+ * tokens, secrets or crypto input/output buffers are ever emitted.
+ *
+ * Output format (one record per line, consumed by
+ * os_intelligence.runtime.parse_trace_text):
+ *   META|key=value          — session header (set by the capture
+ *                             driver: boot_id, attached_points, ...)
+ *   EVT|ts|pid|start|digest|category|algo|provider|ku|iface|comm
+ *   LOST|N                  — loss accounting
+ *
+ * Probe points: this template attaches to the kernel's crypto
+ * tracepoints when the running kernel exposes them. Kernels differ —
+ * the capture driver (capture-linux-runtime.sh) enumerates what is
+ * actually available FIRST and records the attached points in the
+ * session META header. Never assume a tracepoint exists (§ the spec's
+ * tracepoint-stability warning).
+ */
+
+#include <linux/sched.h>
+
+BEGIN
+{
+    printf("META|collection_profile=tier2-approved-tracepoints\n");
+}
+
+/* Cryptographic API allocation + algorithm selection.
+   crypto_alg_get fires when an algorithm implementation is resolved —
+   observing it confirms RUNTIME USE of the implementation (§2.2). */
+tracepoint:crypto:crypto_alg_get
+{
+    printf("EVT|%llu|%d|0||crypto_api_allocation||%s|kernel|crypto-api|%s\n",
+        nsecs, pid, args->name, comm);
+}
+
+tracepoint:crypto:crypto_alg_lookup
+{
+    printf("EVT|%llu|%d|0||algorithm_selection|%s||kernel|crypto-api|%s\n",
+        nsecs, pid, args->name, comm);
+}
+
+/* AF_ALG userspace interface — operation categories only; the syscall
+   content is NEVER read (metadata events only). */
+tracepoint:syscalls:sys_enter_accept4 /comm == "openssl" || comm == "nginx"/
+{
+    /* scoped example filter: process identity is part of the bounded
+       event filter; widen deliberately under an approved profile */
+}
+
+interval:s:1
+{
+    /* loss accounting placeholder: bpftrace reports dropped records
+       on its own stderr; the capture driver folds that into LOST|N */
+}
+
+END
+{
+    printf("META|ended=1\n");
+}

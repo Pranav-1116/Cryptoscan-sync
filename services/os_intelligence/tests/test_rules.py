@@ -252,8 +252,10 @@ class TestDetections:
         inv = {"host_id": "h", "coverage": {"sources_collected": []}}
         result = _by_id(evaluate(inv), "OS-CRYPTO-017")
         assert result.status == "not_evaluable"
-        assert "NOT IMPLEMENTED" in result.evaluation_note
+        assert "no runtime session was collected" in \
+            result.evaluation_note
         assert "never reported as 'healthy'" in result.evaluation_note
+        assert "never as 'no event loss'" in result.evaluation_note
 
     def test_018_state_change_needs_previous(self):
         inv = {"host_id": "h",

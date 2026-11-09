@@ -48,6 +48,7 @@ MAX_LINE = 4096
 
 SOURCES = (
     "sw_vers", "uname", "csrutil", "spctl", "fdesetup", "kmutil",
+    "certificate_metadata",
 )
 
 
@@ -311,6 +312,14 @@ def collect_macos(host_id: str, captured: Dict[str, str]
                    "permission-denied — recorded as unavailable, NEVER "
                    "as 'disabled' (§2.1)"]).as_dict())
 
+    # certificates (public metadata only — §7)
+    from .certificates import build_certificates
+    certificates: List[Dict[str, Any]] = []
+    cert_text = source("certificate_metadata")
+    if cert_text is not None:
+        certificates = build_certificates("certificate_metadata",
+                                          cert_text)
+
     # modules: kernel extensions
     kext_text = source("kmutil")
     modules = [m.as_dict() for m in parse_kmutil(kext_text)] \
@@ -332,6 +341,7 @@ def collect_macos(host_id: str, captured: Dict[str, str]
         "config_flags": config_flags,
         "storage": storage,
         "hardware_trust": hardware_trust,
+        "certificates": certificates,
         "coverage": coverage.as_dict(),
         "source_digests": digests,
         "note": ("macOS read-only collection normalized into the "

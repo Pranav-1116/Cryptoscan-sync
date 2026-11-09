@@ -147,6 +147,42 @@ UNKNOWN — never 'not expired'; no certificate metadata is never
 business mapping 'high' is UNREACHABLE and the derivation records the
 cap.
 
+## Tier-2 runtime observation (approved — built)
+
+`runtime.py` ingests runtime METADATA events from the approved
+tracepoints/eBPF collector: bounded event filter (allowlisted fields
+only — plaintext, keys, passwords, tokens, secrets and crypto I/O
+buffers are REFUSED with reasons and counted), schema validation,
+deduplication with notes, and event-loss accounting from the
+collector's own LOST lines (recorded, never guessed).
+`runtime_usage_confirmed` is raised ONLY by observed runtime events,
+scoped to the observed process identity, and never overwrites the
+static registration row (§2.2).
+
+Real capture tooling for an authorised host:
+`tools/runtime_capture/crypto_trace.bt` (scoped bpftrace program,
+metadata-only output) + `capture-linux-runtime.sh` (prerequisite
+checks, enumerates and RECORDS the instrumentation points actually
+attached — tracepoints are never assumed, folds loss accounting into
+LOST|N). The development sandbox has no root and no bpftrace, so the
+trace fixtures are RECONSTRUCTED from the documented capture format
+and labelled; the collector program and driver are real code to run
+under an approved profile.
+
+OS-CRYPTO-017 evaluates from a runtime session: event loss = 'Runtime
+collector losing events' (observability gap — capabilities without
+runtime events remain 'usage not confirmed', NEVER 'unused'); no
+session is never 'healthy'; a zero-event session is UNKNOWN, never
+'no cryptographic activity'.
+
+Live-host validation (Windows/macOS): `tools/live_capture/
+capture-windows.ps1` and `capture-macos.sh` capture the documented
+sources with manifests (macOS: command outputs only — protected
+storage files and keychain databases are never scraped); `validate_
+capture.py` feeds a capture directory into the matching collector and
+the OS-CRYPTO catalogue. One capture validates THAT HOST'S CAPTURE
+ONLY — never fleet qualification (§12).
+
 ## Not implemented (recorded, never hidden)
 
 - runtime monitoring (Tier 2, eBPF): not implemented — no runtime events
