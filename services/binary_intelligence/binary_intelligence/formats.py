@@ -6,7 +6,7 @@ its magic bytes and structure — never by its name.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Tuple
 
 
 class BinaryFormat(str, Enum):

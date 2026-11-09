@@ -37,7 +37,7 @@ import hashlib
 import hmac
 
 from shared_models.cryptolog_events import event_hash as _event_hash
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 CHAIN_SCHEMA = "cryptoscan.cryptolog-chain/1"
 MERKLE_SCHEMA = "cryptoscan.cryptolog-merkle/1"

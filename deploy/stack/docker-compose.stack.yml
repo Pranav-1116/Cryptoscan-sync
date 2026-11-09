@@ -1,34 +1,35 @@
-# The bank stack profile — every infrastructure tool the platform table names.
-#
-# This file is an OVERLAY on the root compose (which already runs the app
-# services: api, worker (Celery), estate-daemon, notifications, monitor,
-# frontend, nginx gateway):
-#
-#   docker compose -f docker-compose.yml -f deploy/stack/docker-compose.stack.yml up -d
-#
-# or simply `make stack-up`. Images are pinned; every stateful tool has a
-# named volume and a healthcheck. This profile is an OPERATIONAL BASELINE,
-# not a production admission: TLS material, Vault unseal, Kafka sizing,
-# OpenSearch hardening and Kubernetes HA are configured for the bank's
-# environment by its operators (register those separately).
+# DEVELOPMENT ONLY. This overlays the root app Compose; run via `make stack-up`
+# after `scripts/check_stack_profile.py` passes. Direct Compose invocation is
+# unsupported without the same preflight. The Redis-backed worker/outbox is NOT
+# Celery. Internal endpoints use plaintext and OpenSearch security is disabled;
+# the Vault server runs in dev mode. Never use this profile for bank production.
+# Root Compose resolves relative bind paths, so mounts below use ./deploy/stack/.
+# Compose >=2.24 is needed for !override to replace root host-port mappings.
 #
 #   PostgreSQL    = TRUTH        Neo4j       = GRAPH       Redis      = SPEED
-#   Celery        = JOBS         Kafka       = EVENTS      MinIO      = EVIDENCE
+#   Worker/outbox = JOBS         Kafka       = EVENTS      MinIO      = EVIDENCE
 #   OpenSearch    = SEARCH       Prometheus  = METRICS     Grafana    = MONITORING
 #   OpenTelemetry = TRACING      Vault       = SECRETS     Envoy      = GATEWAY
 #   Docker        = PACKAGING    Kubernetes  = ORCHESTRATION (deploy/stack/k8s/)
 
 name: cryptoscan-stack
 
+# Explicit acknowledgement even when Compose is invoked without the Make target.
+x-stack-dev-only: ${STACK_DEV_ACK:?set STACK_DEV_ACK=development-only; this profile is not production}
+
 services:
+  # Keep the root volume's shipping image major version: never upgrade a live
+  # postgres_data volume by merely enabling an overlay.
   postgres:
-    image: postgres:16.4-alpine
+    image: postgres:15-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-cryptoscan}
       POSTGRES_USER: ${POSTGRES_USER:-cryptoscan}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env — never commit one}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports: !override
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cryptoscan}"]
       interval: 5s
@@ -37,15 +38,15 @@ services:
     networks: [cryptoscan-net]
 
   neo4j:
-    image: neo4j:5.24.0-community
+    image: neo4j:5.26-community
     environment:
       NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}
       NEO4J_server_memory_heap_max__size: 1G
     volumes:
       - neo4j_data:/data
-    ports:
-      - "7474:7474"
-      - "7687:7687"
+    ports: !override
+      - "127.0.0.1:${NEO4J_HTTP_PORT:-57474}:7474"
+      - "127.0.0.1:${NEO4J_BOLT_PORT:-57687}:7687"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
       interval: 10s
@@ -54,16 +55,32 @@ services:
     networks: [cryptoscan-net]
 
   redis:
-    image: redis:7.4-alpine
+    image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
+    ports: !override
+      - "127.0.0.1:${REDIS_PORT:-56379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 20
     networks: [cryptoscan-net]
+
+  # Replace root app publishes, not append to them. They remain available to
+  # local development clients but are never reachable over a laptop LAN.
+  api:
+    ports: !override
+      - "127.0.0.1:${API_PORT:-8010}:8010"
+
+  frontend:
+    ports: !override
+      - "127.0.0.1:${FRONTEND_PORT:-3003}:3003"
+
+  nginx:
+    ports: !override
+      - "127.0.0.1:${NGINX_PORT:-8088}:80"
 
   kafka:
     image: apache/kafka:3.8.0
@@ -80,7 +97,7 @@ services:
     volumes:
       - kafka_data:/var/lib/kafka/data
     ports:
-      - "9092:9092"
+      - "127.0.0.1:9092:9092"
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
       interval: 15s
@@ -113,8 +130,8 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -150,7 +167,7 @@ services:
     volumes:
       - opensearch_data:/usr/share/opensearch/data
     ports:
-      - "9200:9200"
+      - "127.0.0.1:9200:9200"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
       interval: 15s
@@ -162,10 +179,10 @@ services:
     image: prom/prometheus:v2.54.1
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=15d"]
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/stack/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     networks: [cryptoscan-net]
 
   grafana:
@@ -175,11 +192,11 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./deploy/stack/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/stack/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on: [prometheus]
     networks: [cryptoscan-net]
 
@@ -187,21 +204,23 @@ services:
     image: otel/opentelemetry-collector-contrib:0.111.0
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
-      - ./otel/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+      - ./deploy/stack/otel/otel-collector.yaml:/etc/otelcol/config.yaml:ro
     ports:
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
+      - "127.0.0.1:4317:4317"   # OTLP gRPC
+      - "127.0.0.1:4318:4318"   # OTLP HTTP
     networks: [cryptoscan-net]
 
   vault:
     image: hashicorp/vault:1.18.0
+    # Deliberately ephemeral; this is never a durable production Vault.
+    command: ["server", "-dev"]
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN_ID:?set a dev token in .env — production uses unseal + bank IAM}
       VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
     volumes:
-      - ./vault/policies:/vault/policies:ro
+      - ./deploy/stack/vault/policies:/vault/policies:ro
     ports:
-      - "8200:8200"
+      - "127.0.0.1:8200:8200"
     cap_add: [IPC_LOCK]
     networks: [cryptoscan-net]
 
@@ -209,10 +228,13 @@ services:
     image: envoyproxy/envoy:v1.31.2
     command: ["-c", "/etc/envoy/envoy.yaml"]
     volumes:
-      - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./deploy/stack/envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      # Supply tls.crt/tls.key from an EXTERNAL operator-owned directory.
+      # Missing material leaves Envoy unable to start rather than serving HTTP.
+      - ${GATEWAY_TLS_CERT_DIR:?set absolute external cert/key directory}:/run/secrets/gateway:ro
     ports:
-      - "8443:8443"
-      - "8080:8080"
+      - "127.0.0.1:8443:8443"
+      - "127.0.0.1:8080:8080"
     networks: [cryptoscan-net]
 
 volumes:

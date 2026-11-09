@@ -8,7 +8,7 @@ never as proof of runtime use (§5).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
 _MAX_SECTIONS = 256
 _MAX_IMPORTS = 2048

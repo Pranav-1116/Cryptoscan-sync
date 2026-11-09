@@ -8,7 +8,6 @@ per-item batch outcomes with derived totals.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
 
 import pytest
 from fastapi import FastAPI
@@ -61,6 +60,8 @@ def api():
     install_error_contract(app)
     app.dependency_overrides[dependencies.get_db_session] = lambda: session
     app.dependency_overrides[dependencies.get_current_user] = lambda: "auditor"
+    app.dependency_overrides[dependencies.require_intelligence_writer] = lambda: "writer"
+    app.dependency_overrides[dependencies.require_intelligence_manager] = lambda: "manager"
     return TestClient(app)
 
 

@@ -59,6 +59,9 @@ def api():
     install_error_contract(app)
     app.dependency_overrides[dependencies.get_db_session] = lambda: session
     app.dependency_overrides[dependencies.get_current_user] = lambda: "auditor"
+    # Data-path tests use a synthetic writer; real RBAC is exercised through
+    # authenticated create_app() tenant tests.
+    app.dependency_overrides[dependencies.require_intelligence_writer] = lambda: "writer"
     return TestClient(app)
 
 
@@ -253,6 +256,8 @@ def test_rescan_requires_the_same_bytes(api):
 
 def test_async_queue_process_and_backpressure(api):
     from api.routers.binary_intelligence import WORKER_QUEUE
+
+    processed_before = WORKER_QUEUE.processed_count
     sample = elf_crypto_sample()
     queued = api.post("/api/v1/binary/scan/async", json={
         "tenant_id": "tenant_001",
@@ -283,13 +288,34 @@ def test_async_queue_process_and_backpressure(api):
 
     status = api.get("/api/v1/binary/worker/status")
     assert status.status_code == 200
-    assert status.json()["queue"]["processed_total"] == 1
+    assert status.json()["queue"]["processed_total"] == processed_before + 1
     assert "refusals" in status.json()["note"] or "numbers" in status.json()["note"]
+
+
+def test_foreign_job_id_is_not_consumed_or_executed(api):
+    from db.tenancy import tenant_scope
+    from api.routers.binary_intelligence import WORKER_QUEUE
+
+    payload = {"tenant_id": "tenant_001",
+               "artifact_base64": base64.b64encode(elf_crypto_sample()).decode()}
+    with tenant_scope("tenant_001"):
+        accepted = api.post("/api/v1/binary/scan/async", json=payload)
+    assert accepted.status_code == 202, accepted.text
+    job_id = accepted.json()["job_id"]
+    before = WORKER_QUEUE.pending
+    with tenant_scope("tenant_002"):
+        refused = api.post(f"/api/v1/binary/scan/jobs/{job_id}/process")
+        forged = api.post("/api/v1/binary/scan/async", json=payload)
+    assert refused.status_code == 404
+    assert forged.status_code == 403
+    assert WORKER_QUEUE.pending == before, "foreign request must not pop a job"
+    with tenant_scope("tenant_001"):
+        done = api.post(f"/api/v1/binary/scan/jobs/{job_id}/process")
+    assert done.status_code == 201, done.text
 
 
 def test_scan_runs_record_stage_timings(api):
     created = _submit(api, elf_crypto_sample())
-    artifact_id = created.json()["artifact"]["artifact_id"]
     scan_id = created.json()["scan_id"]
     status = api.get(f"/api/v1/binary/scans/{scan_id}",
                      params={"tenant_id": "tenant_001"}).json()
@@ -355,6 +381,7 @@ def test_drift_series_reports_indicator_drift_with_caveats(api):
                  tenant="tenant_drift")
     v2 = _submit(api, pe_crypto_sample(), name="payments-engine",
                  tenant="tenant_drift")
+    assert v1.status_code == 201 and v2.status_code == 201
     body = api.get("/api/v1/binary/drift",
                    params={"tenant_id": "tenant_drift",
                            "subject": "payments-engine"}).json()

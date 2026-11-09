@@ -18,7 +18,7 @@
  * only — it can make the UI briefly optimistic, never permissive, because the
  * server answer always replaces it and the backend enforces regardless.
  */
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { apiAuthMe, getRoles, getUserName } from "./api.js";
 
@@ -33,7 +33,7 @@ export type AuthState = {
   /** True once the server has answered at least once. */
   verified: boolean;
   /** Re-ask the server (after sign-in, or when a 401 is observed). */
-  refresh: () => Promise<void>;
+  refresh: () => Promise<boolean>;
   /** Verified-role predicate for UI affordances; backend remains authoritative. */
   hasRole: (role: string) => boolean;
 };
@@ -43,7 +43,7 @@ const AuthContext = createContext<AuthState>({
   user: null,
   roles: [],
   verified: false,
-  refresh: async () => {},
+  refresh: async () => false,
   hasRole: () => false,
 });
 
@@ -56,29 +56,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<string | null>(null);
   const [roles, setRoles] = useState<string[]>([]);
   const [verified, setVerified] = useState(false);
+  const refreshGeneration = useRef(0);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<boolean> => {
+    const generation = ++refreshGeneration.current;
+    // A successful login can navigate before /auth/me answers. Keeping the
+    // previous anonymous state would bounce it straight back to /login.
+    // While the server rechecks, the route guard renders a neutral loading
+    // state — never the protected page on an unverified token.
+    setStatus("loading");
+    setVerified(false);
     try {
       const me = await apiAuthMe();
-      if (me && me.username) {
+      if (generation !== refreshGeneration.current) return false;
+      if (me?.username) {
         setUser(me.username);
         setRoles(me.roles || []);
         setStatus("authenticated");
-      } else {
-        // The server did answer, and the answer is "nobody".
-        setUser(null);
-        setRoles([]);
-        setStatus("anonymous");
+        return true;
       }
-    } catch {
-      // Network/backend failure is not proof of a session. Treat it as
-      // anonymous so the guard fails closed rather than admitting on an
-      // outage; the login screen surfaces backend reachability separately.
+      // The server answered without a verified session.
       setUser(null);
       setRoles([]);
       setStatus("anonymous");
+      return false;
+    } catch {
+      if (generation !== refreshGeneration.current) return false;
+      // A transport failure is not proof of identity. Never admit from a
+      // cached bearer token or roles when the server cannot confirm them.
+      setUser(null);
+      setRoles([]);
+      setStatus("anonymous");
+      return false;
     } finally {
-      setVerified(true);
+      if (generation === refreshGeneration.current) setVerified(true);
     }
   }, []);
 

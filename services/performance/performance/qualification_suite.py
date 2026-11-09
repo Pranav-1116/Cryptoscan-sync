@@ -64,7 +64,7 @@ def run_suite(*, corpus_size: int = 500, volume_size: int = 2000) -> Dict[str, A
         RetentionPolicy, plan_retention,
     )
     from shared_models.performance_store import (
-        DUPLICATE, INSERTED, MetricRepository,
+        DUPLICATE, MetricRepository,
     )
     from shared_models.performance_collectors import translate_node_exporter
 

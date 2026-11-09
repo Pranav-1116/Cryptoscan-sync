@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from binary_intelligence.bom import BinaryBom, build_bom
+from binary_intelligence.bom import build_bom
 from binary_intelligence.certificates import inspect_certificates
 from binary_intelligence.crypto_fingerprints import FINGERPRINT_DB_VERSION
 from binary_intelligence.detection import (

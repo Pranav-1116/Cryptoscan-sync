@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 from api.dependencies import get_current_user, get_db_session
 from api.main import create_app
@@ -215,7 +215,18 @@ def banks(tmp_path, monkeypatch):
     from db.repositories.user_repository import UserRepository
 
     previous = SessionLocal.kw.get("bind")
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    # WebSocket rechecks execute in other threads. In-memory StaticPool shares
+    # ONE SQLite connection across the mutating test thread and socket reader,
+    # so a commit can race with a borrowed transaction and expose stale state.
+    # File-backed SQLite gives each thread its own real connection and
+    # transaction; WAL permits revocation writes during socket reads.
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'tenant-banks.db'}",
+        connect_args={"check_same_thread": False, "timeout": 10},
+        poolclass=NullPool)
+    with engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA journal_mode=WAL")
+        connection.commit()
     Base.metadata.create_all(engine)
     configure_session(engine)
     session = SessionLocal()

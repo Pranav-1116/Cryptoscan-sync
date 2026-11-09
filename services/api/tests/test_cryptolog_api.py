@@ -65,6 +65,8 @@ def api():
     install_error_contract(app)
     app.dependency_overrides[dependencies.get_db_session] = lambda: session
     app.dependency_overrides[dependencies.get_current_user] = lambda: "auditor"
+    app.dependency_overrides[dependencies.require_intelligence_writer] = lambda: "writer"
+    app.dependency_overrides[dependencies.require_intelligence_manager] = lambda: "manager"
     return TestClient(app)
 
 
@@ -198,7 +200,7 @@ def test_missing_event_reads_404_not_an_empty_truth(api):
 
 def test_alert_evaluation_is_deterministic_and_never_confirms(api):
     events = [{
-        "event_type": "TLS_NEGOTIATION_OBSERVED", "category": "TLS",
+        "event_id": "event-rc4", "event_type": "TLS_NEGOTIATION_OBSERVED", "category": "TLS",
         "logging_kind": "ACTIVITY", "tenant_id": "tenant_001",
         "severity": "INFO", "asset_id": "asset_gateway_001",
         "source": {"collector_id": "c1", "collector_version": "1",
@@ -210,6 +212,7 @@ def test_alert_evaluation_is_deterministic_and_never_confirms(api):
         "observation": {"observed_at": AS_OF},
         "evidence": {"evidence_ids": ["ev-rc4"]},
     }]
+    assert api.post("/api/v1/cryptolog/events", json=events[0]).status_code == 201
     res = api.post("/api/v1/cryptolog/alerts/evaluate",
                    json={"events": events, "assessments": {
                        "asset_gateway_001": {

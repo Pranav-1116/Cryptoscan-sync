@@ -155,7 +155,7 @@ def test_login_purges_long_dead_session_rows_but_keeps_live_ones(sqlite_app):
         repo = UserRepository(s)
         repo.create_session("dead-token-60d", "admin", now - timedelta(days=60))
         repo.create_session("grace-token-1d", "admin", now - timedelta(days=1))
-        live = repo.create_session("live-token", "admin", now + timedelta(days=1))
+        repo.create_session("live-token", "admin", now + timedelta(days=1))
         repo.revoke_session("live-token")  # revoked-but-unexpired: revocation checks still read it
         s.commit()
 

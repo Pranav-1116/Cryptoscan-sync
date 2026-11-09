@@ -19,7 +19,6 @@ from shared_models.performance_collectors import (
     translate_windows_exporter,
 )
 from shared_models.performance_corpus import generate_corpus
-from shared_models.performance_metrics import PerformanceMetric
 from shared_models.performance_taxonomy import DEFINITIONS, definition_for
 
 NOW = datetime(2026, 11, 1, tzinfo=timezone.utc)

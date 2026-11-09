@@ -22,6 +22,10 @@ from shared_models.cryptolog_events import (
 _OUTCOMES = (INSERTED, DUPLICATE, CONFLICT)
 
 
+class CryptoLogWindowTooLarge(ValueError):
+    """An auditor export cannot include a complete bounded event window."""
+
+
 def partition_for(event: Mapping[str, Any]) -> str:
     """Partitions are tenant and time window (observed month)."""
     observed = str(((event.get("observation") or {}).get("observed_at")) or "")
@@ -420,29 +424,31 @@ class CryptoLogAlertRepository:
 
     def events_in_range(self, *, tenant_id: Optional[str] = None,
                         start_occurred: Optional[str] = None,
-                        end_occurred: Optional[str] = None) -> list[dict[str, Any]]:
-        """Raw stored event dicts in ledger order (the truest input for
-        integrity verification: hashes recompute over what was stored)."""
+                        end_occurred: Optional[str] = None,
+                        max_events: Optional[int] = None) -> list[dict[str, Any]]:
+        """Stored events in ledger order; refuse an oversized auditor window.
+
+        Stream rows instead of materializing the entire table before checking
+        the budget. Filtering by observed time stays exact and portable across
+        SQLite/PostgreSQL; only matching rows count toward max_events.
+        """
         query = self.db.query(CryptoLogEvent)
         if tenant_id:
             query = query.filter(CryptoLogEvent.tenant_id == tenant_id)
-        rows = query.order_by(CryptoLogEvent.created_at, CryptoLogEvent.event_id).all()
-        records: list[dict[str, Any]] = []
-        for r in rows:
-            records.append({
-                "event": row_to_event(r),      # pure: re-hashes to the stored digest
-                "event_hash": r.event_hash,    # the recorded digest at ingestion
-                "partition_id": r.partition_id,
-            })
-        events = records
-        # Filter on observed in Python: portable across SQLite/Postgres and
-        # exact against the stored value rather than a JSON-path variant.
-        def _observed(rec: dict[str, Any]) -> str:
-            ev = rec["event"]
-            obs = ev.get("observation") or {}
-            return str(ev.get("observed") or obs.get("observed_at") or "")
-        if start_occurred:
-            events = [e for e in events if _observed(e) >= start_occurred]
-        if end_occurred:
-            events = [e for e in events if _observed(e) <= end_occurred]
+        if max_events is not None and max_events <= 0:
+            raise ValueError("max_events must be positive")
+        events: list[dict[str, Any]] = []
+        for row in query.order_by(
+                CryptoLogEvent.created_at, CryptoLogEvent.event_id).yield_per(256):
+            event = row_to_event(row)
+            observed = str((event.get("observation") or {}).get("observed_at") or "")
+            if start_occurred and observed < start_occurred:
+                continue
+            if end_occurred and observed > end_occurred:
+                continue
+            events.append({"event": event, "event_hash": row.event_hash,
+                           "partition_id": row.partition_id})
+            if max_events is not None and len(events) > max_events:
+                raise CryptoLogWindowTooLarge(
+                    f"event window exceeds {max_events} records")
         return events

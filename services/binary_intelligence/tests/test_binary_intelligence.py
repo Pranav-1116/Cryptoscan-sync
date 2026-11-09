@@ -225,7 +225,6 @@ def test_pqc_assessment_states_proven_and_unproven():
 
 
 def test_pqc_absence_in_scope_is_not_readiness():
-    ident = _identity(elf_plain_sample())
     assessment = assess_pqc([], libraries=[])
     body = assessment.as_dict()
     assert body["quantum_vulnerable_algorithm_indicators"] == "Not detected"
@@ -547,7 +546,7 @@ def test_firmware_analysis_normalizes_third_party_output_into_leads():
 
 
 def test_firmware_never_claims_absence_and_degrades_honestly():
-    from adapters.firmware import analyze_firmware, FirmwareReport
+    from adapters.firmware import analyze_firmware
     clean = analyze_firmware(b"\x00" * 4096)
     body = clean.as_dict()
     assert body["analysis_completed"] is True
@@ -559,7 +558,6 @@ def test_firmware_never_claims_absence_and_degrades_honestly():
     assert empty.analysis_completed is False
     assert "no firmware to analyze" in empty.notes[0]
 
-    oversized = analyze_firmware(b"\x00" * 10)
     # a bounded refusal for oversized input
     from adapters import firmware as fw
     original = fw.MAX_FIRMWARE_BYTES
@@ -575,7 +573,6 @@ def test_firmware_never_claims_absence_and_degrades_honestly():
 def test_firmware_missing_tool_is_not_a_clean_result(monkeypatch):
     from adapters import firmware as fw
     monkeypatch.setattr(fw.shutil, "which", lambda name: None)
-    import sys
     monkeypatch.setattr("pathlib.Path.exists", lambda self: False)
     report = fw.analyze_firmware(b"\x00" * 128)
     assert report.analysis_completed is False

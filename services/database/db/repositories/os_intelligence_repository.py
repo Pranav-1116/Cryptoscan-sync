@@ -64,7 +64,10 @@ class OSIntelligenceRepository:
             os_id=(identity.get("os_id") or None),
             os_version_id=(identity.get("os_version_id") or None),
             arch=(identity.get("arch") or None),
-            cmdline=(identity.get("cmdline") or None),
+            # Never persist caller-supplied kernel boot arguments: they may
+            # contain passwords, tokens or key material, even when the
+            # inventory came from an external signed collection package.
+            cmdline="withheld (kernel boot parameters may contain secrets)",
             tainted_flags=(identity.get("tainted_flags") or None),
             tainted_meanings=identity.get("tainted_meanings"),
             environment_development_only=bool(
@@ -442,17 +445,24 @@ class OSIntelligenceRepository:
     # --- queries -----------------------------------------------------
 
     def list_assets(self, tenant_id: str) -> List[Dict[str, Any]]:
+        # Retain all snapshots, but the estate view shows one latest snapshot
+        # per host. The collection_id still addresses immutable child evidence.
         rows = self.db.scalars(
             select(OSAsset).where(OSAsset.tenant_id == tenant_id)
-            .order_by(OSAsset.created_at.desc())).all()
-        return [self._asset_dict(r) for r in rows]
+            .order_by(OSAsset.collected_at.desc(), OSAsset.id.desc())).all()
+        latest: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            if row.asset_id not in latest:
+                latest[row.asset_id] = self._asset_dict(row)
+        return list(latest.values())
 
     def get_asset(self, tenant_id: str, asset_id: str
                   ) -> Optional[Dict[str, Any]]:
         row = self.db.scalars(
             select(OSAsset).where(OSAsset.tenant_id == tenant_id,
                                   OSAsset.asset_id == asset_id)
-            .order_by(OSAsset.created_at.desc()).limit(1)).first()
+            .order_by(OSAsset.collected_at.desc(), OSAsset.id.desc())
+            .limit(1)).first()
         return self._asset_dict(row) if row else None
 
     def latest_collection(self, tenant_id: str, asset_id: str
@@ -460,7 +470,8 @@ class OSIntelligenceRepository:
         row = self.db.scalars(
             select(OSAsset).where(OSAsset.tenant_id == tenant_id,
                                   OSAsset.asset_id == asset_id)
-            .order_by(OSAsset.created_at.desc()).limit(1)).first()
+            .order_by(OSAsset.collected_at.desc(), OSAsset.id.desc())
+            .limit(1)).first()
         return row.collection_id if row else None
 
     def list_capabilities(self, tenant_id: str, collection_id: str

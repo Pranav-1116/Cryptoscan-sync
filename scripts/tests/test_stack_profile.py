@@ -14,12 +14,27 @@ from pathlib import Path
 
 import yaml
 
+from scripts.check_stack_profile import check
+
 ROOT = Path(__file__).resolve().parent.parent.parent
 STACK = ROOT / "deploy" / "stack"
 
 
+class _ComposeLoader(yaml.SafeLoader):
+    pass
+
+
+def _override(loader, node):
+    # Compose >=2.24 replaces root lists instead of appending host publishes.
+    return loader.construct_sequence(node)
+
+
+_ComposeLoader.add_constructor("!override", _override)
+
+
 def _compose():
-    return yaml.safe_load((STACK / "docker-compose.stack.yml").read_text())
+    return yaml.load((STACK / "docker-compose.stack.yml").read_text(),
+                     Loader=_ComposeLoader)
 
 
 #: the platform table, tool -> role
@@ -54,6 +69,9 @@ def test_every_stateful_tool_has_a_healthcheck_and_persistence():
 def test_images_are_pinned_not_latest_drift():
     services = _compose()["services"]
     for name, service in services.items():
+        if name in {"api", "frontend", "nginx"}:
+            # These inherit their build definitions from the root Compose.
+            continue
         image = service.get("image", "")
         assert image and ":" in image, f"{name} has an unpinned image"
         assert not image.endswith(":latest") or name.startswith("minio"), \
@@ -88,6 +106,60 @@ def test_the_kubernetes_profile_covers_orchestration():
     text = (STACK / "k8s" / "10-api.yaml").read_text()
     assert "secretRef" in text and "bank secret manager" in text
     assert "kind: Secret" not in text, "no secret VALUES in the repository"
+
+
+def test_overlay_does_not_upgrade_the_root_database_or_graph_volumes():
+    services = _compose()["services"]
+    assert services["postgres"]["image"] == "postgres:15-alpine"
+    assert services["neo4j"]["image"] == "neo4j:5.26-community"
+
+
+def test_overlay_binds_exist_and_envoy_has_external_certificate_mount():
+    services = _compose()["services"]
+    for name in ("prometheus", "grafana", "otel-collector", "vault", "envoy"):
+        for mount in services[name]["volumes"]:
+            source = mount.split(":", 1)[0]
+            if source.startswith("./"):
+                assert (ROOT / source).exists(), (name, source)
+    envoy_mounts = services["envoy"]["volumes"]
+    assert any("GATEWAY_TLS_CERT_DIR" in mount and
+               mount.endswith(":/run/secrets/gateway:ro")
+               for mount in envoy_mounts)
+    assert "STACK_DEV_ACK" in _compose()["x-stack-dev-only"]
+
+
+def test_dev_profile_binds_every_published_port_to_loopback():
+    for name, service in _compose()["services"].items():
+        for port in service.get("ports", []):
+            assert port.startswith("127.0.0.1:"), (name, port)
+    text = (STACK / "docker-compose.stack.yml").read_text()
+    assert text.count("ports: !override") == 6, "root port lists must be replaced"
+
+
+def test_gateway_upstreams_and_redirect_match_the_app():
+    config = yaml.safe_load((STACK / "envoy/envoy.yaml").read_text())
+    clusters = config["static_resources"]["clusters"]
+    ports = {c["name"]: c["load_assignment"]["endpoints"][0]
+             ["lb_endpoints"][0]["endpoint"]["address"]["socket_address"]["port_value"]
+             for c in clusters}
+    assert ports == {"api": 8010, "frontend": 3003}
+    assert "port_redirect: 8443" in (STACK / "envoy/envoy.yaml").read_text()
+    assert "api:8010" in (STACK / "prometheus/prometheus.yml").read_text()
+    assert "worker:8100" not in (STACK / "prometheus/prometheus.yml").read_text()
+
+
+def test_dev_profile_preflight_refuses_prod_and_missing_tls(tmp_path):
+    environment = {"STACK_DEV_ACK": "development-only", "ENVIRONMENT": "development",
+                   "GATEWAY_TLS_CERT_DIR": str(tmp_path)}
+    assert check(environment) == ["GATEWAY_TLS_CERT_DIR must contain tls.crt",
+                                  "GATEWAY_TLS_CERT_DIR must contain tls.key"]
+    (tmp_path / "tls.crt").write_text("fixture cert")
+    (tmp_path / "tls.key").write_text("fixture key")
+    assert check(environment) == []
+    assert any("not production" in error for error in
+               check({**environment, "ENVIRONMENT": "production"}))
+    assert any("STACK_DEV_ACK" in error for error in
+               check({**environment, "STACK_DEV_ACK": ""}))
 
 
 def test_tool_configurations_parse():

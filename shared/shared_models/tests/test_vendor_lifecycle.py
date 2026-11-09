@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from shared_models.vendor_lifecycle import (
-    VENDOR_SCHEMA, SUPPORTED, END_OF_SUPPORT, END_OF_LIFE, UNKNOWN,
+    SUPPORTED, END_OF_SUPPORT, UNKNOWN,
     RELEASE, END_OF_SUPPORT_ANNOUNCED, OWNERSHIP_CHANGE,
     deployed_exposure, product_support, supplier_change, supplier_risk,
     vendor_log_digest,
@@ -146,7 +146,7 @@ def test_change_log_digest_is_order_insensitive():
 # ---- PQC supplier readiness ("questions to ask your vendors") ----
 
 from shared_models.vendor_lifecycle import (
-    ANSWERED, DECLINED, INDEPENDENT_TEST, NOT_PROVIDED, READY, PARTIAL,
+    ANSWERED, DECLINED, INDEPENDENT_TEST, READY, PARTIAL,
     VENDOR_CLAIM, least_ready_suppliers, supplier_readiness,
 )
 

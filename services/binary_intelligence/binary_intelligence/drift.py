@@ -20,7 +20,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from binary_intelligence.comparison import ComparisonReport, compare_findings
+from binary_intelligence.comparison import compare_findings
 
 
 @dataclass

@@ -15,8 +15,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 COLLECTOR_NAME = "cryptoscan-os-intelligence"
 COLLECTOR_VERSION = "os-intelligence/1.0.0"

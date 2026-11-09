@@ -206,7 +206,6 @@ def collect_macos(host_id: str, captured: Dict[str, str]
     command explicitly."""
     coverage = CoverageReport()
     digests: Dict[str, str] = {}
-    notes: List[str] = []
 
     def source(name: str) -> Optional[str]:
         coverage.sources_attempted.append(name)

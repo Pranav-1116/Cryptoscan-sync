@@ -2,7 +2,7 @@
 (docs/os-kernel-intelligence/01_PRODUCT_SPEC.md §10).
 
 Entities os_assets … os_coverage (Phase 1). One OSAsset row is one
-observed host; every child row belongs to exactly one collection and
+observed host snapshot; every child row belongs to exactly one collection and
 carries its evidence class. runtime_usage_confirmed is stored per
 capability and is never true from read-only OS collection (§2.2) —
 the field exists so future Tier-2 runtime evidence can raise it
@@ -52,8 +52,9 @@ class OSAsset(BaseModel, TenantScoped):
                                                    nullable=False)
 
     __table_args__ = (
-        Index("ix_os_assets_tenant_asset", "tenant_id", "asset_id",
-              unique=True),
+        Index("ix_os_assets_tenant_asset", "tenant_id", "asset_id"),
+        Index("ix_os_assets_tenant_collection", "tenant_id",
+              "collection_id", unique=True),
     )
 
 

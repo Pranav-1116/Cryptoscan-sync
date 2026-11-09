@@ -73,6 +73,8 @@ def api():
     install_error_contract(app)
     app.dependency_overrides[dependencies.get_db_session] = lambda: session
     app.dependency_overrides[dependencies.get_current_user] = lambda: "auditor"
+    app.dependency_overrides[dependencies.require_intelligence_writer] = lambda: "writer"
+    app.dependency_overrides[dependencies.require_intelligence_manager] = lambda: "manager"
     return TestClient(app)
 
 
@@ -113,6 +115,72 @@ def test_the_auditor_pack_hashes_every_file_and_states_its_boundaries(api):
     integrity = json.loads(docs["integrity.json"])
     assert integrity["verification"]["overall_state"] == "CHECKPOINT_MISSING", \
         "an uncheckpointed export records UNVERIFIED honestly, never a pass"
+
+
+def test_export_refuses_a_truncated_alert_register(api, monkeypatch):
+    from db.repositories.cryptolog_repository import CryptoLogAlertRepository
+
+    monkeypatch.setattr(
+        CryptoLogAlertRepository, "list_alerts",
+        lambda self, **kwargs: {"rows": [], "total_count": 1001})
+    response = api.post("/api/v1/cryptolog/reports/export", json={})
+    assert response.status_code == 409
+    assert "partial alert list" in response.json()["detail"]
+
+
+def test_export_refuses_a_truncated_checkpoint_register(api, monkeypatch):
+    from db.repositories.cryptolog_repository import CryptoLogAlertRepository
+
+    monkeypatch.setattr(
+        CryptoLogAlertRepository, "list_checkpoints",
+        lambda self, **kwargs: {"rows": [], "total_count": 51})
+    response = api.post("/api/v1/cryptolog/reports/export", json={})
+    assert response.status_code == 409
+    assert "partial checkpoint list" in response.json()["detail"]
+
+
+def test_export_refuses_a_truncated_event_window(api, monkeypatch):
+    from db.repositories.cryptolog_repository import CryptoLogAlertRepository
+
+    for ident in ("event-1", "event-2"):
+        assert api.post("/api/v1/cryptolog/events", json=_event_dict(
+            event_id=ident)).status_code == 201
+    original = CryptoLogAlertRepository.events_in_range
+
+    def one_event_budget(self, **kwargs):
+        return original(self, **{**kwargs, "max_events": 1})
+
+    monkeypatch.setattr(CryptoLogAlertRepository, "events_in_range",
+                        one_event_budget)
+    result = api.post("/api/v1/cryptolog/reports/export",
+                      json={"tenant_id": "tenant_001"})
+    assert result.status_code == 409
+    assert "partial chain" in result.json()["detail"]
+
+
+def test_export_uses_resolved_tenant_and_refuses_foreign_selection(api):
+    from db.tenancy import tenant_scope
+
+    api.post("/api/v1/cryptolog/events", json=_event_dict(event_id="event-owned"))
+    with tenant_scope("tenant_001"):
+        _, manifest, _ = _export(api)
+        forged = api.post("/api/v1/cryptolog/reports/export",
+                          json={"tenant_id": "tenant_002"})
+    assert manifest["tenant_id"] == "tenant_001"
+    assert manifest["scope"] == "tenant_001"
+    assert forged.status_code == 403
+
+
+def test_export_refuses_unsupported_filter_and_mixed_chains(api):
+    assert api.post("/api/v1/cryptolog/reports/export",
+                    json={"category": "TLS"}).status_code == 422
+    api.post("/api/v1/cryptolog/events", json=_event_dict(
+        event_id="event-a", tenant_id="tenant_001"))
+    api.post("/api/v1/cryptolog/events", json=_event_dict(
+        event_id="event-b", tenant_id="tenant_002"))
+    mixed = api.post("/api/v1/cryptolog/reports/export", json={})
+    assert mixed.status_code == 409, mixed.text
+    assert "multiple ledger partitions" in mixed.json()["detail"]
 
 
 def test_a_missing_artifact_is_unverifiable_never_valid(api):

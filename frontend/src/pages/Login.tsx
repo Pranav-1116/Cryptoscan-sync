@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiLogin, isBackendLive } from "../lib/api.js";
+import { useAuth } from "../lib/auth.js";
 import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
 import { BrandMark, ICON_MD, IconClose, IconOk } from "../components/icons";
 import { DecryptText } from "../lib/motion";
@@ -42,6 +43,7 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const [backendUp, setBackendUp] = useState<boolean | null>(null);
   const { t } = useI18n();
+  const { refresh } = useAuth();
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -58,12 +60,18 @@ export default function Login() {
     setError(null);
     setNotice(null);
     const res = await apiLogin(username.trim(), password);
-    setBusy(false);
-    if (res.ok) {
-      navigate("/command-center", { replace: true });
-    } else {
+    if (!res.ok) {
+      setBusy(false);
       setError(res.error || "Sign-in failed. Check your credentials and try again.");
+      return;
     }
+    // The login response alone is not the route guard's source of truth.
+    // Wait for the server-verified /auth/me state before entering the shell;
+    // otherwise RequireAuth can still see "anonymous" and send us back here.
+    const verified = await refresh();
+    setBusy(false);
+    if (verified) navigate("/command-center", { replace: true });
+    else setError("Sign-in succeeded, but the session could not be verified. Check the API connection and try again.");
   };
 
   return (

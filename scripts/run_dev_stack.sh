@@ -207,8 +207,7 @@ start_api() {
   (
     cd "$ROOT"
     nohup "$PY" -m uvicorn api.main:app \
-      --host 0.0.0.0 --port "$API_PORT" \
-      --proxy-headers --forwarded-allow-ips='*' \
+      --host 127.0.0.1 --port "$API_PORT" \
       "${reload[@]}" > "$RUN_DIR/api.log" 2>&1 &
     echo $!
   ) > "$RUN_DIR/api.pid"

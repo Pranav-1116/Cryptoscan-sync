@@ -5,7 +5,7 @@ so every expected finding is KNOWN. ``test_provenance`` is
 
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import Dict
 
 
 def _elf64_le_x86_64(*, with_crypto: bool, stripped: bool) -> bytes:

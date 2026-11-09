@@ -9,11 +9,9 @@ scrape_configs:
   - job_name: cryptoscan-api
     metrics_path: /metrics
     static_configs:
-      - targets: ["api:8000"]
-  - job_name: cryptoscan-worker
-    metrics_path: /metrics
-    static_configs:
-      - targets: ["worker:8100"]
+      - targets: ["api:8010"]
+  # The Redis-backed worker exposes no HTTP metrics listener; do not report a
+  # fabricated worker target as scraped. Add one only when implemented.
   - job_name: cryptoscan-otel
     static_configs:
       - targets: ["otel-collector:8889"]

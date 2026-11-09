@@ -141,9 +141,17 @@ def downgrade() -> None:
     if connection.dialect.name != "postgresql":
         return
     for table in _tenant_tables(connection):
-        op.execute(f"DROP POLICY IF EXISTS {POLICY} ON {table}")
+        # Later revisions split read/write policies. A downgrade past 0132
+        # must remove all of them before dropping the function they reference;
+        # DROP FUNCTION CASCADE would silently remove unrelated dependencies.
+        for policy in (POLICY, "tenant_isolation_select",
+                       "tenant_isolation_insert", "tenant_isolation_update",
+                       "tenant_isolation_delete"):
+            op.execute(f"DROP POLICY IF EXISTS {policy} ON {table}")
         op.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")
+        op.execute(f"REVOKE SELECT, INSERT, UPDATE, DELETE ON {table} "
+                   f"FROM {TENANT_ROLE}, {PLATFORM_ROLE}")
     op.execute("DROP FUNCTION IF EXISTS cryptoscan_current_tenant()")
     # The roles are dropped last and only if nothing else owns them: a deployment
     # that pointed its application at `cryptoscan_tenant` must move it first.

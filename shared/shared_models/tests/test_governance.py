@@ -13,8 +13,6 @@ import pytest
 from shared_models.governance import (
     AUDITOR,
     EXECUTIVE,
-    IN_PROGRESS,
-    OPEN,
     SECURITY_ARCHITECT,
     active_authorization,
     create_ticket,

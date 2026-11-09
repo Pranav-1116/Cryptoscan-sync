@@ -11,12 +11,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from shared_models.performance_metrics import (
     NO_VALUE_QUALITIES,
     PerformanceMetric,
-    QualityStatus,
 )
 
 INSERTED = "inserted"

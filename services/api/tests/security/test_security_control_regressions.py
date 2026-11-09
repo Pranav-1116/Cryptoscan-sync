@@ -30,7 +30,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from cbom.security_controls.transport import ControlRefused, FileTail, HttpTransport
+from cbom.security_controls.transport import FileTail, HttpTransport
 
 
 # --------------------------------------------------------------------------- #

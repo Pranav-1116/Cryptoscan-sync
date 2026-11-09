@@ -57,6 +57,14 @@ def _weak_alert_event(event_id: str):
                        evidence={"evidence_ids": ["evidence_001"]})
 
 
+def _evaluate_recorded(api, event_id: str):
+    event = _weak_alert_event(event_id)
+    stored = api.post("/api/v1/cryptolog/events", json=event)
+    assert stored.status_code in (200, 201), stored.text
+    return api.post("/api/v1/cryptolog/alerts/evaluate",
+                    json={"events": [event]})
+
+
 @pytest.fixture()
 def api():
     from db.connection.session import Base
@@ -81,6 +89,8 @@ def api():
     install_error_contract(app)
     app.dependency_overrides[dependencies.get_db_session] = lambda: session
     app.dependency_overrides[dependencies.get_current_user] = lambda: "auditor"
+    app.dependency_overrides[dependencies.require_intelligence_writer] = lambda: "writer"
+    app.dependency_overrides[dependencies.require_intelligence_manager] = lambda: "manager"
     client = TestClient(app)
     client.db_session = session
     return client
@@ -104,6 +114,32 @@ def no_signing_key(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+def test_alert_evaluation_requires_untampered_recorded_event(api):
+    event = _weak_alert_event("event-evidence")
+    missing = api.post("/api/v1/cryptolog/alerts/evaluate",
+                       json={"events": [event]})
+    assert missing.status_code == 404
+    assert api.post("/api/v1/cryptolog/events", json=event).status_code == 201
+    altered = {**event, "severity": "CRITICAL"}
+    refused = api.post("/api/v1/cryptolog/alerts/evaluate",
+                       json={"events": [altered]})
+    assert refused.status_code == 409
+    assert "differs from the recorded ledger" in refused.json()["detail"]
+    assert api.get("/api/v1/cryptolog/alerts").json()["total_count"] == 0
+
+
+def test_foreign_recorded_event_cannot_seed_tenant_alert(api):
+    from db.tenancy import tenant_scope
+
+    event = {**_weak_alert_event("event-foreign"), "tenant_id": "tenant_002"}
+    assert api.post("/api/v1/cryptolog/events", json=event).status_code == 201
+    with tenant_scope("tenant_001"):
+        denied = api.post("/api/v1/cryptolog/alerts/evaluate",
+                          json={"events": [event]})
+    assert denied.status_code == 403
+    assert api.get("/api/v1/cryptolog/alerts").json()["total_count"] == 0
+
+
 def test_alert_listing_is_honest_when_empty(api):
     res = api.get("/api/v1/cryptolog/alerts")
     assert res.status_code == 200
@@ -115,8 +151,7 @@ def test_alert_listing_is_honest_when_empty(api):
 
 
 def test_evaluate_persists_alerts_and_listing_filters_honestly(api):
-    res = api.post("/api/v1/cryptolog/alerts/evaluate",
-                   json={"events": [_weak_alert_event("event_001")]})
+    res = _evaluate_recorded(api, "event_001")
     assert res.status_code == 200, res.text
     alerts = res.json()["alerts"]
     assert res.json()["persisted"]["INSERTED"] == len(alerts) >= 1
@@ -135,15 +170,13 @@ def test_evaluate_persists_alerts_and_listing_filters_honestly(api):
     assert empty["total_count"] == 0 and empty["rows"] == [], \
         "a filter that matches nothing reports zero — never an invented total"
 
-    again = api.post("/api/v1/cryptolog/alerts/evaluate",
-                     json={"events": [_weak_alert_event("event_001")]})
+    again = _evaluate_recorded(api, "event_001")
     assert again.json()["persisted"]["DUPLICATE"] == len(alerts), \
         "re-evaluation is idempotent per alert identity"
 
 
 def test_alert_detail_and_unknown_alert_404(api):
-    created = api.post("/api/v1/cryptolog/alerts/evaluate",
-                       json={"events": [_weak_alert_event("event_001")]}).json()
+    created = _evaluate_recorded(api, "event_001").json()
     alert_id = created["alerts"][0]["alert_id"]
     res = api.get(f"/api/v1/cryptolog/alerts/{alert_id}")
     assert res.status_code == 200
@@ -154,8 +187,7 @@ def test_alert_detail_and_unknown_alert_404(api):
 
 
 def _open_alert(api):
-    created = api.post("/api/v1/cryptolog/alerts/evaluate",
-                       json={"events": [_weak_alert_event("event_001")]}).json()
+    created = _evaluate_recorded(api, "event_001").json()
     return created["alerts"][0]["alert_id"]
 
 

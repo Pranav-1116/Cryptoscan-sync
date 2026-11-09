@@ -77,6 +77,8 @@ def api(store):
     install_error_contract(app)
     app.dependency_overrides[dependencies.get_db_session] = lambda: store["session"]
     app.dependency_overrides[dependencies.get_current_user] = lambda: "auditor"
+    app.dependency_overrides[dependencies.require_intelligence_writer] = lambda: "writer"
+    app.dependency_overrides[dependencies.require_intelligence_manager] = lambda: "manager"
     return TestClient(app)
 
 
@@ -95,6 +97,21 @@ def test_a_tenant_read_never_returns_another_tenants_events(store):
         "a tenant-scoped read of another tenant is empty, never a leak"
     assert repo.get_event("tenant_002", "event_a1") is None
     assert repo.get_event("tenant_001", "event_a1") is not None
+
+
+def test_mixed_tenant_batch_rejects_foreign_item_without_dropping_own(api, store):
+    from db.tenancy import tenant_scope
+
+    with tenant_scope("tenant_001"):
+        response = api.post("/api/v1/cryptolog/events/batch", json={
+            "events": [_event_dict(event_id="batch-own"),
+                       _event_dict(event_id="batch-foreign", tenant_id="tenant_002")]
+        })
+    assert response.status_code == 200, response.text
+    assert [item["outcome"] for item in response.json()["items"]] == [
+        "ACCEPTED", "REJECTED"]
+    assert store["events"].get_event("tenant_001", "batch-own") is not None
+    assert store["events"].get_event("tenant_002", "batch-foreign") is None
 
 
 def test_alerts_and_checkpoints_are_tenant_scoped(store):

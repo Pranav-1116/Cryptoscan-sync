@@ -205,7 +205,6 @@ def _parse(data: bytes, report: ELFReport) -> ELFReport:
         if sh_type not in (_DYNSYM, _SYMTAB):
             continue
         entsize = 24 if ei_class == 2 else 16
-        strtab = b""
         # matching SHT_STRTAB for this symtab is conventionally the next
         # section; instead resolve names against .dynstr then shstrtab
         count = min(sh_size // entsize, _MAX_SYMBOLS)

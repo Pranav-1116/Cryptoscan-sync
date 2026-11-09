@@ -14,7 +14,7 @@ through unevidenced edges is marked assumed, not affected.
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping
 
 JOURNEY_SCHEMA = "cryptoscan.twin-investigation/1"
 

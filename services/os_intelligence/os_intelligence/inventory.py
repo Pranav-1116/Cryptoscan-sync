@@ -167,7 +167,6 @@ def parse_lsblk(text: str) -> List[StorageEncryptionFact]:
     lines = [ln for ln in text.splitlines() if ln.strip()]
     if not lines:
         return facts
-    header = lines[0]
     for line in lines[1:]:
         parts = line.split()
         if not parts:

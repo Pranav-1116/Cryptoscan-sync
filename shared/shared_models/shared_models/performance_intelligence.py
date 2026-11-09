@@ -17,10 +17,10 @@ samples it came from, and the honesty rules are structural —
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from statistics import median
 from datetime import datetime
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence
 
 from shared_models.performance_metrics import (
     NO_VALUE_QUALITIES, PerformanceMetric,

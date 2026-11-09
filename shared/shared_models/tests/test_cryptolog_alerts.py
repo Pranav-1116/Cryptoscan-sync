@@ -10,8 +10,8 @@ from __future__ import annotations
 import pytest
 
 from shared_models.cryptolog_alerts import (
-    ACKNOWLEDGE, ACKNOWLEDGED, ALERT_SCHEMA, HIGH, CRITICAL, RULES, RESOLVE,
-    evaluate, severity_for, transition,
+    ACKNOWLEDGE, ACKNOWLEDGED, ALERT_SCHEMA, CRITICAL, RULES, RESOLVE,
+    evaluate, transition,
 )
 from shared_models.cryptolog_events import make_event
 

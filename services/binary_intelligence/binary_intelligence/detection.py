@@ -11,7 +11,7 @@ reported as 'not detected within the analyzed scope' — never as absence.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional
 
 from binary_intelligence.crypto_fingerprints import (
     BY_SYMBOL, FINGERPRINT_DB_VERSION, LIBRARY_FINGERPRINTS,
@@ -87,7 +87,6 @@ def detect_crypto(identity: ArtifactIdentity, extraction: StaticExtraction,
             signature_database_version=FINGERPRINT_DB_VERSION,
             **kwargs)
 
-    all_symbols = extraction.imports + extraction.symbols
     # 1. function indicators (imports first: a reference from the
     #    dynamic symbol table is stronger than a bare symbol string)
     for source, bucket, location in (

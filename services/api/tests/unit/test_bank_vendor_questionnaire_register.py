@@ -1,9 +1,18 @@
 """Traceability integrity is deliberately not bank acceptance."""
 from copy import deepcopy
+import importlib.util
 import json
+from pathlib import Path
 
 import pytest
-from bank_vendor_questionnaire import CATALOG, EXPECTED, main, review
+
+_SCRIPT = Path(__file__).resolve().parents[4] / "scripts/bank_vendor_questionnaire.py"
+_SPEC = importlib.util.spec_from_file_location("bank_vendor_questionnaire", _SCRIPT)
+assert _SPEC is not None and _SPEC.loader is not None
+_MODULE = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_MODULE)
+CATALOG, EXPECTED, main, review = (
+    _MODULE.CATALOG, _MODULE.EXPECTED, _MODULE.main, _MODULE.review)
 
 
 @pytest.fixture

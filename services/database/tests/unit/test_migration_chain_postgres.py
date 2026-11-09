@@ -63,7 +63,13 @@ def _pg_available() -> bool:
 
 
 def _alembic(*args: str) -> subprocess.CompletedProcess:
-    env = dict(os.environ, DATABASE_URL=PG_URL)
+    # The child runs from services/database, not the pytest invocation's cwd.
+    # Give it absolute package roots so migration backfills can import shared
+    # models and service packages even when the parent used relative PYTHONPATH.
+    packages = [str(path) for base in (ROOT / "services", ROOT / "shared")
+                for path in base.iterdir() if path.is_dir()]
+    env = dict(os.environ, DATABASE_URL=PG_URL,
+               PYTHONPATH=os.pathsep.join(packages))
     return subprocess.run([sys.executable, "-m", "alembic", "-c", "migrations/alembic.ini", *args],
                           cwd=DB_DIR, env=env, capture_output=True, text=True, timeout=600)
 
@@ -163,11 +169,132 @@ def test_migrated_monitor_events_accepts_long_platform_types(migrated):
             transaction.rollback()
 
 
+def test_os_runtime_orm_matches_migrated_schema(migrated):
+    """0146 must let the actual repository insert UUID runtime rows."""
+    from sqlalchemy.orm import Session
+    from db.models.os_intelligence import (OSAssetCertificate, OSRuntimeEvent,
+                                           OSRuntimeSession)
+
+    inspector = sa.inspect(migrated)
+    for table in ("os_certificates", "os_runtime_sessions", "os_runtime_events"):
+        cols = {c["name"]: c for c in inspector.get_columns(table)}
+        assert isinstance(cols["id"]["type"], sa.String)
+        assert "updated_at" in cols and not cols["updated_at"]["nullable"]
+        assert cols["tenant_id"]["nullable"], "platform-estate rows remain possible"
+    indexes = inspector.get_indexes("os_assets")
+    assert any(i["name"] == "ix_os_assets_tenant_asset" and not i["unique"]
+               for i in indexes)
+
+    with migrated.connect() as conn:
+        trans = conn.begin()
+        try:
+            with Session(conn) as session:
+                session.add(OSAssetCertificate(
+                    tenant_id="migration-test", certificate_id="cert-migration-test",
+                    collection_id="collection-test", asset_id="host-test",
+                    subject="test", issuer="test", evidence_class="observed",
+                    collected_at=sa.func.now()))
+                session.add(OSRuntimeSession(
+                    tenant_id="migration-test", session_id="runtime-migration-test",
+                    asset_id="host-test", collection_profile="test",
+                    collected_at=sa.func.now()))
+                session.add(OSRuntimeSession(
+                    tenant_id=None, session_id="runtime-platform-test",
+                    asset_id="host-test", collection_profile="test",
+                    collected_at=sa.func.now()))
+                session.add(OSRuntimeEvent(
+                    tenant_id="migration-test", session_id="runtime-migration-test",
+                    asset_id="host-test", event_id="runtime-event-test",
+                    operation_category="hash_operation",
+                    collected_at=sa.func.now()))
+                session.flush()
+                assert session.query(OSAssetCertificate).count() == 1
+                assert session.query(OSRuntimeSession).count() == 2
+                assert session.query(OSRuntimeEvent).count() == 1
+        finally:
+            trans.rollback()
+
+
+def test_upgrade_legacy_os_rows_preserves_evidence(migrated):
+    """An already-applied 0145 may have numeric OS IDs and recorded rows."""
+    down = _alembic("downgrade", "0145")
+    assert down.returncode == 0, down.stderr[-2000:]
+    with migrated.begin() as conn:
+        conn.execute(sa.text(
+            "INSERT INTO os_certificates (created_at, tenant_id, certificate_id, "
+            "collection_id, asset_id, subject, issuer, evidence_class, collected_at) "
+            "VALUES (now(), 'migration-test', 'legacy-cert', 'legacy-collection', "
+            "'host-test', 'test', 'test', 'observed', now())"))
+        conn.execute(sa.text(
+            "INSERT INTO os_runtime_sessions (created_at, tenant_id, session_id, "
+            "asset_id, collection_profile, collected_at) VALUES "
+            "(now(), 'migration-test', 'legacy-session', 'host-test', 'test', now())"))
+        conn.execute(sa.text(
+            "INSERT INTO os_runtime_events (created_at, tenant_id, session_id, "
+            "asset_id, event_id, operation_category, collected_at) VALUES "
+            "(now(), 'migration-test', 'legacy-session', 'host-test', "
+            "'legacy-event', 'hash_operation', now())"))
+    up = _alembic("upgrade", "head")
+    assert up.returncode == 0, up.stderr[-2000:]
+    with migrated.begin() as conn:
+        for table in ("os_certificates", "os_runtime_sessions", "os_runtime_events"):
+            row = conn.execute(sa.text(
+                f"SELECT id, updated_at FROM {table} WHERE tenant_id='migration-test'"
+            )).one()
+            assert str(row.id).isdigit() and row.updated_at is not None
+            conn.execute(sa.text(
+                f"DELETE FROM {table} WHERE tenant_id='migration-test'"))
+
+
 def test_downgrade_one_and_back(migrated):
     down = _alembic("downgrade", "-1")
     assert down.returncode == 0, down.stderr[-2000:]
     up = _alembic("upgrade", "head")
     assert up.returncode == 0, up.stderr[-2000:]
+
+
+def test_new_tables_have_forced_rls_and_tenants_cannot_write_platform_rows(migrated):
+    """Direct SQL as the non-bypass tenant role tests the database boundary."""
+    from db.rls import enforcement
+
+    with migrated.connect() as conn:
+        report = enforcement(conn)
+        assert report["tables_with_rls_enabled"] == report["tenant_tables"]
+        assert report["tables_with_rls_forced"] == report["tenant_tables"]
+        assert report["policies"] >= report["tenant_tables"] * 4
+        conn.rollback()  # catalog reads began an implicit transaction
+
+        transaction = conn.begin()
+        insert = sa.text(
+            "INSERT INTO os_runtime_sessions "
+            "(id, tenant_id, session_id, asset_id, collection_profile, "
+            "created_at, updated_at, collected_at) "
+            "VALUES (:id, :tenant, :id, 'host-rls', 'test', now(), now(), now())")
+        try:
+            for ident, tenant in (("rls-alpha", "alpha"),
+                                  ("rls-beta", "beta"),
+                                  ("rls-platform", None)):
+                conn.execute(insert, {"id": ident, "tenant": tenant})
+            conn.exec_driver_sql("SET LOCAL ROLE cryptoscan_tenant")
+            conn.exec_driver_sql(
+                "SELECT set_config('cryptoscan.tenant_id', 'alpha', true)")
+            visible = conn.execute(sa.text(
+                "SELECT id FROM os_runtime_sessions "
+                "WHERE id LIKE :prefix ORDER BY id"),
+                {"prefix": "rls-%"}).scalars().all()
+            assert visible == ["rls-alpha", "rls-platform"]
+            for ident, tenant in (("rls-foreign", "beta"),
+                                  ("rls-unowned", None)):
+                with pytest.raises(sa.exc.DBAPIError), conn.begin_nested():
+                    conn.execute(insert, {"id": ident, "tenant": tenant})
+            assert conn.exec_driver_sql(
+                "UPDATE os_runtime_sessions SET notes='[]' "
+                "WHERE id='rls-platform'").rowcount == 0
+            assert conn.exec_driver_sql(
+                "DELETE FROM os_runtime_sessions "
+                "WHERE id='rls-platform'").rowcount == 0
+        finally:
+            transaction.rollback()
 
 
 def test_system_names_are_estate_local_including_platform_null(migrated):
@@ -192,7 +319,14 @@ def test_0107_downgrade_refuses_duplicate_names_without_changing_data(migrated):
         result = _alembic("downgrade", "0106")
         assert result.returncode != 0 and "downgrade blocked" in result.stderr
         with migrated.connect() as connection:
-            assert connection.execute(sa.text("select version_num from alembic_version")).scalar_one() == "0107"
+            # The entire multi-revision downgrade is transactional on PG:
+            # refusing at 0107 leaves the original head, not a half-migrated DB.
+            from alembic.config import Config
+            from alembic.script import ScriptDirectory
+            config = Config(str(DB_DIR / "migrations/alembic.ini"))
+            assert connection.execute(sa.text(
+                "select version_num from alembic_version")).scalar_one() == \
+                ScriptDirectory.from_config(config).get_current_head()
             assert connection.execute(sa.text("select count(*) from systems where id in ('downgrade-owned-a','downgrade-owned-b')")).scalar_one() == 2
         indexes = {index["name"] for index in sa.inspect(migrated).get_indexes("systems")}
         assert {"uq_systems_platform_name", "uq_systems_tenant_name"} <= indexes

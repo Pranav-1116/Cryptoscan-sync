@@ -7,7 +7,7 @@ UUID. Every read is bounded; a malformed field fails safe (§14).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 _MACHO_MAGICS = {
     0xFEEDFACE: ("macho32", "big"),

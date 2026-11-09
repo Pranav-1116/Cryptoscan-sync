@@ -18,7 +18,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import (get_current_user, get_db_session,
+                              require_intelligence_writer)
 from db.repositories.os_intelligence_repository import (
     OSIntelligenceRepository,
 )
@@ -338,7 +339,8 @@ def _repo(db: Session) -> OSIntelligenceRepository:
 # --- routes ----------------------------------------------------------
 
 @router.post("/collections", response_model=CollectionAccepted,
-             status_code=201)
+             status_code=201,
+             dependencies=[Depends(require_intelligence_writer)])
 def submit_collection(body: CollectionSubmission, response: Response,
                       db: Session = Depends(get_db_session),
                       user=Depends(get_current_user)) -> CollectionAccepted:
@@ -653,7 +655,8 @@ class RuntimeSessionSubmission(BaseModel):
 
 @router.post("/assets/{asset_id}/runtime-sessions",
              response_model=RuntimeSessionPostOut,
-             status_code=201)
+             status_code=201,
+             dependencies=[Depends(require_intelligence_writer)])
 def submit_runtime_session(asset_id: str,
                            body: RuntimeSessionSubmission,
                            response: Response,

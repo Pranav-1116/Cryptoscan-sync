@@ -15,7 +15,7 @@ import io
 import struct
 import zipfile
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 MAX_ENTRIES = 4096
 MAX_ENTRY_BYTES = 64 * 1024 * 1024
@@ -199,12 +199,10 @@ def _parse_class(data: bytes, report: ClassReport) -> ClassReport:
         elif tag in (_CLASS, _STRING):
             pos2 += 2
         elif tag in (_FIELDREF, _METHODREF, _IFACEMETHODREF):
-            cls_idx, nat_idx = struct.unpack(">HH", data[pos2:pos2 + 4])
+            cls_idx, _nat_idx = struct.unpack(">HH", data[pos2:pos2 + 4])
             pos2 += 4
             owner = class_name(cls_idx)
-            # NAMEANDTYPE: name_idx, desc_idx
-            nat_pos = _nat_offset(data, nat_idx) if False else None
-            # simpler: gather name/type from the recorded strings
+            # The class owner is the available metadata for this reference.
             label = owner or "?"
             if tag == _METHODREF:
                 report.method_refs.append(label)

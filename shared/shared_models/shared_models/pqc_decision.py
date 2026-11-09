@@ -29,7 +29,6 @@ from shared_models.pqc_claims import (
     NO_EVIDENCE as READY_NO_EVIDENCE,
     PQC_CLAIM_STAGES,
     STAGE_EVIDENCE,
-    pqc_claim_report,
 )
 
 DECISION_SCHEMA = "cryptoscan.pqc-decision/1"

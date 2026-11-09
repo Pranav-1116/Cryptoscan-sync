@@ -72,7 +72,6 @@ from shared_models.cross_bom_reconciliation import (
 )
 from shared_models.finding_lifecycle import (
     assign as assign_finding,
-    confirm_incident,
     finding_digest,
     finding_record,
 )
@@ -86,7 +85,6 @@ from shared_models.observation_intake import (
     rebuild_projection,
 )
 from shared_models.migration_plan import (
-    asset_state,
     make_plan,
     validate_migration,
 )

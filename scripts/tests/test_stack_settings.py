@@ -5,7 +5,6 @@ socket is reported as reachability, never as health or qualification.
 
 from __future__ import annotations
 
-import pytest
 
 from shared_config.stack_settings import (
     BACKENDS, REACHABLE, UNCONFIGURED, UNREACHABLE, probe, settings,

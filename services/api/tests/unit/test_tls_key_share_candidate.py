@@ -50,7 +50,10 @@ def test_stored_group_evidence_keeps_pqc_readiness_and_app_use_unknown(assured, 
     f = snapshot.receipts[0].facts[0]
     assert props["cryptoscan:key_exchange_group"] == f.key_exchange_group
     assert props["cryptoscan:selected_group_id"] == str(f.selected_group_id)
-    assert props["cryptoscan:group_classification"] == "REGISTERED_CLASSICAL_GROUP_SELECTED"
+    # The owned loopback server may negotiate a registered classical OR
+    # hybrid group depending on the installed OpenSSL. Preserve the observed
+    # ServerHello classification; neither choice proves PQC implementation.
+    assert props["cryptoscan:group_classification"] == f.group_classification
     assert props["cryptoscan:pqc_implementation_verified"] == props["cryptoscan:pqc_readiness_verified"] == "false"
     assert props["cryptoscan:pqc_assessment"] == props["cryptoscan:runtime_use"] == "UNKNOWN"
     assert props["cryptoscan:server_hello_sha256"] == f.server_hello_sha256

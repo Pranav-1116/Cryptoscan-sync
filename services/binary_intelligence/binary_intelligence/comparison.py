@@ -10,9 +10,8 @@ reported as drift of INDICATORS, never as drift of behavior.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
-from binary_intelligence.evidence import CryptoFinding
 
 
 @dataclass

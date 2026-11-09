@@ -55,7 +55,7 @@ def run_suite(*, corpus_size: int = 120, volume_size: int = 1500) -> dict[str, A
     from shared_models.cryptolog_corpus import (
         SYNTHETIC_COLLECTOR, generate_corpus,
     )
-    from shared_models.cryptolog_events import ingest, validate_event
+    from shared_models.cryptolog_events import validate_event
     from shared_models.cryptolog_integrity import (
         build_chain, chain_genesis, make_checkpoint, merkle_root, verify_range,
     )

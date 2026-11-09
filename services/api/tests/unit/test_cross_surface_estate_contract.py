@@ -177,7 +177,11 @@ def test_foreign_and_missing_scan_exports_are_indistinguishable(estate):
         missing = clients["bank_a"].get(f"/api/v1/scans/missing/{suffix}")
         foreign = clients["bank_a"].get(f"/api/v1/scans/{rows['bank_b'][0].id}/{suffix}")
         assert missing.status_code == foreign.status_code == 404
-        assert missing.json() == foreign.json()
+        # Trace IDs identify individual requests, not whether a scan exists.
+        # Compare every externally meaningful error field without demanding
+        # that two independent requests share a request identifier.
+        assert {k: v for k, v in missing.json().items() if k != "request_id"} == \
+            {k: v for k, v in foreign.json().items() if k != "request_id"}
 
 
 def test_deleting_tenant_catalog_does_not_declassify_orphaned_history(estate):

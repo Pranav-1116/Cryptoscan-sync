@@ -72,6 +72,8 @@ def api():
     install_error_contract(app)
     app.dependency_overrides[dependencies.get_db_session] = lambda: session
     app.dependency_overrides[dependencies.get_current_user] = lambda: "auditor"
+    app.dependency_overrides[dependencies.require_intelligence_writer] = lambda: "writer"
+    app.dependency_overrides[dependencies.require_intelligence_manager] = lambda: "manager"
     return TestClient(app)
 
 
@@ -119,6 +121,21 @@ def test_query_windows_are_bounded_and_tenant_scoped(api):
     no_tenant = api.get("/api/v1/performance/overview", params={
         "window_start": START, "window_end": END})
     assert no_tenant.status_code in (422, 400)
+
+
+def test_window_over_sample_budget_refuses_partial_analytics(api, monkeypatch):
+    from db.repositories.performance_repository import PerformanceRepository
+
+    def over_budget(_repo, tenant_id, **kwargs):
+        assert tenant_id == "tenant_001"
+        assert kwargs["limit"] == 5001
+        return [object()] * 5001
+
+    monkeypatch.setattr(PerformanceRepository, "query_metrics", over_budget)
+    res = api.get("/api/v1/performance/overview", params={
+        "tenant_id": "tenant_001", "window_start": START, "window_end": END})
+    assert res.status_code == 409
+    assert "narrow the time window" in res.json()["detail"]
 
 
 def test_missing_asset_is_unknown_never_a_clean_result(api):

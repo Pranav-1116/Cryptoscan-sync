@@ -88,7 +88,6 @@ def parse_crypto_api(text: str) -> Tuple[List[CryptoApiEntry], List[str]]:
     entries: List[CryptoApiEntry] = []
     notes: List[str] = []
     current: Dict[str, str] = {}
-    truncated = False
 
     def flush() -> None:
         if not current:

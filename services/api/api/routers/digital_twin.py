@@ -284,12 +284,10 @@ def _snapshot(db: Session) -> dict:
     # binary Digital Twin edges (docs/binary-intelligence §8): every
     # edge carries provenance and evidence class; an indicator edge has
     # no twin predicate
-    binary_edge_rows = []
     try:
         from db.models.binary_intelligence import BinaryTwinEdge
-        binary_edge_rows = load(BinaryTwinEdge, "binary_relationships",
-                                "dependencies",
-                                BinaryTwinEdge.created_at)
+        load(BinaryTwinEdge, "binary_relationships", "dependencies",
+             BinaryTwinEdge.created_at)
     except Exception:
         collections["binary_relationships"] = collection_read(0, 0, more=False)
     # OS & Kernel digital-twin edges (docs/os-kernel-intelligence

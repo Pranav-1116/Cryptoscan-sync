@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Mapping, Sequence
+from typing import Any, Dict, Sequence
 
 from shared_models.performance_metrics import PerformanceMetric
 

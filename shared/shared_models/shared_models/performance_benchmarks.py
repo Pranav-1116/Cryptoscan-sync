@@ -193,7 +193,7 @@ def _algorithm_parameters(algorithm: str) -> Dict[str, Any]:
 
 
 def _measure(algorithm: str, sample_count: int) -> Tuple[List[float], List[float]]:
-    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives import hashes
     from cryptography.hazmat.primitives.asymmetric import ec, ed25519, padding, rsa
 
     message = b"zelnx-performance-controlled-benchmark"

@@ -21,7 +21,6 @@ import json
 import time
 from typing import Any
 
-from api.middleware.asgi_utils import send_json
 
 _TTL_SECONDS = 24 * 3600
 _MAX_ENTRIES = 4096

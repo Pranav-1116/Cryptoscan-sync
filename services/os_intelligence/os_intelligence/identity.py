@@ -12,9 +12,8 @@ from __future__ import annotations
 
 import platform
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
-from .evidence import CoverageReport
 
 
 @dataclass
@@ -42,7 +41,8 @@ class OSIdentity:
             "os_id": self.os_id or "unknown",
             "os_version_id": self.os_version_id or "unknown",
             "arch": self.arch or self.machine or "unknown",
-            "cmdline": self.cmdline or "unavailable",
+            "cmdline": ("withheld (kernel boot parameters may contain secrets)"
+                        if self.cmdline else "unavailable"),
             "tainted_flags": self.tainted_flags or "0",
             "tainted_meanings": self.tainted_meanings,
             "environment_development_only": True,
@@ -154,10 +154,15 @@ def collect_identity(captured: Dict[str, str]) -> OSIdentity:
     else:
         identity.notes.append("os-release unavailable — distribution "
                               "fields recorded as unknown (§2.1)")
-    identity.cmdline = captured.get("cmdline", "")
-    if "cmdline" not in captured:
-        identity.notes.append("cmdline unavailable — recorded as "
-                              "unavailable (§2.1)")
+    # Even a read-only boot command line can carry credentials. Do not copy
+    # its bytes into an identity, API response, or persisted snapshot.
+    if "cmdline" in captured:
+        identity.cmdline = "withheld (kernel boot parameters may contain secrets)"
+        identity.notes.append("cmdline content deliberately withheld — source "
+                              "is not evidence of absent boot parameters")
+    else:
+        identity.notes.append("cmdline unavailable or deliberately not "
+                              "collected — never treated as absent (§2.1)")
     number, meanings = parse_taints(captured.get("tainted", "0"))
     identity.tainted_flags = number
     identity.tainted_meanings = meanings

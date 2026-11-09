@@ -4,16 +4,14 @@ REAL recorded host corpus and the LIVE local Linux configuration
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
 
 from os_intelligence.collector import collect_linux
 from os_intelligence.crypto_api import parse_crypto_api
-from os_intelligence.evidence import CoverageReport, OSFinding
-from os_intelligence.identity import parse_os_release, parse_taints, \
-    parse_uname_line
+from os_intelligence.identity import collect_identity, parse_os_release, \
+    parse_taints, parse_uname_line
 from os_intelligence.inventory import parse_config_flags, parse_lsblk, \
     parse_modules
 
@@ -113,6 +111,20 @@ class TestIdentityParsing:
     def test_taint_non_integer_fail_safe(self):
         number, meanings = parse_taints("garbage")
         assert any("never guessed" in m for m in meanings)
+
+    def test_boot_arguments_never_leave_collector(self, tmp_path):
+        (tmp_path / "proc").mkdir()
+        (tmp_path / "proc/cmdline").write_text(
+            "boot.password=never-store-this-value")
+        inv = collect_linux("fixture", source_root=str(tmp_path),
+                            collect_hardware_trust=False)
+        assert "never-store-this-value" not in str(inv.as_dict())
+        assert "cmdline" not in inv.source_digests
+        assert any(e["source"] == "cmdline" and "deliberately" in e["reason"]
+                   for e in inv.coverage.sources_unavailable)
+        # A caller-supplied captured output must be withheld as well.
+        external = collect_identity({"cmdline": "token=never-store-this-value"})
+        assert "never-store-this-value" not in str(external.as_dict())
 
     def test_missing_sources_recorded_not_inferred(self):
         inv = collect_linux("h", source_root=str(FIXTURES / "empty-root"))

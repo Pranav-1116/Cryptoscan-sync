@@ -17,9 +17,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import (get_current_user, get_db_session,
+                              require_intelligence_manager,
+                              require_intelligence_writer,
+                              require_query_tenant_scope)
 from db.repositories.cryptolog_repository import (
-    CryptoLogAlertRepository, CryptoLogRepository,
+    CryptoLogAlertRepository, CryptoLogRepository, CryptoLogWindowTooLarge,
 )
 from shared_models.bulk_result import (
     ACCEPTED, REJECTED, SKIPPED, bulk_result, item as bulk_item,
@@ -30,10 +33,11 @@ from shared_models.cryptolog_integrity import (
     verify_merkle_proof, verify_checkpoint, verify_range,
 )
 from shared_models.cryptolog_events import (
-    CONFLICT, DUPLICATE, INSERTED, supersede, validate_event,
+    CONFLICT, DUPLICATE, INSERTED, event_hash, supersede, validate_event,
 )
 
-router = APIRouter(prefix="/cryptolog", tags=["cryptolog"])
+router = APIRouter(prefix="/cryptolog", tags=["cryptolog"],
+                   dependencies=[Depends(require_query_tenant_scope)])
 
 _BATCH_OUTCOMES = {INSERTED: ACCEPTED, DUPLICATE: SKIPPED, CONFLICT: REJECTED}
 
@@ -76,13 +80,25 @@ def _repo(db: Session) -> CryptoLogRepository:
     return CryptoLogRepository(db)
 
 
-@router.post("/events", status_code=201)
+def _require_event_tenant(tenant_id: Optional[str]) -> None:
+    from db.tenancy import current_tenant
+
+    scoped = current_tenant()
+    if scoped is not None and tenant_id != scoped:
+        raise HTTPException(status_code=403,
+                            detail="event tenant does not match the "
+                                   "authenticated tenant scope")
+
+
+@router.post("/events", status_code=201,
+             dependencies=[Depends(require_intelligence_writer)])
 def ingest_event(body: EventIn, response: Response,
                  db: Session = Depends(get_db_session),
                  user: str = Depends(get_current_user)) -> dict:
     """Ingest one event. 201 INSERTED, 200 DUPLICATE (idempotent), 409
     CONFLICT (a different event under an existing key is never a silent
     overwrite)."""
+    _require_event_tenant(body.tenant_id)
     try:
         result = _repo(db).insert_event(body.model_dump())
     except ValueError as exc:
@@ -96,7 +112,8 @@ def ingest_event(body: EventIn, response: Response,
     return result
 
 
-@router.post("/events/batch")
+@router.post("/events/batch",
+             dependencies=[Depends(require_intelligence_writer)])
 def ingest_batch(body: BatchIn,
                  db: Session = Depends(get_db_session),
                  user: str = Depends(get_current_user)) -> dict:
@@ -108,9 +125,11 @@ def ingest_batch(body: BatchIn,
     for index, raw in enumerate(body.events):
         key = f"events[{index}]"
         try:
+            _require_event_tenant(raw.get("tenant_id"))
             result = repo.insert_event(raw)
-        except ValueError as exc:
-            rows.append(bulk_item(key, REJECTED, str(exc)))
+        except (ValueError, HTTPException) as exc:
+            reason = exc.detail if isinstance(exc, HTTPException) else str(exc)
+            rows.append(bulk_item(key, REJECTED, reason))
             continue
         rows.append(bulk_item(key, _BATCH_OUTCOMES[result["outcome"]],
                               result["note"]))
@@ -151,7 +170,8 @@ def get_event(event_id: str,
     return row_to_event(row)
 
 
-@router.post("/events/{event_id}/corrections", status_code=201)
+@router.post("/events/{event_id}/corrections", status_code=201,
+             dependencies=[Depends(require_intelligence_manager)])
 def correct_event(event_id: str, body: CorrectionIn,
                   db: Session = Depends(get_db_session),
                   user: str = Depends(get_current_user)) -> dict:
@@ -201,7 +221,8 @@ class AlertTransitionIn(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
 
 
-@router.post("/alerts/evaluate")
+@router.post("/alerts/evaluate",
+             dependencies=[Depends(require_intelligence_manager)])
 def evaluate_alerts(body: AlertEvaluateIn,
                     db: Session = Depends(get_db_session),
                     user: str = Depends(get_current_user)) -> dict:
@@ -209,16 +230,46 @@ def evaluate_alerts(body: AlertEvaluateIn,
     Every result is an OPEN investigation carrying what is proven and what
     is not — a pattern never automatically becomes a confirmed compromise,
     and severity is named drivers, never one unexplained number."""
+    if len(body.events) > 1000:
+        raise HTTPException(status_code=413,
+                            detail="at most 1000 recorded events per alert evaluation")
+    from db.repositories.cryptolog_repository import row_to_event
+
+    repo = _repo(db)
+    stored_events = []
+    tenants = set()
+    for supplied in body.events:
+        event_id = str(supplied.get("event_id") or "")
+        tenant_id = str(supplied.get("tenant_id") or "")
+        if not event_id or not tenant_id:
+            raise HTTPException(status_code=422,
+                                detail="alert evaluation requires recorded event and tenant IDs")
+        _require_event_tenant(tenant_id)
+        row = repo.get_event(tenant_id, event_id)
+        if row is None:
+            raise HTTPException(status_code=404,
+                                detail="recorded event not found in selected tenant")
+        try:
+            supplied_hash = event_hash(validate_event(supplied))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if supplied_hash != row.event_hash:
+            raise HTTPException(status_code=409,
+                                detail="event payload differs from the recorded ledger")
+        stored_events.append(row_to_event(row))
+        tenants.add(tenant_id)
+    if len(tenants) > 1:
+        raise HTTPException(status_code=422,
+                            detail="evaluate one tenant's recorded events at a time")
     try:
-        alerts = evaluate_rules(body.events,
+        alerts = evaluate_rules(stored_events,
                                 previous_by_asset=body.previous_by_asset,
                                 assessments=body.assessments)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     store = CryptoLogAlertRepository(db)
-    tenant = (str(body.events[0].get("tenant_id")) if body.events
-              and body.events[0].get("tenant_id") else None) or _tenant(user)
-    by_id = {str(e.get("event_id") or ""): e for e in body.events}
+    tenant = next(iter(tenants), None)
+    by_id = {str(e["event_id"]): e for e in stored_events}
     persisted = {"INSERTED": 0, "DUPLICATE": 0}
     stored_alerts = []
     for alert in alerts:
@@ -357,15 +408,6 @@ def alert_transition(body: AlertTransitionIn,
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-def _tenant(user: Any) -> Optional[str]:
-    """Tenancy from the authenticated principal whether it is a user model
-    or the bare identity string the tests inject."""
-    tid = getattr(user, "tenant_id", None)
-    if tid:
-        return str(tid)
-    return str(user) if isinstance(user, str) else None
-
-
 # ---------------------------------------------------------------------------
 # Alerts: listing with honest counts, and append-only transitions.
 # ---------------------------------------------------------------------------
@@ -425,7 +467,8 @@ class TransitionIn(BaseModel):
     tenant_id: Optional[str] = None
 
 
-@router.post("/alerts/{alert_id}/transition", status_code=201)
+@router.post("/alerts/{alert_id}/transition", status_code=201,
+             dependencies=[Depends(require_intelligence_manager)])
 def transition_alert_state(
     alert_id: str,
     payload: TransitionIn,
@@ -508,7 +551,8 @@ class CheckpointIn(BaseModel):
     previous_checkpoint_ref: Optional[str] = None
 
 
-@router.post("/integrity/checkpoint", status_code=201)
+@router.post("/integrity/checkpoint", status_code=201,
+             dependencies=[Depends(require_intelligence_manager)])
 def create_checkpoint(
     payload: CheckpointIn,
     response: Response,
@@ -888,11 +932,38 @@ def export_report(
 
     from shared_models.report_manifest import MANIFEST_SCHEMA, build_manifest
 
+    from db.tenancy import current_tenant
+
+    scoped = current_tenant()
+    if scoped is not None and payload.tenant_id not in (None, scoped):
+        raise HTTPException(status_code=403,
+                            detail="report tenant does not match the "
+                                   "authenticated tenant scope")
+    if payload.category:
+        raise HTTPException(status_code=422,
+                            detail="category-filtered ledger export is not "
+                                   "supported: skipping chain entries would "
+                                   "make the archive unverifiable")
+    tenant_id = scoped or payload.tenant_id
     repo = CryptoLogAlertRepository(db)
-    records = repo.events_in_range(
-        tenant_id=payload.tenant_id,
-        start_occurred=payload.start_occurred,
-        end_occurred=payload.end_occurred)
+    try:
+        records = repo.events_in_range(
+            tenant_id=tenant_id,
+            start_occurred=payload.start_occurred,
+            end_occurred=payload.end_occurred,
+            max_events=10000)
+    except CryptoLogWindowTooLarge as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="auditor pack exceeds the 10000-event export budget; "
+                   "narrow the event window — a partial chain is never "
+                   "presented as verifiable") from exc
+    partition_ids = {str(r.get("partition_id") or "") for r in records}
+    if len(partition_ids) > 1:
+        raise HTTPException(status_code=409,
+                            detail="export spans multiple ledger partitions; "
+                                   "select one tenant/window for verifiable "
+                                   "integrity rather than joining chains")
     events_doc = {
         "schema": "cryptoscan.cryptolog-report-events/1",
         "window": {"start_occurred": payload.start_occurred,
@@ -900,7 +971,12 @@ def export_report(
         "events": records,
     }
     alerts_page = repo.list_alerts(
-        tenant_id=payload.tenant_id, severity=payload.severity, limit=1000)
+        tenant_id=tenant_id, severity=payload.severity, limit=1000)
+    if alerts_page["total_count"] > len(alerts_page["rows"]):
+        raise HTTPException(
+            status_code=409,
+            detail="auditor pack exceeds the 1000-alert export budget; "
+                   "a partial alert list is never presented as complete")
     alerts_doc = {
         "schema": "cryptoscan.cryptolog-report-alerts/1",
         "alerts": alerts_page["rows"],
@@ -909,11 +985,15 @@ def export_report(
 
     # Integrity section: the checkpoint register plus an honest verification
     # over the exported window against the latest checkpoint.
-    checkpoints = repo.list_checkpoints(tenant_id=payload.tenant_id)
+    checkpoints = repo.list_checkpoints(tenant_id=tenant_id)
+    if checkpoints["total_count"] > len(checkpoints["rows"]):
+        raise HTTPException(
+            status_code=409,
+            detail="auditor pack exceeds the 50-checkpoint export budget; "
+                   "a partial checkpoint list is never presented as complete")
     checkpoint = checkpoints["rows"][0] if checkpoints["rows"] else None
-    partition_ids = {str(r.get("partition_id") or "") for r in records}
-    partition_id = next(iter(partition_ids)) if len(partition_ids) == 1 \
-        else f"{payload.tenant_id or 'unknown'}:empty"
+    partition_id = next(iter(partition_ids)) if partition_ids \
+        else f"{tenant_id or 'unknown'}:empty"
     hashes = [str(r["event_hash"]) for r in records]
     chain = build_chain(partition_id, hashes)
     entries = [
@@ -936,11 +1016,14 @@ def export_report(
     report = {
         "schema": "cryptoscan.cryptolog-report/1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "filters": {"tenant_id": payload.tenant_id,
+        "filters": {"tenant_id": tenant_id,
                     "start_occurred": payload.start_occurred,
                     "end_occurred": payload.end_occurred,
                     "severity": payload.severity,
-                    "category": payload.category},
+                    "severity_applies_to": "alerts only",
+                    "time_window_applies_to": "events only",
+                    "checkpoint_scope": "tenant-wide register",
+                    "category": None},
         "totals": {
             "events": len(records),
             "alerts": alerts_page["total_count"],
@@ -948,7 +1031,8 @@ def export_report(
         },
         "integrity_state": verification["overall_state"],
         "proven": [
-            "every figure counts recorded CryptoLog records in the stated window",
+            "event totals count the stated event window; alert totals use "
+            "the tenant/severity register, not that time window",
             f"the archive's manifest hashes each of its {4} documents",
         ],
         "not_proven": [
@@ -988,8 +1072,8 @@ def export_report(
     manifest = build_manifest(
         schema_version=MANIFEST_SCHEMA,
         report_id=f"cryptolog-{generated_at.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}",
-        tenant_id=payload.tenant_id,
-        scope=payload.tenant_id or "platform-estate",
+        tenant_id=tenant_id,
+        scope=tenant_id or "all-recorded-tenants (platform operator)",
         filters=report["filters"],
         totals=report["totals"],
         generated_at=generated_at.isoformat(),

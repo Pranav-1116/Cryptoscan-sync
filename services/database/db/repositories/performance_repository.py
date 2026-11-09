@@ -9,21 +9,21 @@ reconstructed as zero on the way out.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db.models.performance import (
-    PerformanceAggregate, PerformanceAlert, PerformanceAsset,
+    PerformanceAlert, PerformanceAsset,
     PerformanceBaseline, PerformanceBenchmarkRun,
     PerformanceCapacityForecast, PerformanceCollectorHealth,
-    PerformanceIncident, PerformanceMetric as PerformanceMetricRow,
+    PerformanceMetric as PerformanceMetricRow,
     PerformanceMetricDefinition, PerformanceSloPolicy,
 )
 from shared_models.performance_metrics import (
-    NO_VALUE_QUALITIES, PerformanceMetric,
+    PerformanceMetric,
 )
 
 INSERTED = "inserted"

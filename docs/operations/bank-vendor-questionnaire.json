@@ -243,7 +243,7 @@
       "acceptance_needed": "Bank compliance/legal review of each applicable obligation and evidence sufficiency, including unresolved exceptions.",
       "source_refs": [
         "services/api/api/routers/banking.py",
-        "docs/readiness-evidence/control-register.json"
+        "config/control-register.yaml"
       ]
     },
     {
@@ -317,8 +317,7 @@
       "acceptance_needed": "Agree targets and noninterference limits before measurement; representative peak/failure workload, abort and cleanup proof.",
       "source_refs": [
         "services/api/api/routers/execution_controls.py",
-        "scripts/benchmark_scan.py",
-        "docs/readiness-evidence/quality-trace-performance-2026-10-23.md"
+        "scripts/benchmark_scan.py"
       ]
     },
     {

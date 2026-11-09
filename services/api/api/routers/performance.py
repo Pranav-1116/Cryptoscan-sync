@@ -21,12 +21,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import (get_current_user, get_db_session,
+                              require_intelligence_manager,
+                              require_intelligence_writer,
+                              require_query_tenant_scope)
 from db.repositories.performance_repository import (
     DUPLICATE, INSERTED, PerformanceRepository,
 )
 from shared_models.bulk_result import (
-    ACCEPTED, REJECTED, SKIPPED, bulk_result, item as bulk_item,
+    ACCEPTED, REJECTED, SKIPPED,
 )
 from shared_models.performance_benchmarks import run_local_benchmark
 from shared_models.performance_intelligence import (
@@ -40,7 +43,8 @@ from shared_models.performance_views import (
     summarize_metric as summarize, window_check,
 )
 
-router = APIRouter(prefix="/performance", tags=["performance"])
+router = APIRouter(prefix="/performance", tags=["performance"],
+                   dependencies=[Depends(require_query_tenant_scope)])
 
 _BATCH_OUTCOMES = {INSERTED: ACCEPTED, DUPLICATE: SKIPPED}
 
@@ -95,6 +99,16 @@ def _repo(db: Session) -> PerformanceRepository:
     return PerformanceRepository(db)
 
 
+def _require_metric_tenant(tenant_id: str) -> None:
+    from db.tenancy import current_tenant
+
+    scoped = current_tenant()
+    if scoped is not None and tenant_id != scoped:
+        raise HTTPException(status_code=403,
+                            detail="metric tenant does not match the "
+                                   "authenticated tenant scope")
+
+
 def _validate(raw: Dict[str, Any]) -> PerformanceMetric:
     try:
         return PerformanceMetric.model_validate(raw)
@@ -102,7 +116,8 @@ def _validate(raw: Dict[str, Any]) -> PerformanceMetric:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@router.post("/ingest", response_model=IngestResult, status_code=201)
+@router.post("/ingest", response_model=IngestResult, status_code=201,
+             dependencies=[Depends(require_intelligence_writer)])
 def ingest_metric(body: Dict[str, Any], response: Response,
                   db: Session = Depends(get_db_session),
                   user: str = Depends(get_current_user)) -> IngestResult:
@@ -113,6 +128,7 @@ def ingest_metric(body: Dict[str, Any], response: Response,
     every row keeps its unit, source and observation timestamp.
     """
     metric = _validate(body)
+    _require_metric_tenant(metric.tenant_id)
     result = _repo(db).insert_metric(metric)
     if result["outcome"] == DUPLICATE:
         response.status_code = 200
@@ -121,7 +137,8 @@ def ingest_metric(body: Dict[str, Any], response: Response,
                         note=result["note"])
 
 
-@router.post("/ingest/batch", response_model=BatchResult)
+@router.post("/ingest/batch", response_model=BatchResult,
+             dependencies=[Depends(require_intelligence_writer)])
 def ingest_batch(body: BatchIn,
                  db: Session = Depends(get_db_session),
                  user: str = Depends(get_current_user)) -> BatchResult:
@@ -134,9 +151,11 @@ def ingest_batch(body: BatchIn,
         key = f"metrics[{index}]"
         try:
             metric = PerformanceMetric.model_validate(raw)
-        except ValueError as exc:
+            _require_metric_tenant(metric.tenant_id)
+        except (ValueError, HTTPException) as exc:
+            reason = exc.detail if isinstance(exc, HTTPException) else str(exc)
             rows.append(BatchItemResult(key=key, status=REJECTED,
-                                        reason=str(exc)))
+                                        reason=reason))
             continue
         result = repo.insert_metric(metric)
         rows.append(BatchItemResult(
@@ -348,9 +367,18 @@ def _tenant_rows(db: Session, tenant_id: Optional[str],
         raise HTTPException(
             status_code=422,
             detail="tenant_id is required — every query is tenant-scoped")
-    return _repo(db).query_metrics(
+    # Fetch one past the analysis budget. A silent LIMIT 5000 presents a
+    # partial window as if it were a complete metric, so require a narrower
+    # window instead of returning misleading tiles or aggregate values.
+    rows = _repo(db).query_metrics(
         tenant_id, metric_name=metric_name, asset_id=asset_id,
-        window_start=window_start, window_end=window_end, limit=5000)
+        window_start=window_start, window_end=window_end, limit=5001)
+    if len(rows) > 5000:
+        raise HTTPException(status_code=409,
+                            detail="metric window exceeds 5000 samples; "
+                                   "narrow the time window — partial "
+                                   "analytics are not reported as complete")
+    return rows
 
 
 @router.get("/overview", response_model=OverviewResponse)
@@ -537,7 +565,6 @@ def reports(tenant_id: str = Query(...),
     after_end = change_time + timedelta(hours=1)
     rows = _tenant_rows(db, tenant_id, before_start, after_end,
                         metric_name=metric_name)
-    affected = _repo(db).collector_health(tenant_id)
     asset_ids = sorted({row.asset_id for row in rows})
     report = correlate_change_with_metrics(
         {
@@ -631,7 +658,8 @@ def list_benchmarks(tenant_id: str = Query(...),
              "01_PRODUCT_SPEC.md §2.F)")
 
 
-@router.post("/benchmarks", response_model=BenchmarkRunOut, status_code=201)
+@router.post("/benchmarks", response_model=BenchmarkRunOut, status_code=201,
+             dependencies=[Depends(require_intelligence_manager)])
 def benchmarks(body: BenchmarkIn, response: Response,
                db: Session = Depends(get_db_session),
                user: str = Depends(get_current_user)) -> BenchmarkRunOut:
@@ -639,6 +667,7 @@ def benchmarks(body: BenchmarkIn, response: Response,
     controlled-benchmark measurement — never presented as production
     traffic performance — and an algorithm the local provider cannot
     perform is refused with its reason, never invented."""
+    _require_metric_tenant(body.tenant_id)
     try:
         run = run_local_benchmark(
             tenant_id=body.tenant_id, algorithm=body.algorithm,
@@ -743,7 +772,8 @@ def metric_definitions(tenant_id: str = Query(...),
 
 
 @router.post("/definitions", response_model=DefinitionSyncResult,
-             status_code=201)
+             status_code=201,
+             dependencies=[Depends(require_intelligence_manager)])
 def sync_metric_definitions(
         body: Dict[str, Any], response: Response,
         db: Session = Depends(get_db_session),
@@ -754,6 +784,7 @@ def sync_metric_definitions(
     tenant_id = body.get("tenant_id") or ""
     if not tenant_id:
         raise HTTPException(status_code=422, detail="tenant_id is required")
+    _require_metric_tenant(tenant_id)
     result = _repo(db).sync_metric_definitions(tenant_id, DEFINITIONS)
     if result["inserted"] == 0:
         response.status_code = 200

@@ -24,7 +24,9 @@ setup:
 	$(PY) -m pip install -r $(ROOT)/requirements.txt
 
 api:
-	$(PY) -m uvicorn api.main:app --host 0.0.0.0 --port 8010 --proxy-headers --forwarded-allow-ips='*'
+	# api.security.client_ip owns proxy trust via TRUSTED_PROXY_COUNT/CIDRS;
+	# uvicorn proxy flags would rewrite the socket peer before that guard runs.
+	$(PY) -m uvicorn api.main:app --host 127.0.0.1 --port 8010
 
 worker:
 	$(PY) -m worker.main
@@ -164,13 +166,15 @@ docker-up-prod-tls:
 
 
 # ---------------------------------------------------------------------------
-# Bank stack profile (deploy/stack/): the full infrastructure table —
-# PostgreSQL, Neo4j, Redis, Celery, Kafka, MinIO, OpenSearch, Prometheus,
-# Grafana, OpenTelemetry, Vault, Envoy — as one overlay on the app compose.
-# Secrets come from .env (copy deploy/stack/.env.stack.example) or the
-# bank's secret manager; never commit values.
+# Development-only stack profile (deploy/stack/): the infrastructure table —
+# PostgreSQL, Neo4j, Redis-backed worker/outbox, Kafka, MinIO, OpenSearch,
+# Prometheus, Grafana, OpenTelemetry, Vault dev server, Envoy.
+# Plaintext internal services and Vault dev mode are NOT a production profile.
+# Point GATEWAY_TLS_CERT_DIR at a real external cert/key directory and set
+# STACK_DEV_ACK=development-only; secrets come from .env or the bank's manager.
 # ---------------------------------------------------------------------------
 stack-up:
+	$(PY) $(ROOT)/scripts/check_stack_profile.py
 	docker compose -f docker-compose.yml -f deploy/stack/docker-compose.stack.yml up -d
 
 stack-down:

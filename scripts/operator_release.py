@@ -24,10 +24,10 @@ from verify_release_attestation import verify_attestation
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = "kubernetes-external-services/local-source-v1"
-MIGRATION_HEAD = "0145"  # 0137 cryptolog, 0138-0139 perf, 0140-0141 binary, 0142-0144 os-kernel
+MIGRATION_HEAD = "0147"  # 0146 OS schema parity, 0147 forced tenant RLS/write isolation
 IMAGE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}$")
 EXAMPLE_NAMES = {"15-secret.example.yaml"}
-DOCS = ["docs/readiness-evidence/launch-engineering-2026-10-22.md", "docs/runbooks/launch-assurance-handoff.md",
+DOCS = ["docs/CURRENT-STATE.md", "docs/runbooks/launch-assurance-handoff.md",
         "docs/bank-environment/56-independent-security-assurance.md",
         "docs/bank-environment/57-operational-ownership-and-demonstrated-service.md",
         "docs/bank-environment/58-focused-payments-customer-pilot.md",
@@ -36,9 +36,7 @@ DOCS = ["docs/readiness-evidence/launch-engineering-2026-10-22.md", "docs/runboo
         "docs/templates/launch/operating-exercise.json", "docs/templates/launch/payments-pilot.json",
         "docs/templates/launch/review.json", "docs/templates/launch/finding-plan.json",
         "docs/templates/launch/finding-completion.json", "scripts/independent_report.py", "docs/runbooks/operator-install-upgrade-recover.md", "docs/runbooks/controlled-execution-upgrade.md",
-        "docs/runbooks/evidence-assurance-upgrade.md", "docs/dev/scanner-isolation.md",
-        "docs/readiness-evidence/operator-workload-mixed-2026-10-21-run1.json",
-        "docs/readiness-evidence/operator-workload-mixed-2026-10-21-run2.json"]
+        "docs/runbooks/evidence-assurance-upgrade.md", "docs/dev/scanner-isolation.md"]
 
 
 def sha(path):

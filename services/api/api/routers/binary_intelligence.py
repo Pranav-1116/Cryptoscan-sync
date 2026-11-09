@@ -16,7 +16,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import (get_current_user, get_db_session,
+                              require_intelligence_writer,
+                              require_query_tenant_scope)
 from db.repositories.binary_intelligence_repository import (
     BinaryIntelligenceRepository,
 )
@@ -25,12 +27,12 @@ from binary_intelligence.drift import (
     build_drift_series, build_estate, build_history,
 )
 from binary_intelligence.orchestrator import (
-    ScanJob, ScanJobQueue, WorkerLimits,
+    ScanJob, ScanJobQueue,
 )
-from binary_intelligence.pipeline import PROFILES, run_scan
-from db.models.binary_intelligence import BinaryArtifact, BinaryScanRun
+from binary_intelligence.pipeline import run_scan
 
-router = APIRouter(prefix="/binary", tags=["binary-intelligence"])
+router = APIRouter(prefix="/binary", tags=["binary-intelligence"],
+                   dependencies=[Depends(require_query_tenant_scope)])
 
 #: the process-local bounded job queue (§12 async / §13 resources). A
 #: deployment runs worker processes that call POST /binary/scan/
@@ -148,7 +150,19 @@ def _repo(db: Session) -> BinaryIntelligenceRepository:
     return BinaryIntelligenceRepository(db)
 
 
-@router.post("/scan", response_model=ScanAccepted, status_code=201)
+def _require_tenant_scope(tenant_id: str) -> None:
+    """Payload tenancy never grants access outside the authenticated scope."""
+    from db.tenancy import current_tenant
+
+    scoped = current_tenant()
+    if scoped is not None and scoped != tenant_id:
+        raise HTTPException(status_code=403,
+                            detail="requested tenant does not match the "
+                                   "authenticated tenant scope")
+
+
+@router.post("/scan", response_model=ScanAccepted, status_code=201,
+             dependencies=[Depends(require_intelligence_writer)])
 def submit_scan(body: ScanRequest, response: Response,
                 db: Session = Depends(get_db_session),
                 user: str = Depends(get_current_user)) -> ScanAccepted:
@@ -156,6 +170,7 @@ def submit_scan(body: ScanRequest, response: Response,
     artifact is validated by content, identified by SHA-256 and never
     executed; a deep profile runs standard static analysis and names
     deep analysis as not completed (§12/§14)."""
+    _require_tenant_scope(body.tenant_id)
     try:
         data = base64.b64decode(body.artifact_base64, validate=True)
     except Exception as exc:
@@ -413,7 +428,8 @@ def artifact_comparison(artifact_id: str, tenant_id: str = Query(...),
 
 
 @router.post("/artifacts/{artifact_id}/rescan",
-             response_model=ScanAccepted, status_code=201)
+             response_model=ScanAccepted, status_code=201,
+             dependencies=[Depends(require_intelligence_writer)])
 def rescan_artifact(artifact_id: str, body: RescanRequest,
                     response: Response,
                     db: Session = Depends(get_db_session),
@@ -422,6 +438,7 @@ def rescan_artifact(artifact_id: str, body: RescanRequest,
     (§12). The platform stores metadata, not blobs — the caller
     resubmits the bytes and the digest must match: a changed artifact
     is a new artifact, never a rescan of this one."""
+    _require_tenant_scope(body.tenant_id)
     repository = _repo(db)
     artifact = repository.get_artifact(body.tenant_id, artifact_id)
     if artifact is None:
@@ -463,7 +480,8 @@ def worker_status(db: Session = Depends(get_db_session),
              "operations need the numbers, not vibes (§13)")
 
 
-@router.post("/scan/async", response_model=QueuedJobOut, status_code=202)
+@router.post("/scan/async", response_model=QueuedJobOut, status_code=202,
+             dependencies=[Depends(require_intelligence_writer)])
 def submit_scan_async(body: ScanRequest,
                       db: Session = Depends(get_db_session),
                       user: str = Depends(get_current_user)
@@ -472,6 +490,7 @@ def submit_scan_async(body: ScanRequest,
     worker queue; a worker executes it via POST /binary/scan/
     jobs/{job_id}/process. Backpressure refuses and counts — never
     silently drops."""
+    _require_tenant_scope(body.tenant_id)
     import uuid as _uuid
     try:
         data = base64.b64decode(body.artifact_base64, validate=True)
@@ -497,7 +516,8 @@ def submit_scan_async(body: ScanRequest,
 
 
 @router.post("/scan/jobs/{job_id}/process", response_model=ScanAccepted,
-             status_code=201)
+             status_code=201,
+             dependencies=[Depends(require_intelligence_writer)])
 def process_job(job_id: str, response: Response,
                 db: Session = Depends(get_db_session),
                 user: str = Depends(get_current_user)) -> ScanAccepted:
@@ -509,7 +529,10 @@ def process_job(job_id: str, response: Response,
     def _on_result(result) -> None:
         captured["result"] = result
 
-    summary = WORKER_QUEUE.process_job(job_id, on_result=_on_result)
+    from db.tenancy import current_tenant
+
+    summary = WORKER_QUEUE.process_job(
+        job_id, on_result=_on_result, tenant_id=current_tenant())
     if summary is None:
         raise HTTPException(status_code=404, detail="no such queued job")
     if summary["status"] == "failed":
@@ -687,7 +710,8 @@ class FirmwareReportOut(BaseModel):
     note: str
 
 
-@router.post("/firmware/scan", response_model=FirmwareReportOut, status_code=201)
+@router.post("/firmware/scan", response_model=FirmwareReportOut, status_code=201,
+             dependencies=[Depends(require_intelligence_writer)])
 def firmware_scan(body: ScanRequest,
                   db: Session = Depends(get_db_session),
                   user: str = Depends(get_current_user)) -> FirmwareReportOut:
@@ -697,6 +721,7 @@ def firmware_scan(body: ScanRequest,
    , never definitive evidence; carved contents remain untrusted; a
     missing tool reports the analysis as NOT COMPLETED, never as a
     clean result."""
+    _require_tenant_scope(body.tenant_id)
     from adapters.firmware import analyze_firmware
     try:
         data = base64.b64decode(body.artifact_base64, validate=True)

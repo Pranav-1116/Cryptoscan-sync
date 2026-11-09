@@ -13,7 +13,6 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from shared_models.pqc_claims import (
-    NO_EVIDENCE,
     OBSERVED_NOT_VALIDATED,
     PQC_CLAIM_STAGES,
     READY_VALIDATED,

@@ -4,7 +4,7 @@
 # embeds material.
 admin:
   address:
-    socket_address: { address: 0.0.0.0, port_value: 9901 }
+    socket_address: { address: 127.0.0.1, port_value: 9901 }
 
 static_resources:
   listeners:
@@ -65,7 +65,7 @@ static_resources:
                       domains: ["*"]
                       routes:
                         - match: { prefix: "/" }
-                          redirect: { https_redirect: true, scheme: https }
+                          redirect: { https_redirect: true, scheme: https, port_redirect: 8443 }
 
   clusters:
     - name: api
@@ -85,7 +85,7 @@ static_resources:
           - lb_endpoints:
               - endpoint:
                   address:
-                    socket_address: { address: api, port_value: 8000 }
+                    socket_address: { address: api, port_value: 8010 }
     - name: frontend
       connect_timeout: 5s
       type: STRICT_DNS
@@ -96,4 +96,4 @@ static_resources:
           - lb_endpoints:
               - endpoint:
                   address:
-                    socket_address: { address: frontend, port_value: 8080 }
+                    socket_address: { address: frontend, port_value: 3003 }

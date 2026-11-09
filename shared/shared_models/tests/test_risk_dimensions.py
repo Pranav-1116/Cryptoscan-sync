@@ -17,8 +17,6 @@ from shared_models.risk_dimensions import (
     DIMENSIONS,
     DISCOVERY_COVERAGE,
     EVIDENCE_CONFIDENCE,
-    OPERATIONAL_DEPENDENCY,
-    QUANTUM_URGENCY,
     RISK_RULES_VERSION,
     VENDOR_RISK,
     risk_profile,

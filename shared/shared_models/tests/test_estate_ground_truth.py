@@ -15,7 +15,42 @@ import pytest
 
 from shared_models import estate_ground_truth as gt
 from shared_models.estate_graph import build_graph
-from test_estate_twin import _payload
+
+
+def _payload():
+    """A declared, synthetic estate fixture; never customer observations.
+
+    Kept beside the comparison tests rather than importing a nonexistent
+    test module. The refused `uses` edge contrasts with a cited dependency.
+    """
+    return {
+        "estate": "test-payments", "scope": "synthetic-test",
+        "assets": [
+            {"type": "SYSTEM", "name": "Payments"},
+            {"type": "APPLICATION", "name": "Payment API", "ref": "payapi",
+             "owner": "Payments Platform"},
+            {"type": "APPLICATION", "name": "Ledger Worker"},
+            {"type": "HOST", "name": "host-1"},
+            {"type": "HSM", "name": "HSM-1"},
+            {"type": "DATABASE", "name": "PostgreSQL", "ref": "pg"},
+            {"type": "LOAD_BALANCER", "name": "Payments LB"},
+            {"type": "LIBRARY", "name": "OpenSSL", "ref": "ossl"},
+        ],
+        "evidence": [
+            {"ref": "ev-use", "source": "runtime-fixture",
+             "evidence_type": "RUNTIME_OBSERVED", "target": "payapi",
+             "layer": "APPLICATION", "facts": {"algorithm": "AES-256-GCM"}},
+            {"ref": "ev-deploy", "source": "deploy-fixture",
+             "evidence_type": "CONFIGURED", "target": "pg",
+             "layer": "APPLICATION", "facts": {"name": "PostgreSQL"}},
+        ],
+        "relationships": [
+            {"subject": "payapi", "predicate": "depends_on", "object": "pg",
+             "basis": "DEPLOYMENT_CONFIG", "evidence_refs": ["ev-deploy"]},
+            {"subject": "payapi", "predicate": "uses", "object": "pg",
+             "basis": "IMPORTED", "evidence_refs": ["ev-deploy"]},
+        ],
+    }
 
 
 @pytest.fixture()

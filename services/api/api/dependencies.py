@@ -443,6 +443,12 @@ def require_roles(*allowed: str):
 
 require_admin = require_roles("admin")
 require_auditor = require_roles("admin", "auditor")
+# Intelligence intake is a write. Auditors and readonly principals may read
+# evidence but cannot submit, process, correct or reclassify it.
+require_intelligence_writer = require_roles(
+    "superadmin", "ciso", "security_analyst", "scanner")
+require_intelligence_manager = require_roles(
+    "superadmin", "ciso", "security_analyst")
 
 
 # ---------------------------------------------------------------------------
@@ -468,6 +474,25 @@ class TenantContext:
     is_platform_admin: bool
     plan: str | None = None
     tenant_status: str | None = None
+
+
+def require_query_tenant_scope(request: Request) -> None:
+    """An explicit query tenant must agree with the authenticated scope.
+
+    The ORM filter prevents disclosure, but an empty 200 for a forged tenant
+    reads like an empty estate. Refuse the selection before a router can turn
+    authorization failure into a misleading absence; platform admins without
+    a selected scope retain their explicit platform-wide access.
+    """
+    from db.tenancy import current_tenant
+
+    scoped = current_tenant()
+    if scoped is not None and any(
+            selected != scoped
+            for selected in request.query_params.getlist("tenant_id")):
+        raise HTTPException(status_code=403,
+                            detail="requested tenant_id does not match the "
+                                   "authenticated tenant scope")
 
 
 def get_tenant_context(
@@ -778,6 +803,10 @@ def resolve_tenant_for_request(request: Request) -> str | None:
                 # Unknown key: the auth gate rejects it, but never let it
                 # through unscoped in the meantime.
                 raise TenantResolutionRefused(401, "Invalid API key")
+            selected = request.headers.get("x-tenant-id", "").strip() or None
+            if selected is not None and selected != row.tenant_id:
+                raise TenantResolutionRefused(
+                    403, "API key is bound to a different tenant than X-Tenant-ID")
             return row.tenant_id
         user = get_current_user(request)
         ctx = _resolve_tenant_context(request, user, session)

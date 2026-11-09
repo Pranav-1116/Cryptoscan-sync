@@ -164,30 +164,21 @@ controls:
 
   - id: BKP-03
     topic: Restore provenance
-    claimed: operational_record
+    claimed: repository_control
     evidence:
-      - docs/readiness-evidence/backup-restore-drill-2026-09-28.md
-      - docs/readiness-evidence/postgres-dr-drill-2026-09-29.md
       - scripts/postgres_drill.py
       - scripts/postgres_dr_sandbox.sh
+      - docs/disaster-recovery/07-drills-validation-and-acceptance.md
     detail: >-
-      Two qualifications executed. SQLite (2026-09-28): hot online backup
-      restored into a clean data dir, a second instance booted from the
-      backup alone, estate verified through the real API including the CBOM
-      hash chain verifying from genesis (12/12). PostgreSQL (2026-09-29):
-      full DR drill PASS 35/35 against a real primary/standby pair including
-      a controlled one-way promotion -- measured RPO 0.0 s and RTO 0.15 s,
-      marker and all table counts surviving promotion, a live API answering
-      healthy against the promoted node, and a pg_dump/pg_restore into an
-      empty third database where the audit-chain and evidence invariants
-      hold.
+      Restore-drill procedures and acceptance criteria exist in the repository.
+      The earlier dated local drill receipts are no longer retained here; this
+      register cannot substantiate their results or any measured RPO/RTO.
     gap: >-
-      Both ran on one host against local sandboxes, not the customer
-      topology, so the RPO/RTO figures are instrument readings rather than
-      service targets: replication was async, the tables were empty, and
-      there was no load. No failback, no off-host copy, no encrypted round
-      trip (age absent, though the fail-closed paths are verified), no
-      restore-authorisation audit. One drill is not a schedule.
+      Run an authorized, customer-scoped restore and failover exercise; retain
+      independently verifiable dated evidence of source, restored database,
+      chain integrity, authorization, RPO/RTO under load and failback. Establish
+      an approved recurring drill schedule. Repository scripts alone are not
+      operational proof or a bank disaster-recovery qualification.
 
   - id: INC-01
     topic: Incident notification

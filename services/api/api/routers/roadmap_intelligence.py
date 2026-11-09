@@ -125,7 +125,6 @@ def intelligence_findings(
     ``detectors_not_fired`` with the reason — the nine classes are all named, so
     an empty class is an explained absence, never a silent clean result.
     """
-    now = _now()
     findings: list[dict[str, Any]] = []
 
     certs = db.execute(

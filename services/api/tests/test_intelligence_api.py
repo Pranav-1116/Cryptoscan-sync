@@ -13,7 +13,7 @@ The harness is a real SQLite session with real rows — a MagicMock would happil
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pytest
 from fastapi import FastAPI

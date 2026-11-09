@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from shared_models.asset_alias import (
-    ALIAS_SCHEMA, CONFLICT, RESOLVED, UNALIASED,
+    CONFLICT, RESOLVED, UNALIASED,
     alias_record, merge_duplicates, resolve, resolve_all,
 )
 

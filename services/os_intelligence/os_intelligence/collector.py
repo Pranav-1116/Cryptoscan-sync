@@ -13,14 +13,13 @@ Principles (§2.1, §7, §11):
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional
 
 from .crypto_api import CryptoApiEntry, parse_crypto_api
 from .evidence import (COLLECTOR_NAME, COLLECTOR_VERSION, CoverageReport,
-                       OSFinding, evidence_digest)
+                       evidence_digest)
 from .identity import OSIdentity, collect_identity
 from .inventory import (HardwareTrustFact, KernelModule,
                         StorageEncryptionFact, parse_config_flags,
@@ -108,8 +107,14 @@ def collect_linux(host_id: str,
     if text is not None:
         captured["uname"] = text.strip()
 
+    # /proc/cmdline may contain plaintext credentials. Do not read, hash or
+    # retain it; report the deliberately excluded source in coverage.
+    coverage.sources_attempted.append("cmdline")
+    coverage.sources_unavailable.append({
+        "source": "cmdline",
+        "reason": "deliberately not collected: kernel boot arguments may contain secrets",
+    })
     for name, path in (("os_release", root / "etc/os-release"),
-                       ("cmdline", root / "proc/cmdline"),
                        ("tainted", root / "proc/sys/kernel/tainted")):
         t = _read_source(name, path, coverage, digests)
         if t is not None:

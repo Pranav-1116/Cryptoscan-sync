@@ -13,8 +13,7 @@ bandwidth capacity figure is never presented as an observed throughput.
 from __future__ import annotations
 
 from datetime import datetime
-from statistics import median
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from shared_models.performance_metrics import (
     NO_VALUE_QUALITIES, PerformanceMetric,

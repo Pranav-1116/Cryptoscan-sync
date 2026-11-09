@@ -35,7 +35,6 @@ NOT Windows fleet qualification (§12).
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from .crypto_api import CryptoApiEntry
@@ -250,7 +249,6 @@ def parse_manage_bde(text: str
                        "protection status", "encryption percentage"):
                 current.metadata[key.replace(" ", "_")] = value
     for fact in facts:
-        method = fact.metadata.get("encryption_method", "")
         status = fact.metadata.get("conversion_status", "")
         if status.lower() == "fully encrypted":
             fact.notes.append(
@@ -289,7 +287,6 @@ def parse_get_tpm(text: str
         # no parseable TPM state — unavailable, never guessed
         return None, notes
     present = fields.get("tpmpresent", "").lower()
-    ready = fields.get("tpmready", "").lower()
     state = "present" if present == "true" else (
         "unavailable" if present == "false" else "unknown")
     fact = HardwareTrustFact(
@@ -369,7 +366,6 @@ def collect_windows(host_id: str, captured: Dict[str, str]
     """
     coverage = CoverageReport()
     digests: Dict[str, str] = {}
-    notes: List[str] = []
 
     def source(name: str) -> Optional[str]:
         coverage.sources_attempted.append(name)

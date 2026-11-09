@@ -17,7 +17,7 @@ output enforces at the point of use:
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from shared_models.relationship_provenance import (
     INFERRED, PROVEN, UNKNOWN, impact_closure,

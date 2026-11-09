@@ -98,12 +98,15 @@ class ScanJobQueue:
         return True, "queued"
 
     def process_job(self, job_id: str,
-                    on_result: Optional[Callable[[ScanResult], Any]] = None
+                    on_result: Optional[Callable[[ScanResult], Any]] = None,
+                    tenant_id: Optional[str] = None,
                     ) -> Optional[Dict[str, Any]]:
-        """Pop and run the job with this id (worker-driven async, §12).
-        Returns None when the id is not queued."""
+        """Pop only a visible job; a foreign id is indistinguishable from
+        a missing one and is never consumed or run. None is reserved for
+        an explicitly unscoped platform worker/operator."""
         for index, candidate in enumerate(self._pending):
-            if candidate.job_id == job_id:
+            if candidate.job_id == job_id and (
+                    tenant_id is None or candidate.tenant_id == tenant_id):
                 job = self._pending.pop(index)
                 return self._execute(job, on_result=on_result)
         return None

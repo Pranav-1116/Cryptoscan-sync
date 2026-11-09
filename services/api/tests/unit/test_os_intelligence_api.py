@@ -40,6 +40,8 @@ def app_db():
     session = sessionmaker(bind=engine, expire_on_commit=False)()
     application = create_app()
     application.dependency_overrides[get_current_user] = lambda: "operator"
+    from api.dependencies import require_intelligence_writer
+    application.dependency_overrides[require_intelligence_writer] = lambda: "writer"
 
     def _session():
         yield session
@@ -106,6 +108,49 @@ class TestCollectionLifecycle:
             assert asset["os_id"] == "debian"
             assert asset["environment_development_only"] is True
             assert "enterprise qualification" in asset["qualification_note"]
+
+    @pytest.mark.asyncio
+    async def test_repeat_collection_preserves_history_and_shows_latest(self,
+                                                                      app_db, tmp_path):
+        from db.models.os_intelligence import OSAsset
+
+        app, db = app_db
+        from copy import deepcopy
+
+        first = _real_inventory(tmp_path)
+        second = deepcopy(first)
+        second["identity"]["kernel_release"] = "6.2.0"
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            earlier = await _post_collection(client, first)
+            later = await _post_collection(client, second)
+            assert earlier.status_code == later.status_code == 201
+            assert earlier.json()["collection_id"] != later.json()["collection_id"]
+            assets = (await client.get("/api/v1/os-intelligence/assets",
+                                       params={"tenant_id": "t1"})).json()["assets"]
+            assert len(assets) == 1
+            assert assets[0]["collection_id"] == later.json()["collection_id"]
+            assert assets[0]["kernel_release"] == "6.2.0"
+            assert db.query(OSAsset).filter(OSAsset.tenant_id == "t1").count() == 2
+
+    @pytest.mark.asyncio
+    async def test_caller_cmdline_cannot_reach_persistence_or_response(self,
+                                                                    app_db, tmp_path):
+        from db.models.os_intelligence import OSAsset
+
+        app, db = app_db
+        inventory = _real_inventory(tmp_path)
+        inventory["identity"]["cmdline"] = "boot.password=never-store-this-value"
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            accepted = await _post_collection(client, inventory)
+            assert accepted.status_code == 201, accepted.text
+            details = await client.get("/api/v1/os-intelligence/assets/host-under-test",
+                                       params={"tenant_id": "t1"})
+            assert details.status_code == 200
+            assert "never-store-this-value" not in details.text
+            assert "withheld" in details.json()["cmdline"]
+        assert "never-store-this-value" not in db.query(OSAsset).one().cmdline
 
     @pytest.mark.asyncio
     async def test_capabilities_carry_the_decisive_field(self, app_db,
@@ -688,7 +733,6 @@ class TestRuntimeSessions:
     async def test_duplicate_session_is_idempotent(self, app_db,
                                                    tmp_path):
         app, _db = app_db
-        inventory = _real_inventory(tmp_path)
         pkg = {"tenant_id": "t1", "asset_id": "rt-host-2",
                "session": {"session_id": "rt-sess-2", "events": [
                    {"timestamp": "1", "operation_category":

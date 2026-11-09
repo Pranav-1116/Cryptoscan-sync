@@ -12,7 +12,6 @@ import pytest
 from shared_models.cross_bom_reconciliation import (
     CBOM,
     CONFLICTS,
-    HBOM,
     MISSING,
     NBOM,
     PRESENCE,

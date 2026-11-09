@@ -70,7 +70,9 @@ def test_owned_tls13_actual_final_server_hello_and_legacy_profile_unchanged(tmp_
         assert isinstance(f, TlsKeyShareFact)
         retry, group, cipher = parse_hello(bytes.fromhex(f.server_hello_hex))
         assert not retry and GROUPS.get(group, "UNKNOWN") == f.key_exchange_group and SUITES[cipher] == f.cipher_suite
-        assert f.group_classification == "REGISTERED_CLASSICAL_GROUP_SELECTED"
+        assert f.group_classification == group_classification(group)
+        # A hybrid ServerHello is an observed selection, not an assurance
+        # that a PQC implementation or end-to-end use was verified.
         assert f.certificate.algorithm == "RSA" and f.key_exchange_group != "RSA"
         assert f.runtime_use == f.operation_use == f.pqc_assessment == f.server_signature_scheme == "UNKNOWN"
         assert not f.pqc_implementation_verified and not f.pqc_readiness_verified and not f.all_groups_tested
@@ -146,7 +148,7 @@ def test_retry_never_validates_as_final_fact(tmp_path):
     [
         {"selected_group_id": 23},
         {"key_exchange_group": "RSA"},
-        {"group_classification": "REGISTERED_HYBRID_GROUP_SELECTED"},
+        {"group_classification": "opposite_observed"},
         {"pqc_assessment": "READY"},
         {"pqc_readiness_verified": True},
         {"all_groups_tested": True},
@@ -159,6 +161,11 @@ def test_resealed_false_group_or_promoted_use_refuses(tmp_path, patch):
     with server(tmp_path) as state:
         f = ApprovedTlsSessionCollector(include_key_share=True).collect(key_target(state)).receipts[0].facts[0]
     values = {k: getattr(f, k) for k in type(f).model_fields if k != "interface_sha256"}
+    if patch.get("group_classification") == "opposite_observed":
+        patch = {"group_classification": (
+            "REGISTERED_CLASSICAL_GROUP_SELECTED"
+            if f.group_classification == "REGISTERED_HYBRID_GROUP_SELECTED"
+            else "REGISTERED_HYBRID_GROUP_SELECTED")}
     values.update(patch)
     with pytest.raises(ValueError):
         seal_session(fact_model=TlsKeyShareFact, **values)

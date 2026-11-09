@@ -17,6 +17,10 @@ def _env(tmp_path):
                 "SBOM_S3_ACCESS_KEY_FILE", "SBOM_S3_SECRET_KEY_FILE"):
         env.pop(key, None)
     env["LOCAL_RUN_DIR"] = str(tmp_path / "never-created")
+    # This test proves refusal for an explicitly unconfigured install. The
+    # operator's private .env must never turn a negative test into a real up.
+    env["LOCAL_ENV_AUTOLOAD"] = "0"
+    env.pop("LOCAL_ENV_FILE", None)
     return env
 
 
@@ -61,6 +65,60 @@ def test_twin_object_tier_cannot_be_enabled_without_bank_s3(tmp_path):
     assert result.returncode == 2
     assert "requires the bank-owned S3 evidence backend" in result.stderr
     assert not (tmp_path / "never-created").exists()
+
+
+def test_private_env_is_loaded_for_a_plain_status_invocation(tmp_path):
+    private = tmp_path / "local.env"
+    private.write_text("LOCAL_API_PORT=18981\nLOCAL_UI_PORT=18982\n")
+    private.chmod(0o600)
+    env = _env(tmp_path)
+    env.update({"LOCAL_ENV_AUTOLOAD": "1", "LOCAL_ENV_FILE": str(private)})
+    result = subprocess.run(["bash", str(SCRIPT), "status"], cwd=ROOT, env=env,
+                            capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+    assert "127.0.0.1:18981" in result.stdout
+    assert "127.0.0.1:18982" in result.stdout
+
+
+def test_shared_or_symlinked_env_is_refused_before_launch(tmp_path):
+    private = tmp_path / "local.env"
+    private.write_text("LOCAL_API_PORT=18981\n")
+    private.chmod(0o644)
+    env = _env(tmp_path)
+    env.update({"LOCAL_ENV_AUTOLOAD": "1", "LOCAL_ENV_FILE": str(private)})
+    result = subprocess.run(["bash", str(SCRIPT), "status"], cwd=ROOT, env=env,
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 2 and "mode 0600" in result.stderr
+    private.chmod(0o600)
+    link = tmp_path / "link.env"
+    link.symlink_to(private)
+    env["LOCAL_ENV_FILE"] = str(link)
+    result = subprocess.run(["bash", str(SCRIPT), "status"], cwd=ROOT, env=env,
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 2 and "not a symlink" in result.stderr
+
+
+def test_binding_refuses_another_estate_before_starting_containers(tmp_path):
+    run_dir = tmp_path / "never-created"
+    run_dir.mkdir(mode=0o700)
+    (run_dir / "core-estate.binding").write_text("v1|another-estate\n")
+    passwords = []
+    for name in ("db-password", "app-password"):
+        path = tmp_path / name
+        path.write_text("only-a-test-credential\n")
+        path.chmod(0o600)
+        passwords.append(path)
+    env = _env(tmp_path)
+    env.update({"LOCAL_DB_PASS_FILE": str(passwords[0]),
+                "LOCAL_APP_PASS_FILE": str(passwords[1]),
+                "LOCAL_SECRET_KEY": "s" * 40,
+                "LOCAL_WEBHOOK_SECRET": "w" * 40,
+                "LOCAL_EVIDENCE_REQUIRED": "0"})
+    result = subprocess.run(["bash", str(SCRIPT), "up"], cwd=ROOT, env=env,
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == 2
+    assert "bound to a different estate" in result.stderr
+    assert "postgres starting" not in result.stderr
 
 
 def test_local_gateway_template_stays_loopback_and_routes_real_api_and_console():

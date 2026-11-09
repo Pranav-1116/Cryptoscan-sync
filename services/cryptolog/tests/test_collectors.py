@@ -15,7 +15,7 @@ from cryptolog.collectors.base import CollectorRef
 from cryptolog.collectors.qualification import (
     QUALIFIED, REGISTERED, SUSPENDED, QualificationRegistry,
 )
-from shared_models.cryptolog_events import event_hash, validate_event
+from shared_models.cryptolog_events import validate_event
 
 REF = CollectorRef(collector_id="collector_nbom_01",
                    collector_version="1.0.0",

@@ -11,7 +11,10 @@
 #   bash scripts/run_local_stack.sh status  # what is listening
 #   bash scripts/run_local_stack.sh logs    # tail api + frontend
 #   bash scripts/run_local_stack.sh down    # stop everything, KEEP the data
+#   bash scripts/run_local_stack.sh restart # down + up using the SAME bound estate
 #   bash scripts/run_local_stack.sh purge   # stop, then DELETE the estate
+#   The private repository .env is loaded automatically (mode 0600, owned by
+#   the caller). LOCAL_ENV_AUTOLOAD=0 opts out for isolated tests/operators.
 #
 # A fresh estate boots EMPTY: the launcher never seeds inventory. Reused
 # volumes retain their previous records and must be inspected before reuse.
@@ -22,7 +25,8 @@
 # secret files, plus distinct LOCAL_SECRET_KEY/LOCAL_WEBHOOK_SECRET every start.
 # The application uses the separately provisioned NOBYPASSRLS PostgreSQL role.
 # The launcher rejects default secrets and never places the DB password in Docker metadata.
-# Existing volumes or running containers require an explicit reuse opt-in.
+# Existing volumes or running containers require an explicit reuse opt-in,
+# except the exact estate previously bound to this private run directory.
 #
 # Scan targets are confined to CRYPTOSCAN_SOURCE_ROOTS, which defaults to this
 # repository. To scan code checked out elsewhere, widen it deliberately:
@@ -36,6 +40,33 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+
+# Keep repeated invocations bound to the operator's private local credentials.
+# Refuse symlinks, shared permissions and foreign ownership before sourcing
+# shell data; no secret values are printed. An absent .env preserves the
+# existing explicit-environment launch contract.
+if [[ "${LOCAL_ENV_AUTOLOAD:-1}" != 0 ]]; then
+  local_env="${LOCAL_ENV_FILE:-$ROOT/.env}"
+  if [[ -e "$local_env" || -L "$local_env" ]]; then
+    if [[ ! -f "$local_env" || -L "$local_env" ||
+          "$(stat -c %u "$local_env")" != "$(id -u)" ]]; then
+      printf '[stack] FATAL: private .env must be a regular caller-owned file (not a symlink)\n' >&2
+      exit 2
+    fi
+    local_env_mode="$(stat -c %a "$local_env")"
+    if (( (8#$local_env_mode & 0077) != 0 )); then
+      printf '[stack] FATAL: private .env must not grant group/other access (use mode 0600)\n' >&2
+      exit 2
+    fi
+    set -a
+    # shellcheck source=/dev/null
+    source "$local_env"
+    set +a
+  elif [[ -n "${LOCAL_ENV_FILE:-}" ]]; then
+    printf '[stack] FATAL: LOCAL_ENV_FILE does not exist\n' >&2
+    exit 2
+  fi
+fi
 
 DB_NAME="${LOCAL_DB_NAME:-cryptoscan-local-db}"
 DB_PORT="${LOCAL_DB_PORT:-55440}"
@@ -61,6 +92,28 @@ ADMIN_USER="${LOCAL_ADMIN_USER:-admin}"
 ADMIN_PASS="${LOCAL_ADMIN_PASS-}"
 
 export REDIS_URL="redis://127.0.0.1:${REDIS_PORT}/0"
+
+# This non-secret binding records the exact estate this run directory owns.
+# A repeated `up` may reuse only these volumes and launcher-labelled containers;
+# an unrelated old volume still needs the explicit LOCAL_REUSE_VOLUME approval.
+BINDING_FILE="$RUN/core-estate.binding"
+binding_value() {
+  printf 'v1|%s|%s|%s|%s|%s|%s\n' \
+    "$DB_NAME" "$DB_VOLUME" "$DB_USER" "$REDIS_NAME" "$REDIS_VOLUME" "$APP_USER"
+}
+binding_matches() {
+  [[ -f "$BINDING_FILE" && ! -L "$BINDING_FILE" &&
+     "$(<"$BINDING_FILE")" == "$(binding_value)" ]]
+}
+write_binding() {
+  if [[ -e "$BINDING_FILE" || -L "$BINDING_FILE" ]]; then
+    binding_matches || { log "FATAL: run directory is bound to a different estate"; return 2; }
+    return 0
+  fi
+  ( umask 077; set -C; binding_value > "$BINDING_FILE" ) || {
+    log "FATAL: could not persist the core estate binding"; return 2;
+  }
+}
 
 log() { printf '[stack] %s\n' "$*" >&2; }
 pid_on() { ss -lptn "sport = :$1" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1; }
@@ -129,6 +182,10 @@ up() {
   fi
   if [[ "$secret_key" == "$webhook_secret" ]]; then
     log "FATAL: platform and webhook secrets must differ"
+    return 2
+  fi
+  if [[ ( -e "$BINDING_FILE" || -L "$BINDING_FILE" ) ]] && ! binding_matches; then
+    log "FATAL: run directory is bound to a different estate; refusing reuse"
     return 2
   fi
   local encoded_password encoded_app_password
@@ -207,6 +264,11 @@ PY
     return 2
   fi
   mkdir -p "$RUN"
+  if [[ -L "$RUN" || "$(stat -c %u "$RUN")" != "$(id -u)" ||
+        "$(stat -c %a "$RUN")" != 700 ]]; then
+    log "FATAL: local run directory must be caller-owned, non-symlink, mode 0700"
+    return 2
+  fi
 
   # ---- database ----------------------------------------------------------
   if ! docker ps --format '{{.Names}}' | grep -qx "$DB_NAME"; then
@@ -214,7 +276,8 @@ PY
       log "FATAL: stopped container $DB_NAME exists; inspect it before restarting or removing it"
       return 2
     fi
-    if docker volume inspect "$DB_VOLUME" >/dev/null 2>&1 && [[ "${LOCAL_REUSE_VOLUME:-0}" != "1" ]]; then
+    if docker volume inspect "$DB_VOLUME" >/dev/null 2>&1 &&
+       [[ "${LOCAL_REUSE_VOLUME:-0}" != "1" ]] && ! binding_matches; then
       log "FATAL: existing volume $DB_VOLUME may hold another estate; inspect it before LOCAL_REUSE_VOLUME=1"
       return 2
     fi
@@ -225,8 +288,9 @@ PY
       -p "127.0.0.1:${DB_PORT}:5432" postgres:16-alpine >/dev/null
     log "postgres starting on 127.0.0.1:${DB_PORT}"
   else
-    if ! owned_container "$DB_NAME" || [[ "${LOCAL_REUSE_RUNNING:-0}" != "1" ]]; then
-      log "FATAL: $DB_NAME is running; require a launcher-owned label and LOCAL_REUSE_RUNNING=1 after inspection"
+    if ! owned_container "$DB_NAME" ||
+       { [[ "${LOCAL_REUSE_RUNNING:-0}" != "1" ]] && ! binding_matches; }; then
+      log "FATAL: $DB_NAME is running; require a matching session binding or inspected LOCAL_REUSE_RUNNING=1"
       return 2
     fi
     log "postgres already running (operator-approved reuse)"
@@ -244,7 +308,8 @@ PY
       log "FATAL: stopped container $REDIS_NAME exists; inspect it before restarting or removing it"
       return 2
     fi
-    if docker volume inspect "$REDIS_VOLUME" >/dev/null 2>&1 && [[ "${LOCAL_REUSE_VOLUME:-0}" != "1" ]]; then
+    if docker volume inspect "$REDIS_VOLUME" >/dev/null 2>&1 &&
+       [[ "${LOCAL_REUSE_VOLUME:-0}" != "1" ]] && ! binding_matches; then
       log "FATAL: existing volume $REDIS_VOLUME may hold another estate; inspect it before LOCAL_REUSE_VOLUME=1"
       return 2
     fi
@@ -253,8 +318,9 @@ PY
       -p "127.0.0.1:${REDIS_PORT}:6379" redis:7-alpine redis-server --appendonly yes >/dev/null
     log "redis starting on 127.0.0.1:${REDIS_PORT}"
   else
-    if ! owned_container "$REDIS_NAME" || [[ "${LOCAL_REUSE_RUNNING:-0}" != "1" ]]; then
-      log "FATAL: $REDIS_NAME is running; require a launcher-owned label and LOCAL_REUSE_RUNNING=1 after inspection"
+    if ! owned_container "$REDIS_NAME" ||
+       { [[ "${LOCAL_REUSE_RUNNING:-0}" != "1" ]] && ! binding_matches; }; then
+      log "FATAL: $REDIS_NAME is running; require a matching session binding or inspected LOCAL_REUSE_RUNNING=1"
       return 2
     fi
     log "redis already running (operator-approved reuse)"
@@ -267,6 +333,7 @@ PY
     log "FATAL: redis never became ready"; return 1
   fi
   log "redis ready"
+  write_binding
 
   # ---- schema ------------------------------------------------------------
   ( cd services/database/migrations \
@@ -675,8 +742,28 @@ down() {
       log "left unrecognized $name untouched"
     fi
   done
-  log "data kept in volumes ${DB_VOLUME} / ${REDIS_VOLUME} — inspect before LOCAL_REUSE_VOLUME=1"
+  log "data kept in volumes ${DB_VOLUME} / ${REDIS_VOLUME}"
+  if binding_matches; then
+    log "matching private session binding permits a later up with the same credentials"
+  else
+    log "inspect existing volumes before LOCAL_REUSE_VOLUME=1"
+  fi
   log "to delete it: $0 purge"
+}
+
+restart() {
+  down
+  # The frontend and API exit asynchronously. Never start a replacement on
+  # top of a still-listening process (or take a port from another service).
+  for _ in $(seq 30); do
+    if [[ -z "$(pid_on "$API_PORT")" && -z "$(pid_on "$UI_PORT")" ]]; then break; fi
+    sleep 1
+  done
+  if [[ -n "$(pid_on "$API_PORT")" || -n "$(pid_on "$UI_PORT")" ]]; then
+    log "FATAL: API or console still owns its port after shutdown"
+    return 2
+  fi
+  up
 }
 
 # Destroy the estate. Separate from `down`, named for what it does, and it
@@ -696,6 +783,7 @@ purge() {
 
 case "${1:-up}" in
   up) up ;;
+  restart) restart ;;
   reload) reload_app ;;
   status) status ;;
   tools) tools ;;
@@ -706,5 +794,5 @@ case "${1:-up}" in
   logs) logs ;;
   down) down ;;
   purge) purge "$@" ;;
-  *) echo "usage: $0 {up|reload|status|tools|monitoring-up|grafana-up|graph-up|gateway-up|logs|down|purge}" >&2; exit 2 ;;
+  *) echo "usage: $0 {up|restart|reload|status|tools|monitoring-up|grafana-up|graph-up|gateway-up|logs|down|purge}" >&2; exit 2 ;;
 esac

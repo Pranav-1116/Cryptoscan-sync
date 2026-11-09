@@ -15,7 +15,6 @@ from shared_models.threat_intelligence import (
     CERTIFICATE_RISK,
     COLLECTION_BLIND_SPOT,
     CRYPTO_REGRESSION,
-    HSM_DEPENDENCY,
     LIBRARY_RISK,
     PQC_REGRESSION,
     THREAT_CLASSES,
