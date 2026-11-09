@@ -20,7 +20,8 @@ from sqlalchemy.orm import Session
 from db.models.os_intelligence import (
     OSAssetCertificate, OSCoverageRecord, OSCryptoCapability,
     OSConfigFlag, OSFindingRecord,
-    OSModuleRecord, OSStorageFact, OSTrustFact, OSAsset, OSTwinEdge,
+    OSModuleRecord, OSRuntimeEvent, OSRuntimeSession, OSStorageFact,
+    OSTrustFact, OSAsset, OSTwinEdge,
 )
 from os_intelligence.bom import build_bom
 from db.repositories.performance_repository import _aware
@@ -225,6 +226,174 @@ class OSIntelligenceRepository:
         self.db.commit()
         return {"collection_id": collection_id, "asset_id": asset_id,
                 "outcome": "recorded"}
+
+    def record_runtime_session(self, *, tenant_id: str,
+                               asset_id: str,
+                               session: Dict[str, Any]
+                               ) -> Dict[str, Any]:
+        """Persist one Tier-2 runtime session and its metadata events
+        (spec §3). METADATA ONLY — the event schema has no field for
+        plaintext, keys, passwords, tokens or crypto I/O buffers; the
+        bounded filter at ingestion refuses those and refusals are
+        counted, never drawn as truths."""
+        now = datetime.now(timezone.utc)
+        session_id = str(session.get("session_id") or "").strip()
+        if not session_id:
+            raise ValueError("runtime session requires a session_id")
+        existing = self.db.scalar(
+            select(OSRuntimeSession).where(
+                OSRuntimeSession.tenant_id == tenant_id,
+                OSRuntimeSession.session_id == session_id))
+        if existing is not None:
+            return {"session_id": session_id, "status": "already_recorded",
+                    "events_recorded": 0}
+        self.db.add(OSRuntimeSession(
+            tenant_id=tenant_id,
+            session_id=session_id,
+            asset_id=asset_id,
+            boot_id=session.get("boot_id"),
+            collection_profile=str(session.get("collection_profile")
+                                   or "tier2-approved-tracepoints"),
+            evidence_source=session.get("evidence_source"),
+            started_at=session.get("started_at"),
+            ended_at=session.get("ended_at"),
+            attached_points=list(session.get("attached_points") or []),
+            events_accepted=int(session.get("events_accepted") or 0),
+            events_lost=int(session.get("events_lost") or 0),
+            refusals=list(session.get("refusals") or [])[:1000],
+            notes=list(session.get("notes") or []),
+            collected_at=now,
+        ))
+        count = 0
+        for i, ev in enumerate(
+                (session.get("events") or [])[:50000]):
+            self.db.add(OSRuntimeEvent(
+                tenant_id=tenant_id,
+                session_id=session_id,
+                asset_id=asset_id,
+                event_id=str(ev.get("event_id") or
+                             f"rt-{session_id}-{i}"),
+                boot_id=ev.get("boot_id"),
+                process_id=ev.get("process_id"),
+                process_start_time=ev.get("process_start_time"),
+                executable_digest=ev.get("executable_digest"),
+                operation_category=str(ev.get("operation_category")
+                                       or "unclassified"),
+                algorithm_identifier=ev.get("algorithm_identifier"),
+                provider_identifier=ev.get("provider_identifier"),
+                kernel_or_userspace=ev.get("kernel_or_userspace"),
+                interface=ev.get("interface"),
+                timestamp=ev.get("timestamp"),
+                evidence_source=ev.get("evidence_source"),
+                collection_profile=ev.get("collection_profile"),
+                collected_at=now,
+            ))
+            count += 1
+        self.db.commit()
+        return {"session_id": session_id, "status": "recorded",
+                "events_recorded": count}
+
+    def list_runtime_sessions(self, tenant_id: str, asset_id: str
+                              ) -> List[Dict[str, Any]]:
+        rows = self.db.scalars(
+            select(OSRuntimeSession).where(
+                OSRuntimeSession.tenant_id == tenant_id,
+                OSRuntimeSession.asset_id == asset_id).order_by(
+                OSRuntimeSession.collected_at.desc())).all()
+        return [{
+            "session_id": r.session_id,
+            "boot_id": r.boot_id,
+            "collection_profile": r.collection_profile,
+            "evidence_source": r.evidence_source,
+            "started_at": r.started_at,
+            "ended_at": r.ended_at,
+            "attached_points": list(r.attached_points or []),
+            "events_accepted": r.events_accepted,
+            "events_lost": r.events_lost,
+            "refusals": list(r.refusals or []),
+            "notes": list(r.notes or []),
+            "collected_at": _aware(r.collected_at).isoformat(),
+        } for r in rows]
+
+    def list_runtime_events(self, tenant_id: str, asset_id: str,
+                            session_id: str = ""
+                            ) -> List[Dict[str, Any]]:
+        stmt = select(OSRuntimeEvent).where(
+            OSRuntimeEvent.tenant_id == tenant_id,
+            OSRuntimeEvent.asset_id == asset_id)
+        if session_id:
+            stmt = stmt.where(OSRuntimeEvent.session_id == session_id)
+        rows = self.db.scalars(stmt.order_by(
+            OSRuntimeEvent.collected_at.desc()).limit(2000)).all()
+        return [{
+            "event_id": r.event_id,
+            "session_id": r.session_id,
+            "boot_id": r.boot_id,
+            "process_id": r.process_id,
+            "process_start_time": r.process_start_time,
+            "executable_digest": r.executable_digest,
+            "operation_category": r.operation_category,
+            "algorithm_identifier": r.algorithm_identifier,
+            "provider_identifier": r.provider_identifier,
+            "kernel_or_userspace": r.kernel_or_userspace,
+            "interface": r.interface,
+            "timestamp": r.timestamp,
+            "evidence_source": r.evidence_source,
+            "collection_profile": r.collection_profile,
+            "collected_at": _aware(r.collected_at).isoformat(),
+        } for r in rows]
+
+    def runtime_usage_confirmations(self, tenant_id: str,
+                                    asset_id: str
+                                    ) -> List[Dict[str, Any]]:
+        """Serve-time usage confirmations derived from recorded
+        runtime events. These RAISE runtime_usage_confirmed and never
+        overwrite the static registration row (§2.2): each record
+        names the confirming events and the observed process
+        identity."""
+        rows = self.db.scalars(
+            select(OSRuntimeEvent).where(
+                OSRuntimeEvent.tenant_id == tenant_id,
+                OSRuntimeEvent.asset_id == asset_id,
+                OSRuntimeEvent.operation_category.in_([
+                    "crypto_api_allocation", "algorithm_selection",
+                    "key_generation_request",
+                    "encrypt_decrypt_operation", "hash_operation",
+                    "signature_generate_verify"])).order_by(
+            OSRuntimeEvent.collected_at).limit(20000)).all()
+        groups: Dict[tuple, Dict[str, Any]] = {}
+        for r in rows:
+            algorithm = r.algorithm_identifier or ""
+            if not algorithm:
+                continue
+            key = (algorithm, r.provider_identifier or r.interface
+                   or "unknown")
+            entry = groups.setdefault(key, {
+                "algorithm": key[0],
+                "implementation": key[1],
+                "runtime_usage_confirmed": True,
+                "evidence_class": "observed",
+                "observed_processes": set(),
+                "confirmed_by_events": [],
+            })
+            if r.process_id or r.executable_digest:
+                digest = (f" digest={r.executable_digest}"
+                          if r.executable_digest else "")
+                entry["observed_processes"].add(
+                    f"pid={r.process_id or '?'}{digest}")
+            if len(entry["confirmed_by_events"]) < 20:
+                entry["confirmed_by_events"].append(r.event_id)
+        out = []
+        for entry in groups.values():
+            entry["observed_processes"] = sorted(
+                entry["observed_processes"])
+            entry["note"] = (
+                "raised ONLY by observed runtime events (§2.2) — the "
+                "static registration row is never overwritten; the "
+                "confirmation is scoped to the observed process "
+                "identity and is never inferred from co-location")
+            out.append(entry)
+        return out
 
     def list_certificates(self, tenant_id: str, asset_id: str
                           ) -> List[Dict[str, Any]]:

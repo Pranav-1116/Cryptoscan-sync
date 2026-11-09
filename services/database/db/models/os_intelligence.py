@@ -295,3 +295,81 @@ class OSAssetCertificate(BaseModel, TenantScoped):
     limitations: Mapped[Optional[Any]] = mapped_column(JSON)
     collected_at: Mapped[datetime] = mapped_column(DateTime,
                                                    nullable=False)
+
+
+class OSRuntimeSession(BaseModel, TenantScoped):
+    """One bounded Tier-2 runtime collection session (spec §3).
+
+    METADATA EVENTS ONLY. Session-level accounting: events_lost comes
+    from the collector's own loss accounting — recorded, never
+    guessed. runtime_usage_confirmed is derived from the events and
+    never overwrites static rows (§2.2).
+    """
+
+    __tablename__ = "os_runtime_sessions"
+    __table_args__ = (
+        Index("ix_os_runtime_sessions_tenant_asset",
+              "tenant_id", "asset_id"),
+    )
+
+    session_id: Mapped[str] = mapped_column(String(80), nullable=False,
+                                            unique=True)
+    asset_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    boot_id: Mapped[Optional[str]] = mapped_column(String(80))
+    collection_profile: Mapped[str] = mapped_column(String(80),
+                                                    nullable=False)
+    evidence_source: Mapped[Optional[str]] = mapped_column(
+        String(200))
+    started_at: Mapped[Optional[str]] = mapped_column(String(40))
+    ended_at: Mapped[Optional[str]] = mapped_column(String(40))
+    attached_points: Mapped[Optional[Any]] = mapped_column(JSON)
+    events_accepted: Mapped[int] = mapped_column(Integer,
+                                                 nullable=False,
+                                                 default=0)
+    events_lost: Mapped[int] = mapped_column(Integer, nullable=False,
+                                             default=0)
+    refusals: Mapped[Optional[Any]] = mapped_column(JSON)
+    notes: Mapped[Optional[Any]] = mapped_column(JSON)
+    collected_at: Mapped[datetime] = mapped_column(DateTime,
+                                                   nullable=False)
+
+
+class OSRuntimeEvent(BaseModel, TenantScoped):
+    """One approved runtime METADATA event (spec §3 schema).
+
+    The schema has no field for plaintext, keys, passwords, tokens or
+    crypto input/output buffers — the bounded filter refuses those at
+    ingestion and refusals are counted, never drawn as truths.
+    """
+
+    __tablename__ = "os_runtime_events"
+    __table_args__ = (
+        Index("ix_os_runtime_events_tenant_session",
+              "tenant_id", "session_id"),
+    )
+
+    session_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    asset_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    event_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    boot_id: Mapped[Optional[str]] = mapped_column(String(80))
+    process_id: Mapped[Optional[str]] = mapped_column(String(40))
+    process_start_time: Mapped[Optional[str]] = mapped_column(
+        String(40))
+    executable_digest: Mapped[Optional[str]] = mapped_column(
+        String(120))
+    operation_category: Mapped[str] = mapped_column(String(60),
+                                                    nullable=False)
+    algorithm_identifier: Mapped[Optional[str]] = mapped_column(
+        String(120))
+    provider_identifier: Mapped[Optional[str]] = mapped_column(
+        String(120))
+    kernel_or_userspace: Mapped[Optional[str]] = mapped_column(
+        String(20))
+    interface: Mapped[Optional[str]] = mapped_column(String(80))
+    timestamp: Mapped[Optional[str]] = mapped_column(String(40))
+    evidence_source: Mapped[Optional[str]] = mapped_column(
+        String(200))
+    collection_profile: Mapped[Optional[str]] = mapped_column(
+        String(80))
+    collected_at: Mapped[datetime] = mapped_column(DateTime,
+                                                   nullable=False)

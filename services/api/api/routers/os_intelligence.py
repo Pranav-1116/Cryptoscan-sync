@@ -91,6 +91,8 @@ class CapabilityOut(BaseModel):
     selftest: Optional[str] = None
     hardware_accelerated: Optional[bool] = None
     runtime_usage_confirmed: bool = False
+    runtime_confirmed_by: List[str] = []
+    runtime_evidence_source: Optional[str] = None
     parse_notes: List[str] = []
 
 
@@ -389,7 +391,19 @@ def asset_rule_evaluation(asset_id: str, tenant_id: str = Query(...),
         "hardware_trust": repo.list_trust(tenant_id, collection_id),
         "coverage": coverage or {},
     }
-    report = evaluate_rules(inventory)
+    # OS-CRYPTO-017 evaluates from the latest recorded runtime
+    # session's loss accounting (recorded, never guessed). No session
+    # stays not_evaluable — never reported 'healthy'.
+    sessions = repo.list_runtime_sessions(tenant_id, asset_id)
+    runtime_input = None
+    if sessions:
+        latest = sessions[0]
+        runtime_input = {
+            "events_accepted": latest["events_accepted"],
+            "events_lost": latest["events_lost"],
+            "evidence_source": latest.get("evidence_source"),
+        }
+    report = evaluate_rules(inventory, runtime_session=runtime_input)
     return RuleEvaluationOut(**report.as_dict())
 
 
@@ -432,9 +446,29 @@ def asset_capabilities(asset_id: str, tenant_id: str = Query(...),
                        ) -> CapabilityListOut:
     repo = _repo(db)
     collection_id = _collection_or_404(repo, tenant_id, asset_id)
-    return CapabilityListOut(
-        capabilities=[CapabilityOut(**c) for c in
-                      repo.list_capabilities(tenant_id, collection_id)])
+    # Serve-time enrichment ONLY: runtime confirmations RAISE
+    # runtime_usage_confirmed and never overwrite the stored static
+    # row (§2.2). A registration without runtime events keeps
+    # 'runtime usage not confirmed' — never 'unused'.
+    confirmations = repo.runtime_usage_confirmations(tenant_id,
+                                                     asset_id)
+    by_impl: Dict[tuple, Dict[str, Any]] = {}
+    for conf in confirmations:
+        by_impl[(conf["algorithm"].lower(),
+                 conf["implementation"].lower())] = conf
+    rows = []
+    for c in repo.list_capabilities(tenant_id, collection_id):
+        conf = by_impl.get(
+            (str(c.get("algorithm") or "").lower(),
+             str(c.get("driver") or c.get("module") or "").lower()))
+        if conf is not None:
+            c = dict(c)
+            c["runtime_usage_confirmed"] = True
+            c["runtime_confirmed_by"] = list(
+                conf.get("confirmed_by_events") or [])
+            c["runtime_evidence_source"] = "Tier-2 runtime session"
+        rows.append(CapabilityOut(**c))
+    return CapabilityListOut(capabilities=rows)
 
 
 @router.get("/assets/{asset_id}/modules", response_model=ModuleListOut)
@@ -493,6 +527,153 @@ def asset_findings(asset_id: str, tenant_id: str = Query(...),
     return FindingListOut(
         findings=[FindingOut(**f) for f in
                   repo.list_findings(tenant_id, collection_id)])
+
+
+class RuntimeEventOut(BaseModel):
+    event_id: str
+    session_id: str
+    boot_id: Optional[str] = None
+    process_id: Optional[str] = None
+    process_start_time: Optional[str] = None
+    executable_digest: Optional[str] = None
+    operation_category: str
+    algorithm_identifier: Optional[str] = None
+    provider_identifier: Optional[str] = None
+    kernel_or_userspace: Optional[str] = None
+    interface: Optional[str] = None
+    timestamp: Optional[str] = None
+    evidence_source: Optional[str] = None
+    collection_profile: Optional[str] = None
+    collected_at: str
+
+
+class RuntimeSessionOut(BaseModel):
+    session_id: str
+    boot_id: Optional[str] = None
+    collection_profile: str
+    evidence_source: Optional[str] = None
+    started_at: Optional[str] = None
+    ended_at: Optional[str] = None
+    attached_points: List[str] = []
+    events_accepted: int = 0
+    events_lost: int = 0
+    refusals: List[Dict[str, str]] = []
+    notes: List[str] = []
+    collected_at: str
+
+
+class RuntimeSessionListOut(BaseModel):
+    sessions: List[RuntimeSessionOut]
+    note: str = ("Tier-2 runtime METADATA sessions — plaintext, keys, "
+                 "passwords, tokens and crypto input/output buffers "
+                 "are never collected (§3); lost-event counts are "
+                 "recorded from the collector's own accounting, never "
+                 "guessed")
+
+
+class RuntimeSessionPostOut(BaseModel):
+    session_id: str
+    status: str
+    events_recorded: int
+
+
+class RuntimeEventListOut(BaseModel):
+    events: List[RuntimeEventOut]
+    note: str = ("runtime METADATA events only — an event carries the "
+                 "spec's §3 schema and nothing else; an unknown "
+                 "operation category is 'unclassified', never guessed")
+
+
+class RuntimeUsageOut(BaseModel):
+    confirmations: List[Dict[str, Any]]
+    note: str = ("runtime usage confirmations raised ONLY by observed "
+                 "runtime events (§2.2) — the static registration row "
+                 "is never overwritten; a confirmation is scoped to "
+                 "the observed process identity and never inferred "
+                 "from co-location")
+
+
+class RuntimeSessionSubmission(BaseModel):
+    """One captured Tier-2 runtime session package (§3: metadata
+    events only — the normalizer refuses prohibited fields and counts
+    refusals before this route records anything)."""
+    tenant_id: str = Field(..., min_length=1, max_length=120)
+    asset_id: str = Field(..., min_length=1, max_length=80)
+    session: Dict[str, Any] = Field(...)
+
+
+@router.post("/assets/{asset_id}/runtime-sessions",
+             response_model=RuntimeSessionPostOut,
+             status_code=201)
+def submit_runtime_session(asset_id: str,
+                           body: RuntimeSessionSubmission,
+                           response: Response,
+                           db: Session = Depends(get_db_session),
+                           user=Depends(get_current_user)
+                           ) -> RuntimeSessionPostOut:
+    """Record one captured Tier-2 runtime session (metadata events
+    only, §3). The bounded filter already refused prohibited fields
+    at ingestion; this route records what the normalizer produced."""
+    from os_intelligence.runtime import ingest_events
+    if body.asset_id != asset_id:
+        raise HTTPException(status_code=422,
+                            detail="body asset_id must match the path")
+    session = body.session
+    raw_events = session.get("events") or []
+    normalized = ingest_events(
+        str(session.get("session_id") or "").strip() or "rt-unset",
+        asset_id, raw_events,
+        boot_id=str(session.get("boot_id") or ""),
+        collection_profile=str(session.get("collection_profile") or
+                               "tier2-approved-tracepoints"),
+        evidence_source=str(session.get("evidence_source") or
+                            "runtime collector"),
+        events_lost=int(session.get("events_lost") or 0),
+        attached_points=list(session.get("attached_points") or []),
+        started_at=str(session.get("started_at") or ""),
+        ended_at=str(session.get("ended_at") or ""))
+    payload = normalized.as_dict()
+    payload["events"] = [e.as_dict() for e in normalized.events]
+    result = _repo(db).record_runtime_session(
+        tenant_id=body.tenant_id, asset_id=asset_id, session=payload)
+    if result["status"] == "recorded":
+        response.status_code = 201
+    return RuntimeSessionPostOut(**result)
+
+
+@router.get("/assets/{asset_id}/runtime-sessions",
+            response_model=RuntimeSessionListOut)
+def list_runtime_sessions(asset_id: str,
+                          tenant_id: str = Query(...),
+                          db: Session = Depends(get_db_session),
+                          user=Depends(get_current_user)
+                          ) -> RuntimeSessionListOut:
+    return RuntimeSessionListOut(
+        sessions=[RuntimeSessionOut(**r) for r in
+                  _repo(db).list_runtime_sessions(tenant_id, asset_id)])
+
+
+@router.get("/assets/{asset_id}/runtime-events",
+            response_model=RuntimeEventListOut)
+def list_runtime_events(asset_id: str, tenant_id: str = Query(...),
+                        session_id: str = Query(""),
+                        db: Session = Depends(get_db_session),
+                        user=Depends(get_current_user)
+                        ) -> RuntimeEventListOut:
+    return RuntimeEventListOut(
+        events=[RuntimeEventOut(**r) for r in
+                _repo(db).list_runtime_events(tenant_id, asset_id,
+                                              session_id)])
+
+
+@router.get("/assets/{asset_id}/runtime-usage",
+            response_model=RuntimeUsageOut)
+def runtime_usage(asset_id: str, tenant_id: str = Query(...),
+                  db: Session = Depends(get_db_session),
+                  user=Depends(get_current_user)) -> RuntimeUsageOut:
+    return RuntimeUsageOut(
+        confirmations=_repo(db).runtime_usage_confirmations(
+            tenant_id, asset_id))
 
 
 @router.get("/assets/{asset_id}/certificates",

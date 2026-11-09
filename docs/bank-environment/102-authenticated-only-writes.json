@@ -1460,6 +1460,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/os-intelligence/assets/{asset_id}/runtime-sessions",
+      "reason": "operator surface: read-only OS/kernel collection package intake and inspection; metadata only, never key material, tenant-scoped"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/os-intelligence/collections",
       "reason": "operator surface: read-only OS/kernel collection package intake and inspection; metadata only, never key material, tenant-scoped"
     },

@@ -4,11 +4,13 @@ import {
   apiOSAssets, apiOSAsset, apiOSCapabilities, apiOSModules,
   apiOSConfigFlags, apiOSStorage, apiOSHardwareTrust, apiOSFindings,
   apiOSCoverage, apiOSRules, apiOSRuleEvaluation, apiOSBom,
-  apiOSCertificates,
+  apiOSCertificates, apiOSRuntimeSessions, apiOSRuntimeEvents,
+  apiOSRuntimeUsage,
   type ApiResult, type OSAssetRecord, type OSCapability, type OSCoverage,
   type OSFindingRecord, type OSModule, type OSConfigFlag,
   type OSStorageFact, type OSTrustFact, type OSRuleEvaluation, type OSBom,
-  type OSCertificate,
+  type OSCertificate, type OSRuntimeSession, type OSRuntimeEvent,
+  type OSRuntimeUsage,
 } from "../lib/api.js";
 
 /* OS & Kernel Intelligence (docs/os-kernel-intelligence/01_PRODUCT_SPEC.md):
@@ -20,8 +22,8 @@ import {
 
 type View =
   | "estate" | "assets" | "capabilities" | "modules" | "config"
-  | "storage" | "trust" | "certs" | "findings" | "coverage" | "rules"
-  | "bom";
+  | "storage" | "trust" | "certs" | "runtime" | "findings"
+  | "coverage" | "rules" | "bom";
 
 const VIEWS: Array<{ key: View; label: string }> = [
   { key: "estate", label: "Estate Overview" },
@@ -32,6 +34,7 @@ const VIEWS: Array<{ key: View; label: string }> = [
   { key: "storage", label: "Disk Encryption" },
   { key: "trust", label: "Hardware Trust" },
   { key: "certs", label: "Certificates" },
+  { key: "runtime", label: "Runtime" },
   { key: "findings", label: "Findings" },
   { key: "coverage", label: "Coverage" },
   { key: "rules", label: "OS-CRYPTO Rules" },
@@ -124,6 +127,9 @@ export default function OSKernel() {
   const [rules, setRules] = useState<ApiResult<{ rules: Array<{ rule_id: string; detection: string; potential_impact: string }>; note: string }> | null>(null);
   const [evaluation, setEvaluation] = useState<ApiResult<OSRuleEvaluation> | null>(null);
   const [certs, setCerts] = useState<ApiResult<{ certificates: OSCertificate[]; note: string }> | null>(null);
+  const [rtSessions, setRtSessions] = useState<ApiResult<{ sessions: OSRuntimeSession[]; note: string }> | null>(null);
+  const [rtEvents, setRtEvents] = useState<ApiResult<{ events: OSRuntimeEvent[]; note: string }> | null>(null);
+  const [rtUsage, setRtUsage] = useState<ApiResult<{ confirmations: OSRuntimeUsage[]; note: string }> | null>(null);
   const [bom, setBom] = useState<ApiResult<OSBom> | null>(null);
   const [bomKind, setBomKind] = useState("techbom");
   const [busy, setBusy] = useState(false);
@@ -161,6 +167,11 @@ export default function OSKernel() {
         setEvaluation(await apiOSRuleEvaluation(assetId, t)); break;
       case "certs":
         setCerts(await apiOSCertificates(assetId, t)); break;
+      case "runtime":
+        setRtSessions(await apiOSRuntimeSessions(assetId, t));
+        setRtEvents(await apiOSRuntimeEvents(assetId, t));
+        setRtUsage(await apiOSRuntimeUsage(assetId, t));
+        break;
       case "bom":
         setBom(await apiOSBom(assetId, { ...t, kind: bomKind })); break;
     }
@@ -583,6 +594,164 @@ export default function OSKernel() {
             <p style={{ fontSize: 12, margin: 0 }}>Reading…</p>
           )}
         </Panel>
+      )}
+
+      {view === "runtime" && (
+        <>
+          <Panel title="Tier-2 runtime sessions (metadata events only)">
+            {rtSessions && rtSessions.error && !rtSessions.data ? (
+              <ReadFailed error={rtSessions.error} />
+            ) : rtSessions && rtSessions.data ? (
+              <>
+                <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 8px" }}>
+                  {rtSessions.data.note}
+                </p>
+                {rtSessions.data.sessions.length === 0 ? (
+                  <p style={{ fontSize: 12, margin: 0 }}>
+                    No runtime session recorded. Runtime collection is
+                    separately approved (§3); no session is never
+                    &ldquo;healthy&rdquo; and never &ldquo;no runtime
+                    activity&rdquo; — the OS-CRYPTO-017 rule stays not
+                    evaluated until a session exists.
+                  </p>
+                ) : (
+                  <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ textAlign: "left", color: "var(--muted)" }}>
+                        <th>session</th><th>profile</th><th>attached points</th>
+                        <th>accepted</th><th>lost</th><th>collected</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rtSessions.data.sessions.map((s) => (
+                        <tr key={s.session_id} style={{ borderTop: "1px solid var(--rule)" }}>
+                          <td style={{ fontFamily: "var(--mono)" }}>{s.session_id}</td>
+                          <td>{s.collection_profile}</td>
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 11 }}>
+                            {s.attached_points.length > 0
+                              ? s.attached_points.join(", ")
+                              : <Unknown why="no instrumentation point attached — recorded, never assumed (§3)" />}
+                          </td>
+                          <td style={{ fontFamily: "var(--mono)" }}>{s.events_accepted}</td>
+                          <td>
+                            {s.events_lost > 0 ? (
+                              <span title="lost-event counts come from the collector's own accounting — recorded, never guessed">
+                                <Badge tone="amber">{s.events_lost} lost</Badge>
+                              </span>
+                            ) : (
+                              <span style={{ fontFamily: "var(--mono)" }}>0</span>
+                            )}
+                          </td>
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{s.collected_at}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </>
+            ) : (
+              <p style={{ fontSize: 12, margin: 0 }}>Reading…</p>
+            )}
+          </Panel>
+
+          <div style={{ height: 12 }} />
+
+          <Panel title="Runtime usage confirmations (raised only by runtime events)">
+            {rtUsage && rtUsage.error && !rtUsage.data ? (
+              <ReadFailed error={rtUsage.error} />
+            ) : rtUsage && rtUsage.data ? (
+              <>
+                <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 8px" }}>
+                  {rtUsage.data.note}
+                </p>
+                {rtUsage.data.confirmations.length === 0 ? (
+                  <p style={{ fontSize: 12, margin: 0 }}>
+                    No runtime usage confirmation. A registered capability
+                    without runtime events stays &ldquo;runtime usage not
+                    confirmed&rdquo; — never &ldquo;unused&rdquo; (§2.2).
+                  </p>
+                ) : (
+                  <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ textAlign: "left", color: "var(--muted)" }}>
+                        <th>algorithm</th><th>implementation</th>
+                        <th>usage</th><th>observed processes</th>
+                        <th>confirmed by</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rtUsage.data.confirmations.map((c) => (
+                        <tr key={c.algorithm + c.implementation} style={{ borderTop: "1px solid var(--rule)" }}>
+                          <td style={{ fontFamily: "var(--mono)" }}>{c.algorithm}</td>
+                          <td style={{ fontFamily: "var(--mono)" }}>{c.implementation}</td>
+                          <td><RuntimeFlag confirmed={c.runtime_usage_confirmed} /></td>
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 11 }}>
+                            {c.observed_processes.join("; ") || "—"}
+                          </td>
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 11 }}>
+                            {c.confirmed_by_events.join(", ")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </>
+            ) : (
+              <p style={{ fontSize: 12, margin: 0 }}>Reading…</p>
+            )}
+          </Panel>
+
+          <div style={{ height: 12 }} />
+
+          <Panel title="Runtime metadata events">
+            {rtEvents && rtEvents.error && !rtEvents.data ? (
+              <ReadFailed error={rtEvents.error} />
+            ) : rtEvents && rtEvents.data ? (
+              <>
+                <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 8px" }}>
+                  {rtEvents.data.note}
+                </p>
+                {rtEvents.data.events.length === 0 ? (
+                  <p style={{ fontSize: 12, margin: 0 }}>
+                    No runtime events recorded.
+                  </p>
+                ) : (
+                  <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ textAlign: "left", color: "var(--muted)" }}>
+                        <th>event</th><th>category</th><th>algorithm</th>
+                        <th>provider</th><th>process</th><th>timestamp</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rtEvents.data.events.map((e) => (
+                        <tr key={e.event_id} style={{ borderTop: "1px solid var(--rule)" }}>
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{e.event_id}</td>
+                          <td>
+                            {e.operation_category === "unclassified"
+                              ? <span title="not a documented category — recorded as 'unclassified', never guessed">
+                                  <Badge tone="amber">unclassified</Badge>
+                                </span>
+                              : e.operation_category}
+                          </td>
+                          <td style={{ fontFamily: "var(--mono)" }}>{e.algorithm_identifier || "—"}</td>
+                          <td style={{ fontFamily: "var(--mono)" }}>{e.provider_identifier || "—"}</td>
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 11 }}>
+                            {e.process_id ? `pid=${e.process_id}` : "—"}
+                          </td>
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{e.timestamp || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </>
+            ) : (
+              <p style={{ fontSize: 12, margin: 0 }}>Reading…</p>
+            )}
+          </Panel>
+        </>
       )}
 
       {view === "findings" && (

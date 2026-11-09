@@ -568,3 +568,165 @@ class TestCertificateMetadata:
             assert "-----BEGIN" not in blob
             assert "recovery password" not in blob.lower()
             assert "never 'not expired'" in certs["note"]
+
+class TestRuntimeSessions:
+
+    @pytest.mark.asyncio
+    async def test_runtime_session_round_trip_and_usage_raise(
+            self, app_db, tmp_path):
+        """Tier-2 persistence (spec §3): metadata events only,
+        loss accounting recorded, runtime_usage_confirmed raised
+        ONLY by runtime events and never overwriting static rows."""
+        app, _db = app_db
+        inventory = _real_inventory(tmp_path)
+        inventory["crypto_api"].append({
+            "algorithm": "cbc(aes)", "driver": "cbc-aes-aesni",
+            "type": "skcipher", "module": "kernel", "priority": 300,
+            "blocksize": 16, "digestsize": None, "key_size_range":
+            None, "selftest": "passed", "hardware_accelerated": True,
+            "runtime_usage_confirmed": False, "parse_notes": [],
+            "key_size_bits": None, "limitations": [],
+            "note": "registered kernel crypto implementation — "
+                    "inventory, not proof of runtime use (§2.2)",
+        })
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await _post_collection(
+                client, inventory, asset_id="rt-host")
+            assert resp.status_code == 201, resp.text
+        session_pkg = {
+            "tenant_id": "t1",
+            "asset_id": "rt-host",
+            "session": {
+                "session_id": "rt-sess-1",
+                "boot_id": "boot-1",
+                "collection_profile": "tier2-approved-tracepoints",
+                "evidence_source": "runtime collector",
+                "events_lost": 2,
+                "attached_points": ["tracepoint:crypto:crypto_alg_get"],
+                "events": [
+                    {"timestamp": "17600000001", "process_id": "4242",
+                     "process_start_time": "9001",
+                     "executable_digest": "sha256:aaaa",
+                     "operation_category": "crypto_api_allocation",
+                     "algorithm_identifier": "cbc(aes)",
+                     "provider_identifier": "cbc-aes-aesni",
+                     "kernel_or_userspace": "kernel",
+                     "interface": "crypto-api",
+                     # prohibited field — must be refused, never stored
+                     "plaintext": "hunter2"},
+                    {"timestamp": "17600000002", "process_id": "4242",
+                     "operation_category": "quantum_maybe",
+                     "algorithm_identifier": "kyber"},
+                ],
+            },
+        }
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/os-intelligence/assets/rt-host/"
+                "runtime-sessions", json=session_pkg)
+            assert resp.status_code == 201, resp.text
+            assert resp.json()["events_recorded"] == 2
+
+            sessions = (await client.get(
+                "/api/v1/os-intelligence/assets/rt-host/"
+                "runtime-sessions",
+                params={"tenant_id": "t1"})).json()["sessions"]
+            assert sessions[0]["events_lost"] == 2
+            assert sessions[0]["events_accepted"] == 2
+            assert any("metadata" in n.lower() or "runtime_usage" in n
+                       for n in sessions[0]["notes"])
+
+            events = (await client.get(
+                "/api/v1/os-intelligence/assets/rt-host/runtime-events",
+                params={"tenant_id": "t1"})).json()["events"]
+            blob = str(events)
+            assert "hunter2" not in blob, "plaintext never stored"
+            cats = {e["operation_category"] for e in events}
+            assert "unclassified" in cats
+            assert "quantum_maybe" not in cats
+
+            usage = (await client.get(
+                "/api/v1/os-intelligence/assets/rt-host/runtime-usage",
+                params={"tenant_id": "t1"})).json()["confirmations"]
+            by_algo = {c["algorithm"]: c for c in usage}
+            conf = by_algo["cbc(aes)"]
+            assert conf["runtime_usage_confirmed"] is True
+            assert conf["confirmed_by_events"]
+            assert any("pid=4242" in p for p in
+                       conf["observed_processes"])
+            assert "never overwritten" in conf["note"]
+
+            caps = (await client.get(
+                "/api/v1/os-intelligence/assets/rt-host/"
+                "crypto-capabilities",
+                params={"tenant_id": "t1"})).json()["capabilities"]
+            cbc = [c for c in caps
+                   if c["algorithm"] == "cbc(aes)"
+                   and c["driver"] == "cbc-aes-aesni"][0]
+            assert cbc["runtime_usage_confirmed"] is True
+            assert cbc["runtime_confirmed_by"]
+            others = [c for c in caps
+                      if not (c["algorithm"] == "cbc(aes)"
+                              and c["driver"] == "cbc-aes-aesni")]
+            for c in others:
+                assert c["runtime_usage_confirmed"] is False, \
+                    "no runtime events means not confirmed — never " \
+                    "'unused'"
+
+            rules = (await client.get(
+                "/api/v1/os-intelligence/assets/rt-host/"
+                "rule-evaluation",
+                params={"tenant_id": "t1"})).json()
+            rule017 = [r for r in rules["results"]
+                       if r["rule_id"] == "OS-CRYPTO-017"][0]
+            assert rule017["status"] == "evaluated"
+            assert rule017["findings"][0]["details"]["events_lost"] == 2
+
+    @pytest.mark.asyncio
+    async def test_duplicate_session_is_idempotent(self, app_db,
+                                                   tmp_path):
+        app, _db = app_db
+        inventory = _real_inventory(tmp_path)
+        pkg = {"tenant_id": "t1", "asset_id": "rt-host-2",
+               "session": {"session_id": "rt-sess-2", "events": [
+                   {"timestamp": "1", "operation_category":
+                    "hash_operation", "algorithm_identifier":
+                    "sha256"}]}}
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await client.post(
+                "/api/v1/os-intelligence/assets/rt-host-2/"
+                "runtime-sessions", json=pkg)
+            assert resp.status_code == 201
+            resp = await client.post(
+                "/api/v1/os-intelligence/assets/rt-host-2/"
+                "runtime-sessions", json=pkg)
+            assert resp.json()["status"] == "already_recorded"
+            assert resp.json()["events_recorded"] == 0
+            events = (await client.get(
+                "/api/v1/os-intelligence/assets/rt-host-2/"
+                "runtime-events",
+                params={"tenant_id": "t1"})).json()["events"]
+            assert len(events) == 1, "no double-recording"
+
+    @pytest.mark.asyncio
+    async def test_no_session_keeps_017_not_evaluable(self, app_db,
+                                                      tmp_path):
+        app, _db = app_db
+        inventory = _real_inventory(tmp_path)
+        async with AsyncClient(transport=ASGITransport(app=app),
+                               base_url="http://test") as client:
+            resp = await _post_collection(
+                client, inventory, asset_id="rt-host-3")
+            assert resp.status_code == 201
+            rules = (await client.get(
+                "/api/v1/os-intelligence/assets/rt-host-3/"
+                "rule-evaluation",
+                params={"tenant_id": "t1"})).json()
+            rule017 = [r for r in rules["results"]
+                       if r["rule_id"] == "OS-CRYPTO-017"][0]
+            assert rule017["status"] == "not_evaluable"
+            assert "never reported as 'healthy'" in \
+                rule017["evaluation_note"]

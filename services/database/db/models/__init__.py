@@ -62,7 +62,8 @@ from db.models.binary_intelligence import (
 )
 from db.models.os_intelligence import (
     OSCoverageRecord, OSCryptoCapability, OSConfigFlag, OSFindingRecord,
-    OSModuleRecord, OSStorageFact, OSTrustFact, OSAsset, OSAssetCertificate, OSTwinEdge,
+    OSModuleRecord, OSStorageFact, OSTrustFact, OSAsset, OSAssetCertificate,
+    OSRuntimeEvent, OSRuntimeSession, OSTwinEdge,
 )
 from db.models.performance import (
     PerformanceAggregate, PerformanceAlert, PerformanceAsset,

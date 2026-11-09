@@ -508,3 +508,120 @@ describe("OS & Kernel Intelligence", () => {
     expect(screen.getAllByText(/never a clean asset/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/never enterprise/).length).toBeGreaterThan(0);
   });
+
+  it("runtime view: loss recorded never guessed, usage raised only by events", async () => {
+    mockFetch({
+      "/api/v1/os-intelligence/assets/host-under-test/runtime-sessions": {
+        sessions: [
+          {
+            session_id: "rt-sess-1",
+            boot_id: "boot-1",
+            collection_profile: "tier2-approved-tracepoints",
+            evidence_source: "runtime collector",
+            started_at: "2026-10-16T10:00:00Z",
+            ended_at: "2026-10-16T10:00:30Z",
+            attached_points: ["tracepoint:crypto:crypto_alg_get"],
+            events_accepted: 2,
+            events_lost: 3,
+            refusals: [],
+            notes: ["runtime_usage_confirmed is raised ONLY by these metadata events and never overwrites the static registration row (§2.2)"],
+            collected_at: "2026-10-16T10:01:00+00:00",
+          },
+        ],
+        note: "Tier-2 runtime METADATA sessions — plaintext, keys, passwords, tokens and crypto input/output buffers are never collected (§3)",
+      },
+      "/api/v1/os-intelligence/assets/host-under-test/runtime-usage": {
+        confirmations: [
+          {
+            algorithm: "cbc(aes)",
+            implementation: "cbc-aes-aesni",
+            runtime_usage_confirmed: true,
+            evidence_class: "observed",
+            observed_processes: ["pid=4242 digest=sha256:aaaa"],
+            confirmed_by_events: ["rt-0", "rt-1"],
+            note: "raised ONLY by observed runtime events (§2.2) — the static registration row is never overwritten; the confirmation is scoped to the observed process identity and is never inferred from co-location",
+          },
+        ],
+        note: "runtime usage confirmations raised ONLY by observed runtime events (§2.2)",
+      },
+      "/api/v1/os-intelligence/assets/host-under-test/runtime-events": {
+        events: [
+          {
+            event_id: "rt-0",
+            session_id: "rt-sess-1",
+            boot_id: "boot-1",
+            process_id: "4242",
+            process_start_time: "9001",
+            executable_digest: "sha256:aaaa",
+            operation_category: "crypto_api_allocation",
+            algorithm_identifier: "cbc(aes)",
+            provider_identifier: "cbc-aes-aesni",
+            kernel_or_userspace: "kernel",
+            interface: "crypto-api",
+            timestamp: "17600000001",
+            evidence_source: "runtime collector",
+            collection_profile: "tier2-approved-tracepoints",
+            collected_at: "2026-10-16T10:01:00+00:00",
+          },
+          {
+            event_id: "rt-1",
+            session_id: "rt-sess-1",
+            boot_id: "boot-1",
+            process_id: "4242",
+            process_start_time: "9001",
+            executable_digest: "sha256:aaaa",
+            operation_category: "unclassified",
+            algorithm_identifier: "kyber",
+            provider_identifier: "unknown",
+            kernel_or_userspace: "userspace",
+            interface: "tls",
+            timestamp: "17600000002",
+            evidence_source: "runtime collector",
+            collection_profile: "tier2-approved-tracepoints",
+            collected_at: "2026-10-16T10:01:00+00:00",
+          },
+        ],
+        note: "runtime METADATA events only — an event carries the spec's §3 schema and nothing else",
+      },
+    });
+    renderPage();
+    setAsset();
+    fireEvent.click(screen.getByText("Runtime"));
+    await waitFor(() =>
+      expect(screen.getAllByText("rt-sess-1").length).toBeGreaterThan(0),
+    );
+    // loss accounting displayed honestly
+    expect(screen.getAllByText("3 lost").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/never collected/).length).toBeGreaterThan(0);
+    // usage raised with process identity and event trail
+    expect(screen.getAllByText("cbc-aes-aesni").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/pid=4242/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("runtime usage confirmed").length).toBeGreaterThan(0);
+    // unclassified category labelled, never guessed
+    expect(screen.getAllByText("unclassified").length).toBeGreaterThan(0);
+  });
+
+  it("runtime empty state: no session is never healthy and never unused", async () => {
+    mockFetch({
+      "/api/v1/os-intelligence/assets/host-under-test/runtime-sessions": {
+        sessions: [],
+        note: "Tier-2 runtime METADATA sessions — metadata only (§3)",
+      },
+      "/api/v1/os-intelligence/assets/host-under-test/runtime-usage": {
+        confirmations: [],
+        note: "runtime usage confirmations raised ONLY by observed runtime events (§2.2)",
+      },
+      "/api/v1/os-intelligence/assets/host-under-test/runtime-events": {
+        events: [],
+        note: "runtime METADATA events only",
+      },
+    });
+    renderPage();
+    setAsset();
+    fireEvent.click(screen.getByText("Runtime"));
+    await waitFor(() =>
+      expect(screen.getAllByText(/never .healthy./).length).toBeGreaterThan(0),
+    );
+    expect(screen.getAllByText(/never .unused./).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText("runtime usage confirmed")).toHaveLength(0);
+  });

@@ -9045,6 +9045,67 @@ export interface OSCertificate {
   collected_at: string;
 }
 
+export interface OSRuntimeSession {
+  session_id: string;
+  boot_id: string | null;
+  collection_profile: string;
+  evidence_source: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  attached_points: string[];
+  events_accepted: number;
+  events_lost: number;
+  refusals: Array<{ where: string; reason: string }>;
+  notes: string[];
+  collected_at: string;
+}
+
+export interface OSRuntimeEvent {
+  event_id: string;
+  session_id: string;
+  boot_id: string | null;
+  process_id: string | null;
+  process_start_time: string | null;
+  executable_digest: string | null;
+  operation_category: string;
+  algorithm_identifier: string | null;
+  provider_identifier: string | null;
+  kernel_or_userspace: string | null;
+  interface: string | null;
+  timestamp: string | null;
+  evidence_source: string | null;
+  collection_profile: string | null;
+  collected_at: string;
+}
+
+export interface OSRuntimeUsage {
+  algorithm: string;
+  implementation: string;
+  runtime_usage_confirmed: boolean;
+  evidence_class: string;
+  observed_processes: string[];
+  confirmed_by_events: string[];
+  note: string;
+}
+
+export const apiOSRuntimeSessions = (
+  assetId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<{ sessions: OSRuntimeSession[]; note: string }>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/runtime-sessions?tenant_id=${encodeURIComponent(p.tenant_id)}`);
+
+export const apiOSRuntimeEvents = (
+  assetId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<{ events: OSRuntimeEvent[]; note: string }>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/runtime-events?tenant_id=${encodeURIComponent(p.tenant_id)}`);
+
+export const apiOSRuntimeUsage = (
+  assetId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<{ confirmations: OSRuntimeUsage[]; note: string }>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/runtime-usage?tenant_id=${encodeURIComponent(p.tenant_id)}`);
+
 export const apiOSCertificates = (
   assetId: string,
   p: { tenant_id: string },
