@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Panel, Badge } from "../components/ui.jsx";
+import { Panel, Badge, Bar } from "../components/ui.jsx";
+import { HBars, StackedBar, StepRail } from "../components/viz";
 import TwinGraphCanvas from "../components/TwinGraphCanvas.jsx";
 import ProtocolFloorPanel from "../components/ProtocolFloorPanel.jsx";
 import GroundTruthPanel from "../components/GroundTruthPanel.jsx";
@@ -227,6 +228,17 @@ export default function TwinWalkthrough() {
             {completeness && (
               <Row label="twin completeness" value={`${completeness.overall_percent ?? "—"}% · ${completeness.overall_label}`} />
             )}
+            {completeness && typeof completeness.overall_percent === "number" && (
+              <div style={{ maxWidth: 380 }}>
+                <Bar
+                  value={completeness.overall_percent / 100}
+                  tone={completeness.overall_percent >= 80 ? "green" : completeness.overall_percent >= 50 ? "amber" : "red"}
+                />
+                <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 4 }}>
+                  coverage of the estate's facts — not a posture score
+                </div>
+              </div>
+            )}
             {completeness?.weakest_dimension && (
               <Empty>
                 Weakest dimension: <b>{completeness.weakest_dimension.dimension}</b>
@@ -282,6 +294,25 @@ export default function TwinWalkthrough() {
           <div style={{ display: "grid", gap: 8 }}>
             {!view && <Empty>Pick an asset in step 2 — the walkthrough carries one asset through every step.</Empty>}
             {view && <Row label="relationships the twin holds" value={String(view.relationships.count)} />}
+            {view && rows.length > 0 && (
+              <div style={{ maxWidth: 420 }}>
+                <HBars
+                  rows={[
+                    { key: "net", label: "network-typed", value: network.length, tone: "accent" },
+                    { key: "hw", label: "hardware/HSM-typed", value: ofTypes(rows, HARDWARE_TYPES).length, tone: "violet" },
+                    { key: "ven", label: "vendor-typed", value: ofTypes(rows, VENDOR_TYPES).length, tone: "amber" },
+                    {
+                      key: "other",
+                      label: "other/unplaced types",
+                      value: rows.length - network.length - ofTypes(rows, HARDWARE_TYPES).length - ofTypes(rows, VENDOR_TYPES).length,
+                      tone: "slate",
+                    },
+                  ]}
+                  emptyTitle="no relationship families"
+                  emptyNote="an asset whose type the twin does not know is counted as unplaced, never guessed"
+                />
+              </div>
+            )}
             {view && rows.length === 0 && (
               <Empty>This asset has no recorded relationships. That is a fact about the twin's evidence, not proof the asset is isolated.</Empty>
             )}
@@ -301,6 +332,17 @@ export default function TwinWalkthrough() {
                 <Row label="artifacts" value={String(view.crypto.artifacts.length)} />
                 <Row label="observed in use" value={String(view.crypto.observed.length)} />
                 <Row label="capability only" value={String(view.crypto.capability_only.length)} />
+                {view.crypto.artifacts.length > 0 && (
+                  <div style={{ maxWidth: 420 }}>
+                    <StackedBar
+                      segments={[
+                        { key: "in-use", label: "observed in use", value: view.crypto.observed.length, tone: "green" },
+                        { key: "cap", label: "capability only", value: view.crypto.capability_only.length, tone: "slate" },
+                      ]}
+                      note="a capability is never drawn as use — the split is the evidence split"
+                    />
+                  </div>
+                )}
                 {Object.entries(view.crypto.by_usage_state ?? {}).map(([state, count]) => (
                   <Row key={state} label={state.replace(/_/g, " ").toLowerCase()} value={String(count)} />
                 ))}
@@ -524,6 +566,36 @@ export default function TwinWalkthrough() {
           order. Each step reads the same twin the full screen reads, and says so when it could not — a panel of
           zeros over an unread twin would be a claim about an estate nobody looked at.
         </p>
+      </div>
+
+      <div
+        aria-label="Walkthrough progress"
+        style={{ display: "flex", gap: 3, marginBottom: 14, alignItems: "center" }}
+      >
+        {WALKTHROUGH_STEPS.map((entry) => {
+          const isActive = entry.id === active.id;
+          const isPast = entry.n < active.n;
+          return (
+            <button
+              key={entry.id}
+              onClick={() => setStep(entry.id)}
+              title={`${entry.n}. ${entry.title}`}
+              aria-label={`progress step ${entry.n}`}
+              style={{
+                flex: 1, height: 6, borderRadius: 3, cursor: "pointer", padding: 0,
+                border: "none",
+                background: isActive
+                  ? "var(--violet)"
+                  : isPast
+                    ? "color-mix(in srgb, var(--violet) 45%, var(--panel-2))"
+                    : "var(--panel-2)",
+              }}
+            />
+          );
+        })}
+        <span style={{ fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--faint)", marginLeft: 8, whiteSpace: "nowrap" }}>
+          {String(active.n).padStart(2, "0")}/13
+        </span>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "260px minmax(0, 1fr)", gap: 14, alignItems: "start" }}>

@@ -1,5 +1,6 @@
 import React from "react";
 import type { PqcStageName, PqcSubject } from "./types";
+import { FlowStrip, type FlowState } from "../components/viz";
 
 const STAGES: PqcStageName[] = [
   "SUPPORT_AVAILABLE",
@@ -30,6 +31,23 @@ export default function PqcClaimsLadder({
       <div className="banner">
         A library supporting ML-KEM is not PQC readiness. Support is not
         configured, configured is not observed, observed is not validated.
+      </div>
+      <div style={{ margin: "10px 0 12px" }}>
+        <FlowStrip
+          label="the five PQC stages in order"
+          stages={STAGES.map((stage) => {
+            const claimed = subjects.filter(
+              (s) => (s.stages[stage]?.state ?? "NOT_CLAIMED") !== "NOT_CLAIMED",
+            ).length;
+            const state: FlowState =
+              claimed === 0 ? "pending" : claimed === subjects.length ? "done" : "active";
+            return {
+              label: stage,
+              state,
+              note: `${claimed}/${subjects.length} subject(s) claim this stage`,
+            };
+          })}
+        />
       </div>
       <table aria-label="PQC claims by subject">
         <thead>

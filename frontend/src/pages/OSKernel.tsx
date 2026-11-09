@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Badge, Panel, PageHead } from "../components/ui.jsx";
+import { Donut, HBars, StackedBar } from "../components/viz";
 import {
   apiOSAssets, apiOSAsset, apiOSCapabilities, apiOSModules,
   apiOSConfigFlags, apiOSStorage, apiOSHardwareTrust, apiOSFindings,
@@ -320,6 +321,46 @@ export default function OSKernel() {
                     {assets.data.assets.length === 1 ? "" : "s"} —{" "}
                     {Array.from(new Set(assets.data.assets.map(platformOf))).join(", ")}
                   </p>
+                  <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", margin: "0 0 12px" }}>
+                    <Donut
+                      size={108}
+                      segments={Object.entries(
+                        assets.data.assets.reduce<Record<string, number>>((acc, a) => {
+                          const plat = platformOf(a);
+                          acc[plat] = (acc[plat] ?? 0) + 1;
+                          return acc;
+                        }, {}),
+                      ).map(([label, value], i) => ({
+                        label,
+                        value,
+                        tone: ["accent", "violet", "amber", "green", "slate"][i % 5],
+                      }))}
+                      centerLabel={assets.data.assets.length}
+                      centerSub="hosts"
+                    />
+                    <div style={{ flex: 1, minWidth: 220, maxWidth: 380 }}>
+                      <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--muted)", marginBottom: 6 }}>
+                        DEVELOPMENT-ONLY QUALIFICATION
+                      </div>
+                      <StackedBar
+                        segments={[
+                          {
+                            key: "dev",
+                            label: "development only",
+                            value: assets.data.assets.filter((a) => a.environment_development_only).length,
+                            tone: "amber",
+                          },
+                          {
+                            key: "other",
+                            label: "see qualification note",
+                            value: assets.data.assets.filter((a) => !a.environment_development_only).length,
+                            tone: "slate",
+                          },
+                        ]}
+                        note="one host is never enterprise qualification (§12) — the split is a per-host state count, not a certification"
+                      />
+                    </div>
+                  </div>
                   <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
                     <thead>
                       <tr style={{ textAlign: "left", color: "var(--muted)" }}>
@@ -606,6 +647,27 @@ export default function OSKernel() {
                 <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 8px" }}>
                   {rtSessions.data.note}
                 </p>
+                {rtSessions.data.sessions.length > 0 && (
+                  <div style={{ maxWidth: 460, margin: "0 0 12px" }}>
+                    <StackedBar
+                      segments={[
+                        {
+                          key: "accepted",
+                          label: "events accepted",
+                          value: rtSessions.data.sessions.reduce((n, x) => n + x.events_accepted, 0),
+                          tone: "green",
+                        },
+                        {
+                          key: "lost",
+                          label: "events lost",
+                          value: rtSessions.data.sessions.reduce((n, x) => n + x.events_lost, 0),
+                          tone: "amber",
+                        },
+                      ]}
+                      note="lost-event counts come from the collector's own accounting — recorded, never guessed"
+                    />
+                  </div>
+                )}
                 {rtSessions.data.sessions.length === 0 ? (
                   <p style={{ fontSize: 12, margin: 0 }}>
                     No runtime session recorded. Runtime collection is
@@ -764,7 +826,47 @@ export default function OSKernel() {
                   No findings recorded. A collection with no findings is never
                   "no issues" (§2.1).
                 </p>
-              ) : findings.data.findings.map((f, i) => (
+              ) : (
+                <>
+                  <div style={{ display: "flex", gap: 20, flexWrap: "wrap", margin: "4px 0 12px" }}>
+                    <div style={{ flex: 1, minWidth: 220, maxWidth: 380 }}>
+                      <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--muted)", marginBottom: 6 }}>
+                        BY COMPUTED SEVERITY
+                      </div>
+                      <HBars
+                        rows={Object.entries(
+                          findings.data.findings.reduce<Record<string, number>>((acc, f) => {
+                            const k = f.severity_label ?? "unrated";
+                            acc[k] = (acc[k] ?? 0) + 1;
+                            return acc;
+                          }, {}),
+                        ).map(([label, value]) => ({
+                          key: label,
+                          label,
+                          value,
+                          tone: label === "critical" || label === "high" ? "red" : label === "unrated" ? "slate" : "amber",
+                        }))}
+                        emptyTitle="no severities"
+                        emptyNote="severity is computed and versioned — never a bare score"
+                      />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 220, maxWidth: 380 }}>
+                      <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--muted)", marginBottom: 6 }}>
+                        BY FINDING TYPE
+                      </div>
+                      <HBars
+                        rows={Object.entries(
+                          findings.data.findings.reduce<Record<string, number>>((acc, f) => {
+                            acc[f.finding_type] = (acc[f.finding_type] ?? 0) + 1;
+                            return acc;
+                          }, {}),
+                        ).map(([label, value]) => ({ key: label, label: `type · ${label}`, value, tone: "accent" }))}
+                        emptyTitle="no finding types"
+                        emptyNote="a detection is never a verdict (§9)"
+                      />
+                    </div>
+                  </div>
+                  {findings.data.findings.map((f, i) => (
                 <div key={i} style={{ borderTop: "1px solid var(--rule)", paddingTop: 8, marginBottom: 10 }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <strong style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{f.finding_type}</strong>
@@ -797,7 +899,9 @@ export default function OSKernel() {
                   )}
                   <Notes notes={f.limitations} />
                 </div>
-              ))}
+                  ))}
+                </>
+              )}
             </>
           ) : <p style={{ fontSize: 12, color: "var(--muted)", margin: 0 }}>reading…</p>}
         </Panel>

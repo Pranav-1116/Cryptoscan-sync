@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from "react";
-import { Badge, Panel, PageHead } from "../components/ui.jsx";
+import { Donut, HBars, FlowStrip, Meter } from "../components/viz";
+import { Badge, Panel, PageHead } from "../components/ui";
 import {
   apiBinaryArtifactScan, apiBinaryBom, apiBinaryComparison,
   apiBinaryCoverage, apiBinaryDrift, apiBinaryEstate, apiBinaryFindings,
@@ -347,6 +348,43 @@ export default function Binary() {
 
       {view === "analysis" && scan ? (
         <Panel title="Binary Analysis">
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+            <FlowStrip
+              label="analysis pipeline"
+              stages={[
+                { label: "ingest", state: "done", note: "artifact received and hashed" },
+                { label: "identify", state: "done", note: `format from content: ${scan.artifact.detected_format}` },
+                { label: "static analysis", state: "done", note: "analyzed statically; never executed (§14)" },
+                {
+                  label: "crypto detect",
+                  state: scan.finding_count > 0 ? "done" : "done",
+                  note: `${scan.finding_count} finding(s)`,
+                },
+                {
+                  label: "private-key scan",
+                  state: scan.private_key_events.length > 0 ? "done" : "done",
+                  note:
+                    scan.private_key_events.length > 0
+                      ? `${scan.private_key_events.length} detection event(s) — presence only (§6)`
+                      : "no detection events",
+                },
+              ]}
+            />
+          </div>
+          <div style={{ maxWidth: 360, marginBottom: 12 }}>
+            {scan.coverage.sections_total > 0 ? (
+              <Meter
+                value={Math.round((scan.coverage.sections_inspected / scan.coverage.sections_total) * 100)}
+                label="sections inspected"
+                tone={scan.coverage.sections_inspected >= scan.coverage.sections_total ? "green" : "amber"}
+                note={`${scan.coverage.sections_inspected} of ${scan.coverage.sections_total} sections`}
+              />
+            ) : (
+              <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>
+                section coverage unknown — never assumed complete
+              </p>
+            )}
+          </div>
           <div style={{ display: "grid", gap: 8, fontSize: 12 }}>
             <div>
               <span style={{ color: "var(--muted)" }}>Format: </span>
@@ -396,6 +434,47 @@ export default function Binary() {
           ) : null}
           {findings?.data ? (
             <div>
+              <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", margin: "4px 0 12px" }}>
+                {findings.data.findings.length > 0 ? (
+                  <>
+                    <Donut
+                      size={108}
+                      segments={Object.entries(
+                        findings.data.findings.reduce<Record<string, number>>((acc, f) => {
+                          acc[f.algorithm] = (acc[f.algorithm] ?? 0) + 1;
+                          return acc;
+                        }, {}),
+                      ).map(([label, value], i) => ({
+                        label,
+                        value,
+                        tone: ["orange", "amber", "violet", "accent", "green", "red", "slate"][i % 7],
+                      }))}
+                      centerLabel={findings.data.findings.length}
+                      centerSub="findings"
+                    />
+                    <div style={{ flex: 1, minWidth: 220, maxWidth: 380 }}>
+                      <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--muted)", marginBottom: 6 }}>
+                        BY FINDING TYPE
+                      </div>
+                      <HBars
+                        rows={Object.entries(
+                          findings.data.findings.reduce<Record<string, number>>((acc, f) => {
+                            acc[f.finding_type] = (acc[f.finding_type] ?? 0) + 1;
+                            return acc;
+                          }, {}),
+                        ).map(([label, value]) => ({ key: label, label, value, tone: "accent" }))}
+                        emptyTitle="no finding types"
+                        emptyNote="a finding is a detection, never a verdict"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>
+                    no crypto findings — a detection count of zero is never a
+                    clean verdict
+                  </p>
+                )}
+              </div>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr>

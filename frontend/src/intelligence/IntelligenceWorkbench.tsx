@@ -9,6 +9,7 @@ import {
   apiIntelligenceSimulation,
 } from "../lib/api";
 import { useApi, LiveBadge } from "../lib/apiUi";
+import { Donut, FlowStrip, HBars, Meter, type FlowState } from "../components/viz";
 import FindingsTable from "./FindingsTable";
 import PqcClaimsLadder from "./PqcClaimsLadder";
 import RiskDimensionsPanel from "./RiskDimensionsPanel";
@@ -93,6 +94,18 @@ export default function IntelligenceWorkbench() {
     ? Object.entries(claims.data.subjects).map(([subject, entry]) => ({ subject, ...entry }))
     : [];
 
+  // Visual summary — every bar and segment is a count of rows already
+  // shown below; nothing is derived, smoothed or inferred here.
+  const classCounts: Record<string, number> = {};
+  for (const f of report?.findings ?? []) {
+    classCounts[f.class] = (classCounts[f.class] ?? 0) + 1;
+  }
+  const notFiredNames = Object.keys(report?.detectors_not_fired ?? {});
+  const readinessCounts: Record<string, number> = {};
+  for (const sRow of subjects) {
+    readinessCounts[sRow.readiness] = (readinessCounts[sRow.readiness] ?? 0) + 1;
+  }
+
   return (
     <div className="intel">
       <div className="filters">
@@ -104,6 +117,113 @@ export default function IntelligenceWorkbench() {
           The intelligence API is unreachable for at least one section: nothing
           on this page is a clean result. Absence of rows is not absence of risk,
           and no figures are invented to fill the gap.
+        </div>
+      )}
+
+      {(report || claims.data || coverage.data) && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12, margin: "12px 0" }}>
+          <section aria-label="Findings by class" style={{ border: "1px solid var(--rule)", borderRadius: 8, padding: 12, background: "#1a2332" }}>
+            <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 8 }}>
+              FINDINGS BY CLASS
+            </div>
+            {report ? (
+              (report.findings ?? []).length > 0 ? (
+                <Donut
+                  segments={Object.entries(classCounts).map(([label, value], i) => ({
+                    label,
+                    value,
+                    tone: ["orange", "amber", "violet", "accent", "green", "slate"][i % 6],
+                  }))}
+                  centerLabel={(report.findings ?? []).length}
+                  centerSub="findings"
+                  size={108}
+                />
+              ) : (
+                <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>
+                  no findings recorded — an empty result, not a clean estate
+                </p>
+              )
+            ) : (
+              <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>not loaded — unknown, never zero</p>
+            )}
+          </section>
+
+          <section aria-label="Detector firing" style={{ border: "1px solid var(--rule)", borderRadius: 8, padding: 12, background: "#1a2332" }}>
+            <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 8 }}>
+              DETECTOR FIRING
+            </div>
+            {report ? (
+              <>
+                <FlowStrip
+                  label="detector stages"
+                  stages={[
+                    { label: "fired", state: "done" as FlowState, note: "detectors that produced findings" },
+                    {
+                      label: "not fired",
+                      state: notFiredNames.length > 0 ? ("unknown" as FlowState) : ("done" as FlowState),
+                      note: "each carries its reason below — never an all-clear",
+                    },
+                  ]}
+                />
+                <p style={{ fontSize: 11, color: "var(--faint)", margin: "8px 0 0" }}>
+                  {notFiredNames.length > 0
+                    ? `${notFiredNames.length} detector(s) did not run here — explained below`
+                    : "all detectors in this report fired"}
+                </p>
+              </>
+            ) : (
+              <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>not loaded — unknown, never zero</p>
+            )}
+          </section>
+
+          <section aria-label="PQC readiness spread" style={{ border: "1px solid var(--rule)", borderRadius: 8, padding: 12, background: "#1a2332" }}>
+            <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 8 }}>
+              PQC CLAIMS BY READINESS
+            </div>
+            {claims.data ? (
+              subjects.length > 0 ? (
+                <HBars
+                  rows={Object.entries(readinessCounts).map(([label, value]) => ({
+                    key: label,
+                    label: `readiness · ${label}`,
+                    value,
+                    tone: label === "PQC_READY_VALIDATED" ? "green" : "slate",
+                  }))}
+                  unit=" subject(s)"
+                  emptyTitle="no subjects"
+                  emptyNote="no migration-stage claims recorded — unknown, which is neither ready nor fine"
+                />
+              ) : (
+                <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>
+                  no migration-stage claims recorded — unknown, which is neither ready nor fine
+                </p>
+              )
+            ) : (
+              <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>not loaded — unknown, never zero</p>
+            )}
+          </section>
+
+          <section aria-label="Collection coverage meter" style={{ border: "1px solid var(--rule)", borderRadius: 8, padding: 12, background: "#1a2332" }}>
+            <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 8 }}>
+              COLLECTION COVERAGE
+            </div>
+            {coverage.data ? (
+              coverage.data.coverage_percent === null ? (
+                <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>
+                  percent refused — the denominator is incomplete, never estimated
+                </p>
+              ) : (
+                <Meter
+                  value={coverage.data.coverage_percent}
+                  label="coverage"
+                  tone={coverage.data.coverage_percent >= 90 ? "green" : coverage.data.coverage_percent >= 60 ? "amber" : "red"}
+                  note={coverage.data.verdict}
+                />
+              )
+            ) : (
+              <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>not loaded — no readings is not clean coverage</p>
+            )}
+          </section>
         </div>
       )}
 

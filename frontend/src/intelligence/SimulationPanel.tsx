@@ -1,4 +1,5 @@
 import React from "react";
+import { StackedBar } from "../components/viz";
 import type { SimulationResult, SimulatedDependency } from "./types";
 
 function DependencyTable({
@@ -65,6 +66,25 @@ export default function SimulationPanel({ result }: { result: SimulationResult }
         HYPOTHETICAL — simulated against snapshot {result.snapshot.snapshot_id} v
         {result.snapshot.version} ({result.snapshot.captured_at}). Never shown as
         a real production change.
+      </div>
+      <div style={{ margin: "10px 0 14px", maxWidth: 520 }}>
+        <StackedBar
+          segments={[
+            {
+              key: "proven",
+              label: "proven",
+              value: result.proven_dependencies.length,
+              tone: "green",
+            },
+            {
+              key: "assumed",
+              label: "assumed (not proven)",
+              value: result.assumed_dependencies.length,
+              tone: "slate",
+            },
+          ]}
+          note="proven dependencies are never mixed with assumed ones — the split is the evidence split"
+        />
       </div>
       <DependencyTable
         title="proven dependencies"

@@ -1,5 +1,13 @@
 import React, { useState } from "react";
 import type { RiskDimension } from "./types";
+import { Bar } from "../components/ui.jsx";
+
+function bandTone(d: RiskDimension): string {
+  if (!d.known) return "slate";
+  if (d.band === "CRITICAL" || d.band === "HIGH") return "red";
+  if (d.band === "MEDIUM") return "amber";
+  return "green";
+}
 
 /** The five risk dimensions, kept separate. Blending is never the default —
  *  the panel says so, and an unknown dimension is drawn as UNKNOWN, never 0. */
@@ -35,7 +43,17 @@ export default function RiskDimensionsPanel({
               <td>{d.dimension}</td>
               <td>
                 {d.known && d.score !== null ? (
-                  d.score
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 120 }}>
+                    <span style={{ fontFamily: "var(--mono)", fontWeight: 600, fontSize: 13, fontVariantNumeric: "tabular-nums" }}>
+                      {d.score}
+                    </span>
+                    <div style={{ flex: 1, minWidth: 60, marginTop: 2 }}>
+                      <Bar
+                        value={Math.max(0, Math.min(100, d.score)) / 100}
+                        tone={bandTone(d)}
+                      />
+                    </div>
+                  </div>
                 ) : (
                   <span className="chip chip-unknown">UNKNOWN — not zero</span>
                 )}

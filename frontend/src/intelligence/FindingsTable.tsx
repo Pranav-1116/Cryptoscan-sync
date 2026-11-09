@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import type { ThreatClass, ThreatFinding } from "./types";
+import { HBars } from "../components/viz";
 
 const CLASSES: ThreatClass[] = [
   "CRYPTO_REGRESSION",
@@ -41,6 +42,21 @@ export default function FindingsTable({
   return (
     <section aria-label="Evidence-linked findings">
       <h2>Findings — evidence-linked, detection is a question</h2>
+      {findings.length > 0 && (
+        <div style={{ margin: "8px 0 12px", maxWidth: 560 }}>
+          <HBars
+            rows={CLASSES.filter((c) => findings.some((f) => f.class === c)).map((c) => ({
+              key: c,
+              label: c,
+              value: findings.filter((f) => f.class === c).length,
+              tone: "accent",
+            }))}
+            unit=""
+            emptyTitle="no classes"
+            emptyNote="a detection is a question, never a declared compromise"
+          />
+        </div>
+      )}
       <div className="filters">
         <input
           type="search"

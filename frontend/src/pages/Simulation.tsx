@@ -13,6 +13,7 @@
  * Both are previewed before they run: "would this match, would this reach" is cheap, and
  * the answer is what stops an operator from reading a page of nothing as good news.
  */
+import { StackedBar, HBars } from "../components/viz";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Panel, Badge, Stat } from "../components/ui";
@@ -1004,6 +1005,24 @@ function SimulationResult({ result }: { result: SimulationRun }) {
           <Stat label="blast radius" value={counts.total ?? 0} delta={`${counts.direct ?? 0} direct`} />
           <Stat label="blockers" value={result.blockers?.length ?? 0} />
         </div>
+        {(counts.total ?? 0) > 0 && (
+          <div style={{ padding: "0 16px 12px", maxWidth: 420 }}>
+            <HBars
+              rows={[
+                { key: "direct", label: "direct blast radius", value: counts.direct ?? 0, tone: "red" },
+                {
+                  key: "indirect",
+                  label: "indirect",
+                  value: Math.max(0, (counts.total ?? 0) - (counts.direct ?? 0)),
+                  tone: "amber",
+                },
+              ]}
+              unit=""
+              emptyTitle="no blast radius"
+              emptyNote="waves out from the seeds — counted, never estimated"
+            />
+          </div>
+        )}
 
         <div style={{ padding: "0 16px 12px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <span className="kicker" style={{ fontSize: 9.5 }}>STORAGE</span>
@@ -1036,14 +1055,32 @@ function SimulationResult({ result }: { result: SimulationRun }) {
           <div style={{ fontSize: 11, letterSpacing: ".06em", textTransform: "uppercase", color: "var(--faint)", marginBottom: 6 }}>
             six BOMs re-projected from the copy
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 6 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10 }}>
             {boms.map(([bom, diff]) => (
-              <div key={bom} style={{ fontSize: 11.5, fontFamily: "var(--mono)", color: "var(--dim)" }}>
-                <b style={{ color: "var(--text)" }}>{bom}</b>{" "}
-                +{diff.counts?.added ?? 0} −{diff.counts?.removed ?? 0} ~{diff.counts?.changed ?? 0}
-                {diff.counts?.unchanged ? ` · ${diff.counts.unchanged} unchanged` : ""}
+              <div key={bom} style={{ fontSize: 11.5 }}>
+                <div style={{ fontFamily: "var(--mono)", color: "var(--dim)", marginBottom: 4 }}>
+                  <b style={{ color: "var(--text)" }}>{bom}</b>{" "}
+                  +{diff.counts?.added ?? 0} −{diff.counts?.removed ?? 0} ~{diff.counts?.changed ?? 0}
+                  {diff.counts?.unchanged ? ` · ${diff.counts.unchanged} unchanged` : ""}
+                </div>
+                <StackedBar
+                  height={8}
+                  segments={[
+                    { key: "added", label: "added", value: diff.counts?.added ?? 0, tone: "green" },
+                    { key: "removed", label: "removed", value: diff.counts?.removed ?? 0, tone: "red" },
+                    { key: "changed", label: "changed", value: diff.counts?.changed ?? 0, tone: "amber" },
+                    { key: "unchanged", label: "unchanged", value: diff.counts?.unchanged ?? 0, tone: "slate" },
+                  ]}
+                  note={`${bom} re-projected from the copy — counts, never a quality judgement`}
+                />
               </div>
             ))}
+            {boms.length === 0 && (
+              <div style={{ fontSize: 11.5, color: "var(--faint)" }}>
+                no BOM diff in this result — the scenario touched no projected
+                component, which is not the same as a clean estate
+              </div>
+            )}
           </div>
         </div>
 

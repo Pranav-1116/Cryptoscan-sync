@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Bar, Ring } from "../components/ui";
+import { Donut, HBars, StepRail } from "../components/viz";
 import { IconTarget, IconClock, IconSecurity, IconComponent, IconInfo } from "../components/icons";
 import { apiWhatIf, LiveBadge, ApiResult } from "../lib/api.js";
 
@@ -109,6 +110,36 @@ export default function WhatIf() {
           {unknowns.length > 0 && <div style={{ marginTop: 14, padding: "10px 14px", background: "color-mix(in srgb, var(--amber) 8%, transparent)", border: "1px solid var(--amber)", borderRadius: "var(--r)", fontSize: 12, color: "var(--amber)" }}><Badge tone="amber">honest unknowns</Badge> engine could not verify — never assumed true: {unknowns.join(", ")}</div>}
 
           <Panel title="Feasibility checks" sub="Every dependency, library, device, vendor and service is inventoried before a change" style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+              <Donut
+                size={104}
+                segments={[
+                  { label: "ready", value: checkCards.filter((c) => c.ok === true).length, tone: "green" },
+                  { label: "blocked", value: checkCards.filter((c) => c.ok === false && c.n > 0).length, tone: "red" },
+                  { label: "unknown", value: checkCards.filter((c) => c.ok === undefined || (c.ok === false && c.n === 0)).length, tone: "slate" },
+                ]}
+                centerLabel={checkCards.length}
+                centerSub="checks"
+              />
+              {Object.keys(d.impact ?? {}).length > 0 && (
+                <div style={{ flex: 1, minWidth: 240, maxWidth: 420 }}>
+                  <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>
+                    ENGINE IMPACT COUNTS
+                  </div>
+                  <HBars
+                    rows={Object.entries(d.impact ?? {}).map(([label, value]) => ({
+                      key: label,
+                      label: label.replace(/_/g, " "),
+                      value: Number(value) || 0,
+                      tone: "violet",
+                    }))}
+                    unit=""
+                    emptyTitle="no impact counts"
+                    emptyNote="the engine reports no counts for this scenario"
+                  />
+                </div>
+              )}
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12 }}>
               {checkCards.map((cc) => {
                 const cls = cardCls(cc.ok, cc.n); const tone = cls === "ok" ? "green" as const : cls === "blocked" ? "red" as const : "slate" as const;
@@ -133,7 +164,19 @@ export default function WhatIf() {
               ) : <div style={{ fontSize: 12, color: "var(--faint)", background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)", padding: 12, textAlign: "center" }}>No protocol compatibility data for this scenario.</div>}
             </Panel>
             <Panel title="Migration plan" sub="Ordered, deterministic steps — executed separately and under change control">
-              {steps.length ? <ol style={{ fontSize: 12, paddingLeft: 18, margin: 0, display: "grid", gap: 6 }}>{steps.map((p, i) => <li key={i} style={{ background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 10px" }}>{p.replace(/^\d+\.\s*/, "")}</li>)}</ol> : <div style={{ fontSize: 12, color: "var(--faint)", background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)", padding: 12, textAlign: "center" }}>No plan steps returned.</div>}
+              {steps.length ? (
+                <div style={{ display: "grid", gap: 6 }}>
+                  <StepRail
+                    label="ordered migration plan"
+                    steps={steps.map((p, i) => ({
+                      n: i + 1,
+                      title: p.replace(/^\d+\.\s*/, ""),
+                      state: "pending" as const,
+                      note: "planned — not executed",
+                    }))}
+                  />
+                </div>
+              ) : <div style={{ fontSize: 12, color: "var(--faint)", background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)", padding: 12, textAlign: "center" }}>No plan steps returned.</div>}
             </Panel>
           </div>
         </>

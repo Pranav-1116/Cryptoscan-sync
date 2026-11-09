@@ -477,3 +477,298 @@ export function GapBar({ label, reason }: { label: string; reason: string }) {
     </div>
   );
 }
+
+
+/* ─── Composition primitives ───────────────────────────────────────────────
+ * Charts that show STRUCTURE: how a whole splits up (Donut), how work flows
+ * through stages (FlowStrip), how an investigation advances (StepRail), how
+ * two vocabularies cross (Matrix). Same contract as the measurement
+ * primitives above: only the data given, flat colours, honest empties, and
+ * every segment labelled so a colour is never the only carrier of meaning. */
+
+export interface DonutSegment {
+  label: string;
+  value: number;
+  tone?: string;
+}
+
+/** Multi-segment donut: the whole split by count. An empty or all-zero set
+ *  renders VizEmpty — a ring that adds up to nothing is never drawn as 0%. */
+export function Donut({
+  segments,
+  size = 128,
+  thickness = 16,
+  centerLabel,
+  centerSub,
+}: {
+  segments: DonutSegment[];
+  size?: number;
+  thickness?: number;
+  centerLabel?: ReactNode;
+  centerSub?: string;
+}) {
+  const total = segments.reduce((sum, seg) => sum + (seg.value > 0 ? seg.value : 0), 0);
+  if (total <= 0) {
+    return (
+      <VizEmpty
+        title="no counts to split"
+        note="an empty distribution is drawn as empty — never as a full ring of zeroes"
+      />
+    );
+  }
+  const r = (size - thickness) / 2;
+  const c = 2 * Math.PI * r;
+  let offset = 0;
+  return (
+    <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+      <svg width={size} height={size} role="img" aria-label="distribution">
+        <circle
+          cx={size / 2} cy={size / 2} r={r}
+          fill="none" stroke="var(--slate)" strokeWidth={thickness} opacity={0.35}
+        />
+        {segments.map((seg) => {
+          const len = (Math.max(seg.value, 0) / total) * c;
+          const el = (
+            <circle
+              key={seg.label}
+              cx={size / 2} cy={size / 2} r={r}
+              fill="none"
+              stroke={toneColor(seg.tone)}
+              strokeWidth={thickness}
+              strokeDasharray={`${len} ${c - len}`}
+              strokeDashoffset={-offset}
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            />
+          );
+          offset += len;
+          return el;
+        })}
+        {centerLabel !== undefined && (
+          <>
+            <text
+              x={size / 2} y={size / 2 - (centerSub ? 4 : -4)}
+              textAnchor="middle" fontSize={size / 7.5} fontWeight={700}
+              fill="var(--text)"
+            >
+              {typeof centerLabel === "string" || typeof centerLabel === "number"
+                ? centerLabel
+                : ""}
+            </text>
+            {centerSub && (
+              <text
+                x={size / 2} y={size / 2 + size / 8}
+                textAnchor="middle" fontSize={size / 12}
+                fill="var(--faint)"
+              >
+                {centerSub}
+              </text>
+            )}
+          </>
+        )}
+      </svg>
+      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 4 }}>
+        {segments.map((seg) => (
+          <li key={seg.label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5 }}>
+            <span
+              aria-hidden
+              style={{ width: 10, height: 10, borderRadius: 2, background: toneColor(seg.tone), flex: "0 0 auto" }}
+            />
+            <span style={{ color: "var(--dim)" }}>{seg.label}</span>
+            <span style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>{seg.value}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export type FlowState = "done" | "active" | "pending" | "unknown" | "failed";
+
+const FLOW_TONE: Record<FlowState, string> = {
+  done: "green",
+  active: "accent",
+  pending: "slate",
+  unknown: "slate",
+  failed: "red",
+};
+
+/** A pipeline read left to right: every stage names its state; a stage that
+ *  never ran is "unknown"/"pending", never a silent gap in the line. */
+export function FlowStrip({
+  stages,
+  label,
+}: {
+  label: string;
+  stages: { label: string; state: FlowState; note?: string }[];
+}) {
+  return (
+    <div role="group" aria-label={label} style={{ display: "flex", flexWrap: "wrap", gap: 0 }}>
+      {stages.map((stage, i) => (
+        <div key={stage.label + i} style={{ display: "flex", alignItems: "stretch" }}>
+          <div
+            title={stage.note || stage.state}
+            style={{
+              display: "flex", alignItems: "center", gap: 7,
+              padding: "7px 11px",
+              border: "1px solid var(--rule)",
+              borderRadius: 8,
+              background: stage.state === "active" ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--panel-2)",
+            }}
+          >
+            <span
+              aria-hidden
+              style={{
+                width: 8, height: 8, borderRadius: 99,
+                background: stage.state === "unknown" ? "transparent" : toneColor(FLOW_TONE[stage.state]),
+                border: stage.state === "unknown" ? `1.5px dashed ${toneColor("slate")}` : "none",
+                flex: "0 0 auto",
+              }}
+            />
+            <span style={{ fontSize: 11, fontWeight: 600 }}>{stage.label}</span>
+            <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--faint)" }}>
+              {stage.state}
+            </span>
+          </div>
+          {i < stages.length - 1 && (
+            <span
+              aria-hidden
+              style={{ alignSelf: "center", width: 18, height: 1, background: "var(--rule)" }}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A numbered investigation rail: each step carries its own state so a step
+ *  whose read failed shows as failed, never as quietly skipped. */
+export function StepRail({
+  steps,
+  selected,
+  onSelect,
+  label,
+}: {
+  label: string;
+  steps: { n: number; title: string; state?: FlowState; note?: string }[];
+  selected?: number;
+  onSelect?: (n: number) => void;
+}) {
+  return (
+    <ol aria-label={label} style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 2 }}>
+      {steps.map((step) => {
+        const state = step.state ?? "pending";
+        const active = selected === step.n;
+        const body = (
+          <>
+            <span
+              aria-hidden
+              style={{
+                width: 22, height: 22, borderRadius: 99, flex: "0 0 auto",
+                display: "grid", placeItems: "center",
+                fontSize: 10, fontWeight: 700, fontFamily: "var(--mono)",
+                border: `1.5px solid ${toneColor(FLOW_TONE[state])}`,
+                color: state === "pending" || state === "unknown" ? "var(--faint)" : toneColor(FLOW_TONE[state]),
+                background: active ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "transparent",
+              }}
+            >
+              {step.n}
+            </span>
+            <span style={{ display: "grid", gap: 1 }}>
+              <span style={{ fontSize: 11.5, fontWeight: active ? 700 : 500 }}>{step.title}</span>
+              {(step.note || state !== "pending") && (
+                <span style={{ fontSize: 10, fontFamily: "var(--mono)", color: "var(--faint)" }}>
+                  {step.note || state}
+                </span>
+              )}
+            </span>
+          </>
+        );
+        return (
+          <li key={step.n}>
+            {onSelect ? (
+              <button
+                onClick={() => onSelect(step.n)}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 8,
+                  padding: "5px 8px", borderRadius: 8, cursor: "pointer",
+                  border: active ? "1px solid var(--accent)" : "1px solid transparent",
+                  background: active ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent",
+                  textAlign: "left",
+                }}
+              >
+                {body}
+              </button>
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 8px" }}>{body}</div>
+            )}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** Two vocabularies crossed: rows × cols with a tone-coded cell at each
+ *  intersection. `cell` returning null draws an explicit empty cell — the
+ *  grid never implies a relationship it was not given. */
+export function Matrix({
+  label,
+  rows,
+  cols,
+  cell,
+  colLabel,
+  rowLabel,
+}: {
+  label: string;
+  colLabel: string;
+  rowLabel: string;
+  rows: string[];
+  cols: string[];
+  cell: (row: string, col: string) => { tone?: string; text?: string } | null;
+}) {
+  return (
+    <table aria-label={label} style={{ borderCollapse: "collapse", fontSize: 11 }}>
+      <thead>
+        <tr>
+          <th style={{ textAlign: "left", padding: "3px 8px 3px 0", color: "var(--faint)", fontWeight: 500 }}>
+            {rowLabel} \ {colLabel}
+          </th>
+          {cols.map((col) => (
+            <th key={col} style={{ padding: "3px 6px", color: "var(--faint)", fontWeight: 500 }}>
+              {col}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => (
+          <tr key={row}>
+            <td style={{ padding: "3px 8px 3px 0", color: "var(--dim)" }}>{row}</td>
+            {cols.map((col) => {
+              const info = cell(row, col);
+              return (
+                <td key={col} style={{ padding: 2 }}>
+                  <div
+                    title={info ? info.text : "no data at this intersection — never assumed"}
+                    style={{
+                      minWidth: 42, minHeight: 22, borderRadius: 4,
+                      display: "grid", placeItems: "center",
+                      fontFamily: "var(--mono)", fontSize: 10, fontWeight: 600,
+                      border: info ? "none" : "1px dashed var(--rule)",
+                      background: info ? toneColor(info.tone) : "transparent",
+                      color: info && info.tone && info.tone !== "amber" ? "#0b1220" : "var(--text)",
+                      opacity: info ? 0.92 : 1,
+                    }}
+                  >
+                    {info ? (info.text ?? "") : "·"}
+                  </div>
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
