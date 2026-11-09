@@ -283,6 +283,54 @@ class CoverageOut(BaseModel):
     note: Optional[str] = None
 
 
+def _tenant_matches_scope(tenant_id: str) -> None:
+    """Refuse a requested tenant that contradicts the request's scope.
+
+    Tenancy is resolved from the authenticated context (the validated
+    ``X-Tenant-ID`` / API-key binding) — never from the payload. A
+    body/query ``tenant_id`` is a selection WITHIN that scope and is
+    never an authorization grant: naming another org's tenant id must
+    fail closed with an explicit refusal, not an ORM scope violation
+    and never a cross-tenant row."""
+    from db.tenancy import current_tenant
+    scoped = current_tenant()
+    if scoped is not None and scoped != tenant_id:
+        raise HTTPException(
+            status_code=403,
+            detail="requested tenant_id does not match this request's "
+                   "tenant scope — tenancy is resolved from the "
+                   "authenticated context, never from the payload")
+
+
+def scoped_tenant(tenant_id: str = Query(...)) -> str:
+    """Query tenant_id, checked against the request's tenant scope."""
+    _tenant_matches_scope(tenant_id)
+    return tenant_id
+
+
+def _runtime_asset_or_404(db: Session, tenant_id: str, asset_id: str) -> None:
+    """Runtime evidence attaches to one's OWN asset — never another org's.
+
+    A runtime-first flow is legitimate (capture before inventory), so an
+    asset id unknown to every tenant is allowed. An asset id recorded
+    under a DIFFERENT tenant is refused with the same 'no collection'
+    wording as a missing asset — the refusal never confirms another org's
+    asset exists (a missing asset is never a clean asset, and an oracle
+    is never a read)."""
+    from db.models.os_intelligence import OSAsset
+    from db.tenancy import platform_scope
+    with platform_scope():  # deliberate cross-tenant check, refusal-only
+        foreign = (db.query(OSAsset)
+                   .filter(OSAsset.asset_id == asset_id,
+                           OSAsset.tenant_id != tenant_id)
+                   .first())
+    if foreign is not None:
+        raise HTTPException(
+            status_code=404,
+            detail="no collection recorded for this asset — a missing "
+                   "asset is never a clean asset")
+
+
 def _repo(db: Session) -> OSIntelligenceRepository:
     return OSIntelligenceRepository(db)
 
@@ -299,6 +347,7 @@ def submit_collection(body: CollectionSubmission, response: Response,
     The package is metadata: identities, registrations, states,
     digests. Key material must never appear in a collection package
     (§7) — and runtime usage is never confirmed by it (§2.2)."""
+    _tenant_matches_scope(body.tenant_id)
     inventory = body.inventory
     if not isinstance(inventory.get("identity", None), dict):
         raise HTTPException(
@@ -331,7 +380,7 @@ def submit_collection(body: CollectionSubmission, response: Response,
 
 @router.get("/assets/{asset_id}/bom", response_model=BomOut)
 def asset_bom(asset_id: str, kind: str = Query("techbom"),
-              tenant_id: str = Query(...),
+              tenant_id: str = Depends(scoped_tenant),
               db: Session = Depends(get_db_session),
               user=Depends(get_current_user)) -> BomOut:
     """Project one recorded collection into the shared BOM ecosystem
@@ -370,7 +419,7 @@ def rule_catalogue(user=Depends(get_current_user)) -> RuleCatalogueOut:
 
 @router.get("/assets/{asset_id}/rule-evaluation",
             response_model=RuleEvaluationOut)
-def asset_rule_evaluation(asset_id: str, tenant_id: str = Query(...),
+def asset_rule_evaluation(asset_id: str, tenant_id: str = Depends(scoped_tenant),
                           db: Session = Depends(get_db_session),
                           user=Depends(get_current_user)
                           ) -> RuleEvaluationOut:
@@ -408,14 +457,14 @@ def asset_rule_evaluation(asset_id: str, tenant_id: str = Query(...),
 
 
 @router.get("/assets", response_model=AssetListOut)
-def list_assets(tenant_id: str = Query(...),
+def list_assets(tenant_id: str = Depends(scoped_tenant),
                 db: Session = Depends(get_db_session),
                 user=Depends(get_current_user)) -> AssetListOut:
     return AssetListOut(assets=_repo(db).list_assets(tenant_id))
 
 
 @router.get("/assets/{asset_id}", response_model=AssetOut)
-def asset_details(asset_id: str, tenant_id: str = Query(...),
+def asset_details(asset_id: str, tenant_id: str = Depends(scoped_tenant),
                   db: Session = Depends(get_db_session),
                   user=Depends(get_current_user)) -> AssetOut:
     record = _repo(db).get_asset(tenant_id, asset_id)
@@ -440,7 +489,7 @@ def _collection_or_404(repo: OSIntelligenceRepository, tenant_id: str,
 
 @router.get("/assets/{asset_id}/crypto-capabilities",
             response_model=CapabilityListOut)
-def asset_capabilities(asset_id: str, tenant_id: str = Query(...),
+def asset_capabilities(asset_id: str, tenant_id: str = Depends(scoped_tenant),
                        db: Session = Depends(get_db_session),
                        user=Depends(get_current_user)
                        ) -> CapabilityListOut:
@@ -472,7 +521,7 @@ def asset_capabilities(asset_id: str, tenant_id: str = Query(...),
 
 
 @router.get("/assets/{asset_id}/modules", response_model=ModuleListOut)
-def asset_modules(asset_id: str, tenant_id: str = Query(...),
+def asset_modules(asset_id: str, tenant_id: str = Depends(scoped_tenant),
                   db: Session = Depends(get_db_session),
                   user=Depends(get_current_user)) -> ModuleListOut:
     repo = _repo(db)
@@ -484,7 +533,7 @@ def asset_modules(asset_id: str, tenant_id: str = Query(...),
 
 @router.get("/assets/{asset_id}/config-flags",
             response_model=ConfigFlagListOut)
-def asset_config_flags(asset_id: str, tenant_id: str = Query(...),
+def asset_config_flags(asset_id: str, tenant_id: str = Depends(scoped_tenant),
                        db: Session = Depends(get_db_session),
                        user=Depends(get_current_user)
                        ) -> ConfigFlagListOut:
@@ -496,7 +545,7 @@ def asset_config_flags(asset_id: str, tenant_id: str = Query(...),
 
 
 @router.get("/assets/{asset_id}/storage", response_model=StorageListOut)
-def asset_storage(asset_id: str, tenant_id: str = Query(...),
+def asset_storage(asset_id: str, tenant_id: str = Depends(scoped_tenant),
                   db: Session = Depends(get_db_session),
                   user=Depends(get_current_user)) -> StorageListOut:
     repo = _repo(db)
@@ -508,7 +557,7 @@ def asset_storage(asset_id: str, tenant_id: str = Query(...),
 
 @router.get("/assets/{asset_id}/hardware-trust",
             response_model=TrustListOut)
-def asset_hardware_trust(asset_id: str, tenant_id: str = Query(...),
+def asset_hardware_trust(asset_id: str, tenant_id: str = Depends(scoped_tenant),
                          db: Session = Depends(get_db_session),
                          user=Depends(get_current_user)) -> TrustListOut:
     repo = _repo(db)
@@ -519,7 +568,7 @@ def asset_hardware_trust(asset_id: str, tenant_id: str = Query(...),
 
 
 @router.get("/assets/{asset_id}/findings", response_model=FindingListOut)
-def asset_findings(asset_id: str, tenant_id: str = Query(...),
+def asset_findings(asset_id: str, tenant_id: str = Depends(scoped_tenant),
                    db: Session = Depends(get_db_session),
                    user=Depends(get_current_user)) -> FindingListOut:
     repo = _repo(db)
@@ -618,6 +667,8 @@ def submit_runtime_session(asset_id: str,
     if body.asset_id != asset_id:
         raise HTTPException(status_code=422,
                             detail="body asset_id must match the path")
+    _tenant_matches_scope(body.tenant_id)
+    _runtime_asset_or_404(db, body.tenant_id, asset_id)
     session = body.session
     raw_events = session.get("events") or []
     normalized = ingest_events(
@@ -644,41 +695,47 @@ def submit_runtime_session(asset_id: str,
 @router.get("/assets/{asset_id}/runtime-sessions",
             response_model=RuntimeSessionListOut)
 def list_runtime_sessions(asset_id: str,
-                          tenant_id: str = Query(...),
+                          tenant_id: str = Depends(scoped_tenant),
                           db: Session = Depends(get_db_session),
                           user=Depends(get_current_user)
                           ) -> RuntimeSessionListOut:
+    repo = _repo(db)
+    _runtime_asset_or_404(db, tenant_id, asset_id)
     return RuntimeSessionListOut(
         sessions=[RuntimeSessionOut(**r) for r in
-                  _repo(db).list_runtime_sessions(tenant_id, asset_id)])
+                  repo.list_runtime_sessions(tenant_id, asset_id)])
 
 
 @router.get("/assets/{asset_id}/runtime-events",
             response_model=RuntimeEventListOut)
-def list_runtime_events(asset_id: str, tenant_id: str = Query(...),
+def list_runtime_events(asset_id: str, tenant_id: str = Depends(scoped_tenant),
                         session_id: str = Query(""),
                         db: Session = Depends(get_db_session),
                         user=Depends(get_current_user)
                         ) -> RuntimeEventListOut:
+    repo = _repo(db)
+    _runtime_asset_or_404(db, tenant_id, asset_id)
     return RuntimeEventListOut(
         events=[RuntimeEventOut(**r) for r in
-                _repo(db).list_runtime_events(tenant_id, asset_id,
-                                              session_id)])
+                repo.list_runtime_events(tenant_id, asset_id,
+                                         session_id)])
 
 
 @router.get("/assets/{asset_id}/runtime-usage",
             response_model=RuntimeUsageOut)
-def runtime_usage(asset_id: str, tenant_id: str = Query(...),
+def runtime_usage(asset_id: str, tenant_id: str = Depends(scoped_tenant),
                   db: Session = Depends(get_db_session),
                   user=Depends(get_current_user)) -> RuntimeUsageOut:
+    repo = _repo(db)
+    _runtime_asset_or_404(db, tenant_id, asset_id)
     return RuntimeUsageOut(
-        confirmations=_repo(db).runtime_usage_confirmations(
+        confirmations=repo.runtime_usage_confirmations(
             tenant_id, asset_id))
 
 
 @router.get("/assets/{asset_id}/certificates",
             response_model=CertificateListOut)
-def asset_certificates(asset_id: str, tenant_id: str = Query(...),
+def asset_certificates(asset_id: str, tenant_id: str = Depends(scoped_tenant),
                        db: Session = Depends(get_db_session),
                        user=Depends(get_current_user)
                        ) -> CertificateListOut:
@@ -690,7 +747,7 @@ def asset_certificates(asset_id: str, tenant_id: str = Query(...),
 
 
 @router.get("/assets/{asset_id}/coverage", response_model=CoverageOut)
-def asset_coverage(asset_id: str, tenant_id: str = Query(...),
+def asset_coverage(asset_id: str, tenant_id: str = Depends(scoped_tenant),
                    db: Session = Depends(get_db_session),
                    user=Depends(get_current_user)) -> CoverageOut:
     repo = _repo(db)
