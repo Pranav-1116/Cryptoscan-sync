@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { activeTenantId } from "../lib/api";
 import { Badge, Panel, PageHead } from "../components/ui.jsx";
 import {
   apiPerformanceAlerts, apiPerformanceApplications, apiPerformanceBaselines,
@@ -60,19 +61,39 @@ function defaultWindow(): { window_start: string; window_end: string } {
 }
 
 /* An unknown value is unknown, never a fabricated zero. */
+const TILE_TONE: Record<string, string> = {
+  known: "var(--green, #3ecf8e)",
+  derived: "var(--violet, #8b7cf6)",
+  unknown: "var(--slate, #64748b)",
+};
+
 export function TileView({ tile, label }: { tile: PerformanceTile | undefined; label: string }) {
   if (!tile) {
     return (
-      <div style={{ padding: "10px 12px", border: "1px solid var(--rule)", borderRadius: 8 }}>
-        <div style={{ fontSize: 11, opacity: 0.75 }}>{label}</div>
+      <div style={{ padding: "10px 12px", border: "1px solid var(--rule)", borderRadius: 8, borderTop: "2px solid var(--slate, #64748b)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div style={{ fontSize: 11, opacity: 0.75 }}>{label}</div>
+          <span title="no telemetry in window — unknown, never zero" style={{ width: 8, height: 8, borderRadius: 99, border: "1.5px dashed var(--slate, #64748b)" }} />
+        </div>
         <div style={{ fontSize: 22, fontWeight: 700 }}><span>—</span></div>
         <div style={{ fontSize: 10, opacity: 0.7 }}>unknown, never zero</div>
       </div>
     );
   }
   const unknown = tile.state !== "known" || tile.value === null;
+  const tone = unknown ? "unknown" : tile.derived ? "derived" : "known";
   return (
-    <div style={{ padding: "10px 12px", border: "1px solid var(--rule)", borderRadius: 8 }}>
+    <div
+      title={tile.note || `${label}: ${tile.state}${tile.derived ? " (derived)" : ""}`}
+      style={{ padding: "10px 12px", border: "1px solid var(--rule)", borderRadius: 8, borderTop: `2px solid ${TILE_TONE[tone]}` }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 11, opacity: 0.75 }}>{label}</div>
+        <span
+          aria-hidden
+          style={{ width: 8, height: 8, borderRadius: 99, background: unknown ? "transparent" : TILE_TONE[tone], border: unknown ? `1.5px dashed ${TILE_TONE[tone]}` : "none" }}
+        />
+      </div>
       <div style={{ fontSize: 11, opacity: 0.75 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 700 }}>
         <span>{unknown ? "—" : tile.value}</span>
@@ -153,7 +174,10 @@ function useAsync<T>(loader: () => Promise<ApiResult<T>>, deps: React.Dependency
 
 export default function Performance() {
   const [view, setView] = useState<View>("overview");
-  const [tenant, setTenant] = useState("");
+  // Default to the session's active tenant: the picker in the header owns
+  // tenancy, and a blank field used to 422 every read on load — a failure
+  // that looked like "no data" instead of "no tenant chosen".
+  const [tenant, setTenant] = useState(activeTenantId() ?? "");
   const [window, setWindow] = useState(defaultWindow);
 
   const reloadKey = `${tenant}|${window.window_start}|${window.window_end}`;

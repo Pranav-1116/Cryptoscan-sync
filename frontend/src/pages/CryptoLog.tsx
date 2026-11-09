@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { HBars } from "../components/viz";
 import { Badge, Panel, PageHead } from "../components/ui.jsx";
 import CryptoLogAlerts from "./CryptoLogAlerts.js";
 import CryptoLogIntegrity from "./CryptoLogIntegrity.js";
@@ -194,10 +195,61 @@ export default function CryptoLog() {
             {failure} A source that could not be read is not a source with no events.
           </div>
         ) : events.length === 0 ? (
-          <div className="dim" data-testid="cryptolog-empty" style={{ marginTop: 12 }}>
-            No events were returned for this filter. This screen never invents events.
+          <div
+            data-testid="cryptolog-empty"
+            style={{
+              marginTop: 12, display: "flex", gap: 10, alignItems: "flex-start",
+              border: "1px dashed var(--rule)", borderRadius: 8, padding: "12px 14px",
+              background: "var(--panel-2)",
+            }}
+          >
+            <span
+              aria-hidden
+              style={{ width: 8, height: 8, borderRadius: 99, border: "1.5px dashed var(--slate, #64748b)", marginTop: 4, flex: "0 0 auto" }}
+            />
+            <div className="dim" style={{ fontSize: 12, lineHeight: 1.5 }}>
+              No events were returned for this filter. This screen never invents events.
+            </div>
           </div>
         ) : (
+          <>
+          <div style={{ display: "flex", gap: 22, flexWrap: "wrap", marginTop: 12, alignItems: "flex-start" }}>
+            <div style={{ flex: 1, minWidth: 200, maxWidth: 360 }}>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>
+                LOADED EVENTS BY SEVERITY
+              </div>
+              <HBars
+                rows={Object.entries(
+                  events.reduce<Record<string, number>>((acc, e) => {
+                    acc[e.severity] = (acc[e.severity] ?? 0) + 1;
+                    return acc;
+                  }, {}),
+                ).map(([label, value]) => ({
+                  key: label,
+                  label: `severity · ${label}`,
+                  value,
+                  tone: label === "HIGH" || label === "CRITICAL" ? "red" : label === "MEDIUM" ? "amber" : "slate",
+                }))}
+                emptyTitle="no severities"
+                emptyNote="recorded observations, never verdicts"
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: 200, maxWidth: 360 }}>
+              <div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>
+                LOADED EVENTS BY CATEGORY
+              </div>
+              <HBars
+                rows={Object.entries(
+                  events.reduce<Record<string, number>>((acc, e) => {
+                    acc[e.category] = (acc[e.category] ?? 0) + 1;
+                    return acc;
+                  }, {}),
+                ).map(([label, value]) => ({ key: label, label: `category · ${label}`, value, tone: "accent" }))}
+                emptyTitle="no categories"
+                emptyNote="the term travels to the event store, never a page-local filter"
+              />
+            </div>
+          </div>
           <div data-testid="cryptolog-rows" style={{ marginTop: 12, display: "grid", gap: 6 }}>
             {events.map((event) => (
               <button key={event.event_id} data-testid="cryptolog-row"
@@ -227,6 +279,7 @@ export default function CryptoLog() {
               <button className="btn" data-testid="cryptolog-load-more" onClick={loadMore}>Load more</button>
             ) : null}
           </div>
+          </>
         )}
       </Panel>
 

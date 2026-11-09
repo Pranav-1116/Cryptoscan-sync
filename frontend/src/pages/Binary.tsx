@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from "react";
+import { activeTenantId } from "../lib/api";
 import { Donut, HBars, FlowStrip, Meter } from "../components/viz";
 import { Badge, Panel, PageHead } from "../components/ui";
 import {
@@ -125,7 +126,9 @@ function FindingRow({ finding, onEvidence }: {
 
 export default function Binary() {
   const [view, setView] = useState<View>("submit");
-  const [tenant, setTenant] = useState("");
+  // Default to the session's active tenant (the header picker owns tenancy);
+  // a blank field silently disabled every action on this page.
+  const [tenant, setTenant] = useState(activeTenantId() ?? "");
   const [artifactId, setArtifactId] = useState("");
   const [againstId, setAgainstId] = useState("");
   const [filename, setFilename] = useState("payments-engine");

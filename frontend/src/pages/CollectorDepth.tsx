@@ -13,6 +13,7 @@
  *   BOMs      six projections of one graph, six different depths, no percentages.
  */
 
+import { Donut, FlowStrip, type FlowState } from "../components/viz";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge, PageHead, Panel } from "../components/ui";
@@ -133,10 +134,63 @@ function Limit({ text }: { text: string }) {
 function Gaps({ gaps }: { gaps: string[] }) {
   if (gaps.length === 0) return null;
   return (
-    <p style={{ margin: "6px 0 0", fontSize: 11, color: "var(--dim)" }}>
-      <b>Gaps:</b> {gaps.join(" · ")}
-    </p>
+    <div style={{ margin: "6px 0 0", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+      <span style={{ fontSize: 10, letterSpacing: ".06em", color: "var(--faint)", fontFamily: "var(--mono)" }}>GAPS</span>
+      {gaps.map((gap) => (
+        <span
+          key={gap}
+          style={{
+            fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--dim)",
+            border: "1px dashed var(--line)", borderRadius: 999, padding: "1px 8px",
+          }}
+        >
+          {gap}
+        </span>
+      ))}
+    </div>
   );
+}
+
+/* The measurement chain, drawn: a mapped library, ingested rows and a counted
+   call are three different facts. The ladder lights only the stages the
+   DEPTH actually asserts; everything past the measurement is dashed
+   ("not observed"), never a pass and never a failure. */
+const DEPTH_STAGES: Record<string, number> = {
+  INVOCATION: 2,
+  INGEST_ONLY: 1,
+  EXISTS: 0,
+  PARTIAL: 0,
+};
+
+function DepthLadder({ depth }: { depth: string }) {
+  const reached = DEPTH_STAGES[depth];
+  const stages: { label: string; state: FlowState; note: string }[] = [
+    {
+      label: "mapped / installed",
+      state: reached === undefined ? "unknown" : "done",
+      note:
+        reached === undefined
+          ? "not observed as present — never assumed installed"
+          : "the library or provider is present in the process or store",
+    },
+    {
+      label: "rows ingested",
+      state: reached === undefined ? "unknown" : reached >= 1 ? "done" : "unknown",
+      note:
+        reached !== undefined && reached >= 1
+          ? "records arrive through the ingest path"
+          : "no ingest rows — not observed, never 'did not run'",
+    },
+    {
+      label: "call-level (invoked)",
+      state: reached === 2 ? "done" : "unknown",
+      note:
+        reached === 2
+          ? "counted calls under the shim — invocation evidence"
+          : "no call-level evidence: installed is not executed",
+    },
+  ];
+  return <FlowStrip label={`measurement chain for depth ${depth}`} stages={stages} />;
 }
 
 function RuntimeSection() {
@@ -157,16 +211,36 @@ function RuntimeSection() {
   return (
     <Panel title="Runtime — installed is not executed" sub={doc.claim}>
       <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "var(--text)", lineHeight: 1.5 }}>{doc.axiom}</p>
-      <div className="row" style={{ gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-        <Badge tone="cyan">{doc.rollup.paths} runtime families</Badge>
-        <Badge tone="green">{doc.rollup.call_level_paths} with call-level evidence</Badge>
-        <Badge tone="slate">{doc.rollup.ingest_only_paths} ingest-only</Badge>
-        <Badge tone={doc.rollup.absent_paths ? "red" : "slate"}>{doc.rollup.absent_paths} absent</Badge>
-        {observed && (
-          <Badge tone={observed.state === "INVOCATION_OBSERVED" ? "green" : observed.state === "NOT_EVALUATED" ? "red" : "amber"}>
-            store: {human(observed.state)}
-          </Badge>
-        )}
+      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+        <Donut
+          size={104}
+          segments={[
+            { label: "call-level evidence", value: doc.rollup.call_level_paths, tone: "green" },
+            { label: "ingest-only", value: doc.rollup.ingest_only_paths, tone: "slate" },
+            { label: "absent", value: doc.rollup.absent_paths, tone: "red" },
+            {
+              label: "other depth",
+              value: Math.max(
+                0,
+                doc.rollup.paths - doc.rollup.call_level_paths - doc.rollup.ingest_only_paths - doc.rollup.absent_paths,
+              ),
+              tone: "amber",
+            },
+          ]}
+          centerLabel={doc.rollup.paths}
+          centerSub="families"
+        />
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <Badge tone="cyan">{doc.rollup.paths} runtime families</Badge>
+          <Badge tone="green">{doc.rollup.call_level_paths} with call-level evidence</Badge>
+          <Badge tone="slate">{doc.rollup.ingest_only_paths} ingest-only</Badge>
+          <Badge tone={doc.rollup.absent_paths ? "red" : "slate"}>{doc.rollup.absent_paths} absent</Badge>
+          {observed && (
+            <Badge tone={observed.state === "INVOCATION_OBSERVED" ? "green" : observed.state === "NOT_EVALUATED" ? "red" : "amber"}>
+              store: {human(observed.state)}
+            </Badge>
+          )}
+        </div>
       </div>
 
       {observed && (
@@ -196,6 +270,9 @@ function RuntimeSection() {
               {path.depth !== path.declared_depth && <Badge tone="red">declared {path.declared_depth.replace(/_/g, " ")}</Badge>}
               {path.ingest_only.length > 0 && <Badge tone="slate">engine accepts: {path.ingest_only.join(", ")}</Badge>}
               <span className="faint" style={{ fontSize: 11 }}>{path.family}</span>
+            </div>
+            <div style={{ margin: "8px 0 2px", maxWidth: 620 }}>
+              <DepthLadder depth={path.depth} />
             </div>
             <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--dim)" }}>{path.reads}</p>
             <Limit text={path.cannot_claim} />
