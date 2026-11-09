@@ -13,7 +13,7 @@
  * Both are previewed before they run: "would this match, would this reach" is cheap, and
  * the answer is what stops an operator from reading a page of nothing as good news.
  */
-import { StackedBar, HBars } from "../components/viz";
+import { FlowStrip, StackedBar, HBars } from "../components/viz";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Panel, Badge, Stat } from "../components/ui";
@@ -432,6 +432,24 @@ export default function Simulation() {
             whether they touched the live state; neither is counted as estate state.
           </div>
         </div>
+      </div>
+
+      <div
+        aria-label="How a simulation run works"
+        style={{ margin: "0 0 14px", padding: "12px 14px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}
+      >
+        <div className="kicker" style={{ fontSize: 9.5, marginBottom: 8 }}>HOW A RUN WORKS — SIX STAGES, ONE PROJECTION ID</div>
+        <FlowStrip
+          label="how a run works"
+          stages={[
+            { label: "1 ask", state: "active", note: "a registered scenario, cascade, or a bounded sequence — with its selector" },
+            { label: "2 match", state: "pending", note: "the selector must match recorded evidence — no match is NO_MATCH, never 'zero impact'" },
+            { label: "3 copy", state: "pending", note: "the twin is copied; the live estate is never touched" },
+            { label: "4 project", state: "pending", note: "the six BOMs are re-projected from the copy" },
+            { label: "5 diff", state: "pending", note: "added/removed/changed per BOM, measured against one projection id" },
+            { label: "6 quarantine", state: "pending", note: "a stored run is quarantined and labelled with the estate it was computed against" },
+          ]}
+        />
       </div>
 
       {catalogProblem && (

@@ -95,11 +95,43 @@ function Row({ label, value, mono }: { label: string; value: React.ReactNode; mo
 
 function Empty({ children }: { children: React.ReactNode }) {
   return (
-    <p style={{ margin: 0, fontSize: 11.5, color: "var(--faint)", background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)", padding: 12, lineHeight: 1.5 }}>
-      {children}
-    </p>
+    <div
+      style={{
+        display: "flex", gap: 10, alignItems: "flex-start",
+        background: "var(--panel-2)", border: "1px dashed var(--line)",
+        borderRadius: "var(--r)", padding: 12,
+      }}
+    >
+      <span
+        aria-hidden
+        style={{ width: 8, height: 8, borderRadius: 99, border: "1.5px dashed var(--faint)", marginTop: 4, flex: "0 0 auto" }}
+      />
+      <p style={{ margin: 0, fontSize: 11.5, color: "var(--faint)", lineHeight: 1.5 }}>
+        {children}
+      </p>
+    </div>
   );
 }
+
+/* The spec's own family grouping (Estate → Network → Supply chain →
+   Cryptography → BOM → Digital twin → Intelligence): each step carries its
+   family as a colour mark on the rail. The mark is navigation, never a
+   verdict about the step's content. */
+const STEP_FAMILY: Record<string, { name: string; color: string }> = {
+  overview: { name: "estate", color: "var(--accent)" },
+  assets: { name: "estate", color: "var(--accent)" },
+  relationships: { name: "network", color: "var(--cyan, var(--accent))" },
+  crypto: { name: "cryptography", color: "var(--violet)" },
+  network: { name: "network", color: "var(--cyan, var(--accent))" },
+  hardware: { name: "hardware", color: "var(--violet)" },
+  vendor: { name: "supply chain", color: "var(--amber)" },
+  evidence: { name: "evidence", color: "var(--amber)" },
+  history: { name: "digital twin", color: "var(--green)" },
+  drift: { name: "digital twin", color: "var(--green)" },
+  blast: { name: "intelligence", color: "var(--red)" },
+  simulation: { name: "intelligence", color: "var(--red)" },
+  pqc: { name: "intelligence", color: "var(--red)" },
+};
 
 function EdgeTable({ rows }: { rows: AssetNeighbour[] }) {
   return (
@@ -611,6 +643,11 @@ export default function TwinWalkthrough() {
                     style={{ width: "100%", display: "flex", gap: 8, alignItems: "baseline", textAlign: "left", padding: "6px 8px", borderRadius: "var(--r)", cursor: "pointer", border: `1px solid ${isActive ? "var(--violet)" : "transparent"}`, background: isActive ? "color-mix(in srgb, var(--violet) 12%, transparent)" : "transparent", color: "var(--text)" }}
                   >
                     <span style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: isActive ? "var(--violet)" : "var(--faint)", minWidth: 16 }}>{String(entry.n).padStart(2, "0")}</span>
+                    <span
+                      aria-hidden
+                      title={STEP_FAMILY[entry.id]?.name}
+                      style={{ width: 6, height: 6, borderRadius: 99, background: STEP_FAMILY[entry.id]?.color ?? "var(--faint)", flex: "0 0 auto", alignSelf: "center" }}
+                    />
                     <span style={{ fontSize: 12, fontWeight: isActive ? 700 : 500 }}>{entry.title}</span>
                   </button>
                 </li>
@@ -625,7 +662,27 @@ export default function TwinWalkthrough() {
           style={{ padding: "12px 14px" }}
         >
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+            <span
+              aria-hidden
+              style={{
+                width: 30, height: 30, borderRadius: 8, display: "grid", placeItems: "center",
+                background: "var(--violet)", color: "#fff", fontFamily: "var(--mono)", fontWeight: 800, fontSize: 13,
+              }}
+            >
+              {String(active.n).padStart(2, "0")}
+            </span>
             <Badge tone="violet">step {active.n} of {WALKTHROUGH_STEPS.length}</Badge>
+            {STEP_FAMILY[active.id] && (
+              <span
+                style={{
+                  fontSize: 10, fontFamily: "var(--mono)", letterSpacing: ".06em",
+                  color: STEP_FAMILY[active.id].color,
+                  border: `1px solid ${STEP_FAMILY[active.id].color}`, borderRadius: 999, padding: "1px 8px",
+                }}
+              >
+                {STEP_FAMILY[active.id].name}
+              </span>
+            )}
             {selected && <Badge tone="slate">selected asset {selected}</Badge>}
             <Link to={active.route} style={{ marginLeft: "auto", fontSize: 11, color: "var(--violet)", fontWeight: 700 }}>
               open the full {active.title} screen →

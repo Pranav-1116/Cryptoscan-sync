@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from "react";
+import "./intelligence.css";
 import type { ApiResult } from "../lib/api";
 import {
   apiExternalValidations,
@@ -227,8 +228,11 @@ export default function IntelligenceWorkbench() {
         </div>
       )}
 
-      <FindingsTable findings={report?.findings ?? []} />
+      <div className="intel-card" style={{ gridColumn: "1 / -1" }}>
+        <FindingsTable findings={report?.findings ?? []} />
+      </div>
       {report?.detectors_not_fired && Object.keys(report.detectors_not_fired).length > 0 && (
+        <div className="intel-card">
         <table aria-label="Detectors that did not run">
           <thead>
             <tr>
@@ -245,13 +249,17 @@ export default function IntelligenceWorkbench() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
-      <PqcClaimsLadder subjects={subjects} />
+      <div className="intel-card">
+        <PqcClaimsLadder subjects={subjects} />
+      </div>
       {claims.data?.derived_from && (
         <p className="muted">{claims.data.derived_from}</p>
       )}
 
+      <div className="intel-card">
       <h2>Risk — five dimensions for one asset</h2>
       <div className="filters">
         <input
@@ -285,7 +293,9 @@ export default function IntelligenceWorkbench() {
           </p>
         )
       )}
+      </div>
 
+      <div className="intel-card">
       <h2>Simulation — one scenario, one selected versioned snapshot</h2>
       <div className="filters">
         <select
@@ -332,7 +342,10 @@ export default function IntelligenceWorkbench() {
           </p>
         )
       )}
+      </div>
 
+      <div className="intel-grid">
+      <div className="intel-card">
       <h2>Collection coverage</h2>
       {coverage.data ? (
         <>
@@ -389,7 +402,9 @@ export default function IntelligenceWorkbench() {
           </p>
         )
       )}
+      </div>
 
+      <div className="intel-card">
       <h2>External validation register</h2>
       {external.data ? (
         <>
@@ -425,6 +440,8 @@ export default function IntelligenceWorkbench() {
           </p>
         )
       )}
+      </div>
+      </div>
     </div>
   );
 }

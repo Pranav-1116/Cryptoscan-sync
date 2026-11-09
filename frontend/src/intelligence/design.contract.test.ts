@@ -36,6 +36,16 @@ describe("intelligence workbench design contract", () => {
     }
   });
 
+  it("the stylesheet is loaded by the workbench, not just filed", () => {
+    // The theme existed for weeks without an import: every chip, banner and
+    // dense table rendered as bare text. The import is now pinned.
+    const workbench = readFileSync(
+      path.join(here, "IntelligenceWorkbench.tsx"),
+      "utf8",
+    );
+    expect(workbench).toMatch(/import ["']\.\/intelligence\.css["']/);
+  });
+
   it("pins the navy/charcoal palette", () => {
     const css = readFileSync(path.join(here, "intelligence.css"), "utf8");
     expect(css).toContain("#0b1220"); // dark navy

@@ -121,3 +121,35 @@
 .intel .not-proven {
   color: var(--intel-warn);
 }
+
+
+/* Section cards and dashboard grid. Flat fills and 1px borders only —
+   the same material language as the rest of the sheet above. */
+.intel-card {
+  border: 1px solid var(--intel-line);
+  background: var(--intel-charcoal);
+  padding: 10px 12px;
+  margin: 10px 0;
+}
+
+.intel-card h2 {
+  margin-top: 0;
+}
+
+.intel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.intel-grid .intel-card {
+  margin: 0;
+}
+
+.intel .stat-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
