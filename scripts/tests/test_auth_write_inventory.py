@@ -167,8 +167,14 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # collection packages: metadata + digests, never key material,
     # runtime usage never confirmed by OS collection (§2.2); decided
     # family policy entry).
-    assert len(rows) <= 359, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 359. "
+    # 359 -> 342 (down): the intelligence-write authorization pass
+    # gated 17 writes behind role requirements (binary scan/rescan/
+    # firmware family, the cryptolog event/alert/checkpoint family,
+    # the performance writes, and the two os-intelligence intakes).
+    # Session-only writes may only shrink; this regeneration records
+    # the shrink ("Harden tenant APIs and persistent local startup").
+    assert len(rows) <= 342, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 342. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

@@ -340,31 +340,6 @@
     },
     {
       "method": "POST",
-      "path": "/api/v1/binary/artifacts/{artifact_id}/rescan",
-      "reason": "operator surface: authorized binary artifact submission for static analysis; never executes the artifact, immutable digest identity, tenant-scoped"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/binary/firmware/scan",
-      "reason": "operator surface: authorized binary artifact submission for static analysis; never executes the artifact, immutable digest identity, tenant-scoped"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/binary/scan",
-      "reason": "operator surface: authorized binary artifact submission for static analysis; never executes the artifact, immutable digest identity, tenant-scoped"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/binary/scan/async",
-      "reason": "operator surface: authorized binary artifact submission for static analysis; never executes the artifact, immutable digest identity, tenant-scoped"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/binary/scan/jobs/{job_id}/process",
-      "reason": "operator surface: authorized binary artifact submission for static analysis; never executes the artifact, immutable digest identity, tenant-scoped"
-    },
-    {
-      "method": "POST",
       "path": "/api/v1/business/owners",
       "reason": "operator surface: business process and owner registry"
     },
@@ -690,37 +665,7 @@
     },
     {
       "method": "POST",
-      "path": "/api/v1/cryptolog/alerts/evaluate",
-      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
-    },
-    {
-      "method": "POST",
       "path": "/api/v1/cryptolog/alerts/transition",
-      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/cryptolog/alerts/{alert_id}/transition",
-      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/cryptolog/events",
-      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/cryptolog/events/batch",
-      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/cryptolog/events/{event_id}/corrections",
-      "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/cryptolog/integrity/checkpoint",
       "reason": "operator surface: cryptographic event ingestion and deterministic alert lifecycle; records carry their evidence and alerts say what is proven"
     },
     {
@@ -1460,16 +1405,6 @@
     },
     {
       "method": "POST",
-      "path": "/api/v1/os-intelligence/assets/{asset_id}/runtime-sessions",
-      "reason": "operator surface: read-only OS/kernel collection package intake and inspection; metadata only, never key material, tenant-scoped"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/os-intelligence/collections",
-      "reason": "operator surface: read-only OS/kernel collection package intake and inspection; metadata only, never key material, tenant-scoped"
-    },
-    {
-      "method": "POST",
       "path": "/api/v1/ot/metrics",
       "reason": "operator surface: OT/ICS capture analysis and ingestion"
     },
@@ -1482,26 +1417,6 @@
       "method": "POST",
       "path": "/api/v1/ot/scan",
       "reason": "operator surface: OT/ICS capture analysis and ingestion"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/performance/benchmarks",
-      "reason": "operator surface: performance metric ingestion from authorized monitoring sources; read-only collection, tenant-isolated, idempotent"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/performance/definitions",
-      "reason": "operator surface: performance metric ingestion from authorized monitoring sources; read-only collection, tenant-isolated, idempotent"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/performance/ingest",
-      "reason": "operator surface: performance metric ingestion from authorized monitoring sources; read-only collection, tenant-isolated, idempotent"
-    },
-    {
-      "method": "POST",
-      "path": "/api/v1/performance/ingest/batch",
-      "reason": "operator surface: performance metric ingestion from authorized monitoring sources; read-only collection, tenant-isolated, idempotent"
     },
     {
       "method": "POST",

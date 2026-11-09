@@ -95,7 +95,13 @@ MIN_TENANT_ROLE_GATED = 17
 # 353 -> 354: a deliberate regeneration added the OS & Kernel
 # Intelligence collection intake (POST /api/v1/os-intelligence/
 # collections — read-only collection packages, metadata only).
-MAX_SESSION_ONLY_WRITES = 355
+# 355 -> 342 (down): the intelligence-write authorization pass put 17
+# writes behind role requirements (binary scan/rescan/firmware family,
+# cryptolog event/alert/checkpoint family, performance writes, and both
+# os-intelligence intakes). The surface may only shrink without an
+# entry; this shrink IS the entry ("Harden tenant APIs and persistent
+# local startup").
+MAX_SESSION_ONLY_WRITES = 342
 
 
 @pytest.fixture(scope="module")

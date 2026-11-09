@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 982 |
-| role | 342 |
+| session | 965 |
+| role | 359 |
 | permission | 74 |
 | tenant-role | 17 |
 
-**1415** operations; **359** of them change state with nothing but the session gate — the exact list, with the policy
+**1415** operations; **342** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -34,7 +34,6 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `estate` | 26 |
 | `cbom` | 15 |
 | `migrations` | 13 |
-| `cryptolog` | 11 |
 | `vendors` | 10 |
 | `graph` | 9 |
 | `banking` | 8 |
@@ -46,10 +45,9 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `exceptions` | 6 |
 | `runtime` | 6 |
 | `automation` | 5 |
-| `binary` | 5 |
+| `cryptolog` | 5 |
 | `host-evidence` | 5 |
 | `resource-monitoring` | 5 |
-| `performance` | 4 |
 | `traffic-control` | 4 |
 | `business` | 3 |
 | `container-scans` | 3 |
@@ -64,7 +62,6 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `enterprise` | 2 |
 | `ingestion` | 2 |
 | `network-scans` | 2 |
-| `os-intelligence` | 2 |
 | `remediation` | 2 |
 | `anomaly` | 1 |
 | `certificates` | 1 |
@@ -147,11 +144,6 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/banking/iso20022/parse` | `api.routers.banking.banking_iso20022_parse` |
 | POST | `/api/v1/banking/mainframe/analyze` | `api.routers.banking.banking_mainframe_analyze` |
 | POST | `/api/v1/banking/mainframe/ingest` | `api.routers.banking.banking_mainframe_ingest` |
-| POST | `/api/v1/binary/artifacts/{artifact_id}/rescan` | `api.routers.binary_intelligence.rescan_artifact` |
-| POST | `/api/v1/binary/firmware/scan` | `api.routers.binary_intelligence.firmware_scan` |
-| POST | `/api/v1/binary/scan` | `api.routers.binary_intelligence.submit_scan` |
-| POST | `/api/v1/binary/scan/async` | `api.routers.binary_intelligence.submit_scan_async` |
-| POST | `/api/v1/binary/scan/jobs/{job_id}/process` | `api.routers.binary_intelligence.process_job` |
 | POST | `/api/v1/business/owners` | `api.routers.business.create_owner` |
 | POST | `/api/v1/business/processes` | `api.routers.business.create_process` |
 | POST | `/api/v1/business/processes/{process_id}/systems` | `api.routers.business.link_process` |
@@ -212,13 +204,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/control/agents/heartbeat` | `api.routers.control_plane.agent_heartbeat` |
 | POST | `/api/v1/control/events/enqueue` | `api.routers.control_plane.enqueue_event` |
 | POST | `/api/v1/control/safe-scan/evaluate` | `api.routers.control_plane.evaluate_scan_check` |
-| POST | `/api/v1/cryptolog/alerts/evaluate` | `api.routers.cryptolog.evaluate_alerts` |
 | POST | `/api/v1/cryptolog/alerts/transition` | `api.routers.cryptolog.alert_transition` |
-| POST | `/api/v1/cryptolog/alerts/{alert_id}/transition` | `api.routers.cryptolog.transition_alert_state` |
-| POST | `/api/v1/cryptolog/events` | `api.routers.cryptolog.ingest_event` |
-| POST | `/api/v1/cryptolog/events/batch` | `api.routers.cryptolog.ingest_batch` |
-| POST | `/api/v1/cryptolog/events/{event_id}/corrections` | `api.routers.cryptolog.correct_event` |
-| POST | `/api/v1/cryptolog/integrity/checkpoint` | `api.routers.cryptolog.create_checkpoint` |
 | POST | `/api/v1/cryptolog/integrity/verify` | `api.routers.cryptolog.verify_integrity` |
 | POST | `/api/v1/cryptolog/reports/export` | `api.routers.cryptolog.export_report` |
 | POST | `/api/v1/cryptolog/reports/verify` | `api.routers.cryptolog.verify_report_bundle` |
@@ -366,15 +352,9 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/network/ssh-scan` | `api.routers.network.scan_ssh_hosts` |
 | POST | `/api/v1/network/targets` | `api.routers.network.create_target` |
 | POST | `/api/v1/ops/alerts/alertmanager` | `api.routers.ops_alerts.alertmanager_webhook` |
-| POST | `/api/v1/os-intelligence/assets/{asset_id}/runtime-sessions` | `api.routers.os_intelligence.submit_runtime_session` |
-| POST | `/api/v1/os-intelligence/collections` | `api.routers.os_intelligence.submit_collection` |
 | POST | `/api/v1/ot/metrics` | `api.routers.ot.render_ot_metrics` |
 | POST | `/api/v1/ot/safety/authorize` | `api.routers.ot_safety.authorize` |
 | POST | `/api/v1/ot/scan` | `api.routers.ot.scan_ot` |
-| POST | `/api/v1/performance/benchmarks` | `api.routers.performance.benchmarks` |
-| POST | `/api/v1/performance/definitions` | `api.routers.performance.sync_metric_definitions` |
-| POST | `/api/v1/performance/ingest` | `api.routers.performance.ingest_metric` |
-| POST | `/api/v1/performance/ingest/batch` | `api.routers.performance.ingest_batch` |
 | POST | `/api/v1/quantum/mosca` | `api.routers.quantum.quantum_mosca` |
 | POST | `/api/v1/remediation/fix-branch` | `api.routers.remediation.fix_branch` |
 | POST | `/api/v1/remediation/tasks` | `api.routers.remediation.create_task` |
