@@ -393,6 +393,7 @@ def collect_windows(host_id: str, captured: Dict[str, str]
 
     # --- identity ----------------------------------------------------
     identity = OSIdentity()
+    identity.kernel_name = "Windows_NT"
     identity.notes.append(
         "platform: windows — collection normalized into the shared "
         "canonical OS model (§15 step 4); Linux-only rule inputs are "

@@ -402,3 +402,109 @@ describe("OS & Kernel Intelligence", () => {
     expect(screen.getAllByText(/NOT a 'uses' claim/).length).toBeGreaterThan(0);
     expect(screen.queryAllByText(/— uses →/)).toHaveLength(0);
   });
+
+  it("certificates view: unknown validity never reads a date, no key material", async () => {
+    mockFetch({
+      "/api/v1/os-intelligence/assets/host-under-test/certificates": {
+        certificates: [
+          {
+            certificate_id: "cert-1",
+            collection_id: "oscol-1",
+            subject: "CN = ISRG Root X1",
+            issuer: "CN = ISRG Root X1",
+            not_before: "Jun  4 11:04:38 2015 GMT",
+            not_after: "Jun  4 11:04:38 2035 GMT",
+            thumbprint_sha256: "96BCEC06264976F37460779ACF28C5A7",
+            public_key_algorithm: "unknown",
+            public_key_bits: 4096,
+            evidence_class: "observed",
+            evidence_source: "openssl x509",
+            limitations: [
+              "public certificate metadata only — private key material is NEVER collected, exported, displayed or stored (§7)",
+            ],
+            collected_at: "2026-11-08T12:00:00+00:00",
+          },
+          {
+            certificate_id: "cert-2",
+            collection_id: "oscol-1",
+            subject: "CN = unknown-validity.example",
+            issuer: "CN = Internal RCA",
+            not_before: null,
+            not_after: null,
+            thumbprint_sha256: null,
+            public_key_algorithm: null,
+            public_key_bits: null,
+            evidence_class: "observed",
+            evidence_source: "certutil -store",
+            limitations: [
+              "validity dates unavailable from this source — expiration state is UNKNOWN, never 'not expired' (§2.1)",
+            ],
+            collected_at: "2026-11-08T12:00:00+00:00",
+          },
+        ],
+        note:
+          "public certificate metadata only — private key material is never collected, exported, displayed or stored (§7); unknown validity dates are UNKNOWN, never 'not expired' (§2.1)",
+      },
+    });
+    renderPage();
+    setAsset();
+    fireEvent.click(screen.getByText("Certificates"));
+    await waitFor(() =>
+      expect(screen.getAllByText(/ISRG Root X1/).length).toBeGreaterThan(0),
+    );
+    expect(screen.getAllByText(/4096 bit/).length).toBeGreaterThan(0);
+    // unknown validity renders Unknown — never a date, never a claim
+    expect(screen.getAllByText("(never guessed)").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/Jun\s+4 11:04:38 2035 GMT/),
+    ).toHaveLength(1);
+    expect(
+      screen.getAllByText(/expiration state is UNKNOWN/).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getAllByText(/NEVER collected, exported/).length).toBeGreaterThan(0);
+  });
+
+  it("certificates empty state is never 'all valid'", async () => {
+    mockFetch({
+      "/api/v1/os-intelligence/assets/host-under-test/certificates": {
+        certificates: [],
+        note: "public certificate metadata only — private key material is never collected, exported, displayed or stored (§7)",
+      },
+    });
+    renderPage();
+    setAsset();
+    fireEvent.click(screen.getByText("Certificates"));
+    await waitFor(() =>
+      expect(screen.getAllByText(/never .all.valid/).length).toBeGreaterThan(0),
+    );
+  });
+
+  it("estate overview: every host carries its qualification limit", async () => {
+    mockFetch({
+      "/api/v1/os-intelligence/assets": {
+        assets: [
+          asset(),
+          asset({
+            asset_id: "win-host-1",
+            kernel_name: "Windows_NT",
+            kernel_release: "10.0.20348",
+            os_pretty_name: "Microsoft Windows Server 2022 Datacenter",
+            notes: ["platform: windows — collection normalized into the shared canonical OS model"],
+            collected_at: "2026-11-08T13:00:00+00:00",
+          }),
+        ],
+        note: "one row per recorded OS collection — a missing asset is never a clean asset",
+      },
+    });
+    renderPage();
+    fireEvent.click(screen.getByText("Estate Overview"));
+    await waitFor(() =>
+      expect(screen.getAllByText("win-host-1").length).toBeGreaterThan(0),
+    );
+    expect(screen.getAllByText("host-under-test").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("windows").length).toBeGreaterThan(0);
+    // qualification limit shown per host — development only
+    expect(screen.getAllByText("development only").length).toBeGreaterThan(1);
+    expect(screen.getAllByText(/never a clean asset/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/never enterprise/).length).toBeGreaterThan(0);
+  });

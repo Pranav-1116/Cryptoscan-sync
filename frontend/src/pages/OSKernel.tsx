@@ -4,9 +4,11 @@ import {
   apiOSAssets, apiOSAsset, apiOSCapabilities, apiOSModules,
   apiOSConfigFlags, apiOSStorage, apiOSHardwareTrust, apiOSFindings,
   apiOSCoverage, apiOSRules, apiOSRuleEvaluation, apiOSBom,
+  apiOSCertificates,
   type ApiResult, type OSAssetRecord, type OSCapability, type OSCoverage,
   type OSFindingRecord, type OSModule, type OSConfigFlag,
   type OSStorageFact, type OSTrustFact, type OSRuleEvaluation, type OSBom,
+  type OSCertificate,
 } from "../lib/api.js";
 
 /* OS & Kernel Intelligence (docs/os-kernel-intelligence/01_PRODUCT_SPEC.md):
@@ -17,16 +19,19 @@ import {
    enterprise qualification; a detection is never a verdict. */
 
 type View =
-  | "assets" | "capabilities" | "modules" | "config" | "storage"
-  | "trust" | "findings" | "coverage" | "rules" | "bom";
+  | "estate" | "assets" | "capabilities" | "modules" | "config"
+  | "storage" | "trust" | "certs" | "findings" | "coverage" | "rules"
+  | "bom";
 
 const VIEWS: Array<{ key: View; label: string }> = [
+  { key: "estate", label: "Estate Overview" },
   { key: "assets", label: "Hosts & Identity" },
   { key: "capabilities", label: "Kernel Crypto API" },
   { key: "modules", label: "Kernel Modules" },
   { key: "config", label: "Kernel Configuration" },
   { key: "storage", label: "Disk Encryption" },
   { key: "trust", label: "Hardware Trust" },
+  { key: "certs", label: "Certificates" },
   { key: "findings", label: "Findings" },
   { key: "coverage", label: "Coverage" },
   { key: "rules", label: "OS-CRYPTO Rules" },
@@ -85,6 +90,15 @@ function EvidenceClass({ value }: { value: string }) {
   );
 }
 
+function platformOf(a: OSAssetRecord): string {
+  const note = a.notes.find((n) => n.startsWith("platform:"));
+  if (note) {
+    const value = note.slice("platform:".length).split("—")[0].trim();
+    if (value) return value;
+  }
+  return a.kernel_name === "unknown" ? "platform unknown" : a.kernel_name;
+}
+
 function Notes({ notes }: { notes?: string[] | null }) {
   if (!notes || notes.length === 0) return null;
   return (
@@ -109,6 +123,7 @@ export default function OSKernel() {
   const [coverage, setCoverage] = useState<ApiResult<OSCoverage> | null>(null);
   const [rules, setRules] = useState<ApiResult<{ rules: Array<{ rule_id: string; detection: string; potential_impact: string }>; note: string }> | null>(null);
   const [evaluation, setEvaluation] = useState<ApiResult<OSRuleEvaluation> | null>(null);
+  const [certs, setCerts] = useState<ApiResult<{ certificates: OSCertificate[]; note: string }> | null>(null);
   const [bom, setBom] = useState<ApiResult<OSBom> | null>(null);
   const [bomKind, setBomKind] = useState("techbom");
   const [busy, setBusy] = useState(false);
@@ -144,6 +159,8 @@ export default function OSKernel() {
         setCoverage(await apiOSCoverage(assetId, t)); break;
       case "rules":
         setEvaluation(await apiOSRuleEvaluation(assetId, t)); break;
+      case "certs":
+        setCerts(await apiOSCertificates(assetId, t)); break;
       case "bom":
         setBom(await apiOSBom(assetId, { ...t, kind: bomKind })); break;
     }
@@ -265,6 +282,72 @@ export default function OSKernel() {
             </>
           ) : (
             <p style={{ fontSize: 12, color: "var(--muted)", margin: 0 }}>reading…</p>
+          )}
+        </Panel>
+      )}
+
+      {view === "estate" && (
+        <Panel title="Estate overview (all collected hosts)">
+          {assets && assets.error && !assets.data ? (
+            <ReadFailed error={assets.error} />
+          ) : assets && assets.data ? (
+            <>
+              <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 8px" }}>
+                Cross-host view of every recorded OS collection. A missing
+                asset is never a clean asset; one host is never enterprise
+                qualification (§12).
+              </p>
+              {assets.data.assets.length === 0 ? (
+                <p style={{ fontSize: 12, margin: 0 }}>
+                  No collection recorded. Nothing here is claimed about
+                  uncollected hosts.
+                </p>
+              ) : (
+                <>
+                  <p style={{ fontSize: 12, margin: "0 0 8px" }}>
+                    {assets.data.assets.length} collected host
+                    {assets.data.assets.length === 1 ? "" : "s"} —{" "}
+                    {Array.from(new Set(assets.data.assets.map(platformOf))).join(", ")}
+                  </p>
+                  <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                    <thead>
+                      <tr style={{ textAlign: "left", color: "var(--muted)" }}>
+                        <th>asset</th><th>platform</th><th>kernel</th>
+                        <th>OS</th><th>collected</th><th>qualification</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {assets.data.assets.map((a) => (
+                        <tr key={a.asset_id + a.collection_id} style={{ borderTop: "1px solid var(--rule)" }}>
+                          <td style={{ fontFamily: "var(--mono)" }}>{a.asset_id}</td>
+                          <td>{platformOf(a)}</td>
+                          <td style={{ fontFamily: "var(--mono)" }}>
+                            {a.kernel_release === "unknown"
+                              ? <Unknown why="kernel release not collected — unknown, never guessed" />
+                              : a.kernel_release}
+                          </td>
+                          <td>{a.os_pretty_name === "unknown"
+                            ? <Unknown why="os-release not collected" />
+                            : a.os_pretty_name}</td>
+                          <td style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{a.collected_at}</td>
+                          <td>
+                            {a.environment_development_only ? (
+                              <span title={a.qualification_note || "one host is never enterprise qualification (§12)"}>
+                                <Badge tone="amber">development only</Badge>
+                              </span>
+                            ) : (
+                              <Badge tone="gray">see qualification note</Badge>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
+              )}
+            </>
+          ) : (
+            <p style={{ fontSize: 12, margin: 0 }}>Reading…</p>
           )}
         </Panel>
       )}
@@ -441,6 +524,64 @@ export default function OSKernel() {
               )}
             </>
           ) : <p style={{ fontSize: 12, color: "var(--muted)", margin: 0 }}>reading…</p>}
+        </Panel>
+      )}
+
+      {view === "certs" && (
+        <Panel title="Certificate metadata (public attributes only)">
+          {certs && certs.error && !certs.data ? (
+            <ReadFailed error={certs.error} />
+          ) : certs && certs.data ? (
+            <>
+              <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 8px" }}>
+                {certs.data.note}
+              </p>
+              {certs.data.certificates.length === 0 ? (
+                <p style={{ fontSize: 12, margin: 0 }}>
+                  No certificate metadata collected. An unread certificate
+                  list is never &ldquo;all valid&rdquo; — validity is unknown
+                  until metadata is collected (§2.1).
+                </p>
+              ) : (
+                <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ textAlign: "left", color: "var(--muted)" }}>
+                      <th>subject</th><th>issuer</th><th>valid until</th>
+                      <th>public key</th><th>thumbprint (sha256)</th>
+                      <th>evidence</th><th>notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {certs.data.certificates.map((c) => (
+                      <tr key={c.certificate_id} style={{ borderTop: "1px solid var(--rule)" }}>
+                        <td>{c.subject}</td>
+                        <td>{c.issuer}</td>
+                        <td>
+                          {c.not_after
+                            ? <span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{c.not_after}</span>
+                            : <Unknown why="validity dates unavailable from this source — expiration state is UNKNOWN, never 'not expired' (§2.1)" />}
+                        </td>
+                        <td>
+                          {c.public_key_bits
+                            ? <span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{c.public_key_bits} bit{c.public_key_algorithm ? ` ${c.public_key_algorithm}` : ""}</span>
+                            : <Unknown why="public key metadata not in the source — never guessed" />}
+                        </td>
+                        <td style={{ fontFamily: "var(--mono)", fontSize: 11 }}>
+                          {c.thumbprint_sha256
+                            ? `${c.thumbprint_sha256.slice(0, 16)}…`
+                            : <Unknown why="no SHA-256 thumbprint in the source — certificate identity unknown" />}
+                        </td>
+                        <td><EvidenceClass value={c.evidence_class} /></td>
+                        <td><Notes notes={c.limitations} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          ) : (
+            <p style={{ fontSize: 12, margin: 0 }}>Reading…</p>
+          )}
         </Panel>
       )}
 

@@ -9028,3 +9028,25 @@ export const apiOSBom = (
   p: { tenant_id: string; kind: string },
 ): Promise<ApiResult<OSBom>> =>
   call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/bom?tenant_id=${encodeURIComponent(p.tenant_id)}&kind=${encodeURIComponent(p.kind)}`);
+
+export interface OSCertificate {
+  certificate_id: string;
+  collection_id: string;
+  subject: string;
+  issuer: string;
+  not_before: string | null;
+  not_after: string | null;
+  thumbprint_sha256: string | null;
+  public_key_algorithm: string | null;
+  public_key_bits: number | null;
+  evidence_class: string;
+  evidence_source: string | null;
+  limitations: string[];
+  collected_at: string;
+}
+
+export const apiOSCertificates = (
+  assetId: string,
+  p: { tenant_id: string },
+): Promise<ApiResult<{ certificates: OSCertificate[]; note: string }>> =>
+  call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/certificates?tenant_id=${encodeURIComponent(p.tenant_id)}`);
