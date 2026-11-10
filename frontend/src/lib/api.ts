@@ -154,6 +154,27 @@ export async function isBackendLive(): Promise<boolean> {
 
 // Active tenant (multi-tenant SaaS): set after login/signup, switchable in
 // the tenancy page; sent on every API call so the backend resolves the org.
+/** Resolve the session's tenant when the picker has not persisted one.
+ *
+ *  Performance and Binary read tenant-scoped endpoints that 422 without a
+ *  tenant id; defaulting the field to this resolution turns "Read failed" into
+ *  the page it belongs to. The pick is the first ACTIVE membership — never a
+ *  guess, and a principal with no membership gets null and stays on the
+ *  honest "no tenant is bound" state. */
+export async function ensureActiveTenant(): Promise<string | null> {
+  const current = activeTenantId();
+  if (current) return current;
+  const result = await apiSaasMemberships();
+  const tenants = (result.data?.tenants ?? []) as Array<{
+    id: string;
+    status?: string;
+  }>;
+  const eligible = tenants.filter((t) => !t.status || t.status === "ACTIVE");
+  const pick = eligible[0]?.id ?? tenants[0]?.id ?? null;
+  if (pick) setActiveTenantId(pick);
+  return pick;
+}
+
 export function activeTenantId(): string | null {
   try {
     return localStorage.getItem("cryptoscan_tenant");

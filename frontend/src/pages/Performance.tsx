@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { activeTenantId } from "../lib/api";
+import { activeTenantId, ensureActiveTenant } from "../lib/api";
 import { Badge, Panel, PageHead } from "../components/ui.jsx";
 import {
   apiPerformanceAlerts, apiPerformanceApplications, apiPerformanceBaselines,
@@ -174,10 +174,26 @@ function useAsync<T>(loader: () => Promise<ApiResult<T>>, deps: React.Dependency
 
 export default function Performance() {
   const [view, setView] = useState<View>("overview");
-  // Default to the session's active tenant: the picker in the header owns
-  // tenancy, and a blank field used to 422 every read on load — a failure
-  // that looked like "no data" instead of "no tenant chosen".
+  // Resolve the session's tenant (the header picker owns tenancy). Reads
+  // wait for the resolution: a blank tenant used to 422 every call on load,
+  // and "Read failed" hid the page it belonged to.
   const [tenant, setTenant] = useState(activeTenantId() ?? "");
+  const [tenantResolving, setTenantResolving] = useState(!activeTenantId());
+  useEffect(() => {
+    if (tenant) {
+      setTenantResolving(false);
+      return;
+    }
+    let alive = true;
+    void ensureActiveTenant().then((resolved) => {
+      if (!alive) return;
+      if (resolved) setTenant(resolved);
+      setTenantResolving(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [tenant]);
   const [window, setWindow] = useState(defaultWindow);
 
   const reloadKey = `${tenant}|${window.window_start}|${window.window_end}`;
@@ -234,6 +250,24 @@ export default function Performance() {
           onChange={(e) => setWindow({ ...window, window_end: e.target.value })}
         />
       </div>
+
+      {tenantResolving && (
+        <div
+          role="status"
+          style={{
+            display: "flex", gap: 10, alignItems: "center",
+            border: "1px dashed var(--rule)", borderRadius: 8,
+            padding: "8px 12px", marginBottom: 12, fontSize: 11.5, opacity: 0.85,
+          }}
+        >
+          <span
+            aria-hidden
+            style={{ width: 9, height: 9, borderRadius: 99, border: "2px dashed var(--slate, #64748b)", flex: "0 0 auto" }}
+          />
+          Resolving this session's tenant — reads with a blank tenant are
+          failures, never zeros; the moment the tenant lands, every read re-runs.
+        </div>
+      )}
 
       {view === "overview" && (
         overview.error ? <ErrorNote error={overview.error} /> : (

@@ -61,35 +61,35 @@ export function toneColor(tone = ""): string {
 export function VizEmpty({
   title,
   note,
-  height = 96,
+  height,
 }: {
   title: string;
   note?: string;
-  height?: number;
+  height?: number | string;
 }) {
   return (
     <div
       style={{
-        minHeight: height,
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        gap: 4,
-        padding: "10px 12px",
-        border: "1px dashed var(--line-strong)",
-        borderRadius: "var(--r)",
+        display: "flex", gap: 10, alignItems: "flex-start",
+        border: "1px dashed var(--line)", borderRadius: 8,
+        padding: "10px 12px", minHeight: height,
         background: "var(--panel-2)",
       }}
     >
-      <span className="mono" style={{ fontSize: 11, letterSpacing: "0.06em", color: "var(--dim)", textTransform: "uppercase" }}>
-        {title}
-      </span>
-      {note && <span style={{ fontSize: 11.5, color: "var(--faint)", lineHeight: 1.4 }}>{note}</span>}
+      <svg width="26" height="26" aria-hidden style={{ flex: "0 0 auto", marginTop: 1 }}>
+        <rect x="1" y="1" width="24" height="24" rx="5" fill="none" stroke="currentColor" strokeOpacity="0.35" strokeDasharray="3 3" />
+        <line x1="6" y1="17" x2="11" y2="11" stroke="currentColor" strokeOpacity="0.35" strokeWidth="1.5" />
+        <line x1="12" y1="14" x2="16" y2="9" stroke="currentColor" strokeOpacity="0.35" strokeWidth="1.5" />
+        <line x1="17" y1="17" x2="20" y2="13" stroke="currentColor" strokeOpacity="0.35" strokeWidth="1.5" />
+      </svg>
+      <div>
+        <div style={{ fontSize: 11, color: "var(--dim)" }}>{title}</div>
+        {note && <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 2, lineHeight: 1.45 }}>{note}</div>}
+      </div>
     </div>
   );
 }
 
-/** One measured number, with the unit and the window it was measured over. */
 export function StateCell({
   label,
   value,
@@ -262,7 +262,32 @@ export function HBars({ rows, unit = "", emptyTitle, emptyNote }: {
   emptyTitle: string;
   emptyNote?: string;
 }) {
-  if (!rows.length) return <VizEmpty title={emptyTitle} note={emptyNote} />;
+  if (!rows.length) {
+    return (
+      <div>
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(96px, 1.1fr) minmax(60px, 2fr) 56px 44px",
+              gap: 8, alignItems: "center", padding: "2px 0", opacity: 0.45,
+            }}
+          >
+            <span style={{ fontSize: 11.5, color: "var(--faint)" }}>—</span>
+            <span
+              style={{ height: 8, background: "var(--bg-2)", border: "1px dashed var(--line)", borderRadius: 2, display: "block" }}
+            />
+            <span style={{ fontSize: 11.5, color: "var(--faint)", textAlign: "right" }}>?</span>
+            <span />
+          </div>
+        ))}
+        <div style={{ marginTop: 6 }}>
+          <VizEmpty title={emptyTitle} note={emptyNote} />
+        </div>
+      </div>
+    );
+  }
   const max = Math.max(...rows.map((r) => r.value), 0);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
@@ -324,7 +349,22 @@ export function StackedBar({ segments, height = 10, note }: {
   note?: string;
 }) {
   const total = segments.reduce((sum, s) => sum + (Number.isFinite(s.value) ? Math.max(0, s.value) : 0), 0);
-  if (!total) return <VizEmpty title="Nothing to compose" note={note} height={52} />;
+  if (!total) {
+    return (
+      <div>
+        <div
+          aria-hidden
+          style={{
+            display: "flex", height, borderRadius: 2,
+            border: "1px dashed var(--line)", background: "var(--bg-2)",
+          }}
+        />
+        <div style={{ marginTop: 6 }}>
+          <VizEmpty title="Nothing to compose" note={note} />
+        </div>
+      </div>
+    );
+  }
   return (
     <div>
       <div style={{ display: "flex", height, borderRadius: 2, overflow: "hidden", border: "1px solid var(--line)" }}>
@@ -509,11 +549,31 @@ export function Donut({
 }) {
   const total = segments.reduce((sum, seg) => sum + (seg.value > 0 ? seg.value : 0), 0);
   if (total <= 0) {
+    // The picture still exists when nothing was measured: a dashed ring and
+    // an honest label — never a filled ring of zeroes, never bare text.
     return (
-      <VizEmpty
-        title="no counts to split"
-        note="an empty distribution is drawn as empty — never as a full ring of zeroes"
-      />
+      <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+        <svg width={size} height={size} role="img" aria-label="distribution placeholder">
+          <circle
+            cx={size / 2} cy={size / 2} r={(size - thickness) / 2}
+            fill="none" stroke="var(--slate)" strokeOpacity="0.5"
+            strokeWidth={thickness} strokeDasharray="4 5"
+          />
+          <text
+            x={size / 2} y={size / 2 + 4}
+            textAnchor="middle" fontSize={size / 7} fontWeight={700}
+            fill="var(--faint)"
+          >
+            ?
+          </text>
+        </svg>
+        <div>
+          <div style={{ fontSize: 11, color: "var(--dim)" }}>no counts to split</div>
+          <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 2, lineHeight: 1.45, maxWidth: 180 }}>
+            an empty distribution is drawn as empty — never as a full ring of zeroes
+          </div>
+        </div>
+      </div>
     );
   }
   const r = (size - thickness) / 2;

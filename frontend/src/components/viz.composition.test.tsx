@@ -1,7 +1,7 @@
 import React from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { Donut, FlowStrip, Matrix, StepRail } from "./viz";
+import { Donut, FlowStrip, HBars, Matrix, StackedBar, StepRail } from "./viz";
 
 describe("composition primitives", () => {
   it("Donut draws every segment and its label — an empty set is empty, never 0%", () => {
@@ -23,6 +23,30 @@ describe("composition primitives", () => {
     rerender(<Donut segments={[{ label: "none", value: 0 }]} />);
     expect(screen.getByText(/no counts to split/)).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "distribution" })).not.toBeInTheDocument();
+    // the picture survives the empty set: a labelled placeholder ring,
+    // never a filled ring of zeroes and never bare text
+    expect(
+      screen.getByRole("img", { name: "distribution placeholder" }),
+    ).toBeInTheDocument();
+  });
+
+  it("empty HBars and StackedBar still draw their shape as ghosts", () => {
+    const { rerender } = render(
+      <HBars rows={[]} emptyTitle="no rows" emptyNote="unknown, never zero" />,
+    );
+    // three ghost tracks (— / dashed bar / ?) above the honest note
+    expect(screen.getAllByText("—").length).toBe(3);
+    expect(screen.getByText("no rows")).toBeInTheDocument();
+    expect(screen.getByText(/unknown, never zero/)).toBeInTheDocument();
+
+    rerender(
+      <StackedBar
+        segments={[{ key: "a", label: "a", value: 0 }]}
+        note="nothing composed"
+      />,
+    );
+    expect(screen.getByText("Nothing to compose")).toBeInTheDocument();
+    expect(screen.getByText(/nothing composed/)).toBeInTheDocument();
   });
 
   it("FlowStrip names every stage's state — an unknown stage is dashed, never silent", () => {

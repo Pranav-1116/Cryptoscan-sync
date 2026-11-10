@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from "react";
-import { activeTenantId } from "../lib/api";
+import React, {  useCallback, useState , useEffect } from "react";
+import { activeTenantId, ensureActiveTenant } from "../lib/api";
 import { Donut, HBars, FlowStrip, Meter } from "../components/viz";
 import { Badge, Panel, PageHead } from "../components/ui";
 import {
@@ -126,9 +126,26 @@ function FindingRow({ finding, onEvidence }: {
 
 export default function Binary() {
   const [view, setView] = useState<View>("submit");
-  // Default to the session's active tenant (the header picker owns tenancy);
-  // a blank field silently disabled every action on this page.
+  // Resolve the session's tenant (the header picker owns tenancy). Reads
+  // wait for the resolution: a blank tenant used to 422 every call on load,
+  // and "Read failed" hid the page it belonged to.
   const [tenant, setTenant] = useState(activeTenantId() ?? "");
+  const [tenantResolving, setTenantResolving] = useState(!activeTenantId());
+  useEffect(() => {
+    if (tenant) {
+      setTenantResolving(false);
+      return;
+    }
+    let alive = true;
+    void ensureActiveTenant().then((resolved) => {
+      if (!alive) return;
+      if (resolved) setTenant(resolved);
+      setTenantResolving(false);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [tenant]);
   const [artifactId, setArtifactId] = useState("");
   const [againstId, setAgainstId] = useState("");
   const [filename, setFilename] = useState("payments-engine");
