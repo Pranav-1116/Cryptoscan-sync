@@ -3643,6 +3643,273 @@
         "services/api/api/routers/relationship_lifecycle.py",
         "services/database/db/models/relationship_lifecycle.py"
       ]
+    },
+    {
+      "id": "pqc.wave_status",
+      "label": "PQC migration wave",
+      "domain": "pqc",
+      "kind": "lifecycle",
+      "description": "One wave of the PQC migration plan. The wave is a plan object: its states say where the plan stands, never where the estate stands.",
+      "fields": [
+        "pqc_migration.PqcMigrationWave.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "services/database/db/models/pqc_migration.py WAVE_STATES + routers/pqc_migration.py write sites",
+      "states": [
+        {
+          "id": "planned",
+          "class": "absent",
+          "meaning": "On the plan; the work has not been attempted yet. A plan is never progress."
+        },
+        {
+          "id": "active",
+          "class": "progress",
+          "meaning": "Work is in flight. Neither a verdict nor an absence."
+        },
+        {
+          "id": "verified",
+          "class": "done",
+          "meaning": "Every progress claim on the wave carries a verified verdict and an operator confirmed the wave. Written only by that action."
+        },
+        {
+          "id": "blocked",
+          "class": "warn",
+          "meaning": "An open blocker stops the wave. Counted, never hidden."
+        },
+        {
+          "id": "superseded",
+          "class": "stopped",
+          "meaning": "Replaced by a newer plan. Ended by a decision, not by success."
+        }
+      ],
+      "transitions": [
+        {
+          "from": "planned",
+          "to": "active",
+          "trigger": "operator starts the wave",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "planned",
+          "to": "superseded",
+          "trigger": "the plan replaces the wave",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "active",
+          "to": "verified",
+          "trigger": "operator confirms the wave over verified progress",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "active",
+          "to": "blocked",
+          "trigger": "operator marks the wave blocked while a blocker is open",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "active",
+          "to": "superseded",
+          "trigger": "the plan replaces the wave",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "blocked",
+          "to": "active",
+          "trigger": "operator resumes the wave after the blocker clears",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "blocked",
+          "to": "superseded",
+          "trigger": "the plan replaces the wave",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        }
+      ],
+      "invariants": [
+        "A verified wave is written only by an operator confirmation backed by verified progress records \u2014 nothing promotes it automatically.",
+        "A plan object is never drawn as estate state."
+      ],
+      "sources": [
+        "services/database/db/models/pqc_migration.py",
+        "services/api/api/routers/pqc_migration.py"
+      ]
+    },
+    {
+      "id": "pqc.blocker_state",
+      "label": "PQC migration blocker",
+      "domain": "pqc",
+      "kind": "lifecycle",
+      "description": "Something blocking a migration wave: raised explicitly, resolved explicitly.",
+      "fields": [
+        "pqc_migration.PqcMigrationBlocker.state"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "services/database/db/models/pqc_migration.py BLOCKER_STATES + routers/pqc_migration.py write sites",
+      "states": [
+        {
+          "id": "open",
+          "class": "warn",
+          "meaning": "Blocking a wave. Counted, never hidden."
+        },
+        {
+          "id": "cleared",
+          "class": "done",
+          "meaning": "Cleared against evidence by an explicit action."
+        },
+        {
+          "id": "accepted",
+          "class": "stopped",
+          "meaning": "Residual risk accepted by an accountable owner \u2014 a recorded decision, never a silent close."
+        }
+      ],
+      "transitions": [
+        {
+          "from": "open",
+          "to": "cleared",
+          "trigger": "operator clears the blocker against evidence",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "open",
+          "to": "accepted",
+          "trigger": "an accountable owner accepts the residual risk",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "cleared",
+          "to": "open",
+          "trigger": "the blocker returns",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "accepted",
+          "to": "open",
+          "trigger": "the acceptance is withdrawn",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        }
+      ],
+      "invariants": [
+        "An accepted blocker is a recorded governance decision, never a silent close."
+      ],
+      "sources": [
+        "services/database/db/models/pqc_migration.py",
+        "services/api/api/routers/pqc_migration.py"
+      ]
+    },
+    {
+      "id": "pqc.progress_verification",
+      "label": "PQC progress claim",
+      "domain": "pqc",
+      "kind": "lifecycle",
+      "description": "A progress claim on a wave and its verification verdict. The claim is asserted; only the verification action writes a verdict, and verified requires an evidence reference.",
+      "fields": [
+        "pqc_migration.PqcProgressRecord.verification_status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "services/database/db/models/pqc_migration.py PROGRESS_VERIFICATION_STATES + routers/pqc_migration.py write sites",
+      "states": [
+        {
+          "id": "recorded",
+          "class": "progress",
+          "meaning": "A claim exists. Asserted, not yet checked \u2014 never drawn as progress proven."
+        },
+        {
+          "id": "verified",
+          "class": "done",
+          "meaning": "Checked against an evidence reference by an explicit verification action."
+        },
+        {
+          "id": "refuted",
+          "class": "failure",
+          "meaning": "Checked and not true. A failure of the claim, counted."
+        },
+        {
+          "id": "stale",
+          "class": "stale",
+          "meaning": "The verifying evidence was withdrawn or superseded; the verdict may no longer hold."
+        }
+      ],
+      "transitions": [
+        {
+          "from": "recorded",
+          "to": "verified",
+          "trigger": "verification against an evidence reference",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "recorded",
+          "to": "refuted",
+          "trigger": "verification finds the claim not true",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "verified",
+          "to": "stale",
+          "trigger": "the verifying evidence is withdrawn or superseded",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "refuted",
+          "to": "recorded",
+          "trigger": "the claim is re-recorded with new evidence",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "stale",
+          "to": "verified",
+          "trigger": "re-verification against an evidence reference",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        },
+        {
+          "from": "stale",
+          "to": "refuted",
+          "trigger": "re-verification finds the claim not true",
+          "observed_in": [
+            "services/api/api/routers/pqc_migration.py"
+          ]
+        }
+      ],
+      "invariants": [
+        "A recorded claim is not progress proven.",
+        "Only the verification action writes verified \u2014 and only with an evidence reference. A verdict without evidence is refused."
+      ],
+      "sources": [
+        "services/database/db/models/pqc_migration.py",
+        "services/api/api/routers/pqc_migration.py"
+      ]
     }
   ]
 }

@@ -5,17 +5,18 @@
 > route changes, update this page in the same change. This is documentation of
 > the current repository, not a product promise or an external assurance claim.
 
-The console has **five primary sidebar sections**, **25 rows** and **77 links**
-(65 distinct routes — a group's row links to its first page). Pages that answer
+The console has **five primary sidebar sections**, **25 rows** and **79 links**
+(66 distinct routes — a group's row links to its first page). Pages that answer
 one question share a **workspace group** — asset discovery, scan, the six-BOM
-inventory, crypto intelligence, twin & dependencies, operations, oversight,
-policy & compliance, remediation, the five assurance records, security center
-and system health — and a group is a disclosure: the pages inside it are one
+inventory, crypto intelligence, PQC migration, twin & dependencies, operations,
+oversight, policy & compliance, remediation, evidence & assurance, security
+center and system health — and a group is a disclosure: the pages inside it are one
 click away and only rendered when it is opened. Only the section holding the
 current page is open on arrival, so an operator reads about five rows, not all
-seventy-seven links. The header's Security Center button opens the admin drawer;
+seventy-nine links. The header's Security Center button opens the admin drawer;
 the security surfaces themselves sit under **Governance → Security center**
-(Posture, Control estate, Audit trail).
+(Posture, Control estate); audit and reporting live in the Evidence & assurance
+workspace beside them.
 
 The root route `/` redirects to `/command-center`. Login and account recovery
 routes are authentication flows, not primary navigation entries.
@@ -34,7 +35,7 @@ so one broken page cannot take the shell down. `/login`, `/register`,
 `/live-asset-intelligence`.
 
 **The sidebar** (`components/Layout.tsx`) is the two-level tree printed below:
-five sections, twenty-five rows, seventy-seven links. Section and group disclosures
+five sections, twenty-five rows, seventy-nine links. Section and group disclosures
 persist in `zelnx-nav-open`; arriving at a route inside a closed group opens that
 group, so the navigation follows the page you are on. The collapsed sidebar keeps
 the same routes and exposes labels as tooltips. **Start Scan** is shown only to
@@ -147,11 +148,13 @@ row for row. Rows with a group render as a disclosure; the `—` rows are links.
 | Cryptography | Crypto intelligence | `/crypto` | `Crypto` | Algorithm registry + normalized crypto view (114 normalization tests). |
 | Algorithm catalog | Crypto intelligence | `/crypto-assets` | `CryptoAssets` | Normalized cryptographic asset inventory. |
 | Findings | Crypto intelligence | `/findings` | `Findings` | Policy-evaluated findings with evidence links. |
-| PQC readiness | Crypto intelligence | `/pqc` | `Pqc` | Quantum-vulnerability classification and migration readiness. |
 | Crypto assurance | Crypto intelligence | `/crypto-assurance` | `CryptoAssurance` | Active TLS/cipher enumeration, certificate-transparency monitoring, expiry alerts & SLA, HSM/KMS/PKCS#11 residence, trust-store inventory, hybrid-PQC downgrade detection and weak-primitive code rules. |
 | Crypto agility | Crypto intelligence | `/agility` | `Agility` | Deterministic replaceability and migration-planning signals. |
 | Crypto drift | Crypto intelligence | `/drift` | `Drift` | Approved-baseline changes and drift events. |
 | Intelligence workbench | Crypto intelligence | `/intelligence` | `Intelligence` | Roadmap models over live estate rows — evidence-linked findings, risk dimensions, PQC claim stages. |
+| PQC migration | PQC migration | `/pqc` | — | One PQC Migration Intelligence workspace: quantum-vulnerable inventory, candidates, migration waves, blockers, interoperability and verified progress. |
+| PQC readiness | PQC migration | `/pqc` | `Pqc` | Quantum-vulnerability classification and migration readiness. |
+| Migration map | PQC migration | `/pqc-map` | `PqcMap` | The migration map and the persisted plan register — waves, blockers, interoperability notes and verified progress (`verified` only against an evidence reference). |
 | Binary Intelligence | — | `/binary-intelligence` | `Binary` | Evidence-backed cryptographic discovery from compiled artifacts — static analysis only. |
 | OS & Kernel Intelligence | — | `/os-kernel-intelligence` | `OSKernel` | Read-only OS/kernel cryptographic inventory; registrations are never proof of runtime use. |
 | Twin & dependencies | Twin & dependencies | `/digital-twin` | — | One workspace: the replica, the dependency graph and the simulations are one model asked what it holds, what depends on it and what if. |
@@ -162,8 +165,7 @@ row for row. Rows with a group render as a disclosure; the `—` rows are links.
 | Thirteen-step walkthrough | Twin & dependencies | `/twin-walkthrough` | `TwinWalkthrough` | One asset, thirteen investigations on one canvas. |
 | What-if workspace | Twin & dependencies | `/simulation` | `Simulation` | Two families over the estate twin, each previewed before it runs: scenarios change a copy of the twin and re-project the six BOMs; cascades walk a failure outward and change nothing. |
 | Migration what-if | Twin & dependencies | `/what-if` | `WhatIf` | Read-only migration feasibility over the inventory; the scenarios are fixed templates. |
-| Performance | — | `/performance` | `Performance` | ZELNX Performance Intelligence: infrastructure, network, application, database and cryptographic performance — measured samples with unknown counts kept visible. |
-| Reports | — | `/reports` | `Reports` | Reports, exports and report delivery status. |
+| Performance intelligence | — | `/performance` | `Performance` | ZELNX Performance Intelligence: infrastructure, network, application, database, TLS and HSM/KMS performance — measured samples with unknown counts kept visible. |
 
 ### Governance
 
@@ -175,21 +177,22 @@ row for row. Rows with a group render as a disclosure; the `—` rows are links.
 | Policy & compliance | Policy & compliance | `/security-policy` | — | The policy you set, the frameworks it maps to and the evidence trail behind both. |
 | Policies | Policy & compliance | `/security-policy` | `SecurityPolicy` | Deterministic policy packs, scope and policy decisions. |
 | Compliance | Policy & compliance | `/compliance` | `Compliance` | Framework mappings and compliance evidence. |
-| Evidence | Policy & compliance | `/evidence` | `Evidence` | Hashes, manifests, scan and per-record verification (with an X-of-Y coverage line), and the filterable, exportable audit ledger. |
 | Remediation | Remediation | `/remediation` | — | The task lifecycle, its ranking and the migration plan. |
 | Tasks | Remediation | `/remediation` | `Remediation` | Owned task lifecycle with machine verification against rescan evidence. |
 | Priorities | Remediation | `/priorities` | `Priorities` | Deterministic prioritisation over findings + business context. |
 | Migration | Remediation | `/migration` | `Migration` | Scan → project → tasks → velocity forecast; forecast model is simple. |
-| Assurance | Assurance | `/assurance-records` | — | The five assurance surfaces behind one row. |
-| Records | Assurance | `/assurance-records` | `AssuranceRecords` | Independent-report and operational-duty records. |
-| Coverage | Assurance | `/assurance-coverage` | `AssuranceCoverage` | Registered coverage of the assurance programme. |
-| Application trace | Assurance | `/assurance-trace` | `AssuranceTrace` | Requirement trace from an application to its evidence. |
-| Accuracy sampling | Assurance | `/assurance-sampling` | `AssuranceSampling` | Sampling plan and measured accuracy. |
-| Qualification | Assurance | `/assurance-qualification` | `AssuranceQualification` | Local qualification results; site acceptance requires external evidence. |
+| Evidence & assurance | Evidence & assurance | `/evidence` | — | One workspace over provenance, confidence, freshness, coverage gaps, verification, audit and customer assurance. |
+| Evidence | Evidence & assurance | `/evidence` | `Evidence` | Hashes, manifests, scan and per-record verification (with an X-of-Y coverage line), and the filterable, exportable audit ledger. |
+| Records | Evidence & assurance | `/assurance-records` | `AssuranceRecords` | Independent-report and operational-duty records. |
+| Coverage | Evidence & assurance | `/assurance-coverage` | `AssuranceCoverage` | Registered coverage of the assurance programme. |
+| Application trace | Evidence & assurance | `/assurance-trace` | `AssuranceTrace` | Requirement trace from an application to its evidence. |
+| Accuracy sampling | Evidence & assurance | `/assurance-sampling` | `AssuranceSampling` | Sampling plan and measured accuracy. |
+| Qualification | Evidence & assurance | `/assurance-qualification` | `AssuranceQualification` | Local qualification results; site acceptance requires external evidence. |
+| Audit trail | Evidence & assurance | `/audit` | `Audit` | Who did what, when — the platform's hash-chained record. |
+| Reports | Evidence & assurance | `/reports` | `Reports` | Reports, exports and report delivery status — the customer-assurance artifacts. |
 | Security center | Security center | `/security-center` | — | One row over the three security surfaces. |
 | Posture | Security center | `/security-center` | `SecurityCenter` | Platform security posture, threat feed, agents, audit integrity and control-plane health. |
 | Control estate | Security center | `/security-controls` | `SecurityControls` | The estate of security controls themselves: findings, health, verification and export. |
-| Audit trail | Security center | `/audit` | `Audit` | Who did what, when — the platform's hash-chained record, not a client log. |
 
 ### Administration
 
@@ -438,12 +441,7 @@ class); "Why it matters" drawer; evidence chain (`Code`), normalized crypto and
 policy evaluation panels. Findings rows carry content-hash + chain-hash
 provenance and open the detail drawer with verify actions.
 
-**`/pqc` — PQC readiness (`Pqc`).** Instances per migration phase, transition
-momentum and "what the estate model does not classify" panels (`Ring`, `Bar`,
-`HBars`). Phase and momentum are drawn only over classified instances — what
-the estate model cannot classify stays unclassified rather than guessed, and a
-library supporting ML-KEM is never drawn as PQC readiness (the full claim ladder
-is on the Intelligence workbench, where the real stage names are shown).
+
 
 **`/crypto-assurance` — Crypto & key assurance (`CryptoAssurance`).** Seven
 panels in `Tabs` with `Code` output: active TLS / cipher enumeration,
@@ -469,6 +467,28 @@ the honesty lines ("A library supporting ML-KEM is not PQC readiness",
 "UNKNOWN — not zero", "not computed (denominator incomplete)", "Absence of rows
 is not absence of risk"). The `BACKEND OFFLINE` banner appears instead of
 fabricated model output when reads fail.
+
+#### PQC migration
+
+**`/pqc` — PQC readiness (`Pqc`).** Instances per migration phase, transition
+momentum and "what the estate model does not classify" panels (`Ring`, `Bar`,
+`HBars`). Phase and momentum are drawn only over classified instances — what
+the estate model cannot classify stays unclassified rather than guessed, and a
+library supporting ML-KEM is never drawn as PQC readiness (the full claim ladder
+is on the Intelligence workbench, where the real stage names are shown).
+
+**`/pqc-map` — Migration map (`PqcMap`).** The PQC Migration Intelligence
+workspace: the live quantum-risk inventory by family (from `/api/v1/quantum/plan` —
+counts come only from live reads), the NIST candidate algorithms (declared
+reference data, labelled as such, never estate observations), migration
+complexity guidance, and the **persisted plan register**
+(`/api/v1/pqc-migration/workspace`): migration waves, blockers, interoperability
+notes and verified progress. A recorded claim is rendered as asserted, never as
+proven ("a recorded claim is not progress proven"); a `verified` verdict requires
+an evidence reference and is refused without one; an accepted blocker is drawn as
+a recorded decision, never a silent close; and absence of rows is absence of a
+plan — never a plan that is safe. Wave states follow the register
+(`pqc.wave_status`): a wave verifies only over verified progress records.
 
 #### Binary and OS & Kernel intelligence
 
@@ -529,7 +549,7 @@ scenario picker, feasibility checks, protocol compatibility and a migration
 plan with `StepRail`/`Donut`. The scenarios are fixed templates and the page
 says so; nothing is mutated.
 
-#### Performance and reports
+#### Performance
 
 **`/performance` — Performance (`Performance`).** ZELNX Performance
 Intelligence: Overview, Infrastructure, Storage, Network, Application,
@@ -542,11 +562,7 @@ above the content. Failed or unknown readings render **"unknown, never zero"**
 rows and never print a numeric zero; an estimated exhaustion is labelled a
 forecast, not a fact.
 
-**`/reports` — Reports (`Reports`).** Compliance frameworks, report schedules,
-the PoC exit report, snapshot pinning ("Pin a scan's report now") and generated
-reports. Schedule/pin actions are writes with the request-feedback semantics;
-generated artifacts carry their evidence hashes.
-### Governance
+
 
 #### Banking, ownership and trust
 
@@ -578,11 +594,7 @@ evidence, pin/sign-off actions and the `Bar`/`Ring` posture visuals. Sign-off
 records who accepted what and when; the page never marks an external
 assurance done from inside the repo.
 
-**`/evidence` — Evidence (`Evidence`).** The evidence chain: hashes, manifests,
-scan verification with an "X of Y verified" coverage line (an incomplete
-denominator stays visible), per-record verification buttons, the filterable
-audit ledger and export actions. Verification results are per record — a passed
-read never inflates the coverage line.
+
 
 #### Remediation
 
@@ -601,7 +613,13 @@ the Mosca risk model, replacement workstreams, plan summary and system
 migration order. The velocity forecast states its model is simple and is drawn
 as a forecast, never as a fact.
 
-#### Assurance
+#### Evidence & assurance
+
+**`/evidence` — Evidence (`Evidence`).** The evidence chain: hashes, manifests,
+scan verification with an "X of Y verified" coverage line (an incomplete
+denominator stays visible), per-record verification buttons, the filterable
+audit ledger and export actions. Verification results are per record — a passed
+read never inflates the coverage line.
 
 **`/assurance-records` — Records (`AssuranceRecords`).** Independent-report and
 operational-duty records with revision-checked structured actions. Blocks are
@@ -624,6 +642,16 @@ coverage line. Accuracy is reported only over what was sampled.
 Local qualification results with explicit external gates — site acceptance
 requires external evidence and is never marked done from local runs.
 
+**`/audit` — Audit trail (`Audit`).** The platform's hash-chained audit record:
+the filterable ledger, verification and export — who did what, when.
+### Administration
+
+**`/reports` — Reports (`Reports`).** Compliance frameworks, report schedules,
+the PoC exit report, snapshot pinning ("Pin a scan's report now") and generated
+reports. Schedule/pin actions are writes with the request-feedback semantics;
+generated artifacts carry their evidence hashes.
+### Governance
+
 #### Security center
 
 **`/security-center` — Posture (`SecurityCenter`).** Security posture over
@@ -636,9 +664,7 @@ not what is possible.
 controls themselves: findings, health, verification and export URL controls.
 Verify/export actions report the server's answer through request feedback.
 
-**`/audit` — Audit trail (`Audit`).** The platform's hash-chained audit record:
-the filterable ledger, verification and export — who did what, when.
-### Administration
+
 
 **`/system-health` — System health (`SystemHealth`).** Health, readiness and
 platform service status with independently measured worker-fleet and connector
@@ -684,8 +710,6 @@ presents, briefly:
   category, encryption, exposure and risk verdict per named service.
 - `/catalog` — the three canonical catalogs on one screen: algorithms, network
   services and hardware devices, each with its own verdict mix.
-- `/pqc-map` — the PQC migration map: current state → vulnerable inventory by
-  family → candidate PQC → migration waves.
 - `/live-environment` — the unified live graph across network, cloud, vendor,
   hardware, cryptography and applications: scan orchestrator, environment map,
   live events, dependency topology and run history.
@@ -751,7 +775,6 @@ unknown paths redirect to `/command-center`; `/techbom` redirects to
 | `/libraries` | `Libraries` | The live runtime scanner's library inventory. |
 | `/protocols` | `Protocols` | The canonical network-service registry with verdicts. |
 | `/catalog` | `Catalog` | The combined canonical catalogs (algorithms, network services, hardware devices). |
-| `/pqc-map` | `PqcMap` | The migration-map projection over the PQC posture. |
 | `/live-environment` | `LiveEnvironment` | The cross-domain live environment map and orchestrator. |
 | `/cmdb` | `Cmdb` | CMDB-style inventory, unified risk with explained factors and PQC posture. |
 | `/platform-p2` | `PlatformP2` | Plugin marketplace, anomaly flags, governance, lake export, machine API keys, SLA, OT gates, vault leases and automation. |
@@ -786,11 +809,11 @@ unknown paths redirect to `/command-center`; `/techbom` redirects to
 |---|---|
 | See every discovered crypto asset | Cryptography |
 | Find weak or vulnerable cryptography | Risk, Findings |
-| Prepare quantum-safe migration | PQC readiness, Migration |
+| Prepare quantum-safe migration | The PQC migration workspace (readiness, map, plan register), Migration |
 | Understand key and certificate lifecycle | Certificates, Trust & key operations |
 | Measure cryptographic performance | Performance |
 | Investigate machine-level crypto behavior | OS & Kernel Intelligence, Runtime |
-| Produce audit or regulator evidence | Evidence, Reports |
+| Produce audit or regulator evidence | The Evidence & assurance workspace (Evidence, Records, Audit trail, Reports) |
 | Track remediation ownership | Remediation, Priorities |
 | Study binary and SDK cryptography | Binary Intelligence |
 | Work with operational technology | Trust & key operations (OT policy), hardware telemetry |

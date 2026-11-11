@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../test/render";
+import stateMachinesJson from "../lib/stateMachines.json";
 import StateMachines from "./StateMachines";
 
 describe("State machines explorer", () => {
@@ -62,7 +63,11 @@ describe("State machines explorer", () => {
   it("counts are echoed from the register, never invented", () => {
     renderWithProviders(<StateMachines />);
     const summary = screen.getByText(/Total: \d+ machines across \d+ domains\./);
-    expect(summary.textContent).toMatch(/Total: 9[0-9] machines across 1[0-9] domains\./);
+    const register = stateMachinesJson as { machines: Array<{ domain: string }> };
+    const domains = new Set(register.machines.map((m) => m.domain)).size;
+    expect(summary.textContent).toContain(
+      `Total: ${register.machines.length} machines across ${domains} domains.`,
+    );
   });
 
   it("the unobserved note is scoped to machines that carry no states", async () => {

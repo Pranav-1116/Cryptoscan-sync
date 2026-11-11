@@ -33,7 +33,7 @@ them:
   absence is never a clean result, capability is never usage, NOT_CONFIGURED ≠
   UNKNOWN* — enforced only by tests and memory, not by a shared vocabulary.
 
-The register turns all of that into one asset: **97 machines, 294 states, every
+The register turns all of that into one asset: **100 machines, 306 states, every
 state observed from code and never invented.**
 
 ## The rules the register enforces on itself
@@ -111,7 +111,7 @@ alone.
 
 ## Inventory
 
-97 machines · 294 states · 91 model fields · 15 vocabularies honestly unobserved.
+100 machines · 306 states · 94 model fields · 15 vocabularies honestly unobserved.
 
 
 ### session

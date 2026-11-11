@@ -59,7 +59,7 @@ The [ninth increment](readiness-evidence/quality-workflow-qualification-2026-10-
 connects the supported source workflow on actual PostgreSQL16.14, hardens three more
 private browser surfaces/downloads, and records 16 native database and nine built
 Chromium checks. Migration head was **0106** at this increment (the head is now
-**0147**). The browser uses synthetic HTTP;
+**0148**). The browser uses synthetic HTTP;
 this is not bank-workstation, Docker/Redis, HA/PITR or customer acceptance. See the
 [database](readiness-evidence/quality-postgres-workflow-2026-10-23.md),
 [browser](readiness-evidence/quality-critical-browser-2026-10-23.md) and
@@ -297,7 +297,7 @@ Identity: [OIDC SSO](admin-guide/oidc-sso.md) ·
 | Doc | What it covers |
 |---|---|
 | **[REST API reference](api-reference/rest-api.md)** | generated API snapshot from 2026-11-11 — 1319 paths / 1445 operations across 122 tagged groups |
-| **[State machine register](state-machines/README.md)** | every state the product can be in — 97 machines, 294 states, observed from code and never invented · [developer reference](api-reference/state-machines.md) |
+| **[State machine register](state-machines/README.md)** | every state the product can be in — 100 machines, 306 states, observed from code and never invented · [developer reference](api-reference/state-machines.md) |
 | [Plugin SDK](plugin-sdk.md) | writing source scanners |
 | [Navigation & feature reference](NAVIGATION-FEATURE-REFERENCE.md) | every page → every feature |
 | [Dataflow](DATAFLOW.md) · [end-to-end architecture](END-TO-END-ARCHITECTURE.md) | how data moves |

@@ -64,7 +64,7 @@ describe("screen readers: navigation state", () => {
     const active = await screen.findByRole("link", { name: /findings/i });
     expect(active.getAttribute("aria-current")).toBe("page");
     const other = screen.getAllByRole("link").find(
-      (l) => l.getAttribute("href") === "/pqc");
+      (l) => l.getAttribute("href") === "/crypto-assets");
     expect(other).toBeTruthy();
     expect(other?.getAttribute("aria-current")).toBeNull();
   });

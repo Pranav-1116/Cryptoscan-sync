@@ -1,9 +1,9 @@
 # CryptoScan platform status — the full plan vs. what ships here
 
 > **Current-reading authority — 2026-11-11, `e3917908`:**
-> [Implementation status](CURRENT-IMPLEMENTATION-STATUS.md): migration head **0147**;
+> [Current state](CURRENT-STATE.md) (computed from the tree): migration head **0148**;
 > generated REST **1319 paths / 1445 operations / 122 groups**; maturity **98 GA /
-> 0 Beta / 0 Preview** (98 surfaces); sidebar **five sections / 25 rows / 77 links** (65 distinct routes).
+> 0 Beta / 0 Preview** (98 surfaces); sidebar **five sections / 25 rows / 79 links** (66 distinct routes).
 > The state machine register (`/state-machines`, shared_models state-machines
 > module) documents every state the product can be in. Discovered CI and unsigned
 > preflight are configured, not release/site approval. The dated tables below
@@ -58,13 +58,13 @@ real infrastructure or credentials.
 > The paragraphs below record earlier measurements and dated implementation updates.
 
 > **Current documentation state (2026-11-11, state-machine register wave):** **147 migrations**
-> (0001–0147), **105 frontend page components**, **1291 backend test files**, and a
+> (0001–0148), **105 frontend page components**, **1291 backend test files**, and a
 > **1294-test / 143-file** Vitest frontend suite with clean `tsc --noEmit` (measured at
 > this refresh). The regenerated API reference reports **1319 paths / 1445 operations**
 > across 122 tagged groups. The full local backend suite was last run in full at
 > 7,629 passed / 34 skipped (2026-10-16); this refresh ran the shared-models,
 > register-pin and stack-contract batteries only. This wave added the canonical
-> state machine register (97 machines / 294 states / 91 model fields — shared JSON,
+> state machine register (100 machines / 306 states / 94 model fields — shared JSON,
 > Python and TypeScript projections, the `/state-machines` explorer page and
 > drift-guard tests) and refreshed the documentation set: regenerated API snapshot,
 > navigation reference, documentation status map and the state-machine developer

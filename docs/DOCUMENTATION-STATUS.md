@@ -74,7 +74,7 @@ with the current snapshot.
 | Administration | [admin-guide/](admin-guide/) | Installation, production, air-gap, hardening, policy, scanners, backup/restore, integrations and system configuration |
 | Architecture and decisions | [architecture/](architecture/), [decisions/](decisions/) | Service boundaries, dataflow, evidence, tenancy, scanners, BOMs, graph, roadmap and ADRs |
 | API and developer | [api-reference/rest-api.md](api-reference/rest-api.md), [api-reference/state-machines.md](api-reference/state-machines.md), [plugin-sdk.md](plugin-sdk.md), [dev/](dev/) | Generated API snapshot, state machine register interfaces (Python/TypeScript/CLI), plugin extension, testing, live scanning and developer workflows |
-| State machines | [state-machines/README.md](state-machines/README.md) | The canonical state machine register: 97 machines, 294 states, 91 model fields — every state observed from code, honesty invariants, the full inventory table and the drift-guard rules |
+| State machines | [state-machines/README.md](state-machines/README.md) | The canonical state machine register: 100 machines, 306 states, 94 model fields — every state observed from code, honesty invariants, the full inventory table and the drift-guard rules |
 | Security and privacy | [security/](security/), [company/security-architecture.md](company/security-architecture.md), [company/privacy-documentation-index.md](company/privacy-documentation-index.md) | Threat model, hardening, network controls, dependency audit, privacy and assurance material |
 | Operations and qualification | [operations/](operations/), [ops/](ops/), [runbooks/](runbooks/), [production-qualification-runbook.md](production-qualification-runbook.md) | Production procedures, vendor due diligence, scanner qualification, recovery, DR, telecom, monitoring and support |
 | Readiness evidence | [readiness-evidence/README.md](readiness-evidence/README.md), [root production gate](../PRODUCTION-READINESS.md) | Timestamped PASS/FAIL/SKIP artifacts; synthetic or skipped checks are not approvals |
@@ -466,8 +466,8 @@ No example's mutating deployment command is executed.
 
 ## 17. Documentation refresh — state machine register (2026-11-11)
 
-This refresh accompanies the canonical **state machine register** (97 machines /
-294 states / 91 `db.models` fields — every state observed from code, never
+This refresh accompanies the canonical **state machine register** (100 machines /
+306 states / 94 `db.models` fields — every state observed from code, never
 invented; 15 vocabularies honestly marked unobserved). Documentation changes:
 
 - **New:** [state machine register](state-machines/README.md) (inventory, rules,
@@ -478,10 +478,10 @@ invented; 15 vocabularies honestly marked unobserved). Documentation changes:
   (was 917 / 1,008 / 105); withdrawn-route markers retained and re-verified.
 - **Navigation reference** updated in the same change as the sidebar edit:
   `/state-machines` added under a System health group; counts re-measured
-  (**five sections / 25 rows / 77 links**, 65 distinct routes).
+  (**five sections / 25 rows / 79 links**, 66 distinct routes).
 - **Current counts re-measured and corrected** in the root README, platform
   status, current-implementation status and capability map: 56 services, 139 API
-  router modules, 147 migrations (head **0147**), 105 frontend page components,
+  router modules, 148 migrations (head **0148**), 105 frontend page components,
   1291 backend test files, 1294-test/143-file Vitest suite with clean `tsc`
   (measured this refresh; the full backend suite was last run 2026-10-16 and is
   labelled as such). Maturity is **98 GA / 0 Beta / 0 Preview**. Dated

@@ -9132,3 +9132,94 @@ export const apiOSCertificates = (
   p: { tenant_id: string },
 ): Promise<ApiResult<{ certificates: OSCertificate[]; note: string }>> =>
   call(`/api/v1/os-intelligence/assets/${encodeURIComponent(assetId)}/certificates?tenant_id=${encodeURIComponent(p.tenant_id)}`);
+
+/* ── PQC Migration Intelligence (api/routers/pqc_migration.py) ─────────────
+   The persisted plan state behind the migration workspace: waves, blockers,
+   interoperability notes and verified progress. Verified is written only by an
+   explicit verification action with an evidence reference — a recorded claim is
+   never progress proven. State moves only along the canonical state machine
+   register (pqc.wave_status / pqc.blocker_state / pqc.progress_verification). */
+
+export interface PqcMigrationWaveRow {
+  id: string; wave_key: string; title: string; scope_note: string;
+  planned_window: string | null; status: string; status_note: string | null;
+  created_at?: string | null; updated_at?: string | null;
+}
+export interface PqcMigrationBlockerRow {
+  id: string; wave_id: string; title: string; detail: string; state: string;
+  raised_by: string; raised_at: string | null; resolved_by: string | null;
+  resolved_at: string | null; resolution_note: string | null;
+}
+export interface PqcInteropNoteRow {
+  id: string; wave_id: string; peer_system: string; protocol: string; note: string;
+  evidence_ids: string[]; recorded_by: string;
+}
+export interface PqcProgressRow {
+  id: string; wave_id: string; claim: string; evidence_ids: string[];
+  recorded_by: string; verification_status: string; verified_by: string | null;
+  verified_at: string | null; verification_note: string | null;
+  claim_is_not_proof: boolean;
+}
+export interface PqcMigrationSummary {
+  wave_count: number; waves_verified: number; waves_blocked: number;
+  blockers_open: number; blockers_accepted: number;
+  progress_recorded: number; progress_verified: number;
+  progress_refuted: number; progress_stale: number; honesty: string;
+}
+export interface PqcMigrationWorkspace {
+  waves: PqcMigrationWaveRow[]; blockers: PqcMigrationBlockerRow[];
+  interop: PqcInteropNoteRow[]; progress: PqcProgressRow[];
+  summary: PqcMigrationSummary;
+}
+
+export const apiPqcMigrationWorkspace = (): Promise<ApiResult<PqcMigrationWorkspace>> =>
+  call("/api/v1/pqc-migration/workspace");
+export const apiPqcMigrationCreateWave = (body: {
+  wave_key: string; title: string; scope_note?: string; planned_window?: string | null;
+}): Promise<ApiResult<PqcMigrationWaveRow>> =>
+  call("/api/v1/pqc-migration/waves", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+export const apiPqcMigrationTransitionWave = (waveKey: string, body: {
+  to: string; note?: string | null;
+}): Promise<ApiResult<PqcMigrationWaveRow>> =>
+  call(`/api/v1/pqc-migration/waves/${encodeURIComponent(waveKey)}/transition`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+export const apiPqcMigrationRecordProgress = (waveKey: string, body: {
+  claim: string; evidence_ids?: string[];
+}): Promise<ApiResult<PqcProgressRow>> =>
+  call(`/api/v1/pqc-migration/waves/${encodeURIComponent(waveKey)}/progress`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+export const apiPqcMigrationTransitionProgress = (recordId: string, body: {
+  to: string; note?: string | null; evidence_ids?: string[];
+}): Promise<ApiResult<PqcProgressRow>> =>
+  call(`/api/v1/pqc-migration/progress/${encodeURIComponent(recordId)}/transition`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+export const apiPqcMigrationRaiseBlocker = (waveKey: string, body: {
+  title: string; detail?: string;
+}): Promise<ApiResult<PqcMigrationBlockerRow>> =>
+  call(`/api/v1/pqc-migration/waves/${encodeURIComponent(waveKey)}/blockers`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+export const apiPqcMigrationTransitionBlocker = (blockerId: string, body: {
+  to: string; note?: string | null;
+}): Promise<ApiResult<PqcMigrationBlockerRow>> =>
+  call(`/api/v1/pqc-migration/blockers/${encodeURIComponent(blockerId)}/transition`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+export const apiPqcMigrationRecordInterop = (waveKey: string, body: {
+  peer_system: string; protocol?: string; note?: string; evidence_ids?: string[];
+}): Promise<ApiResult<PqcInteropNoteRow>> =>
+  call(`/api/v1/pqc-migration/waves/${encodeURIComponent(waveKey)}/interop`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });

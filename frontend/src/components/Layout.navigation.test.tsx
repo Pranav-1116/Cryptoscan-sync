@@ -52,9 +52,12 @@ describe("classic sidebar navigation", () => {
     for (const bom of ["/cbom", "/sbom", "/hbom", "/nbom", "/vbom", "/live-asset-intelligence"])
       expect(groupOf(bom)).toBe("Inventory");
     // one cryptographic intelligence workspace
-    for (const crypto of ["/crypto", "/crypto-assets", "/findings", "/pqc", "/crypto-assurance",
+    for (const crypto of ["/crypto", "/crypto-assets", "/findings", "/crypto-assurance",
       "/agility", "/drift", "/intelligence"])
       expect(groupOf(crypto)).toBe("Crypto intelligence");
+    // one PQC migration workspace: readiness, the map and the persisted plan register
+    for (const pqc of ["/pqc", "/pqc-map"])
+      expect(groupOf(pqc)).toBe("PQC migration");
     // binary and OS/kernel intelligence are visible destinations, not children of posture
     expect(sectionOf("/binary-intelligence")).toBe("Intelligence");
     expect(groupOf("/binary-intelligence")).toBeNull();
@@ -64,9 +67,10 @@ describe("classic sidebar navigation", () => {
     for (const twin of ["/digital-twin", "/dependency-graph", "/graph", "/estate-twin",
       "/twin-walkthrough", "/simulation", "/what-if"])
       expect(groupOf(twin)).toBe("Twin & dependencies");
-    for (const assurance of ["/assurance-records", "/assurance-coverage", "/assurance-trace",
-      "/assurance-sampling", "/assurance-qualification"])
-      expect(groupOf(assurance)).toBe("Assurance");
+    // one evidence & assurance workspace: provenance through customer assurance
+    for (const ev of ["/evidence", "/assurance-records", "/assurance-coverage", "/assurance-trace",
+      "/assurance-sampling", "/assurance-qualification", "/audit", "/reports"])
+      expect(groupOf(ev)).toBe("Evidence & assurance");
     expect(groupOf("/remediation")).toBe("Remediation");
     // the governance workflows are promoted out of deep-link obscurity
     expect(sectionOf("/governance")).toBe("Governance");
@@ -86,7 +90,7 @@ describe("classic sidebar navigation", () => {
       "/operator-decisions", "/remediation", "/priorities", "/migration",
       "/system-health", "/settings", "/identity", "/integrations",
       // workflows promoted out of deep-link obscurity
-      "/runtime", "/crypto-assurance", "/governance", "/trust",
+      "/runtime", "/crypto-assurance", "/governance", "/trust", "/pqc-map",
     ]) expect(routes, route).toContain(route);
   });
 

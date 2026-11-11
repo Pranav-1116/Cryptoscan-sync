@@ -123,11 +123,22 @@ export const PRIMARY_SECTIONS: NavSection[] = [
           { to: "/crypto", label: "Cryptography", icon: Key },
           { to: "/crypto-assets", label: "Algorithm catalog", icon: Key },
           { to: "/findings", label: "Findings", icon: ListChecks },
-          { to: "/pqc", label: "PQC readiness", icon: ShieldCheck },
           { to: "/crypto-assurance", label: "Crypto assurance", icon: Certificate },
           { to: "/agility", label: "Crypto agility", icon: SlidersHorizontal },
           { to: "/drift", label: "Crypto drift", icon: Pulse },
           { to: "/intelligence", label: "Intelligence workbench", icon: ShieldCheck },
+        ],
+      },
+      {
+        // one PQC migration workspace: the quantum-vulnerable inventory, the
+        // candidates and the persisted plan register (waves, blockers,
+        // interoperability, verified progress) are one migration question
+        to: "/pqc",
+        label: "PQC migration",
+        icon: ShieldCheck,
+        children: [
+          { to: "/pqc", label: "PQC readiness", icon: ShieldCheck },
+          { to: "/pqc-map", label: "Migration map", icon: Graph },
         ],
       },
       { to: "/binary-intelligence", label: "Binary Intelligence", icon: Pulse },
@@ -148,8 +159,7 @@ export const PRIMARY_SECTIONS: NavSection[] = [
           { to: "/what-if", label: "Migration what-if", icon: Key },
         ],
       },
-      { to: "/performance", label: "Performance", icon: Pulse },
-      { to: "/reports", label: "Reports", icon: FileText },
+      { to: "/performance", label: "Performance intelligence", icon: Pulse },
     ],
   },
   {
@@ -165,7 +175,6 @@ export const PRIMARY_SECTIONS: NavSection[] = [
         children: [
           { to: "/security-policy", label: "Policies", icon: Scales },
           { to: "/compliance", label: "Compliance", icon: ListChecks },
-          { to: "/evidence", label: "Evidence", icon: FileText },
         ],
       },
       {
@@ -179,15 +188,21 @@ export const PRIMARY_SECTIONS: NavSection[] = [
         ],
       },
       {
-        to: "/assurance-records",
-        label: "Assurance",
+        // one evidence & assurance workspace: provenance, confidence, freshness,
+        // coverage gaps, verification, audit and customer assurance are one
+        // question answered end to end
+        to: "/evidence",
+        label: "Evidence & assurance",
         icon: FileText,
         children: [
+          { to: "/evidence", label: "Evidence", icon: FileText },
           { to: "/assurance-records", label: "Records", icon: FileText },
           { to: "/assurance-coverage", label: "Coverage", icon: ListChecks },
           { to: "/assurance-trace", label: "Application trace", icon: Graph },
           { to: "/assurance-sampling", label: "Accuracy sampling", icon: Scan },
           { to: "/assurance-qualification", label: "Qualification", icon: ShieldCheck },
+          { to: "/audit", label: "Audit trail", icon: ListChecks },
+          { to: "/reports", label: "Reports", icon: FileText },
         ],
       },
       {
@@ -199,9 +214,6 @@ export const PRIMARY_SECTIONS: NavSection[] = [
           // the bank's own controls sit with the posture they contribute to: one screen
           // reads this estate, the other reads the controls that produced it
           { to: "/security-controls", label: "Control estate", icon: PlugsConnected },
-          // the trail sits beside the controls it records; a section that grows a
-          // row per page stops being a tree (Layout.navigation keeps that floor)
-          { to: "/audit", label: "Audit trail", icon: ListChecks },
         ],
       },
     ],

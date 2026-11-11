@@ -3,8 +3,8 @@
 **2026-11-11 correction:** the numerical table below remains a dated snapshot. The
 regenerated [API reference](api-reference/rest-api.md) now reports **1,319 paths /
 1,445 operations / 122 groups**; the console carries **98 classified surfaces** in
-five sidebar sections (**25 rows / 77 links**, 65 distinct routes) including the `/state-machines`
-register page; the schema head is **0147**. Current queue authority,
+five sidebar sections (**25 rows / 79 links**, 66 distinct routes) including the `/state-machines`
+register page; the schema head is **0148**. Current queue authority,
 durable SSH and TLS/Sentinel replay controls are summarized in the
 [API contract companion](api-reference/execution-and-replay.md); production
 acceptance remains the [root gate](../PRODUCTION-READINESS.md).

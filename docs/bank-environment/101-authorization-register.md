@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 965 |
-| role | 359 |
+| session | 966 |
+| role | 366 |
 | permission | 74 |
 | tenant-role | 17 |
 
-**1415** operations; **342** of them change state with nothing but the session gate — the exact list, with the policy
+**1423** operations; **342** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area

@@ -77,6 +77,7 @@ from api.routers import (
     estate,
     estate_graph,
     ingestion,
+    pqc_migration,
     roadmap_intelligence,
     roadmap_operations,
     events,
@@ -634,6 +635,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(graph.router, prefix=prefix)
     app.include_router(reachability.router, prefix=prefix)
     app.include_router(remediation.router, prefix=prefix)
+    app.include_router(pqc_migration.router, prefix=prefix)
     app.include_router(retirement.router, prefix=prefix)
     app.include_router(report_schedules.router, prefix=prefix)
     app.include_router(monitor.router, prefix=prefix)

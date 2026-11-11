@@ -279,3 +279,10 @@ from db.models.security_control import (  # noqa: E402,F401
     SecurityControlFinding,
     SecurityControlSnapshot,
 )
+
+from db.models.pqc_migration import (  # noqa: E402,F401
+    PqcInteropNote,
+    PqcMigrationBlocker,
+    PqcMigrationWave,
+    PqcProgressRecord,
+)

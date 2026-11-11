@@ -197,6 +197,9 @@ def test_declared_model_tuples_equal_register():
         "pentest_finding.status": ("pentest_finding.py", "STATUSES"),
         "common.severity": ("pentest_finding.py", "SEVERITIES"),
         "evidence_disposition.decision": ("evidence_disposition.py", "DECISIONS"),
+        "pqc.wave_status": ("pqc_migration.py", "WAVE_STATES"),
+        "pqc.blocker_state": ("pqc_migration.py", "BLOCKER_STATES"),
+        "pqc.progress_verification": ("pqc_migration.py", "PROGRESS_VERIFICATION_STATES"),
     }
     for mid, (fname, const) in pins.items():
         vals = set(_module_tuple(MODELS_DIR / fname, const))

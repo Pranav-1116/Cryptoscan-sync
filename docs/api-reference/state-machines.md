@@ -5,7 +5,7 @@
 (the canonical register) — this page explains the interfaces; the JSON is the
 data. Console surface: [`/state-machines`](../state-machines/README.md).
 
-The register is the product's one state vocabulary: **97 machines, 294 states,
+The register is the product's one state vocabulary: **100 machines, 306 states,
 91 `db.models` status fields**, every state observed from code (model default,
 declared tuple, enum, model comment or write site) and never invented. It is
 consumed three ways — the console draws its tones, Python and TypeScript code

@@ -30,6 +30,12 @@ from db.models.binary_intelligence import (  # noqa: F401
     BinaryAnalysisCoverage, BinaryArtifact, BinaryCryptoFinding,
     BinaryEvidence, BinaryScanRun, BinaryTwinEdge,
 )
+from db.models.pqc_migration import (  # noqa: F401
+    PqcInteropNote,
+    PqcMigrationBlocker,
+    PqcMigrationWave,
+    PqcProgressRecord,
+)
 from db.models.os_intelligence import (  # noqa: F401
     OSCoverageRecord, OSCryptoCapability, OSConfigFlag, OSFindingRecord,
     OSModuleRecord, OSStorageFact, OSTrustFact, OSAsset, OSAssetCertificate,
