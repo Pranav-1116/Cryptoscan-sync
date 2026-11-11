@@ -14,6 +14,7 @@ import {
   DynamicScanResult, BinaryBatchResult, KnowledgeState,
   apiBinaryAtRest, apiKnowledge, apiKnowledgeInstall, apiKnowledgeUninstall,
 } from "../lib/api.js";
+import DomainCrossNav from "../components/DomainCrossNav";
 
 /* DevSecOps pipeline gates — deterministic, rule-based: container CVE scan
    (Trivy-style), K8s manifest misconfig, cloud CIS posture, SBOM
@@ -1774,6 +1775,7 @@ export default function DevSecOps() {
         sub="6 shift-left gates · visual, deterministic, fail-closed"
         right={<Badge tone=""><span className="dot" /> SHIFT-LEFT GATES</Badge>}
       />
+      <DomainCrossNav current="applications" />
       <EvidenceBoundaryStrip />
       <div className="mt"><Tabs tabs={tabs} active={tab} onChange={setTab} /></div>
       {tab === 0 && <ContainerPanel />}

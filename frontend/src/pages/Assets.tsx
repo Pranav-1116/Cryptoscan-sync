@@ -4,6 +4,7 @@ import { Badge, Tabs } from "../components/ui";
 import { Link } from "react-router-dom";
 import { apiFactStore, apiGraphBlastRadiusFromAsset, apiRemediationTasks, FactStoreRow, RemediationTask, tenantFetch } from "../lib/api";
 import { IconEstate } from "../components/icons";
+import DomainCrossNav from "../components/DomainCrossNav";
 
 // GET /api/v1/assets serializes CryptoAsset columns; only GET /assets/{id}
 // adds evidence_ids. Neither endpoint provides a PQC verdict or dependencies.
@@ -401,6 +402,7 @@ export default function Assets() {
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
+      <DomainCrossNav current="assets" />
       {/* 9. Asset Detail Page Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px", flexWrap: "wrap", gap: "16px" }}>
         <div>

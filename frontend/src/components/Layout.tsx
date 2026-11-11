@@ -26,7 +26,7 @@ import { RequireRole } from "../lib/auth.js";
 // every assurance page and every remediation page sat at the same level as Dashboard, so
 // finding anything meant reading fifty labels. Nothing is removed here — every route is
 // still in the tree — but pages that answer the same question are folded into one group
-// (the six BOMs under "BOMs", the five assurance pages under "Assurance"), and only the
+// (the six BOMs under "Inventory", the five assurance pages under "Assurance"), and only the
 // section you are actually in is open on arrival. A reader sees ~6 rows, not 56.
 type NavItem = { to: string; label: string; icon: Icon; children?: NavItem[] };
 type NavSection = { title: string; items: NavItem[] };
@@ -36,16 +36,19 @@ export const PRIMARY_SECTIONS: NavSection[] = [
   {
     title: "Overview",
     items: [
-      { to: "/command-center", label: "Dashboard", icon: ChartLineUp },
-      { to: "/live", label: "Live estate", icon: Pulse },
-      { to: "/live-stream", label: "Activity", icon: Pulse },
+      { to: "/command-center", label: "Command center", icon: ChartLineUp },
       {
-        to: "/live-monitor",
-        label: "Monitors",
+        // one operational workspace: the live estate map, the activity stream and the
+        // monitors that feed them are the same job seen from three distances
+        to: "/live",
+        label: "Operations",
         icon: Pulse,
         children: [
+          { to: "/live", label: "Live estate", icon: Pulse },
+          { to: "/live-stream", label: "Activity", icon: Pulse },
           { to: "/live-monitor", label: "Live monitor", icon: Pulse },
           { to: "/live-scanners", label: "Live scanners", icon: Scan },
+          { to: "/runtime", label: "Runtime hosts", icon: Pulse },
         ],
       },
       {
@@ -63,6 +66,21 @@ export const PRIMARY_SECTIONS: NavSection[] = [
     title: "Discovery",
     items: [
       {
+        // one asset discovery workspace: every domain answers "what is out there",
+        // so the domains are tabs of one workspace rather than scattered rows
+        to: "/assets",
+        label: "Asset discovery",
+        icon: Cube,
+        children: [
+          { to: "/assets", label: "Assets", icon: Cube },
+          { to: "/dev-sec-ops", label: "Applications", icon: Code },
+          { to: "/certificates", label: "Certificates", icon: Certificate },
+          { to: "/network", label: "Network", icon: GlobeHemisphereWest },
+          { to: "/cloud", label: "Cloud", icon: Cloud },
+          { to: "/hardware", label: "Hardware", icon: Cpu },
+        ],
+      },
+      {
         // Discovery's own coverage answer sits next to the thing it describes:
         // what the scanners can reach, per surface, protocol, platform and BOM.
         to: "/scanners",
@@ -73,30 +91,18 @@ export const PRIMARY_SECTIONS: NavSection[] = [
           { to: "/collector-depth", label: "Collector depth", icon: Pulse },
         ],
       },
-      { to: "/assets", label: "Assets", icon: Cube },
-      { to: "/dev-sec-ops", label: "Applications", icon: Code },
-      { to: "/certificates", label: "Certificates", icon: Certificate },
       { to: "/cryptolog", label: "CryptoLog", icon: Pulse },
       { to: "/vendor", label: "Vendors", icon: Buildings },
-      {
-        to: "/network",
-        label: "Infrastructure",
-        icon: GlobeHemisphereWest,
-        children: [
-          { to: "/network", label: "Network", icon: GlobeHemisphereWest },
-          { to: "/cloud", label: "Cloud", icon: Cloud },
-          { to: "/hardware", label: "Hardware", icon: Cpu },
-        ],
-      },
     ],
   },
   {
     title: "Intelligence",
     items: [
-      { to: "/performance", label: "Performance", icon: Pulse },
       {
+        // one inventory workspace: six BOMs of one estate, with TechBOM as the
+        // broader technology inventory view the other five project out of
         to: "/cbom",
-        label: "BOMs",
+        label: "Inventory",
         icon: Stack,
         children: [
           { to: "/cbom", label: "CBOM", icon: Atom },
@@ -108,54 +114,41 @@ export const PRIMARY_SECTIONS: NavSection[] = [
         ],
       },
       {
-        to: "/dependency-graph",
-        label: "Dependencies",
-        icon: Graph,
-        children: [
-          { to: "/dependency-graph", label: "Cascade", icon: Graph },
-          { to: "/graph", label: "Graph explorer", icon: Graph },
-        ],
-      },
-      {
+        // one cryptographic intelligence workspace: the catalogs, the findings and
+        // the migration posture are one question answered at three depths
         to: "/findings",
-        label: "Posture",
+        label: "Crypto intelligence",
         icon: ShieldCheck,
         children: [
           { to: "/crypto", label: "Cryptography", icon: Key },
           { to: "/crypto-assets", label: "Algorithm catalog", icon: Key },
           { to: "/findings", label: "Findings", icon: ListChecks },
           { to: "/pqc", label: "PQC readiness", icon: ShieldCheck },
-          { to: "/binary-intelligence", label: "Binary Intelligence", icon: Pulse },
-          { to: "/os-kernel-intelligence", label: "OS & Kernel Intelligence", icon: Pulse },
-          { to: "/intelligence", label: "Intelligence workbench", icon: ShieldCheck },
+          { to: "/crypto-assurance", label: "Crypto assurance", icon: Certificate },
           { to: "/agility", label: "Crypto agility", icon: SlidersHorizontal },
           { to: "/drift", label: "Crypto drift", icon: Pulse },
+          { to: "/intelligence", label: "Intelligence workbench", icon: ShieldCheck },
         ],
       },
+      { to: "/binary-intelligence", label: "Binary Intelligence", icon: Pulse },
+      { to: "/os-kernel-intelligence", label: "OS & Kernel Intelligence", icon: Pulse },
       {
-        // The chain is the twin's own working order, so it is a sibling of the
-        // replica view rather than a tab inside it: one screen shows what the
-        // twin holds, the other shows how far down the chain that holding reaches.
+        // one twin & dependency workspace: the replica, the graph and the simulations
+        // are the same model asked what it holds, what depends on it and what if
         to: "/digital-twin",
-        label: "Digital twin",
-        icon: Stack,
+        label: "Twin & dependencies",
+        icon: Graph,
         children: [
           { to: "/digital-twin", label: "Replica & scenarios", icon: Stack },
+          { to: "/dependency-graph", label: "Cascade", icon: Graph },
+          { to: "/graph", label: "Graph explorer", icon: Graph },
           { to: "/estate-twin", label: "Twin chain", icon: Graph },
           { to: "/twin-walkthrough", label: "Thirteen-step walkthrough", icon: Graph },
-        ],
-      },
-      {
-        // Simulation is its own row: it asks a question of a copy of the twin, which is a
-        // different job from reading a report of what the estate already is.
-        to: "/simulation",
-        label: "Simulation",
-        icon: MagnifyingGlass,
-        children: [
           { to: "/simulation", label: "What-if workspace", icon: MagnifyingGlass },
           { to: "/what-if", label: "Migration what-if", icon: Key },
         ],
       },
+      { to: "/performance", label: "Performance", icon: Pulse },
       { to: "/reports", label: "Reports", icon: FileText },
     ],
   },
@@ -163,9 +156,18 @@ export const PRIMARY_SECTIONS: NavSection[] = [
     title: "Governance",
     items: [
       { to: "/banking-regulatory", label: "Banking & SWIFT", icon: Bank },
-      { to: "/security-policy", label: "Policies", icon: Scales },
-      { to: "/compliance", label: "Compliance", icon: ListChecks },
-      { to: "/evidence", label: "Evidence", icon: FileText },
+      { to: "/governance", label: "Ownership & approvals", icon: Scales },
+      { to: "/trust", label: "Trust & keys", icon: Key },
+      {
+        to: "/security-policy",
+        label: "Policy & compliance",
+        icon: Scales,
+        children: [
+          { to: "/security-policy", label: "Policies", icon: Scales },
+          { to: "/compliance", label: "Compliance", icon: ListChecks },
+          { to: "/evidence", label: "Evidence", icon: FileText },
+        ],
+      },
       {
         to: "/remediation",
         label: "Remediation",

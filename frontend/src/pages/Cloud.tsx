@@ -4,6 +4,7 @@ import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useApi, LiveBadge } from "../lib/apiUi.jsx";
 import { apiCloudAccounts, apiCloudKeys, apiCloudCollect, CloudAccount, CloudCollectResult } from "../lib/api.js";
 import { ICON_MD, ICON_SM, IconCaretDown, IconCaretRight, IconCloud, IconClose } from "../components/icons";
+import DomainCrossNav from "../components/DomainCrossNav";
 
 /* Cloud — connected read-only cloud accounts rendered as a provider tree
    (AWS / Azure / GCP → account → regions). Source of truth is
@@ -104,6 +105,7 @@ export default function Cloud() {
           </>
         }
       />
+      <DomainCrossNav current="cloud" />
 
       <div className="grid cols-4" style={{ marginBottom: 16 }}>
         <div className="kpi"><span className="k">connected accounts</span><span className="v" style={{ color: "var(--cyan)" }}>{connected}</span></div>

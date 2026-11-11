@@ -22,6 +22,7 @@ import {
   LiveInventory,
   ExpiryCalendar,
 } from "../lib/api.js";
+import DomainCrossNav from "../components/DomainCrossNav";
 
 /* Certificates — TWO honest surfaces:
    1. The live TLS-scan inventory (GET /api/v1/live-scan/inventory) —
@@ -470,6 +471,7 @@ export default function Certificates() {
           </>
         }
       />
+      <DomainCrossNav current="certificates" />
       <div className="grid cols-4" style={{ marginBottom: 16 }}>
         {[
           ["EXPIRED", center.expired, "red", "past due"],

@@ -10,6 +10,7 @@ import {
   apiLiveInventory, apiHardwareCatalog, apiLiveScanStatus,
   LiveInventory, HardwareEntry, LiveHardwareDevice,
 } from "../lib/api.js";
+import DomainCrossNav from "../components/DomainCrossNav";
 
 /* Hardware — immersive visual upgrade: hero + KPI cards + analytics
    Preserves live hardware inventory, root-of-trust, firmware, catalog. */
@@ -80,6 +81,7 @@ export default function Hardware() {
 
   return (
     <div style={{ maxWidth: 1280, margin: "0 auto", padding: "10px 0 60px" }}>
+      <DomainCrossNav current="hardware" />
       {/* ── HERO ─────────────────────────────────────────────── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
         <div style={{ flex: "1 1 460px", minWidth: 280 }}>

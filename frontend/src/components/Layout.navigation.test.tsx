@@ -38,22 +38,41 @@ describe("classic sidebar navigation", () => {
   });
 
   it("places every page where an operator expects to find it", () => {
+    // live activity and monitoring are one operational workspace under Overview
     expect(sectionOf("/live-monitor")).toBe("Overview");
-    expect(groupOf("/live-monitor")).toBe("Monitors");
+    expect(groupOf("/live-monitor")).toBe("Operations");
+    expect(groupOf("/live-stream")).toBe("Operations");
+    expect(groupOf("/runtime")).toBe("Operations");
+    // one asset discovery workspace: the domains are tabs of the same question
     expect(sectionOf("/certificates")).toBe("Discovery");
-    expect(groupOf("/network")).toBe("Infrastructure");
+    expect(groupOf("/network")).toBe("Asset discovery");
+    expect(groupOf("/assets")).toBe("Asset discovery");
+    expect(groupOf("/hardware")).toBe("Asset discovery");
+    // one inventory workspace, TechBOM as the broader technology inventory view
     for (const bom of ["/cbom", "/sbom", "/hbom", "/nbom", "/vbom", "/live-asset-intelligence"])
-      expect(groupOf(bom)).toBe("BOMs");
+      expect(groupOf(bom)).toBe("Inventory");
+    // one cryptographic intelligence workspace
+    for (const crypto of ["/crypto", "/crypto-assets", "/findings", "/pqc", "/crypto-assurance",
+      "/agility", "/drift", "/intelligence"])
+      expect(groupOf(crypto)).toBe("Crypto intelligence");
+    // binary and OS/kernel intelligence are visible destinations, not children of posture
+    expect(sectionOf("/binary-intelligence")).toBe("Intelligence");
+    expect(groupOf("/binary-intelligence")).toBeNull();
+    expect(sectionOf("/os-kernel-intelligence")).toBe("Intelligence");
+    expect(groupOf("/os-kernel-intelligence")).toBeNull();
+    // one twin & dependency workspace: replica, graph and simulations together
+    for (const twin of ["/digital-twin", "/dependency-graph", "/graph", "/estate-twin",
+      "/twin-walkthrough", "/simulation", "/what-if"])
+      expect(groupOf(twin)).toBe("Twin & dependencies");
     for (const assurance of ["/assurance-records", "/assurance-coverage", "/assurance-trace",
       "/assurance-sampling", "/assurance-qualification"])
       expect(groupOf(assurance)).toBe("Assurance");
     expect(groupOf("/remediation")).toBe("Remediation");
-    expect(sectionOf("/digital-twin")).toBe("Intelligence");
-    // the simulation workspace is a page in its own right, and the older migration
-    // what-if sits beside it rather than disappearing from the tree
-    expect(sectionOf("/simulation")).toBe("Intelligence");
-    expect(groupOf("/simulation")).toBe("Simulation");
-    expect(groupOf("/what-if")).toBe("Simulation");
+    // the governance workflows are promoted out of deep-link obscurity
+    expect(sectionOf("/governance")).toBe("Governance");
+    expect(groupOf("/governance")).toBeNull();
+    expect(sectionOf("/trust")).toBe("Governance");
+    expect(groupOf("/trust")).toBeNull();
   });
 
   it("keeps every prior sidebar route reachable", () => {
@@ -66,6 +85,8 @@ describe("classic sidebar navigation", () => {
       "/assurance-sampling", "/assurance-qualification", "/launch-readiness",
       "/operator-decisions", "/remediation", "/priorities", "/migration",
       "/system-health", "/settings", "/identity", "/integrations",
+      // workflows promoted out of deep-link obscurity
+      "/runtime", "/crypto-assurance", "/governance", "/trust",
     ]) expect(routes, route).toContain(route);
   });
 

@@ -7,6 +7,7 @@ import { useRealtimeRefresh } from "../lib/realtime.js";
 import EstatePanel from "../components/EstatePanel.jsx";
 import { IconNetwork, IconCloud, IconHardware, IconSecurity, IconTarget, IconSatellite } from "../components/icons";
 import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, apiNetworkCryptoScope, apiPutNetworkCryptoScope, apiValidateNetworkCryptoScope, apiNetworkCryptoEvidence, apiNetworkCryptoCbom, apiNetworkCryptoPath, apiNetworkCryptoBudget, NetworkBudgetResponse, apiImportNetworkScope, ScopeImportResponse, apiNetworkCryptoWatch, apiStartNetworkCryptoWatch, apiStopNetworkCryptoWatch, apiTickNetworkCryptoWatch, NetworkWatchStatus, NetworkCryptoScope, NetworkEvidenceResponse, NetworkCbomResponse, NetworkCryptoPathResponse, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse, apiNetworkCryptoIntegrity, NetworkEvidenceIntegrity, apiNetworkMessageLayer, apiObserveNetworkMessageLayer, MessageLayerResponse, MessageLayerRecord, apiNetworkCryptoCorrelate, NetworkCorrelationResponse, apiNetworkCryptoProbe, CryptoProbeResponse, ProtocolDetection, apiNetworkCryptoSafety, apiNetworkCryptoStop, NetworkSafetyState, apiNetworkCryptoRisk, NetworkRiskReport, NetworkRiskFinding, apiNetworkAnchorStatus, apiNetworkCreateAnchor, apiNetworkVerifyAnchor, apiNetworkWatchLease, NetworkAnchorStatus, NetworkAnchorReceipt, NetworkAnchorVerification, NetworkWatchLease } from "../lib/api.js";
+import DomainCrossNav from "../components/DomainCrossNav";
 
 /* Network — live TLS endpoints from the network scanner via
    GET /api/v1/live-scan/inventory. The topology is derived DETERMINISTICALLY
@@ -1303,6 +1304,7 @@ export default function Network() {
           </>
         }
       />
+      <DomainCrossNav current="network" />
 
       {/* ── hero KPI strip — visual, not theory ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, marginBottom: 14 }}>

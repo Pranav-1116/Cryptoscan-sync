@@ -3,7 +3,7 @@
 > **Current-reading authority — 2026-11-11, `e3917908`:**
 > [Implementation status](CURRENT-IMPLEMENTATION-STATUS.md): migration head **0147**;
 > generated REST **1319 paths / 1445 operations / 122 groups**; maturity **98 GA /
-> 0 Beta / 0 Preview** (98 surfaces); sidebar **five sections / 30 rows / 74 links**.
+> 0 Beta / 0 Preview** (98 surfaces); sidebar **five sections / 25 rows / 77 links** (65 distinct routes).
 > The state machine register (`/state-machines`, shared_models state-machines
 > module) documents every state the product can be in. Discovered CI and unsigned
 > preflight are configured, not release/site approval. The dated tables below

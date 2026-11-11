@@ -68,7 +68,7 @@ describe("app shell", () => {
     // the section block belongs to its header via aria-controls, so read it by id
     const intelligence = document.getElementById("nav-Intelligence")!;
     const bomGroup = Array.from(intelligence.querySelectorAll("button.nav-group"))
-      .find((button) => button.textContent?.includes("BOMs")) as HTMLButtonElement;
+      .find((button) => button.textContent?.includes("Inventory")) as HTMLButtonElement;
     expect(bomGroup).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(bomGroup);
     expect(bomGroup).toHaveAttribute("aria-expanded", "true");
@@ -92,7 +92,7 @@ describe("app shell", () => {
     await act(async () => { shell("/command-center"); });
     expect(document.querySelector(".shell")).toHaveAttribute("data-sidebar-collapsed", "false");
     // the dashboard's section is open; its rows are links, not a wall
-    expect(document.querySelector('.primary-nav a[href="/live"]')).toBeInTheDocument();
+    expect(document.querySelector('.primary-nav a[href="/command-center"]')).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
     expect(localStorage.getItem("zelnx-classic-sidebar-collapsed")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Expand sidebar" }));
@@ -111,7 +111,7 @@ describe("app shell", () => {
   it("supports keyboard navigation, browser history, and a direct workspace entry", async () => {
     await act(async () => { shell("/findings"); });
     expect(screen.getByTestId("location")).toHaveTextContent("/findings");
-    // /cbom sits inside the BOMs group; open it the way an operator would, and let the
+    // /cbom sits inside the Inventory group; open it the way an operator would, and let the
     // disclosure finish rendering before reaching for the link inside it
     await act(async () => {
       // /findings is in Intelligence, so that section is already open — opening a disclosure
@@ -124,7 +124,7 @@ describe("app shell", () => {
       const block = document.getElementById("nav-Intelligence")!;
       fireEvent.click(
         Array.from(block.querySelectorAll("button.nav-group"))
-          .find((button) => button.textContent?.includes("BOMs")) as HTMLButtonElement,
+          .find((button) => button.textContent?.includes("Inventory")) as HTMLButtonElement,
       );
     });
     const inventory = document.querySelector<HTMLAnchorElement>('.primary-nav a[href="/cbom"]');

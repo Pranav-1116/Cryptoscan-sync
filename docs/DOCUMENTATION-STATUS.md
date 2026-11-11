@@ -478,7 +478,7 @@ invented; 15 vocabularies honestly marked unobserved). Documentation changes:
   (was 917 / 1,008 / 105); withdrawn-route markers retained and re-verified.
 - **Navigation reference** updated in the same change as the sidebar edit:
   `/state-machines` added under a System health group; counts re-measured
-  (**five sections / 30 rows / 74 links**).
+  (**five sections / 25 rows / 77 links**, 65 distinct routes).
 - **Current counts re-measured and corrected** in the root README, platform
   status, current-implementation status and capability map: 56 services, 139 API
   router modules, 147 migrations (head **0147**), 105 frontend page components,
