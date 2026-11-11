@@ -105,6 +105,7 @@ export const CAPABILITIES_JSON = {
   "security-policy": "ga",
   "settings": "ga",
   "simulation": "ga",
+  "state-machines": "ga",
   "supervision": "ga",
   "system-health": "ga",
   "telecom": "ga",
@@ -463,6 +464,10 @@ export const CAPABILITY_LIMITS = {
   "simulation": {
     "area": "Intelligence",
     "limit": "What-if workspace over the estate twin with two families and thirteen question kinds: seven built-in scenarios that edit an evidence fact on a copy (replace, retire, disable a protocol, upgrade, remove a component, resize a key, replace everything Shor-vulnerable), a custom scenario authored as a bounded expression, a COMPOSITE sequence of up to five of those applied in order to one copy (a step may name a stored twin snapshot with as_of, so a plan written against Q2 evidence is judged on Q2's evidence while its change lands on today's estate \u2014 a record that has since left the estate is counted, never resurrected, and a date is refused because a date is not evidence), and four cascades that walk a failure outward from seeds (asset unavailable, crypto compromise, algorithm breaks everywhere, a CA or PKI issuer compromised), each previewed before it runs so nothing is read as a finding before it is known to reach something, each re-projecting or explicitly not re-projecting the six BOMs, each reporting the live projection id unchanged, and each stored quarantined against the evidence state it was computed from; scenarios change evidence facts and cascades travel established edges only \u2014 neither models configuration, traffic, redundancy, approvals or a deployment plan. This is not a generic enterprise simulation engine: nine of the ten registered scenarios model only part of the mechanism and each says which part it cannot see."
+  },
+  "state-machines": {
+    "area": "Administration",
+    "limit": "The canonical State Machine Register on screen: every state the product can be in, observed from code and never invented. Semantic state classes carry one tone each so a state looks the same on every page; transitions are the moves code actually makes; the honesty invariants (unknown is never zero, a failed read never prints zeros, absence is never a clean result, capability is never usage, a refusal is counted never drawn as a truth) travel with the machines they govern. Machines whose vocabulary is not yet observed are listed as such instead of guessed. The register is machine-readable (shared_models state-machines module and the console's library copy, pinned byte-identical by tests), so agents, backend code and the console read one vocabulary."
   },
   "supervision": {
     "area": "Governance",

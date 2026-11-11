@@ -1,0 +1,3648 @@
+{
+  "schema_version": 1,
+  "register": "cryptoscan-state-machines",
+  "title": "CryptoScan State Machine Register",
+  "principles": [
+    "Every state is observed from code \u2014 models, enums, declared tuples, comments or write sites. Nothing is invented.",
+    "'partial' means the observed vocabulary is a subset; 'unobserved' means the field exists but its vocabulary is not yet known. Both are honest; guessing is not.",
+    "unknown is never zero. A failed read is a failure. Absence is never a clean result. Capability is never usage. A refusal is counted, never drawn as a truth."
+  ],
+  "state_classes": {
+    "progress": {
+      "tone": "accent",
+      "meaning": "In flight. Neither a verdict nor an absence."
+    },
+    "done": {
+      "tone": "green",
+      "meaning": "Reached a terminal good state, or a steady state in good standing."
+    },
+    "failure": {
+      "tone": "red",
+      "meaning": "The thing itself failed \u2014 terminal, counted, drawn as failure."
+    },
+    "stopped": {
+      "tone": "slate",
+      "meaning": "Ended by a decision. Neither success nor failure."
+    },
+    "warn": {
+      "tone": "amber",
+      "meaning": "Degraded, risky or ageing. Visible, never silent."
+    },
+    "unknown": {
+      "tone": "slate",
+      "meaning": "Not measured, not knowable, or contradictory. NEVER zero, never clean."
+    },
+    "refused": {
+      "tone": "orange",
+      "meaning": "An authority said no. Counted; never drawn as a truth about the estate."
+    },
+    "absent": {
+      "tone": "slate",
+      "meaning": "Not present, not configured or not attempted. Absence is never a clean result."
+    },
+    "derived": {
+      "tone": "violet",
+      "meaning": "Computed from other facts, not itself observed."
+    },
+    "capability": {
+      "tone": "amber",
+      "meaning": "Present as a capability. NEVER means used."
+    },
+    "stale": {
+      "tone": "amber",
+      "meaning": "Evidence aged out; the reading may no longer hold."
+    }
+  },
+  "machines": [
+    {
+      "id": "session.tenant_resolution",
+      "label": "Tenant resolution",
+      "domain": "session",
+      "kind": "session",
+      "description": "Which tenant this console session reads. The whole UI hangs off it.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "frontend/src/lib/api.ts ensureActiveTenant",
+      "states": [
+        {
+          "id": "unresolvable",
+          "class": "unknown",
+          "meaning": "No ACTIVE membership for this session \u2014 reads stay refusals, never zeros."
+        },
+        {
+          "id": "resolving",
+          "class": "progress",
+          "meaning": "Asked the membership list; answer not back yet."
+        },
+        {
+          "id": "resolved",
+          "class": "done",
+          "meaning": "First ACTIVE membership adopted. Never guessed, never defaulted."
+        }
+      ],
+      "transitions": [
+        {
+          "from": "unresolvable",
+          "to": "resolving",
+          "trigger": "console asks for this session's tenant",
+          "observed_in": [
+            "frontend/src/lib/api.ts"
+          ]
+        },
+        {
+          "from": "resolving",
+          "to": "resolved",
+          "trigger": "first ACTIVE membership arrives; setActiveTenantId stores it",
+          "observed_in": [
+            "frontend/src/lib/api.ts"
+          ]
+        },
+        {
+          "from": "resolving",
+          "to": "unresolvable",
+          "trigger": "no ACTIVE membership exists",
+          "observed_in": [
+            "frontend/src/lib/api.ts"
+          ]
+        }
+      ],
+      "invariants": [
+        "A tenant is resolved or it is not: there is no guessed tenant.",
+        "Reads with a blank tenant are failures, never zeros."
+      ],
+      "sources": [
+        "frontend/src/lib/api.ts"
+      ]
+    },
+    {
+      "id": "session.read_health",
+      "label": "Read health",
+      "domain": "session",
+      "kind": "session",
+      "description": "Whether the last read succeeded. The honesty rule the whole UI is built on.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "frontend/src/lib/api.ts ApiResult + pages' Read failed states",
+      "states": [
+        {
+          "id": "ok",
+          "class": "done",
+          "meaning": "The read returned data."
+        },
+        {
+          "id": "failed",
+          "class": "failure",
+          "meaning": "The read failed. The screen says so; it never prints zeros instead."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "A failed read is a failure \u2014 it never prints zeros.",
+        "An empty result is not a clean estate; it is labelled absence."
+      ],
+      "sources": [
+        "frontend/src/lib/api.ts"
+      ]
+    },
+    {
+      "id": "session.write_feedback",
+      "label": "Write feedback",
+      "domain": "session",
+      "kind": "session",
+      "description": "What the console may claim after a write attempt.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "frontend/src/lib/requestFeedback.ts writeFailure/readFailure",
+      "states": [
+        {
+          "id": "confirmed",
+          "class": "done",
+          "meaning": "The server confirmed the write."
+        },
+        {
+          "id": "validation_rejected",
+          "class": "failure",
+          "meaning": "The server rejected the draft; the draft is retained."
+        },
+        {
+          "id": "refused",
+          "class": "refused",
+          "meaning": "Authentication/authorization refused the write; authority must be re-established."
+        },
+        {
+          "id": "outcome_unconfirmed",
+          "class": "unknown",
+          "meaning": "No confirmation either way \u2014 the server may already have retained the write."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "An unconfirmed write is unknown: never shown as done, never as failed.",
+        "Drafts are retained across validation and authority failures."
+      ],
+      "sources": [
+        "frontend/src/lib/requestFeedback.ts"
+      ]
+    },
+    {
+      "id": "ui.flow_stage",
+      "label": "Flow stage",
+      "domain": "ui",
+      "kind": "ui",
+      "description": "The five states every journey track, ladder and rail in the console draws.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "frontend/src/components/viz.tsx FlowStrip/StepRail",
+      "states": [
+        {
+          "id": "done",
+          "class": "done",
+          "meaning": "This stage was reached and recorded."
+        },
+        {
+          "id": "active",
+          "class": "done",
+          "meaning": "In progress now."
+        },
+        {
+          "id": "pending",
+          "class": "progress",
+          "meaning": "Not reached yet \u2014 by design, not by failure."
+        },
+        {
+          "id": "unknown",
+          "class": "unknown",
+          "meaning": "No evidence either way. Not observed is never 'didn't run'."
+        },
+        {
+          "id": "failed",
+          "class": "failure",
+          "meaning": "The stage itself failed."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "Only reached stages are drawn done; the rest stay dashed unknown.",
+        "Installed is not executed \u2014 a reached stage is a measurement, not a claim."
+      ],
+      "sources": [
+        "frontend/src/components/viz.tsx"
+      ]
+    },
+    {
+      "id": "ui.performance_tile",
+      "label": "Performance tile state",
+      "domain": "ui",
+      "kind": "ui",
+      "description": "How a performance tile states what kind of number it is showing.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "frontend/src/pages/Performance.tsx PerformanceTile.state",
+      "states": [
+        {
+          "id": "known",
+          "class": "unknown",
+          "meaning": "A measured value."
+        },
+        {
+          "id": "derived",
+          "class": "derived",
+          "meaning": "Computed from other facts; the tile says so."
+        },
+        {
+          "id": "unknown",
+          "class": "unknown",
+          "meaning": "Not measured. The tile draws unknown \u2014 never a zero."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "Unknown tiles never render 0.",
+        "Derived values are labelled derived, never presented as measured."
+      ],
+      "sources": [
+        "frontend/src/pages/Performance.tsx",
+        "frontend/src/lib/api.ts"
+      ]
+    },
+    {
+      "id": "ui.tone",
+      "label": "Tone vocabulary",
+      "domain": "ui",
+      "kind": "vocabulary",
+      "description": "Every colour word the console resolves, resolved once, so a state looks the same everywhere.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "frontend/src/components/viz.tsx toneColor TONE/TONE_ALIAS",
+      "states": [
+        {
+          "id": "green",
+          "class": "unknown",
+          "meaning": "Good standing."
+        },
+        {
+          "id": "amber",
+          "class": "unknown",
+          "meaning": "Warn/degraded/capability/stale."
+        },
+        {
+          "id": "orange",
+          "class": "unknown",
+          "meaning": "Refused or high."
+        },
+        {
+          "id": "red",
+          "class": "unknown",
+          "meaning": "Failure or critical."
+        },
+        {
+          "id": "violet",
+          "class": "unknown",
+          "meaning": "Derived."
+        },
+        {
+          "id": "slate",
+          "class": "unknown",
+          "meaning": "Absence: stopped, unknown, absent."
+        },
+        {
+          "id": "accent",
+          "class": "unknown",
+          "meaning": "Neutral/informational/in flight."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "An alias never invents a state: muted/unknown/none map to slate \u2014 never to a pass or a failure.",
+        "A word that names no colour renders neutral \u2014 a typo cannot hide a value or paint it green."
+      ],
+      "sources": [
+        "frontend/src/components/viz.tsx"
+      ]
+    },
+    {
+      "id": "maturity.surface",
+      "label": "Surface maturity",
+      "domain": "ui",
+      "kind": "vocabulary",
+      "description": "Support classification of every console route.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "shared_models/capability_maturity.py \u2192 frontend/src/lib/maturity.ts",
+      "states": [
+        {
+          "id": "ga",
+          "class": "unknown",
+          "meaning": "Shipped and supported; the limit is stated with the surface."
+        },
+        {
+          "id": "beta",
+          "class": "unknown",
+          "meaning": "Reserved for a stated limited deployment. No shipped surface uses it."
+        },
+        {
+          "id": "preview",
+          "class": "warn",
+          "meaning": "Default for unknown: unknown routes classify down, never up."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "A surface is never promoted by silence: unknown defaults down to preview.",
+        "The limitation stays with the surface instead of a beta badge."
+      ],
+      "sources": [
+        "shared/shared_models/shared_models/capability_maturity.py",
+        "frontend/src/lib/maturity.ts"
+      ]
+    },
+    {
+      "id": "scan.status",
+      "label": "Scan lifecycle",
+      "domain": "collection",
+      "kind": "lifecycle",
+      "description": "One scan request, from queue to terminal state.",
+      "fields": [
+        "scan.Scan.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple SCAN_STATUSES + CheckConstraint scans_status_check + Scan methods",
+      "states": [
+        {
+          "id": "QUEUED",
+          "class": "progress",
+          "meaning": "Created and waiting for a worker."
+        },
+        {
+          "id": "RUNNING",
+          "class": "progress",
+          "meaning": "A worker holds it (compare-and-set on the scan's version)."
+        },
+        {
+          "id": "COMPLETED",
+          "class": "done",
+          "meaning": "Finished. Says nothing about whether the estate is clean."
+        },
+        {
+          "id": "FAILED",
+          "class": "failure",
+          "meaning": "The scan itself failed."
+        },
+        {
+          "id": "CANCELLED",
+          "class": "stopped",
+          "meaning": "Ended by decision."
+        }
+      ],
+      "transitions": [
+        {
+          "from": "QUEUED",
+          "to": "RUNNING",
+          "trigger": "worker starts the scan (Scan.start)",
+          "observed_in": [
+            "services/database/db/models/scan.py"
+          ]
+        },
+        {
+          "from": "RUNNING",
+          "to": "COMPLETED",
+          "trigger": "Scan.complete",
+          "observed_in": [
+            "services/database/db/models/scan.py"
+          ]
+        },
+        {
+          "from": "RUNNING",
+          "to": "FAILED",
+          "trigger": "Scan.fail",
+          "observed_in": [
+            "services/database/db/models/scan.py"
+          ]
+        },
+        {
+          "from": "QUEUED",
+          "to": "CANCELLED",
+          "trigger": "operator cancels before start",
+          "observed_in": [
+            "services/database/db/models/scan.py"
+          ]
+        },
+        {
+          "from": "RUNNING",
+          "to": "CANCELLED",
+          "trigger": "operator cancels mid-run",
+          "observed_in": [
+            "services/database/db/models/scan.py"
+          ]
+        }
+      ],
+      "invariants": [
+        "The scan row's lifecycle is about the scan job \u2014 never evidence that the estate is clean.",
+        "The declared tuple and the database CHECK constraint must stay in step (scan.py)."
+      ],
+      "sources": [
+        "services/database/db/models/scan.py"
+      ]
+    },
+    {
+      "id": "scan_job.status",
+      "label": "Scan job outcome",
+      "domain": "collection",
+      "kind": "lifecycle",
+      "description": "The worker-side job row behind a scan.",
+      "fields": [
+        "scan_job.ScanJob.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default + worker write sites + migration 0106",
+      "states": [
+        {
+          "id": "QUEUED",
+          "class": "progress",
+          "meaning": "Waiting."
+        },
+        {
+          "id": "RUNNING",
+          "class": "progress",
+          "meaning": "Held by a worker."
+        },
+        {
+          "id": "COMPLETED",
+          "class": "done",
+          "meaning": "Finished."
+        },
+        {
+          "id": "FAILED",
+          "class": "failure",
+          "meaning": "The job failed."
+        },
+        {
+          "id": "UNKNOWN",
+          "class": "unknown",
+          "meaning": "Outcome could not be established (migration 0106 allows it)."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "An unknown job outcome is UNKNOWN \u2014 never coerced to FAILED or to a zero.",
+        "Every status write is a compare-and-set on the version it read: a stale worker cannot overwrite a later verdict."
+      ],
+      "sources": [
+        "services/database/db/models/scan_job.py",
+        "services/database/migrations/versions/0106_allow_unknown_job_outcomes.py"
+      ]
+    },
+    {
+      "id": "live_scan.status",
+      "label": "Live scan session",
+      "domain": "collection",
+      "kind": "lifecycle",
+      "description": "A live-host validation run. Validates one capture only \u2014 never a fleet.",
+      "fields": [],
+      "vocabulary": "partial",
+      "vocabulary_source": "services/api/api/live_scan/orchestrator.py write sites",
+      "states": [
+        {
+          "id": "discovered",
+          "class": "progress",
+          "meaning": "Targets found."
+        },
+        {
+          "id": "running",
+          "class": "progress",
+          "meaning": "Scanning."
+        },
+        {
+          "id": "completed",
+          "class": "done",
+          "meaning": "Finished."
+        },
+        {
+          "id": "failed",
+          "class": "failure",
+          "meaning": "The run failed."
+        },
+        {
+          "id": "cancelling",
+          "class": "progress",
+          "meaning": "Cancel requested, winding down."
+        },
+        {
+          "id": "cancelled",
+          "class": "stopped",
+          "meaning": "Ended by decision."
+        },
+        {
+          "id": "unavailable",
+          "class": "unknown",
+          "meaning": "The runner could not be reached \u2014 absence, not a clean result."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/api/api/live_scan/orchestrator.py",
+        "services/api/api/live_scan/runner.py"
+      ]
+    },
+    {
+      "id": "estate_surface.progress",
+      "label": "Collection surface progress",
+      "domain": "collection",
+      "kind": "verdict",
+      "description": "Whether a declared collection surface actually produced anything.",
+      "fields": [
+        "assurance.CollectionPhaseReceipt.state"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "partial_progress.py write sites + model default",
+      "states": [
+        {
+          "id": "NOT_ATTEMPTED",
+          "class": "absent",
+          "meaning": "The surface was never tried."
+        },
+        {
+          "id": "PARTIAL",
+          "class": "warn",
+          "meaning": "Some of it landed."
+        },
+        {
+          "id": "COMPLETE",
+          "class": "done",
+          "meaning": "The surface reached its end."
+        },
+        {
+          "id": "FAILED",
+          "class": "failure",
+          "meaning": "The attempt failed."
+        },
+        {
+          "id": "UNKNOWN",
+          "class": "unknown",
+          "meaning": "Progress could not be established."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "NOT_ATTEMPTED is an absence \u2014 never drawn as a clean surface.",
+        "Refusals are counted as refusals, never as truths about the estate."
+      ],
+      "sources": [
+        "services/api/api/security/partial_progress.py",
+        "services/api/api/estate_surfaces.py",
+        "services/database/db/models/assurance.py"
+      ]
+    },
+    {
+      "id": "collection.phase",
+      "label": "Collection phase",
+      "domain": "collection",
+      "kind": "verdict",
+      "description": "Which phase of a collection a receipt records.",
+      "fields": [
+        "assurance.CollectionPhaseReceipt.phase"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model field + coverage.py/launch.py write sites",
+      "states": [
+        {
+          "id": "host_keys",
+          "class": "unknown",
+          "meaning": "The host-key phase of a collection."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/assurance.py"
+      ]
+    },
+    {
+      "id": "collector.depth",
+      "label": "Collector depth ladder",
+      "domain": "collection",
+      "kind": "verdict",
+      "description": "How deep a collector actually reaches, per crypto family.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "frontend/src/pages/CollectorDepth.tsx DEPTH_STAGES + collector_depth router",
+      "states": [
+        {
+          "id": "partial",
+          "class": "warn",
+          "meaning": "Family partly reachable; not on the ladder."
+        },
+        {
+          "id": "exists",
+          "class": "capability",
+          "meaning": "The artifact exists (registration only \u2014 never runtime use)."
+        },
+        {
+          "id": "ingest_only",
+          "class": "progress",
+          "meaning": "Rows were ingested, no call-level evidence."
+        },
+        {
+          "id": "invocation",
+          "class": "done",
+          "meaning": "Call-level reach \u2014 the deepest measured stage."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "Installed is not executed: only call-level reach counts as observed use.",
+        "Stages past the measurement are drawn dashed unknown \u2014 'not observed', never 'didn't run'."
+      ],
+      "sources": [
+        "frontend/src/pages/CollectorDepth.tsx",
+        "services/api/api/routers/collector_depth.py"
+      ]
+    },
+    {
+      "id": "binary_scan.status",
+      "label": "Binary scan lifecycle",
+      "domain": "collection",
+      "kind": "lifecycle",
+      "description": "A binary/devsecops analysis run.",
+      "fields": [
+        "binary_scan.BinaryScanRecord.status",
+        "binary_intelligence.BinaryScanRun.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default COMPLETED + binary_job.py write sites",
+      "states": [
+        {
+          "id": "PENDING",
+          "class": "progress",
+          "meaning": "Queued for analysis."
+        },
+        {
+          "id": "RUNNING",
+          "class": "progress",
+          "meaning": "Analyzing."
+        },
+        {
+          "id": "COMPLETED",
+          "class": "done",
+          "meaning": "Analysis finished \u2014 verdicts live in the findings, not here."
+        },
+        {
+          "id": "FAILED",
+          "class": "failure",
+          "meaning": "The analysis failed."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/binary_scan.py",
+        "services/database/db/models/binary_intelligence.py",
+        "services/worker/worker/pipeline/binary_job.py"
+      ]
+    },
+    {
+      "id": "binary.usage_status",
+      "label": "Capability vs usage",
+      "domain": "evidence",
+      "kind": "verdict",
+      "description": "The names carry the claim: how strong the evidence is that a crypto capability is actually used.",
+      "fields": [
+        "binary_intelligence.BinaryCryptoFinding.usage_status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "enum UsageStatus (services/binary_intelligence/binary_intelligence/evidence.py)",
+      "states": [
+        {
+          "id": "capability_only",
+          "class": "capability",
+          "meaning": "Library or feature present. Not use."
+        },
+        {
+          "id": "configuration_only",
+          "class": "capability",
+          "meaning": "Configuration permits it. Not use."
+        },
+        {
+          "id": "statically_referenced",
+          "class": "capability",
+          "meaning": "Symbol imported/used in static views. Still not observed use."
+        },
+        {
+          "id": "statically_supported",
+          "class": "capability",
+          "meaning": "Multiple static indicators. Still static."
+        },
+        {
+          "id": "runtime_confirmed",
+          "class": "done",
+          "meaning": "Observed at runtime \u2014 dynamic evidence only."
+        },
+        {
+          "id": "unresolved",
+          "class": "unknown",
+          "meaning": "Could not be attributed either way."
+        }
+      ],
+      "transitions": [
+        {
+          "from": "capability_only",
+          "to": "statically_referenced",
+          "trigger": "static indicators strengthen the claim",
+          "observed_in": [
+            "services/binary_intelligence/binary_intelligence/detection.py"
+          ]
+        },
+        {
+          "from": "statically_referenced",
+          "to": "statically_supported",
+          "trigger": "multiple static indicators agree",
+          "observed_in": [
+            "services/binary_intelligence/binary_intelligence/detection.py"
+          ]
+        },
+        {
+          "from": "unresolved",
+          "to": "capability_only",
+          "trigger": "attribution resolves to presence only",
+          "observed_in": [
+            "services/binary_intelligence/binary_intelligence/detection.py"
+          ]
+        }
+      ],
+      "invariants": [
+        "Capability never promotes to usage.",
+        "runtime_confirmed is raised ONLY by observed runtime events \u2014 and never overwrites a static row."
+      ],
+      "sources": [
+        "services/binary_intelligence/binary_intelligence/evidence.py",
+        "services/binary_intelligence/binary_intelligence/detection.py"
+      ]
+    },
+    {
+      "id": "binary.evidence_class",
+      "label": "Evidence class",
+      "domain": "evidence",
+      "kind": "verdict",
+      "description": "Strength-of-evidence classes shared by binary findings.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "enum EvidenceClass (services/binary_intelligence/binary_intelligence/evidence.py)",
+      "states": [
+        {
+          "id": "observed",
+          "class": "done",
+          "meaning": "Seen directly."
+        },
+        {
+          "id": "strongly_supported",
+          "class": "derived",
+          "meaning": "Several converging indicators."
+        },
+        {
+          "id": "indicated",
+          "class": "derived",
+          "meaning": "Points at it without proof."
+        },
+        {
+          "id": "inferred",
+          "class": "derived",
+          "meaning": "Reasoned, not seen."
+        },
+        {
+          "id": "unknown",
+          "class": "unknown",
+          "meaning": "No reading."
+        },
+        {
+          "id": "not_detected",
+          "class": "unknown",
+          "meaning": "Not seen in what was examined."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "not_detected is never proof of absence.",
+        "inferred and indicated are drawn as derived, never as observations."
+      ],
+      "sources": [
+        "services/binary_intelligence/binary_intelligence/evidence.py"
+      ]
+    },
+    {
+      "id": "os.rule_evaluation",
+      "label": "OS-CRYPTO rule evaluation",
+      "domain": "evidence",
+      "kind": "verdict",
+      "description": "Whether an OS-CRYPTO rule could be evaluated at all.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "services/os_intelligence/os_intelligence/rules.py status field",
+      "states": [
+        {
+          "id": "evaluated",
+          "class": "done",
+          "meaning": "The rule ran against real evidence. The detection answer lives beside it."
+        },
+        {
+          "id": "not_evaluable",
+          "class": "unknown",
+          "meaning": "Required evidence is missing. NOT a clean result."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "not_evaluable is never clean.",
+        "OS-CRYPTO-017 stays not_evaluable until a runtime session exists: 'not detected' is not 'absent'.",
+        "OS-CRYPTO rules are detections, never verdicts."
+      ],
+      "sources": [
+        "services/os_intelligence/os_intelligence/rules.py"
+      ]
+    },
+    {
+      "id": "os.rule_evidence_class",
+      "label": "OS rule evidence class",
+      "domain": "evidence",
+      "kind": "verdict",
+      "description": "What the evidence behind an OS-CRYPTO detection actually shows.",
+      "fields": [],
+      "vocabulary": "partial",
+      "vocabulary_source": "services/os_intelligence/os_intelligence/rules.py evidence_class writes",
+      "states": [
+        {
+          "id": "observed",
+          "class": "done",
+          "meaning": "The evidence was collected and shows the condition."
+        },
+        {
+          "id": "indicated",
+          "class": "derived",
+          "meaning": "Evidence points at the condition without showing it."
+        },
+        {
+          "id": "not_detected",
+          "class": "unknown",
+          "meaning": "Not seen in the collected evidence \u2014 never proof of absence."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "not_detected \u2260 absent; the wording on screen keeps the difference."
+      ],
+      "sources": [
+        "services/os_intelligence/os_intelligence/rules.py"
+      ]
+    },
+    {
+      "id": "os.record_state",
+      "label": "OS record state",
+      "domain": "evidence",
+      "kind": "verdict",
+      "description": "State of a collected OS module or trust fact (/proc/crypto is registrations, not runtime use).",
+      "fields": [
+        "os_intelligence.OSModuleRecord.state",
+        "os_intelligence.OSTrustFact.state"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "os_intelligence collector/rules write sites",
+      "states": [
+        {
+          "id": "loaded",
+          "class": "done",
+          "meaning": "Module/trust record loaded from the collection."
+        },
+        {
+          "id": "present",
+          "class": "done",
+          "meaning": "Present in the collected view."
+        },
+        {
+          "id": "unavailable",
+          "class": "unknown",
+          "meaning": "Could not be collected \u2014 absence of data, not absence of risk."
+        },
+        {
+          "id": "enabled",
+          "class": "unknown",
+          "meaning": "Feature/registration enabled (a registration, never runtime use)."
+        },
+        {
+          "id": "disabled",
+          "class": "stopped",
+          "meaning": "Disabled in the collected view."
+        },
+        {
+          "id": "expired",
+          "class": "stale",
+          "meaning": "Record expired."
+        },
+        {
+          "id": "near_expiration",
+          "class": "stale",
+          "meaning": "Record is ageing."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/os_intelligence/os_intelligence/collector.py",
+        "services/os_intelligence/os_intelligence/rules.py"
+      ]
+    },
+    {
+      "id": "evidence.verification_result",
+      "label": "Verification result",
+      "domain": "evidence",
+      "kind": "verdict",
+      "description": "Outcomes of evidence and remediation verification.",
+      "fields": [
+        "verification_log.VerificationLog.result",
+        "remediation_task.RemediationVerification.result",
+        "container_scan.ContainerScan.result"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "stored_scan.py/evidence_loader.py write sites + model defaults",
+      "states": [
+        {
+          "id": "PASS",
+          "class": "done",
+          "meaning": "The verification passed."
+        },
+        {
+          "id": "FAIL",
+          "class": "failure",
+          "meaning": "It failed."
+        },
+        {
+          "id": "PARTIAL",
+          "class": "warn",
+          "meaning": "Some checks passed."
+        },
+        {
+          "id": "EMPTY",
+          "class": "absent",
+          "meaning": "Nothing to verify against."
+        },
+        {
+          "id": "UNVERIFIABLE",
+          "class": "unknown",
+          "meaning": "Verification was impossible \u2014 never a pass."
+        },
+        {
+          "id": "MATCH",
+          "class": "done",
+          "meaning": "Hashes/identities matched."
+        },
+        {
+          "id": "MISMATCH",
+          "class": "failure",
+          "meaning": "They did not."
+        },
+        {
+          "id": "VERIFIED",
+          "class": "done",
+          "meaning": "A remediation was verified as done."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "UNVERIFIABLE is unknown, never a pass and never a failure.",
+        "EMPTY is labelled absence \u2014 an empty result, not a clean estate."
+      ],
+      "sources": [
+        "services/evidence/evidence/verification/stored_scan.py",
+        "services/database/db/models/verification_log.py"
+      ]
+    },
+    {
+      "id": "system.coverage_status",
+      "label": "System coverage status",
+      "domain": "evidence",
+      "kind": "verdict",
+      "description": "Coverage reading on a system row.",
+      "fields": [
+        "system.System.coverage_status"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "field exists (system.py); write vocabulary not yet found",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed. Coverage refusals say 'the denominator is incomplete, never estimated'."
+      ],
+      "sources": [
+        "services/database/db/models/system.py"
+      ]
+    },
+    {
+      "id": "evidence_record.compliance_status",
+      "label": "Evidence compliance status",
+      "domain": "evidence",
+      "kind": "verdict",
+      "description": "Compliance reading on a stored evidence record.",
+      "fields": [
+        "evidence_record.EvidenceRecord.compliance_status"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "field exists (evidence_record.py); write vocabulary not yet found",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed."
+      ],
+      "sources": [
+        "services/database/db/models/evidence_record.py"
+      ]
+    },
+    {
+      "id": "identity.confidence",
+      "label": "Identity confidence",
+      "domain": "evidence",
+      "kind": "verdict",
+      "description": "How sure the platform is about an asset identity match.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple CONFIDENCE_STATES",
+      "states": [
+        {
+          "id": "CONFIRMED",
+          "class": "done",
+          "meaning": "Identity established from evidence."
+        },
+        {
+          "id": "PROBABLE",
+          "class": "derived",
+          "meaning": "Likely, evidence incomplete."
+        },
+        {
+          "id": "POSSIBLE",
+          "class": "derived",
+          "meaning": "One hint only."
+        },
+        {
+          "id": "UNKNOWN",
+          "class": "unknown",
+          "meaning": "No reading \u2014 never forced to yes or no."
+        },
+        {
+          "id": "CONFLICT",
+          "class": "unknown",
+          "meaning": "Sources disagree. Never resolved by silently picking one."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "Asset identity is never forced to YES/NO (model comment, control_plane.py)."
+      ],
+      "sources": [
+        "services/database/db/models/control_plane.py"
+      ]
+    },
+    {
+      "id": "common.severity",
+      "label": "Severity",
+      "domain": "findings",
+      "kind": "vocabulary",
+      "description": "The impact scale every finding family shares.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "five enums (anomaly/automation/drift/policy/keyassure) + pentest SEVERITIES",
+      "states": [
+        {
+          "id": "INFO",
+          "class": "unknown",
+          "meaning": "Informational."
+        },
+        {
+          "id": "LOW",
+          "class": "unknown",
+          "meaning": "Low impact."
+        },
+        {
+          "id": "MEDIUM",
+          "class": "unknown",
+          "meaning": "Medium impact."
+        },
+        {
+          "id": "HIGH",
+          "class": "unknown",
+          "meaning": "High impact."
+        },
+        {
+          "id": "CRITICAL",
+          "class": "failure",
+          "meaning": "Critical impact."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "Severity is a classification of impact \u2014 never a verdict on the estate.",
+        "One vocabulary: anomaly, automation, drift, policy and keyassure each redefined this; the register speaks once."
+      ],
+      "sources": [
+        "services/anomaly/anomaly/detect.py",
+        "services/drift/drift/classifiers/severity_calculator.py",
+        "services/policy/policy/models/policy_rule.py",
+        "services/database/db/models/pentest_finding.py"
+      ]
+    },
+    {
+      "id": "security_control.finding_state",
+      "label": "Control finding state",
+      "domain": "findings",
+      "kind": "verdict",
+      "description": "One read of a security control, with the honesty split between 'decided' and 'could not read'.",
+      "fields": [
+        "security_control.SecurityControlFinding.state"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple FINDING_STATES (security_control.py)",
+      "states": [
+        {
+          "id": "CONFIGURED",
+          "class": "done",
+          "meaning": "The bank decided the control's setting."
+        },
+        {
+          "id": "OBSERVED",
+          "class": "done",
+          "meaning": "The collector read the setting."
+        },
+        {
+          "id": "WITHIN_LIMIT",
+          "class": "done",
+          "meaning": "Reading is inside the policy limit."
+        },
+        {
+          "id": "OVER_LIMIT",
+          "class": "warn",
+          "meaning": "Reading is outside it."
+        },
+        {
+          "id": "NOT_CONFIGURED",
+          "class": "absent",
+          "meaning": "A decision the bank has NOT made."
+        },
+        {
+          "id": "POLICY_NOT_ATTACHED",
+          "class": "absent",
+          "meaning": "No policy to read against."
+        },
+        {
+          "id": "INCOMPARABLE_WINDOW",
+          "class": "unknown",
+          "meaning": "Windows cannot be compared."
+        },
+        {
+          "id": "UNKNOWN",
+          "class": "unknown",
+          "meaning": "A reading the collector could not take."
+        },
+        {
+          "id": "STALE_EVIDENCE",
+          "class": "stale",
+          "meaning": "Evidence aged out before the read."
+        },
+        {
+          "id": "REFUSED",
+          "class": "refused",
+          "meaning": "The collector was refused."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "NOT_CONFIGURED and UNKNOWN are different: the first is a decision the bank has not made, the second is a reading the collector could not take. Collapsing them is how a gap gets reported as a policy."
+      ],
+      "sources": [
+        "services/database/db/models/security_control.py"
+      ]
+    },
+    {
+      "id": "pentest_finding.status",
+      "label": "Pentest finding status",
+      "domain": "findings",
+      "kind": "lifecycle",
+      "description": "Pentest finding work item.",
+      "fields": [
+        "pentest_finding.PentestFinding.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple STATUSES (pentest_finding.py)",
+      "states": [
+        {
+          "id": "OPEN",
+          "class": "progress",
+          "meaning": "New finding."
+        },
+        {
+          "id": "IN_PROGRESS",
+          "class": "progress",
+          "meaning": "Being worked."
+        },
+        {
+          "id": "REMEDIATED",
+          "class": "unknown",
+          "meaning": "Fix landed."
+        },
+        {
+          "id": "ACCEPTED",
+          "class": "done",
+          "meaning": "Risk accepted by decision."
+        },
+        {
+          "id": "WONT_FIX",
+          "class": "stopped",
+          "meaning": "Closed by decision, not by fixing."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/pentest_finding.py"
+      ]
+    },
+    {
+      "id": "remediation_task.status",
+      "label": "Remediation task",
+      "domain": "findings",
+      "kind": "lifecycle",
+      "description": "A tracked remediation from proposal to verification.",
+      "fields": [
+        "remediation_task.RemediationTask.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default PROPOSED + assurance/remediation.py write sites",
+      "states": [
+        {
+          "id": "PROPOSED",
+          "class": "unknown",
+          "meaning": "Suggested, not accepted."
+        },
+        {
+          "id": "ACCEPTED",
+          "class": "done",
+          "meaning": "Accepted for work."
+        },
+        {
+          "id": "COMPLETED",
+          "class": "done",
+          "meaning": "Work reported done."
+        },
+        {
+          "id": "VERIFIED",
+          "class": "done",
+          "meaning": "Verified by evidence (RemediationVerification)."
+        }
+      ],
+      "transitions": [
+        {
+          "from": "PROPOSED",
+          "to": "ACCEPTED",
+          "trigger": "operator accepts the task",
+          "observed_in": [
+            "services/api/api/assurance/remediation.py"
+          ]
+        },
+        {
+          "from": "ACCEPTED",
+          "to": "COMPLETED",
+          "trigger": "work reported done",
+          "observed_in": [
+            "services/api/api/assurance/remediation.py"
+          ]
+        },
+        {
+          "from": "COMPLETED",
+          "to": "VERIFIED",
+          "trigger": "verification evidence lands",
+          "observed_in": [
+            "services/api/api/assurance/remediation.py"
+          ]
+        }
+      ],
+      "invariants": [
+        "PROPOSED is not accepted work; the distinction is drawn, not assumed."
+      ],
+      "sources": [
+        "services/database/db/models/remediation_task.py",
+        "services/api/api/assurance/remediation.py"
+      ]
+    },
+    {
+      "id": "drift.resolution_status",
+      "label": "Drift resolution",
+      "domain": "findings",
+      "kind": "lifecycle",
+      "description": "Crypto drift event triage.",
+      "fields": [
+        "drift_event.DriftEvent.resolution_status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default OPEN + drift_repository write sites",
+      "states": [
+        {
+          "id": "OPEN",
+          "class": "progress",
+          "meaning": "Drift seen, nobody has claimed it."
+        },
+        {
+          "id": "ACKNOWLEDGED",
+          "class": "unknown",
+          "meaning": "An operator has seen it \u2014 still open work."
+        },
+        {
+          "id": "RESOLVED",
+          "class": "done",
+          "meaning": "Closed with evidence."
+        }
+      ],
+      "transitions": [
+        {
+          "from": "OPEN",
+          "to": "ACKNOWLEDGED",
+          "trigger": "operator acknowledges the drift",
+          "observed_in": [
+            "services/database/db/repositories/drift_repository.py"
+          ]
+        }
+      ],
+      "invariants": [
+        "Drift is never auto-resolved: only an operator move leaves OPEN."
+      ],
+      "sources": [
+        "services/database/db/models/drift_event.py",
+        "services/database/db/repositories/drift_repository.py"
+      ]
+    },
+    {
+      "id": "drift.verification_status",
+      "label": "Drift verification",
+      "domain": "findings",
+      "kind": "verdict",
+      "description": "Verification state attached to a drift event.",
+      "fields": [
+        "drift_event.DriftEvent.verification_status"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "field exists (drift_event.py); write vocabulary not yet found in code",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed. The field exists and is listed so the register cannot rot around it."
+      ],
+      "sources": [
+        "services/database/db/models/drift_event.py"
+      ]
+    },
+    {
+      "id": "policy_exception.status",
+      "label": "Policy exception",
+      "domain": "findings",
+      "kind": "lifecycle",
+      "description": "A standing exception to a policy.",
+      "fields": [
+        "policy_exception.PolicyException.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default PENDING + routers/exceptions.py write sites",
+      "states": [
+        {
+          "id": "PENDING",
+          "class": "progress",
+          "meaning": "Requested, not decided."
+        },
+        {
+          "id": "APPROVED",
+          "class": "unknown",
+          "meaning": "Granted."
+        },
+        {
+          "id": "REVOKED",
+          "class": "stopped",
+          "meaning": "Withdrawn after the fact."
+        }
+      ],
+      "transitions": [
+        {
+          "from": "PENDING",
+          "to": "APPROVED",
+          "trigger": "an approver grants the exception",
+          "observed_in": [
+            "services/api/api/routers/exceptions.py"
+          ]
+        },
+        {
+          "from": "APPROVED",
+          "to": "REVOKED",
+          "trigger": "the exception is revoked",
+          "observed_in": [
+            "services/api/api/routers/exceptions.py"
+          ]
+        }
+      ],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/policy_exception.py",
+        "services/api/api/routers/exceptions.py"
+      ]
+    },
+    {
+      "id": "baseline.status",
+      "label": "Baseline",
+      "domain": "findings",
+      "kind": "lifecycle",
+      "description": "An approved drift baseline.",
+      "fields": [
+        "baseline.Baseline.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default ACTIVE + baseline_repository write sites",
+      "states": [
+        {
+          "id": "ACTIVE",
+          "class": "done",
+          "meaning": "The baseline in force."
+        },
+        {
+          "id": "SUPERSEDED",
+          "class": "stale",
+          "meaning": "Replaced by a later baseline."
+        }
+      ],
+      "transitions": [
+        {
+          "from": "ACTIVE",
+          "to": "SUPERSEDED",
+          "trigger": "a newer baseline is approved",
+          "observed_in": [
+            "services/database/db/repositories/baseline_repository.py"
+          ]
+        }
+      ],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/baseline.py",
+        "services/database/db/repositories/baseline_repository.py"
+      ]
+    },
+    {
+      "id": "runtime_finding.status",
+      "label": "Runtime finding verdict",
+      "domain": "findings",
+      "kind": "verdict",
+      "description": "A finding raised from runtime tracing, carrying a registry verdict.",
+      "fields": [
+        "runtime_finding.RuntimeFinding.status"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "model comment 'registry verdict'; write vocabulary not yet found",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 the column records a registry verdict; states are never guessed."
+      ],
+      "sources": [
+        "services/database/db/models/runtime_finding.py"
+      ]
+    },
+    {
+      "id": "runtime.collection_authorization",
+      "label": "Runtime-before-collection authorization",
+      "domain": "findings",
+      "kind": "session",
+      "description": "Whether a runtime capture may start before collection exists.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "services/api/api/routers/os_intelligence.py scoped-tenant + asset guards",
+      "states": [
+        {
+          "id": "allowed",
+          "class": "unknown",
+          "meaning": "Own or unknown asset: runtime-before-collection is legal."
+        },
+        {
+          "id": "refused",
+          "class": "refused",
+          "meaning": "Foreign asset: refused. The refusal is counted, never drawn as a truth."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "Own/unknown is allowed, foreign is refused \u2014 the refusal is a counted event, not a missing one."
+      ],
+      "sources": [
+        "services/api/api/routers/os_intelligence.py"
+      ]
+    },
+    {
+      "id": "payment_crypto.key_state",
+      "label": "Payment key state",
+      "domain": "payments",
+      "kind": "lifecycle",
+      "description": "HSM payment key lifecycle, per X9.24/TR-39.",
+      "fields": [
+        "payment_crypto.PaymentKey.state"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple KEY_STATES (X9.24/TR-39)",
+      "states": [
+        {
+          "id": "PRE_ACTIVATION",
+          "class": "progress",
+          "meaning": "Ceremony done, key not yet in use."
+        },
+        {
+          "id": "ACTIVE",
+          "class": "done",
+          "meaning": "In use."
+        },
+        {
+          "id": "SUSPENDED",
+          "class": "warn",
+          "meaning": "Temporarily out of use."
+        },
+        {
+          "id": "COMPROMISED",
+          "class": "failure",
+          "meaning": "Trust lost."
+        },
+        {
+          "id": "DESTROYED",
+          "class": "stopped",
+          "meaning": "Destroyed by ceremony."
+        },
+        {
+          "id": "EXPIRED",
+          "class": "stale",
+          "meaning": "Past its lifetime."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "X9.24/TR-39 key lifecycle: a destroyed key is never 'unknown' and a compromised key is never drawn clean."
+      ],
+      "sources": [
+        "services/database/db/models/payment_crypto.py"
+      ]
+    },
+    {
+      "id": "payment_crypto.ceremony_status",
+      "label": "Key ceremony",
+      "domain": "payments",
+      "kind": "lifecycle",
+      "description": "A booked key ceremony.",
+      "fields": [
+        "payment_crypto.KeyCeremony.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "model comment (payment_crypto.py)",
+      "states": [
+        {
+          "id": "PLANNED",
+          "class": "progress",
+          "meaning": "Future-dated booking."
+        },
+        {
+          "id": "HELD",
+          "class": "done",
+          "meaning": "Took place."
+        },
+        {
+          "id": "ABANDONED",
+          "class": "stopped",
+          "meaning": "Cancelled."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/payment_crypto.py"
+      ]
+    },
+    {
+      "id": "payment_crypto.finding_status",
+      "label": "Payment policy finding",
+      "domain": "payments",
+      "kind": "lifecycle",
+      "description": "HSM/payment policy finding.",
+      "fields": [
+        "payment_crypto.PaymentPolicyFinding.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "model comment OPEN | ACCEPTED | RESOLVED",
+      "states": [
+        {
+          "id": "OPEN",
+          "class": "progress",
+          "meaning": "New finding."
+        },
+        {
+          "id": "ACCEPTED",
+          "class": "done",
+          "meaning": "Accepted by decision."
+        },
+        {
+          "id": "RESOLVED",
+          "class": "done",
+          "meaning": "Closed."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/payment_crypto.py"
+      ]
+    },
+    {
+      "id": "tenant.status",
+      "label": "Tenant status",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "Tenant standing.",
+      "fields": [
+        "tenant.Tenant.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple TENANT_STATUSES",
+      "states": [
+        {
+          "id": "ACTIVE",
+          "class": "done",
+          "meaning": "In good standing; the only state a session may adopt."
+        },
+        {
+          "id": "SUSPENDED",
+          "class": "warn",
+          "meaning": "Suspended \u2014 reads against it stay failures, never zeros."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "ensureActiveTenant adopts the first ACTIVE membership and never any other state."
+      ],
+      "sources": [
+        "services/database/db/models/tenant.py"
+      ]
+    },
+    {
+      "id": "monitor.target_status",
+      "label": "Monitor target",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "A monitored target's live-check state.",
+      "fields": [
+        "monitor.MonitorTarget.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple TARGET_STATUSES",
+      "states": [
+        {
+          "id": "PENDING",
+          "class": "progress",
+          "meaning": "Not yet probed."
+        },
+        {
+          "id": "OK",
+          "class": "done",
+          "meaning": "Healthy on the last probe."
+        },
+        {
+          "id": "DEGRADED",
+          "class": "warn",
+          "meaning": "Impaired \u2014 visible, never silent."
+        },
+        {
+          "id": "FAILING",
+          "class": "failure",
+          "meaning": "Failing its checks."
+        },
+        {
+          "id": "BLOCKED",
+          "class": "refused",
+          "meaning": "Cannot be probed (policy/reachability)."
+        },
+        {
+          "id": "PAUSED",
+          "class": "warn",
+          "meaning": "Probing paused by decision."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "BLOCKED is not FAILING: cannot read \u2260 read bad."
+      ],
+      "sources": [
+        "services/database/db/models/monitor.py"
+      ]
+    },
+    {
+      "id": "control_plane.credential_status",
+      "label": "Credential reference",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "A vault credential reference (metadata only, never the secret).",
+      "fields": [
+        "control_plane.CredentialRef.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple CREDENTIAL_STATUSES",
+      "states": [
+        {
+          "id": "pending",
+          "class": "progress",
+          "meaning": "Registered, not yet usable."
+        },
+        {
+          "id": "active",
+          "class": "done",
+          "meaning": "Usable."
+        },
+        {
+          "id": "rotating",
+          "class": "progress",
+          "meaning": "Rotation in flight."
+        },
+        {
+          "id": "expired",
+          "class": "stale",
+          "meaning": "Past lifetime."
+        },
+        {
+          "id": "revoked",
+          "class": "stopped",
+          "meaning": "Withdrawn."
+        },
+        {
+          "id": "error",
+          "class": "failure",
+          "meaning": "Vault/rotation error."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "Only references are stored \u2014 never the secret itself."
+      ],
+      "sources": [
+        "services/database/db/models/control_plane.py"
+      ]
+    },
+    {
+      "id": "control_plane.agent_status",
+      "label": "Agent status",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "A deployed collector agent.",
+      "fields": [
+        "control_plane.Agent.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple AGENT_STATUSES",
+      "states": [
+        {
+          "id": "enrolled",
+          "class": "progress",
+          "meaning": "Enrolled, never connected."
+        },
+        {
+          "id": "connecting",
+          "class": "progress",
+          "meaning": "Handshaking."
+        },
+        {
+          "id": "connected",
+          "class": "done",
+          "meaning": "Live."
+        },
+        {
+          "id": "offline",
+          "class": "unknown",
+          "meaning": "Lost."
+        },
+        {
+          "id": "upgrading",
+          "class": "progress",
+          "meaning": "Update in flight."
+        },
+        {
+          "id": "error",
+          "class": "failure",
+          "meaning": "Agent error."
+        },
+        {
+          "id": "retired",
+          "class": "stopped",
+          "meaning": "Decommissioned by decision."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "enrolled is not connected: enrollment alone is never a live collector."
+      ],
+      "sources": [
+        "services/database/db/models/control_plane.py"
+      ]
+    },
+    {
+      "id": "control_plane.agent_link",
+      "label": "Agent link",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "Agent channel state.",
+      "fields": [
+        "control_plane.Agent.link"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "model comment disconnected/connecting/encrypted",
+      "states": [
+        {
+          "id": "disconnected",
+          "class": "done",
+          "meaning": "No link."
+        },
+        {
+          "id": "connecting",
+          "class": "progress",
+          "meaning": "Handshake in flight."
+        },
+        {
+          "id": "encrypted",
+          "class": "done",
+          "meaning": "Encrypted channel up."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/control_plane.py"
+      ]
+    },
+    {
+      "id": "control_plane.event_status",
+      "label": "Control-plane event",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "Durable control-plane event queue (outbox).",
+      "fields": [
+        "control_plane.QueuedEvent.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple EVENT_STATUSES",
+      "states": [
+        {
+          "id": "queued",
+          "class": "progress",
+          "meaning": "In the outbox."
+        },
+        {
+          "id": "leased",
+          "class": "progress",
+          "meaning": "A worker holds it."
+        },
+        {
+          "id": "completed",
+          "class": "done",
+          "meaning": "Handled."
+        },
+        {
+          "id": "dead",
+          "class": "failure",
+          "meaning": "Dead-lettered after failure."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "dead is drawn as failure \u2014 never quietly dropped."
+      ],
+      "sources": [
+        "services/database/db/models/control_plane.py"
+      ]
+    },
+    {
+      "id": "control_plane.benchmark_status",
+      "label": "Benchmark run",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "A benchmark run record. (Live HSM/KMS/PQC benchmarking stays register-only.)",
+      "fields": [
+        "control_plane.BenchmarkRun.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple BENCHMARK_RUN_STATUSES",
+      "states": [
+        {
+          "id": "created",
+          "class": "progress",
+          "meaning": "Recorded, not scored."
+        },
+        {
+          "id": "scored",
+          "class": "done",
+          "meaning": "Scores attached."
+        },
+        {
+          "id": "archived",
+          "class": "stopped",
+          "meaning": "Closed out."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/control_plane.py"
+      ]
+    },
+    {
+      "id": "control_plane.delivery_status",
+      "label": "Delivery outcome",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "Notification/webhook delivery outcome.",
+      "fields": [
+        "control_plane.DeliveryLog.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "tuple DELIVERY_STATUSES + notification_dispatch.py write sites",
+      "states": [
+        {
+          "id": "delivered",
+          "class": "done",
+          "meaning": "Delivered."
+        },
+        {
+          "id": "failed",
+          "class": "failure",
+          "meaning": "Delivery failed."
+        },
+        {
+          "id": "skipped",
+          "class": "absent",
+          "meaning": "Not attempted by policy."
+        },
+        {
+          "id": "inflight",
+          "class": "progress",
+          "meaning": "Handed to the channel, outcome pending."
+        },
+        {
+          "id": "legacy_unknown",
+          "class": "unknown",
+          "meaning": "Legacy row without a recorded outcome \u2014 unknown, never guessed."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "inflight is unknown until confirmed: never drawn delivered or failed early."
+      ],
+      "sources": [
+        "services/database/db/models/control_plane.py",
+        "services/control_plane/control_plane/notification_dispatch.py"
+      ]
+    },
+    {
+      "id": "notification_delivery.status",
+      "label": "Notification delivery",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "A notification delivery attempt.",
+      "fields": [
+        "notification_delivery.NotificationDelivery.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default pending + delivery write sites",
+      "states": [
+        {
+          "id": "pending",
+          "class": "progress",
+          "meaning": "Not yet handed over."
+        },
+        {
+          "id": "delivered",
+          "class": "done",
+          "meaning": "Delivered."
+        },
+        {
+          "id": "failed",
+          "class": "failure",
+          "meaning": "Failed."
+        },
+        {
+          "id": "skipped",
+          "class": "absent",
+          "meaning": "Skipped by policy (e.g. no SMTP configured)."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "SKIPPED_NO_SMTP-class skips are absences of a channel, not failures of content."
+      ],
+      "sources": [
+        "services/database/db/models/notification_delivery.py"
+      ]
+    },
+    {
+      "id": "credential_lease.status",
+      "label": "Credential lease",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "A short-lived credential lease.",
+      "fields": [
+        "credential_lease.CredentialLease.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default ACTIVE; further write vocabulary not yet observed",
+      "states": [
+        {
+          "id": "ACTIVE",
+          "class": "done",
+          "meaning": "Lease in force."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/credential_lease.py"
+      ]
+    },
+    {
+      "id": "onboarding.connector_status",
+      "label": "Connector status",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "An onboarding connector.",
+      "fields": [
+        "onboarding.Connector.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "model comment pending/configured/connected/error",
+      "states": [
+        {
+          "id": "pending",
+          "class": "progress",
+          "meaning": "Registered, not configured."
+        },
+        {
+          "id": "configured",
+          "class": "done",
+          "meaning": "Configured, not yet proven."
+        },
+        {
+          "id": "connected",
+          "class": "done",
+          "meaning": "Proven with a real connection."
+        },
+        {
+          "id": "error",
+          "class": "failure",
+          "meaning": "Connection failed."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "configured is not connected: a configured connector is never drawn as live evidence."
+      ],
+      "sources": [
+        "services/database/db/models/onboarding.py"
+      ]
+    },
+    {
+      "id": "onboarding.discovery_status",
+      "label": "Discovery run",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "An onboarding discovery run.",
+      "fields": [
+        "onboarding.DiscoveryRun.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default planned + onboarding_repository write sites",
+      "states": [
+        {
+          "id": "planned",
+          "class": "progress",
+          "meaning": "Scheduled, not started."
+        },
+        {
+          "id": "running",
+          "class": "progress",
+          "meaning": "Discovery in flight."
+        },
+        {
+          "id": "completed",
+          "class": "done",
+          "meaning": "Finished."
+        },
+        {
+          "id": "failed",
+          "class": "failure",
+          "meaning": "The run failed."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/onboarding.py"
+      ]
+    },
+    {
+      "id": "estate_daemon.state",
+      "label": "Estate daemon",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "The estate-discovery daemon loop.",
+      "fields": [
+        "estate_daemon.EstateDaemon.state"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default RUNNING + estate_daemon.py write sites",
+      "states": [
+        {
+          "id": "RUNNING",
+          "class": "progress",
+          "meaning": "Daemon loop alive."
+        },
+        {
+          "id": "STOPPED",
+          "class": "stopped",
+          "meaning": "Stopped by decision or crash."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/estate_daemon.py",
+        "services/api/api/estate_daemon.py"
+      ]
+    },
+    {
+      "id": "hardware.agent_status",
+      "label": "Hardware agent row",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "A hardware-fleet agent row.",
+      "fields": [
+        "hardware_live.HardwareAgentRow.agent_status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default ONLINE; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "ONLINE",
+          "class": "done",
+          "meaning": "Reporting."
+        },
+        {
+          "id": "OFFLINE",
+          "class": "unknown",
+          "meaning": "Not reporting \u2014 never read as 'no hardware'."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/hardware_live.py"
+      ]
+    },
+    {
+      "id": "execution.status",
+      "label": "Execution attempt",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "One controlled execution attempt.",
+      "fields": [
+        "execution_control.ExecutionAttempt.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default RUNNING + execution_control.py write sites",
+      "states": [
+        {
+          "id": "RUNNING",
+          "class": "progress",
+          "meaning": "Attempt in flight."
+        },
+        {
+          "id": "RESOLVED",
+          "class": "done",
+          "meaning": "Ended with a recorded outcome."
+        },
+        {
+          "id": "UNKNOWN",
+          "class": "unknown",
+          "meaning": "Outcome could not be established (migration 0106)."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "An unknown outcome stays UNKNOWN \u2014 never zeroed, never coerced to a verdict."
+      ],
+      "sources": [
+        "services/database/db/models/execution_control.py",
+        "services/database/migrations/versions/0106_allow_unknown_job_outcomes.py"
+      ]
+    },
+    {
+      "id": "execution_outbox.state",
+      "label": "Execution outbox item",
+      "domain": "platform",
+      "kind": "lifecycle",
+      "description": "Outbox entry for execution results.",
+      "fields": [
+        "execution_control.ExecutionOutbox.state"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default PENDING + execution_outbox.py write sites",
+      "states": [
+        {
+          "id": "PENDING",
+          "class": "progress",
+          "meaning": "Waiting to publish."
+        },
+        {
+          "id": "PUBLISHING",
+          "class": "progress",
+          "meaning": "Handing off."
+        },
+        {
+          "id": "PUBLISHED",
+          "class": "done",
+          "meaning": "Out."
+        },
+        {
+          "id": "CANCELLED",
+          "class": "stopped",
+          "meaning": "Withdrawn before publish."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/repositories/execution_outbox.py"
+      ]
+    },
+    {
+      "id": "gate.decision",
+      "label": "Approval decision",
+      "domain": "governance",
+      "kind": "verdict",
+      "description": "An explicit approve/deny decision on a gate or governance action.",
+      "fields": [
+        "gate_evaluation.GateEvaluation.decision",
+        "p2.GovernanceApproval.decision"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "p2.py comment APPROVED/DENIED + gate write sites",
+      "states": [
+        {
+          "id": "APPROVED",
+          "class": "unknown",
+          "meaning": "Granted."
+        },
+        {
+          "id": "DENIED",
+          "class": "refused",
+          "meaning": "Refused \u2014 counted, never drawn as a truth."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "A refusal is a counted decision, never a missing row."
+      ],
+      "sources": [
+        "services/database/db/models/gate_evaluation.py",
+        "services/database/db/models/p2.py"
+      ]
+    },
+    {
+      "id": "evidence_disposition.decision",
+      "label": "Evidence disposition",
+      "domain": "governance",
+      "kind": "verdict",
+      "description": "What happens to evidence under a retention decision.",
+      "fields": [
+        "evidence_disposition.EvidenceDisposition.decision"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple DECISIONS (evidence_disposition.py)",
+      "states": [
+        {
+          "id": "RETAIN",
+          "class": "done",
+          "meaning": "Keep the evidence."
+        },
+        {
+          "id": "QUARANTINE_EXPORTS",
+          "class": "warn",
+          "meaning": "Quarantine exports; keep originals."
+        },
+        {
+          "id": "MARK_REDACTED",
+          "class": "done",
+          "meaning": "Mark redacted in place."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/evidence_disposition.py"
+      ]
+    },
+    {
+      "id": "scope_grant.effect",
+      "label": "Scope grant effect",
+      "domain": "governance",
+      "kind": "vocabulary",
+      "description": "RBAC scope grant effect.",
+      "fields": [
+        "control_plane.ScopeGrant.effect"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "model default allow + comment allow/deny",
+      "states": [
+        {
+          "id": "allow",
+          "class": "done",
+          "meaning": "Grant."
+        },
+        {
+          "id": "deny",
+          "class": "refused",
+          "meaning": "Explicit deny \u2014 deny wins."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "deny is explicit and wins; silence is never a grant."
+      ],
+      "sources": [
+        "services/database/db/models/control_plane.py"
+      ]
+    },
+    {
+      "id": "enterprise.ticket_state",
+      "label": "ITSM ticket",
+      "domain": "governance",
+      "kind": "lifecycle",
+      "description": "A finding converted into a tracked ITSM work item.",
+      "fields": [
+        "enterprise.Ticket.state"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple TICKET_STATES",
+      "states": [
+        {
+          "id": "open",
+          "class": "progress",
+          "meaning": "New."
+        },
+        {
+          "id": "triaged",
+          "class": "warn",
+          "meaning": "Triaged."
+        },
+        {
+          "id": "assigned",
+          "class": "progress",
+          "meaning": "Owned."
+        },
+        {
+          "id": "in_progress",
+          "class": "progress",
+          "meaning": "Being worked."
+        },
+        {
+          "id": "in_migration",
+          "class": "warn",
+          "meaning": "In a migration wave."
+        },
+        {
+          "id": "validation",
+          "class": "warn",
+          "meaning": "Fix under validation."
+        },
+        {
+          "id": "resolved",
+          "class": "done",
+          "meaning": "Resolved."
+        },
+        {
+          "id": "closed",
+          "class": "stopped",
+          "meaning": "Closed."
+        },
+        {
+          "id": "reopened",
+          "class": "warn",
+          "meaning": "Resurfaced after close."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/enterprise.py"
+      ]
+    },
+    {
+      "id": "enterprise.compliance_state",
+      "label": "Compliance state",
+      "domain": "governance",
+      "kind": "verdict",
+      "description": "Compliance of a scope against a framework.",
+      "fields": [
+        "enterprise.ComplianceStatus.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple COMPLIANCE_STATES",
+      "states": [
+        {
+          "id": "COMPLIANT",
+          "class": "unknown",
+          "meaning": "Evidence supports compliance."
+        },
+        {
+          "id": "GAP",
+          "class": "warn",
+          "meaning": "Evidence shows a gap."
+        },
+        {
+          "id": "NOT_EVIDENCED",
+          "class": "unknown",
+          "meaning": "No evidence either way \u2014 never compliant by silence."
+        },
+        {
+          "id": "NOT_APPLICABLE",
+          "class": "absent",
+          "meaning": "Out of scope by rule."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "NOT_EVIDENCED is unknown: absence of evidence never becomes compliance."
+      ],
+      "sources": [
+        "services/database/db/models/enterprise.py"
+      ]
+    },
+    {
+      "id": "enterprise.policy_verdict",
+      "label": "Policy verdict",
+      "domain": "governance",
+      "kind": "verdict",
+      "description": "Outcome of evaluating a policy layer.",
+      "fields": [
+        "enterprise.PolicyEvaluation.verdict"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "tuple POLICY_VERDICTS",
+      "states": [
+        {
+          "id": "PASS",
+          "class": "done",
+          "meaning": "Policy satisfied."
+        },
+        {
+          "id": "FAIL",
+          "class": "failure",
+          "meaning": "Policy violated."
+        },
+        {
+          "id": "WARN",
+          "class": "warn",
+          "meaning": "In-between; visible."
+        },
+        {
+          "id": "NOT_APPLICABLE",
+          "class": "absent",
+          "meaning": "Policy does not apply."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/enterprise.py"
+      ]
+    },
+    {
+      "id": "enterprise.sync_status",
+      "label": "Integration sync",
+      "domain": "governance",
+      "kind": "lifecycle",
+      "description": "Last sync outcome of an external integration.",
+      "fields": [
+        "enterprise.Integration.last_sync_status"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "field exists (enterprise.py); write vocabulary not yet found",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed."
+      ],
+      "sources": [
+        "services/database/db/models/enterprise.py"
+      ]
+    },
+    {
+      "id": "enterprise.knowledge_status",
+      "label": "Crypto knowledge entry",
+      "domain": "governance",
+      "kind": "lifecycle",
+      "description": "Editorial state of a crypto knowledge entry.",
+      "fields": [
+        "enterprise.CryptoKnowledgeEntry.status"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "field exists (enterprise.py); write vocabulary not yet found",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed."
+      ],
+      "sources": [
+        "services/database/db/models/enterprise.py"
+      ]
+    },
+    {
+      "id": "audit.outcome",
+      "label": "Audit outcome",
+      "domain": "governance",
+      "kind": "verdict",
+      "description": "Outcome recorded on an audited action.",
+      "fields": [
+        "user.AuditLog.outcome"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default SUCCESS + auth.py/security.py write sites",
+      "states": [
+        {
+          "id": "SUCCESS",
+          "class": "unknown",
+          "meaning": "The action succeeded."
+        },
+        {
+          "id": "FAILURE",
+          "class": "failure",
+          "meaning": "The action failed."
+        },
+        {
+          "id": "DENIED",
+          "class": "refused",
+          "meaning": "Authority refused it."
+        },
+        {
+          "id": "LOCKED",
+          "class": "refused",
+          "meaning": "Account locked by control."
+        },
+        {
+          "id": "DISABLED",
+          "class": "stopped",
+          "meaning": "Action disabled by policy."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "Refused and failed actions are recorded \u2014 never omitted, never drawn as success."
+      ],
+      "sources": [
+        "services/database/db/models/user.py",
+        "services/api/api/security/auth.py"
+      ]
+    },
+    {
+      "id": "p2.plugin_state",
+      "label": "Plugin package",
+      "domain": "governance",
+      "kind": "lifecycle",
+      "description": "A platform plugin package (catalog is platform-scope).",
+      "fields": [
+        "p2.PluginPackage.state"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default UPLOADED; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "UPLOADED",
+          "class": "progress",
+          "meaning": "Uploaded, not yet signed off."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/p2.py"
+      ]
+    },
+    {
+      "id": "p2.export_status",
+      "label": "Lake export batch",
+      "domain": "governance",
+      "kind": "lifecycle",
+      "description": "A data-lake export batch.",
+      "fields": [
+        "p2.LakeExportBatch.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default SEALED + datalake.py write sites",
+      "states": [
+        {
+          "id": "SEALED",
+          "class": "done",
+          "meaning": "Batch sealed."
+        },
+        {
+          "id": "OPEN",
+          "class": "progress",
+          "meaning": "Still filling."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/p2.py",
+        "services/api/api/routers/datalake.py"
+      ]
+    },
+    {
+      "id": "p2.anomaly_status",
+      "label": "Anomaly flag",
+      "domain": "governance",
+      "kind": "lifecycle",
+      "description": "A flagged anomaly awaiting triage.",
+      "fields": [
+        "p2.AnomalyFlag.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model defaults; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "OPEN",
+          "class": "progress",
+          "meaning": "Flagged, untriaged."
+        },
+        {
+          "id": "PENDING",
+          "class": "progress",
+          "meaning": "Awaiting triage action."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/p2.py"
+      ]
+    },
+    {
+      "id": "p2.validation_stage",
+      "label": "Migration validation stage",
+      "domain": "governance",
+      "kind": "vocabulary",
+      "description": "Which side of a migration a validation ran on.",
+      "fields": [
+        "p2.MigrationValidation.stage"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "model comment PRE/POST",
+      "states": [
+        {
+          "id": "PRE",
+          "class": "progress",
+          "meaning": "Before the change."
+        },
+        {
+          "id": "POST",
+          "class": "progress",
+          "meaning": "After the change."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/p2.py"
+      ]
+    },
+    {
+      "id": "p2.validation_status",
+      "label": "Migration validation",
+      "domain": "governance",
+      "kind": "lifecycle",
+      "description": "A migration validation record.",
+      "fields": [
+        "p2.MigrationValidation.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default PENDING; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "PENDING",
+          "class": "progress",
+          "meaning": "Not yet run."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/p2.py"
+      ]
+    },
+    {
+      "id": "p2.approval_status",
+      "label": "Governance approval",
+      "domain": "governance",
+      "kind": "lifecycle",
+      "description": "A governance approval request (decision lives on gate.decision).",
+      "fields": [
+        "p2.GovernanceApproval.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default PENDING; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "PENDING",
+          "class": "progress",
+          "meaning": "Awaiting decision."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/p2.py"
+      ]
+    },
+    {
+      "id": "ot_maintenance.status",
+      "label": "OT maintenance window",
+      "domain": "governance",
+      "kind": "lifecycle",
+      "description": "An approved OT maintenance window (OT scanning is passive observation only).",
+      "fields": [
+        "ot_maintenance.OtMaintenanceWindow.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default APPROVED; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "APPROVED",
+          "class": "unknown",
+          "meaning": "Approved to run."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/ot_maintenance.py"
+      ]
+    },
+    {
+      "id": "report_snapshot.email_status",
+      "label": "Report email",
+      "domain": "governance",
+      "kind": "lifecycle",
+      "description": "Whether a generated report snapshot was emailed.",
+      "fields": [
+        "report_snapshot.ReportSnapshot.email_status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "model comment SENT/SKIPPED_NO_SMTP/FAILED",
+      "states": [
+        {
+          "id": "SENT",
+          "class": "done",
+          "meaning": "Emailed."
+        },
+        {
+          "id": "SKIPPED_NO_SMTP",
+          "class": "absent",
+          "meaning": "No channel configured \u2014 absence, not failure."
+        },
+        {
+          "id": "FAILED",
+          "class": "failure",
+          "meaning": "Send failed."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/report_snapshot.py"
+      ]
+    },
+    {
+      "id": "roadmap.deployment_status",
+      "label": "Deployment attestation",
+      "domain": "governance",
+      "kind": "verdict",
+      "description": "Attestation of a roadmap deployment step.",
+      "fields": [
+        "roadmap_deployment.DeploymentAttestation.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default OK + roadmap write sites",
+      "states": [
+        {
+          "id": "OK",
+          "class": "done",
+          "meaning": "Attestation holds."
+        },
+        {
+          "id": "FAILED",
+          "class": "failure",
+          "meaning": "Attestation failed."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/roadmap_deployment.py"
+      ]
+    },
+    {
+      "id": "roadmap.gate_result",
+      "label": "Gate filing result",
+      "domain": "governance",
+      "kind": "verdict",
+      "description": "Result recorded on a gate filing.",
+      "fields": [
+        "roadmap_gates.GateFiling.result"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default PASSED; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "PASSED",
+          "class": "done",
+          "meaning": "Gate filed as passed."
+        },
+        {
+          "id": "FAILED",
+          "class": "failure",
+          "meaning": "Gate failed."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/roadmap_gates.py"
+      ]
+    },
+    {
+      "id": "roadmap.governance_state",
+      "label": "Governance ticket",
+      "domain": "governance",
+      "kind": "lifecycle",
+      "description": "A roadmap governance ticket.",
+      "fields": [
+        "roadmap_governance.GovernanceTicket.state"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default OPEN; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "OPEN",
+          "class": "progress",
+          "meaning": "Open governance ticket."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/roadmap_governance.py"
+      ]
+    },
+    {
+      "id": "roadmap.qualification_state",
+      "label": "Discovery qualification",
+      "domain": "governance",
+      "kind": "verdict",
+      "description": "Qualification state of a discovery capability.",
+      "fields": [
+        "roadmap_qualification.DiscoveryQualification.state"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "field exists (roadmap_qualification.py); write vocabulary not yet found",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed."
+      ],
+      "sources": [
+        "services/database/db/models/roadmap_qualification.py"
+      ]
+    },
+    {
+      "id": "roadmap.external_validation_result",
+      "label": "External validation",
+      "domain": "governance",
+      "kind": "verdict",
+      "description": "Result of an external (outside-the-repo) validation. External acts are never marked done from inside the repo.",
+      "fields": [
+        "roadmap_qualification.ExternalValidation.result"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default PASSED; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "PASSED",
+          "class": "done",
+          "meaning": "External validation passed."
+        },
+        {
+          "id": "FAILED",
+          "class": "failure",
+          "meaning": "It failed."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/roadmap_qualification.py"
+      ]
+    },
+    {
+      "id": "estate_catalog.status",
+      "label": "Estate relationship",
+      "domain": "estate",
+      "kind": "lifecycle",
+      "description": "A catalogued estate relationship.",
+      "fields": [
+        "estate_catalog.EstateRelationshipRecord.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default ESTABLISHED + estate_catalog.py write sites",
+      "states": [
+        {
+          "id": "ESTABLISHED",
+          "class": "done",
+          "meaning": "The relationship is evidenced."
+        },
+        {
+          "id": "UNRESOLVED",
+          "class": "unknown",
+          "meaning": "Referenced but unresolved \u2014 never silently dropped."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/estate_catalog.py",
+        "services/api/api/estate_catalog.py"
+      ]
+    },
+    {
+      "id": "estate_remediation_work.status",
+      "label": "Estate remediation work",
+      "domain": "estate",
+      "kind": "lifecycle",
+      "description": "Estate-level remediation work item.",
+      "fields": [
+        "estate_remediation_work.EstateRemediationWork.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default OPEN; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "OPEN",
+          "class": "progress",
+          "meaning": "Open work."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/estate_remediation_work.py"
+      ]
+    },
+    {
+      "id": "estate_schedule.status",
+      "label": "Schedule run",
+      "domain": "estate",
+      "kind": "lifecycle",
+      "description": "A scheduled estate job run.",
+      "fields": [
+        "estate_schedule.EstateScheduleRun.status"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "model comment OK | ERROR | SKIPPED + estate_schedule.py writes",
+      "states": [
+        {
+          "id": "OK",
+          "class": "done",
+          "meaning": "Run fine."
+        },
+        {
+          "id": "RUNNING",
+          "class": "progress",
+          "meaning": "Run in flight."
+        },
+        {
+          "id": "ERROR",
+          "class": "failure",
+          "meaning": "Run failed."
+        },
+        {
+          "id": "SKIPPED",
+          "class": "absent",
+          "meaning": "Skipped by rule \u2014 absence, not a clean run."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/estate_schedule.py",
+        "services/api/api/estate_schedule.py"
+      ]
+    },
+    {
+      "id": "estate_schedule.verdict",
+      "label": "Schedule run verdict",
+      "domain": "estate",
+      "kind": "verdict",
+      "description": "Verdict attached to a schedule run.",
+      "fields": [
+        "estate_schedule.EstateScheduleRun.verdict"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "field exists (estate_schedule.py); write vocabulary not yet found",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed."
+      ],
+      "sources": [
+        "services/database/db/models/estate_schedule.py"
+      ]
+    },
+    {
+      "id": "network_inventory.status",
+      "label": "Network inventory revision",
+      "domain": "estate",
+      "kind": "lifecycle",
+      "description": "A network inventory revision.",
+      "fields": [
+        "network_inventory.NetworkInventoryRevision.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default DRAFT + network_inventory.py writes",
+      "states": [
+        {
+          "id": "DRAFT",
+          "class": "progress",
+          "meaning": "Revision in draft."
+        },
+        {
+          "id": "IN_SYNC",
+          "class": "done",
+          "meaning": "Matches the live view."
+        },
+        {
+          "id": "CHANGED",
+          "class": "warn",
+          "meaning": "Drifted from the live view."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/network_inventory.py",
+        "services/network_scanner/network_scanner/inventory/network_inventory.py"
+      ]
+    },
+    {
+      "id": "vendor_profile.status",
+      "label": "Vendor profile revision",
+      "domain": "estate",
+      "kind": "lifecycle",
+      "description": "A vendor profile revision.",
+      "fields": [
+        "vendor_profile.VendorProfileRevision.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default DRAFT; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "DRAFT",
+          "class": "progress",
+          "meaning": "Draft revision."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/vendor_profile.py"
+      ]
+    },
+    {
+      "id": "migration_task.status",
+      "label": "Migration task",
+      "domain": "estate",
+      "kind": "lifecycle",
+      "description": "A PQC/crypto migration task.",
+      "fields": [
+        "migration_project.MigrationTask.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default TODO + migration_task_repository write sites",
+      "states": [
+        {
+          "id": "TODO",
+          "class": "unknown",
+          "meaning": "Not started."
+        },
+        {
+          "id": "NOT_STARTED",
+          "class": "absent",
+          "meaning": "Explicitly not started."
+        },
+        {
+          "id": "IN_PROGRESS",
+          "class": "progress",
+          "meaning": "Under way."
+        },
+        {
+          "id": "DONE",
+          "class": "done",
+          "meaning": "Finished."
+        },
+        {
+          "id": "BLOCKED",
+          "class": "refused",
+          "meaning": "Stopped by a dependency."
+        },
+        {
+          "id": "MISSED",
+          "class": "warn",
+          "meaning": "Window missed."
+        },
+        {
+          "id": "ACHIEVED",
+          "class": "done",
+          "meaning": "Target achieved."
+        },
+        {
+          "id": "AT_RISK",
+          "class": "warn",
+          "meaning": "Slipping \u2014 visible, never silent."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/migration_project.py",
+        "services/database/db/repositories/migration_task_repository.py"
+      ]
+    },
+    {
+      "id": "migration_project.status",
+      "label": "Migration project / milestone",
+      "domain": "estate",
+      "kind": "lifecycle",
+      "description": "A migration project or milestone.",
+      "fields": [
+        "migration_project.MigrationProject.status",
+        "migration_project.MigrationMilestone.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default PLANNED; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "PLANNED",
+          "class": "progress",
+          "meaning": "Planned, not started."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/migration_project.py"
+      ]
+    },
+    {
+      "id": "certificate.expiry_status",
+      "label": "Certificate expiry",
+      "domain": "certificates",
+      "kind": "verdict",
+      "description": "Where a certificate sits in its validity window.",
+      "fields": [
+        "certificate.Certificate.expiry_status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "cert_parser.py write sites",
+      "states": [
+        {
+          "id": "NOT_YET_VALID",
+          "class": "absent",
+          "meaning": "Before its validity window."
+        },
+        {
+          "id": "VALID",
+          "class": "done",
+          "meaning": "Inside the window."
+        },
+        {
+          "id": "EXPIRING_SOON",
+          "class": "stale",
+          "meaning": "Inside the warning window."
+        },
+        {
+          "id": "EXPIRING_CRITICAL",
+          "class": "stale",
+          "meaning": "Almost expired."
+        },
+        {
+          "id": "EXPIRED",
+          "class": "stale",
+          "meaning": "Past expiry."
+        },
+        {
+          "id": "UNKNOWN",
+          "class": "unknown",
+          "meaning": "Expiry could not be read \u2014 never drawn as valid."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/certificate.py",
+        "services/network_scanner/network_scanner/certificates/cert_parser.py"
+      ]
+    },
+    {
+      "id": "certificate.renewal_status",
+      "label": "Certificate renewal",
+      "domain": "certificates",
+      "kind": "lifecycle",
+      "description": "Renewal state of a certificate (cert lifecycle work is register-only).",
+      "fields": [
+        "certificate.Certificate.renewal_status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default NONE; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "NONE",
+          "class": "unknown",
+          "meaning": "No renewal in flight."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/certificate.py"
+      ]
+    },
+    {
+      "id": "certificate.revocation_status",
+      "label": "Certificate revocation",
+      "domain": "certificates",
+      "kind": "verdict",
+      "description": "Revocation reading for a certificate.",
+      "fields": [
+        "certificate.Certificate.revocation_status"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "field exists (certificate.py); write vocabulary not yet found",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed."
+      ],
+      "sources": [
+        "services/database/db/models/certificate.py"
+      ]
+    },
+    {
+      "id": "cryptolog.investigation_status",
+      "label": "CryptoLog investigation",
+      "domain": "cryptolog",
+      "kind": "lifecycle",
+      "description": "Investigation state of a CryptoLog event.",
+      "fields": [
+        "cryptolog.CryptoLogEvent.investigation_status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "collectors/base.py default OBSERVED; further vocabulary not yet observed",
+      "states": [
+        {
+          "id": "OBSERVED",
+          "class": "done",
+          "meaning": "Recorded from a collector; no investigation opened."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/database/db/models/cryptolog.py",
+        "services/cryptolog/cryptolog/collectors/base.py"
+      ]
+    },
+    {
+      "id": "cryptolog.alert_state",
+      "label": "CryptoLog alert",
+      "domain": "cryptolog",
+      "kind": "lifecycle",
+      "description": "A CryptoLog alert's lifecycle.",
+      "fields": [
+        "cryptolog.CryptoLogAlert.state"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "routers/cryptolog.py write sites",
+      "states": [
+        {
+          "id": "OPEN",
+          "class": "progress",
+          "meaning": "Alert open."
+        },
+        {
+          "id": "CHECKPOINTED",
+          "class": "unknown",
+          "meaning": "Checkpointed at a session boundary."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "A collection gap is a collection gap \u2014 never a healthy estate, never an estate with no events."
+      ],
+      "sources": [
+        "services/database/db/models/cryptolog.py",
+        "services/api/api/routers/cryptolog.py"
+      ]
+    },
+    {
+      "id": "performance.quality_status",
+      "label": "Metric quality",
+      "domain": "performance",
+      "kind": "verdict",
+      "description": "Quality flag on a stored performance metric.",
+      "fields": [
+        "performance.PerformanceMetric.quality_status"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "field exists (performance.py); write vocabulary not yet found",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed. Tile-level honesty lives on ui.performance_tile."
+      ],
+      "sources": [
+        "services/database/db/models/performance.py"
+      ]
+    },
+    {
+      "id": "performance.collector_health",
+      "label": "Collector health",
+      "domain": "performance",
+      "kind": "verdict",
+      "description": "Health of a performance collector.",
+      "fields": [
+        "performance.PerformanceCollectorHealth.status"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "field exists (performance.py); write vocabulary not yet found",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed."
+      ],
+      "sources": [
+        "services/database/db/models/performance.py"
+      ]
+    },
+    {
+      "id": "performance.incident_status",
+      "label": "Performance incident",
+      "domain": "performance",
+      "kind": "lifecycle",
+      "description": "A performance incident record.",
+      "fields": [
+        "performance.PerformanceIncident.status"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "field exists (performance.py); write vocabulary not yet found",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed."
+      ],
+      "sources": [
+        "services/database/db/models/performance.py"
+      ]
+    },
+    {
+      "id": "performance.forecast_status",
+      "label": "Capacity forecast",
+      "domain": "performance",
+      "kind": "verdict",
+      "description": "A capacity forecast row (e.g. estimated exhaustion).",
+      "fields": [
+        "performance.PerformanceCapacityForecast.status"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "field exists (performance.py); write vocabulary not yet found",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed. Forecasts are labelled 'forecast, not fact'."
+      ],
+      "sources": [
+        "services/database/db/models/performance.py"
+      ]
+    },
+    {
+      "id": "pqc.readiness",
+      "label": "PQC readiness verdict",
+      "domain": "posture",
+      "kind": "verdict",
+      "description": "Per-target PQC readiness.",
+      "fields": [],
+      "vocabulary": "partial",
+      "vocabulary_source": "services/network_scanner/network_scanner/enterprise/pqc_readiness.py write sites",
+      "states": [
+        {
+          "id": "COMPATIBLE",
+          "class": "done",
+          "meaning": "Stack can move without breaking."
+        },
+        {
+          "id": "MIGRATION_REQUIRED",
+          "class": "warn",
+          "meaning": "Work is required before the move."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/network_scanner/network_scanner/enterprise/pqc_readiness.py"
+      ]
+    },
+    {
+      "id": "pqc.migration_stage",
+      "label": "PQC claim ladder",
+      "domain": "posture",
+      "kind": "verdict",
+      "description": "The rungs of a PQC migration claim.",
+      "fields": [],
+      "vocabulary": "partial",
+      "vocabulary_source": "routers/roadmap_intelligence.py stage writes + PqcClaimsLadder",
+      "states": [
+        {
+          "id": "SUPPORT_ONLY",
+          "class": "capability",
+          "meaning": "A library supporting ML-KEM is not PQC readiness."
+        },
+        {
+          "id": "SUPPORT_AVAILABLE",
+          "class": "capability",
+          "meaning": "Support is available in the estate's stack."
+        },
+        {
+          "id": "MIGRATION_VALIDATED",
+          "class": "done",
+          "meaning": "A migration was validated end to end."
+        },
+        {
+          "id": "CONFIGURED",
+          "class": "done",
+          "meaning": "Configured in the estate."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "A library supporting ML-KEM is not PQC readiness: the ladder never skips rungs.",
+        "MIGRATION VALIDATED requires evidence; claims without it stay on lower rungs."
+      ],
+      "sources": [
+        "services/api/api/routers/roadmap_intelligence.py",
+        "frontend/src/components"
+      ]
+    },
+    {
+      "id": "twin.snapshot_state",
+      "label": "Twin snapshot state",
+      "domain": "twin",
+      "kind": "verdict",
+      "description": "State of a stored twin or BOM snapshot.",
+      "fields": [
+        "cascade_extensions.TwinSnapshot.state",
+        "technology_bom_snapshot.TechnologyBomSnapshot.state"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "fields exist (cascade_extensions.py, technology_bom_snapshot.py)",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed."
+      ],
+      "sources": [
+        "services/database/db/models/cascade_extensions.py",
+        "services/database/db/models/technology_bom_snapshot.py"
+      ]
+    },
+    {
+      "id": "cascade.verdict",
+      "label": "Cascade verdict",
+      "domain": "twin",
+      "kind": "verdict",
+      "description": "Verdict of a cascade, network scan run or estate change event.",
+      "fields": [
+        "cascade_run.CascadeRun.verdict",
+        "network_scan_run.NetworkScanRun.verdict",
+        "estate_change_event.EstateChangeEvent.verdict"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "fields exist (cascade_run.py, network_scan_run.py, estate_change_event.py)",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed. Graph edges need evidence; a missing asset is never a clean result."
+      ],
+      "sources": [
+        "services/database/db/models/cascade_run.py",
+        "services/database/db/models/network_scan_run.py",
+        "services/database/db/models/estate_change_event.py"
+      ]
+    },
+    {
+      "id": "cascade.result",
+      "label": "Cascade result",
+      "domain": "twin",
+      "kind": "verdict",
+      "description": "Result of a cascade or relationship computation.",
+      "fields": [
+        "cascade_run.CascadeRun.result",
+        "network_scan_run.NetworkScanRun.result",
+        "relationship_lifecycle.RelationshipCollection.result"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "assurance_workflows/relationship_lifecycle write sites",
+      "states": [
+        {
+          "id": "COMPLETE",
+          "class": "done",
+          "meaning": "Result computed over complete inputs."
+        },
+        {
+          "id": "PARTIAL",
+          "class": "warn",
+          "meaning": "Result over partial inputs \u2014 labelled partial, never complete."
+        },
+        {
+          "id": "FAILED",
+          "class": "failure",
+          "meaning": "Computation failed."
+        },
+        {
+          "id": "STALE",
+          "class": "stale",
+          "meaning": "Inputs aged out."
+        },
+        {
+          "id": "MALFORMED",
+          "class": "failure",
+          "meaning": "Inputs unusable."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "A partial computation is never drawn as a complete one."
+      ],
+      "sources": [
+        "services/database/db/models/cascade_run.py",
+        "services/api/api/routers/relationship_lifecycle.py"
+      ]
+    },
+    {
+      "id": "relationship_lifecycle.outcome",
+      "label": "Relationship collection outcome",
+      "domain": "twin",
+      "kind": "verdict",
+      "description": "Outcome of a relationship-collection act.",
+      "fields": [
+        "relationship_lifecycle.RelationshipCollection.outcome"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "routers/relationship_lifecycle.py write sites",
+      "states": [
+        {
+          "id": "COMPLETE",
+          "class": "done",
+          "meaning": "Collection ended complete."
+        },
+        {
+          "id": "FAILED",
+          "class": "failure",
+          "meaning": "It failed."
+        },
+        {
+          "id": "PARTIAL",
+          "class": "warn",
+          "meaning": "Partial \u2014 honest about what is missing."
+        }
+      ],
+      "transitions": [],
+      "invariants": [],
+      "sources": [
+        "services/api/api/routers/relationship_lifecycle.py",
+        "services/database/db/models/relationship_lifecycle.py"
+      ]
+    }
+  ]
+}

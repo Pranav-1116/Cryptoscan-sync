@@ -98,6 +98,7 @@ const SecurityPolicy = lazy(() => import("./pages/SecurityPolicy"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Supervision = lazy(() => import("./pages/Supervision"));
 const SystemHealth = lazy(() => import("./pages/SystemHealth"));
+const StateMachines = lazy(() => import("./pages/StateMachines"));
 const Telecom = lazy(() => import("./pages/Telecom"));
 const Tenancy = lazy(() => import("./pages/Tenancy"));
 const Timeline = lazy(() => import("./pages/Timeline"));
@@ -246,6 +247,7 @@ function RoutedPages() {
       <Route path="/security-intelligence" element={<SecurityIntelligence />} />
       <Route path="/security-policy" element={<SecurityPolicy />} />
       <Route path="/system-health" element={<SystemHealth />} />
+      <Route path="/state-machines" element={<StateMachines />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/supervision" element={<Supervision />} />
       <Route path="/telecom" element={<Telecom />} />

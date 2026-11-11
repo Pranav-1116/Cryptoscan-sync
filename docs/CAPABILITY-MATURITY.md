@@ -4,7 +4,7 @@
 > `scripts/gen_capability_maturity.py`. Served live at
 > `GET /api/v1/platform/capabilities`.
 
-**97 shipped surfaces, all supported.** The navigation carries no maturity
+**98 shipped surfaces, all supported.** The navigation carries no maturity
 badges: a product's sidebar is not the place to negotiate what is proven. What
 used to be a `beta` or `preview` label is now the **stated limit** column below,
 which is the part that actually told an operator something. A support statement
@@ -38,6 +38,7 @@ role-guarded actions.
 | `/security` | Administration | Security settings surface; overlaps security-center. |
 | `/security-center` | Administration | Security posture of the platform itself (headers, rate limits, audit chain verify). |
 | `/settings` | Administration | App settings + org profile persisted in app_settings. |
+| `/state-machines` | Administration | The canonical State Machine Register on screen: every state the product can be in, observed from code and never invented. Semantic state classes carry one tone each so a state looks the same on every page; transitions are the moves code actually makes; the honesty invariants (unknown is never zero, a failed read never prints zeros, absence is never a clean result, capability is never usage, a refusal is counted never drawn as a truth) travel with the machines they govern. Machines whose vocabulary is not yet observed are listed as such instead of guessed. The register is machine-readable (shared_models state-machines module and the console's library copy, pinned byte-identical by tests), so agents, backend code and the console read one vocabulary. |
 | `/system-health` | Administration | /health, /readyz, /metrics, DB health. |
 | `/tenancy` | Administration | Multi-tenant core landed in migration 0057; artifact tenancy sealed at rest; single-tenant is GA. |
 | `/invite-accept` | Auth | Tenant invitations belong to the SaaS mode (beta). |

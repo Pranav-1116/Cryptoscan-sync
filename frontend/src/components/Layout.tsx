@@ -207,7 +207,17 @@ export const PRIMARY_SECTIONS: NavSection[] = [
   {
     title: "Administration",
     items: [
-      { to: "/system-health", label: "System health", icon: Pulse },
+      {
+        to: "/system-health",
+        label: "System health",
+        icon: Pulse,
+        children: [
+          { to: "/system-health", label: "System health", icon: Pulse },
+          // the platform's own state vocabulary sits with the health it describes:
+          // one screen reads the estate, the other reads the register behind it
+          { to: "/state-machines", label: "State machines", icon: ListChecks },
+        ],
+      },
       { to: "/settings", label: "Settings & org", icon: GearSix },
       { to: "/identity", label: "Users & teams", icon: UsersThree },
       { to: "/integrations", label: "Integrations & API", icon: PlugsConnected },
