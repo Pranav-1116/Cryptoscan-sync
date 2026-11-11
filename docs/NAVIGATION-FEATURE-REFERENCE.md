@@ -8,21 +8,95 @@
 The console has **five primary sidebar sections**, **30 rows** and **74 links**.
 Pages that answer one question share a **group** — the six BOMs, the five
 assurance records, remediation, infrastructure, monitors, oversight, posture,
-dependencies, simulation and system health — and a group is a disclosure: the pages inside it are
-one click away and only rendered when it is opened. Only the section holding the
-current page is open on arrival, so an operator reads about six rows, not all
-seventy-four links.
-The duplicate `Security Center` placement is gone: the route is reached once, as
-**Audit log** under Governance, and the header's Security Center button opens the
-admin drawer rather than a second nav row.
+dependencies, simulation, digital twin, security center and system health — and a
+group is a disclosure: the pages inside it are one click away and only rendered
+when it is opened. Only the section holding the current page is open on arrival,
+so an operator reads about six rows, not all seventy-four links. The header's
+Security Center button opens the admin drawer; the security surfaces themselves
+sit under **Governance → Security center** (Posture, Control estate, Audit trail).
 
 The root route `/` redirects to `/command-center`. Login and account recovery
 routes are authentication flows, not primary navigation entries.
 
+## How the console is built
+
+The frontend is a single React/TypeScript application (Vite, React Router,
+vitest + testing-library). Understanding these layers makes every page below
+readable:
+
+**Entry and routing.** `frontend/src/App.tsx` mounts a `BrowserRouter`; every
+page is a `lazy()` import behind a `<Route>`, wrapped in a keyed `ErrorBoundary`
+so one broken page cannot take the shell down. `/login`, `/register`,
+`/reset-password` and `/invite-accept` render through `PublicEntry` (no sidebar);
+`/` and unknown paths redirect to `/command-center`, and `/techbom` redirects to
+`/live-asset-intelligence`.
+
+**The sidebar** (`components/Layout.tsx`) is the two-level tree printed below:
+five sections, thirty rows, seventy-four links. Section and group disclosures
+persist in `zelnx-nav-open`; arriving at a route inside a closed group opens that
+group, so the navigation follows the page you are on. The collapsed sidebar keeps
+the same routes and exposes labels as tooltips. **Start Scan** is shown only to
+sessions holding `superadmin`, `ciso`, `security_analyst`, `developer` or
+`scanner` — a usability guard, not authorization; the API remains authoritative.
+There are no maturity badges in the navigation; each surface states its own
+limits (see [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md)).
+
+**The page frame.** Every page is built from the same primitives
+(`components/ui.tsx`): `PageHead` (breadcrumb, title, one-line scope statement,
+right-hand slot for live counts), `Panel` (the corner-framed card that carries a
+title and a sub-caption), `Table` (dense rows), `Tabs` (ARIA tablist with arrow
+key/Home/End movement), `Drawer` (detail overlays, used heavily on inventory
+pages), `Feed`, `Code`, `Badge` (tone-coloured), `Kpi`/`Stat` headline numbers,
+`Button` and `ProgressBar`. `PageHead.sub` is deliberate: the first line an
+operator reads states the scope and the limit of what the page claims.
+
+**The visualisation kit** (`components/viz.tsx`) is hand-rolled SVG — no chart
+library. `HBars` (labeled comparisons), `StackedBar` (composition), `Donut`
+(distribution), `Sparkline` (trend), `TickStrip` (event ticks), `Meter` /
+`KpiMeter` / `GapBar` (progress and gaps), `FlowStrip` and `StepRail` (stage
+chains whose states are done/active/pending/unknown/failed), `Matrix`
+(row × column heat tables), `DeltaChip` (change), `StateCell` and `VizEmpty`
+(honest empties). Colours resolve through one `toneColor` map with aliases; an
+alias never invents a state — muted/unknown/none map to slate, never to a pass
+or a failure, and a typo renders neutral rather than invisible. Empty states are
+**drawn**, not blank: a dashed placeholder ring, ghost tracks and labelled
+absence ("not a clean estate") so an empty screen is visibly an empty reading.
+
+**Data behaviour** (`lib/api.ts`). Typed calls return `ApiResult {ok, error}`; a
+failed read renders a failure banner ("Read failed" with the cause) and **never
+prints zeros instead**. An empty result is labelled absence, never a clean
+estate. Writes go through `lib/requestFeedback.ts`: validation failures keep the
+draft, authority failures keep the draft, and an unconfirmed outcome is shown as
+unknown — the server may already have retained the write. Tenant resolution
+(`ensureActiveTenant`) adopts the first ACTIVE membership and never guesses; the
+Performance and Binary pages show a non-blocking "resolving" strip while it runs
+and re-read the moment the tenant lands. Realtime surfaces (Live stream, Live
+scanners, Runtime) stream over WebSocket/SSE with paginated polling fallbacks
+and state their gaps explicitly (a reset cursor is shown as a gap, not as
+continuous history).
+
+**State vocabulary.** `lib/stateMachines.ts` is the TypeScript projection of the
+canonical [state machine register](state-machines/README.md): eleven semantic
+state classes, one tone each, so the same state looks the same on every page
+(`unknown` renders slate — never a green zero). `/state-machines` draws the
+register itself.
+
+**Auth, language, motion.** The session and roles come from
+`GET /api/v1/auth/me`; local storage is only a first-paint hint and never
+authorizes an action. English and Arabic layouts (RTL included) share one route
+map (`frontend/src/i18n`). Motion respects `prefers-reduced-motion`. The design
+contract bans gradients, glow and chatbot-style panels across all source files
+(`intelligence/design.contract.test.ts`).
+
+**Testing.** Every page has a colocated `*.test.tsx` rendered through
+`test/render.tsx` (`renderWithProviders`) with `mockFetch`/`offlineFetch`; the
+navigation tree, copy strings and honesty wordings are pinned by tests, so the
+explanations below are backed by executable expectations, not prose.
+
 ## Primary sidebar
 
-**Reviewed 2026-11-11.** The table below matches every current sidebar placement.
-Rows with a group render as a disclosure; the `—` rows are links.
+**Reviewed 2026-11-11.** The tables below match every current sidebar placement,
+row for row. Rows with a group render as a disclosure; the `—` rows are links.
 
 ### Overview
 
@@ -42,10 +116,13 @@ Rows with a group render as a disclosure; the `—` rows are links.
 
 | Sidebar label | Group | Route | Component | Purpose |
 |---|---|---|---|---|
-| Scan | — | `/scanners` | `Scanners` | Start and monitor authorized collection jobs. |
+| Scan | Scan | `/scanners` | — | One row over the two scan surfaces. |
+| Scanners | Scan | `/scanners` | `Scanners` | Start and monitor authorized collection jobs. |
+| Collector depth | Scan | `/collector-depth` | `CollectorDepth` | How far each collector actually reaches, measured per family, protocol, platform and BOM projection. |
 | Assets | — | `/assets` | `Assets` | Browse the unified asset inventory; detail carries identity spine, facts, blast radius and the remediation tasks bound to the asset's evidence. |
 | Applications | — | `/dev-sec-ops` | `DevSecOps` | Source, container, SBOM, binary and firmware workflows. |
 | Certificates | — | `/certificates` | `Certificates` | Live TLS-scan view plus the persisted estate: fingerprint-deduped rows, where observed, honest revocation checks and ownership assignment. |
+| CryptoLog | — | `/cryptolog` | `CryptoLog` | Cryptographic event intelligence: recorded events, their evidence and their provenance — recorded observations, never verdicts. |
 | Vendors | — | `/vendor` | `Vendor` | Vendor, product and supply-chain relationships. |
 | Infrastructure | Infrastructure | `/network` | — | One row over the three infrastructure surfaces. |
 | Network | Infrastructure | `/network` | `Network` | Review network inventory and authorized network-scan results. |
@@ -56,6 +133,7 @@ Rows with a group render as a disclosure; the `—` rows are links.
 
 | Sidebar label | Group | Route | Component | Purpose |
 |---|---|---|---|---|
+| Performance | — | `/performance` | `Performance` | ZELNX Performance Intelligence: infrastructure, network, application, database and cryptographic performance — measured samples with unknown counts kept visible. |
 | BOMs | BOMs | `/cbom` | — | The six projections of one evidence graph, behind one row. |
 | CBOM | BOMs | `/cbom` | `Cbom` | Cryptographic assets, algorithms, libraries and protocols in the same shell as SBOM/NBOM/VBOM: headline cards, breakdown panels and an identity inventory, with the estate-wide counts from `/cbom/query`'s own summary. |
 | SBOM | BOMs | `/sbom` | `Sbom` | Software components and dependency edges. |
@@ -71,9 +149,15 @@ Rows with a group render as a disclosure; the `—` rows are links.
 | Algorithm catalog | Posture | `/crypto-assets` | `CryptoAssets` | Normalized cryptographic asset inventory. |
 | Findings | Posture | `/findings` | `Findings` | Policy-evaluated findings with evidence links. |
 | PQC readiness | Posture | `/pqc` | `Pqc` | Quantum-vulnerability classification and migration readiness. |
+| Binary Intelligence | Posture | `/binary-intelligence` | `Binary` | Evidence-backed cryptographic discovery from compiled artifacts — static analysis only. |
+| OS & Kernel Intelligence | Posture | `/os-kernel-intelligence` | `OSKernel` | Read-only OS/kernel cryptographic inventory; registrations are never proof of runtime use. |
+| Intelligence workbench | Posture | `/intelligence` | `Intelligence` | Roadmap models over live estate rows — evidence-linked findings, risk dimensions, PQC claim stages. |
 | Crypto agility | Posture | `/agility` | `Agility` | Deterministic replaceability and migration-planning signals. |
 | Crypto drift | Posture | `/drift` | `Drift` | Approved-baseline changes and drift events. |
-| Digital twin | — | `/digital-twin` | `DigitalTwin` | Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. |
+| Digital twin | Digital twin | `/digital-twin` | — | One row over the three twin surfaces. |
+| Replica & scenarios | Digital twin | `/digital-twin` | `DigitalTwin` | Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. |
+| Twin chain | Digital twin | `/estate-twin` | `EstateTwin` | estate → assets → relationships → crypto graph → evidence graph → history → impact → simulation, link by link. |
+| Thirteen-step walkthrough | Digital twin | `/twin-walkthrough` | `TwinWalkthrough` | One asset, thirteen investigations on one canvas. |
 | Simulation | Simulation | `/simulation` | — | Asking a question of a copy of the twin. |
 | What-if workspace | Simulation | `/simulation` | `Simulation` | Two families over the estate twin, each previewed before it runs: **scenarios** (replace / retire an algorithm, disable a protocol, upgrade or remove a component, resize a key, replace everything Shor-vulnerable) are applied to a copy and the six BOMs re-projected from it; **cascades** (asset unavailable, crypto compromise, algorithm breaks everywhere) walk a failure outward from seed assets, wave by wave, and change nothing so they carry no BOM diff. Both report the live projection id unchanged and store the answer quarantined against the evidence state it was computed from; scenarios change evidence facts and cascades travel established edges only — neither models configuration, traffic, redundancy, approvals or a deployment plan. |
 | Migration what-if | Simulation | `/what-if` | `WhatIf` | Read-only migration feasibility over the inventory; the scenarios are fixed templates. |
@@ -97,7 +181,10 @@ Rows with a group render as a disclosure; the `—` rows are links.
 | Application trace | Assurance | `/assurance-trace` | `AssuranceTrace` | Requirement trace from an application to its evidence. |
 | Accuracy sampling | Assurance | `/assurance-sampling` | `AssuranceSampling` | Sampling plan and measured accuracy. |
 | Qualification | Assurance | `/assurance-qualification` | `AssuranceQualification` | Local qualification results; site acceptance requires external evidence. |
-| Audit log | — | `/security-center` | `SecurityCenter` | Platform security posture and operational controls. |
+| Security center | Security center | `/security-center` | — | One row over the three security surfaces. |
+| Posture | Security center | `/security-center` | `SecurityCenter` | Platform security posture, threat feed, agents, audit integrity and control-plane health. |
+| Control estate | Security center | `/security-controls` | `SecurityControls` | The estate of security controls themselves: findings, health, verification and export. |
+| Audit trail | Security center | `/audit` | `Audit` | Who did what, when — the platform's hash-chained record, not a client log. |
 
 ### Administration
 
@@ -105,7 +192,7 @@ Rows with a group render as a disclosure; the `—` rows are links.
 |---|---|---|---|---|
 | System health | System health | `/system-health` | — | One row over the two platform-introspection pages. |
 | System health | System health | `/system-health` | `SystemHealth` | Health, readiness and platform service status — with independently measured worker-fleet and connector health (never derived from API liveness). |
-| State machines | System health | `/state-machines` | `StateMachines` | The canonical state machine register on screen: every state the product can be in — observed from code, never invented — with one tone per semantic class, the transitions code actually makes, the honesty invariants, and machines whose vocabulary is not yet observed listed as such instead of guessed. The same register is machine-readable (shared_models state machines module and the console's library copy, pinned byte-identical by tests). See [state machine register](state-machines/README.md) and the [developer reference](api-reference/state-machines.md). |
+| State machines | System health | `/state-machines` | `StateMachines` | The canonical state machine register on screen: every state the product can be in — observed from code, never invented — with one tone per semantic class, the transitions code actually makes, the honesty invariants, and machines whose vocabulary is not yet observed listed as such instead of guessed. See [state machine register](state-machines/README.md) and the [developer reference](api-reference/state-machines.md). |
 | Settings & org | — | `/settings` | `Settings` | Organization and application settings. |
 | Users & teams | — | `/identity` | `Identity` | Users, roles, MFA and identity administration. |
 | Integrations & API | — | `/integrations` | `Integrations` | Connectors, API and delivery integrations. |
@@ -131,106 +218,556 @@ Rows with a group render as a disclosure; the `—` rows are links.
   (`zelnx-nav-open`), and a route inside a closed group still opens that group
   on arrival — the navigation follows the page you are on.
 
+## Every page: what is on screen and how the UI works
+
+Per navigation entry, in sidebar order. Each entry names the page, what the
+operator sees, how the interactions and data behave, and the honesty rules the
+screen applies. All of these are current shipped behaviours in
+`frontend/src/pages/*.tsx`.
+
+### Overview
+
+**`/command-center` — Command center (`CommandCenter`).** The landing page:
+headline cards (estate counts, risk, coverage), then panels for platform
+records, realtime scanner state, local inventory, certificate posture, PQC
+posture, CBOM classification, telemetry, open drift and migration. The "Start
+here — run your first real scan" panel appears when nothing has been scanned
+yet. Visuals: `HBars`, `StackedBar`, `TickStrip`, `KpiMeter`, `GapBar`; empty
+readings draw `VizEmpty` placeholders and `StateCell` chips. Each panel states
+its own source and freshness — the page never implies one global snapshot.
+
+**`/live` — Live estate (`LiveEstate`).** Connection age and agent state, twin
+status, the six current BOMs (downloadable), changes today, correlated attack
+patterns, and a permanent "What this screen cannot say" panel. Visuals:
+`HBars`, `StackedBar`, `GapBar` with `VizEmpty`/`StateCell`. The age of the last
+observation is always printed, because a quiet estate and a stopped agent look
+identical without it.
+
+**`/live-stream` — Activity (`LiveStream`).** The signed event bus rendered as
+topic statistics, severity composition, rules that fired, the 13 deterministic
+attack-detection rules and the hash-chained Live CBOM. Ticks and bars
+(`TickStrip`, `HBars`, `StackedBar`) update as events stream (WebSocket/SSE
+with a polling fallback); `toneColor` badges carry severity. A cursor reset is
+shown as a **gap** in the tick strip, never as continuous history.
+
+**`/live-monitor` — Live monitor (`LiveMonitor`).** The observation record,
+estate composition, assets by domain, TechBOM layers, scan orchestrator,
+per-screen deltas (`DeltaChip`), estate events and scan history. `Sparkline`,
+`Meter`, `TickStrip` and `HBars` show movement between reads; when a stream
+stalls the page says so — a live daemon with no enabled schedule is never drawn
+as collection coverage.
+
+**`/live-scanners` — Live scanners (`LiveScanners`).** The scanner fleet, cycle
+record, live activity and a run control. Activity streams over SSE as the real
+scanners run; `Sparkline`/`TickStrip` show the run. Controls (`start`, `stop`)
+are role-gated buttons that report the server's answer — a disabled button is
+never the only refusal, the API rejects unauthorized mutations regardless.
+
+**`/launch-readiness` — Launch readiness (`LaunchReadiness`).** The external
+acceptance panel, nine operating duties over the selected estate, scoped gate
+reads and structured revision-checked actions. `StackedBar`/`GapBar`/`StateCell`
+draw each duty's state with `toneColor`; blocks stay explicit (no on-site
+validation → not marked done). Live read from the scoped gate registers.
+
+**`/operator-decisions` — Operator decisions (`OperatorDecisions`).** The
+attention → evidence → coverage → owner → independently observed fix workflow:
+register sections in the current read, coverage denominators (never a score),
+and the condition-level remediation workflow. `GapBar` renders the incomplete
+denominators with refusal wording; there is no substitute risk score on this
+page by design.
+
+### Discovery
+
+**`/scanners` — Scanners (`Scanners`).** The scan launcher: scope picker, the
+authorized jobs list and live job progress with `HBars`, `Meter`,
+`VizEmpty`/`StateCell`. Running a scan calls the orchestrator; failures render
+"Read failed"-style banners and never zeroes.
+
+**`/collector-depth` — Collector depth (`CollectorDepth`).** Five panels:
+Runtime, Network protocols (one protocol at a time), Windows, Six BOMs (one
+projection engine, six depths), and five capabilities the build does not present
+as operational. `FlowStrip` draws collector pipelines stage by stage and `Donut`
+draws per-BOM reach. Every measured number is per family/protocol/platform —
+the page never generalises one collector's reach to another.
+
+**`/assets` — Assets (`Assets`).** The asset inventory table with a detail
+`Drawer` (opened by row click) carrying identity spine, identity variants,
+per-source facts, blast radius, technology context and the remediation tasks
+bound to the asset's evidence (with preview and verify actions). Panels:
+Inventory, detail tabs; `Table`, `Badge`, `Drawer`. Reads are tenant-scoped; a
+failed read shows the failure banner instead of an empty table that looks like
+an empty estate.
+
+**`/dev-sec-ops` — Applications (`DevSecOps`).** Ten panels across three tabs:
+container image scan, Kubernetes misconfig rules, cloud posture, the SBOM
+scanner (CycloneDX 1.5 / SPDX 2.3), persisted hash-signed SBOM artifacts, SBOM
+diff between two bills of materials, NTIA validation, SBOM import with pinning,
+license compliance, and the component & advisory index. `StackedBar` draws
+severity mixes; `Code` shows raw manifests. The tabs are pure front-end
+switches over the same reads.
+
+**`/certificates` — Certificates (`Certificates`).** The certificate estate:
+fingerprint-deduped rows (subject, issuer, key algorithm/size, SANs, chain,
+validity, where observed, revocation posture), record detail in a `Drawer`, and
+trust-store inventories. Revocation states read `active` / `unknown ·
+unverified` / `error` / `revoked` — checked per record, never "Active" from
+absence. Certificate-revocation checks are stated as unverified when they are.
+
+**`/cryptolog` — CryptoLog (`CryptoLog`).** The event intelligence shell: event
+explorer with filters, event detail (`Evidence` and `Provenance` sub-panels),
+and six in-page views switched by the view control (sibling page modules, not
+separate routes): overview (event volume, integrity, collection health with the
+"collection gap, not a healthy estate" wording), timeline (hash-chain
+checkpoints and corrections), alerts (threat investigation + alert detail),
+integrity (checkpoints, verification, Merkle proof), retention (policy + plan)
+and reports (export). Events are labelled **recorded observations, never verdicts**; empty
+explorers render "0 events loaded" as an empty state with that honesty line —
+never a clean-estate conclusion. Correction APIs exist per event (reason
+required, auth-checked).
+
+**`/vendor` — Vendors (`Vendor`).** The hardware vendor registry: vendor
+table, per-vendor device drill-down with verdict mix and a PQC roadmap watch.
+`Table` + `Badge` verdict chips; rows come from the canonical hardware catalog,
+and vendors without a catalog presence say so instead of showing an empty
+verdict bar.
+
+**`/network` — Network (`Network`).** Ten panels: structured network inventory
+(import of declared destinations, 24/7 observation worker, approved network
+scope with explicit authorization, emergency stop), service discovery ("port ≠
+protocol"), network transport crypto risk & PQC readiness, evidence integrity
+(chain, anchor, single writer), message-layer (Kafka/MQ) crypto, and
+cross-layer correlation (static + runtime + network). `StackedBar`/`GapBar`
+draw exposure; the observation-safety panel carries the emergency-stop control
+and the page never infers crypto from a port number.
+
+**`/cloud` — Cloud (`Cloud`).** Cloud inventory and posture for the connected
+AWS/Azure/GCP accounts: resource tables, read-only posture states, L1 access
+certainty vs. L2 check outcomes kept visibly distinct in the posture charts
+(`Donut`, `HBars`, `GapBar`, `StateCell`). A failed source read renders unknown,
+never a green zero.
+
+**`/hardware` — Hardware (`Hardware`).** Root of trust, discovered devices,
+firmware vs. baseline, hardware timeline, the hardware security catalog with
+per-device detail `Drawer`, capabilities and evidence (including a hardware
+scanner upload panel). HSM/TPM/HSM-fleet state is read-only inventory; "no TPM"
+is never presented as "no hardware trust" — the page says what was observed.
+
+### Intelligence
+
+**`/performance` — Performance (`Performance`).** ZELNX Performance
+Intelligence: Overview, Infrastructure, Storage, Network, Application,
+Database, Cryptographic, Cloud/Container and Capacity Planning panels, each
+rendered through the page's own tile gauges (`TileView`) and summary tables,
+plus alerts, baselines, capacity projections, a benchmark lab, an investigation
+panel and collector health. Reads are tenant-scoped; while the
+tenant resolves a non-blocking "Resolving this session's tenant" strip shows
+above the content. Failed or unknown readings render **"unknown, never zero"**
+rows and never print a numeric zero; an estimated exhaustion is labelled a
+forecast, not a fact.
+
+**`/cbom` — CBOM (`Cbom`).** Cryptographic assets, algorithms, libraries and
+protocols in the shared BOM shell (headline cards, breakdown panels, identity
+inventory) with the estate-wide counts from `/cbom/query`'s own summary in the
+page head. Empty is labelled absence, never a clean estate.
+
+**`/sbom` — SBOM (`Sbom`).** Software components and dependency edges: top
+suppliers, BOM coverage and integrity panels with `HBars`/`StackedBar`/`Donut`.
+The pinned copy strings say the model classifies from evidence; missing
+coverage is a gap, not health.
+
+**`/hbom` — HBOM (`Hbom`).** Live hardware by type, estate composition,
+integrity posture — plus the independent unified estate HBOM snapshots,
+content-addressed pins and pin-to-pin diffs (`apiHbomSnapshotDiff`). Snapshots
+are listed with their own hashes; a diff over unknown states stays unknown.
+
+**`/nbom` — NBOM (`Nbom`).** Network surface by kind, blast-radius signal and
+observation health. Static binary capability candidates are kept separate from
+live network observations — the page never merges the two evidence classes.
+
+**`/vbom` — VBOM (`Vbom`).** A supplier projection from retained evidence and
+declarations: critical vendors, supply coverage and integrity panels. The page
+states it is a projection, not independent supplier validation.
+
+**`/live-asset-intelligence` — Technology BOM (`LiveAssetIntelligence`).** Ten
+panels (three tabs): Pre-Deploy admission gate, VEX prioritisation, xBOM
+correlation, runtime verification, supervisor action plan, HNDL, HSM fleet
+readiness, mainframe ingest (z/OS), z/OS deep analysis and regulator exports.
+`Stat`/`Kpi`/`Feed`/`Bar`/`Ring`/`Table` in the densest layout in the console.
+Materialize/compare/export actions are gated writes reported through the
+request-feedback wording.
+
+**`/dependency-graph` — Cascade (`DependencyGraph`).** Directional blast radius:
+root picker, direction toggle, edge list with provenance links to the expanded
+first-party graph service and a lineage panel stating that edges come from
+observed relations and imports only. Node rows are clickable and open the asset
+detail view.
+
+**`/graph` — Graph explorer (`Graph`).** The relationship explorer: force
+layout of nodes/edges, edge-provenance panel and impact summary. Every drawn
+edge is backed by evidence; unproven relations are not drawn as edges.
+
+**`/crypto` — Cryptography (`Crypto`).** Catalog composition, priority
+algorithms, network-service posture, observed certificates and live crypto
+libraries observed on runtime hosts. `HBars`/`GapBar` draw catalog vs. observed
+mixes; when no live inventory exists the library panel says so ("No live
+inventory: run a runtime scan" — an unrun scan is not an empty host, and a scan
+reporting zero libraries is not proof the host loads none). The normalized
+crypto view has 114 pinned normalization tests behind it.
+
+**`/crypto-assets` — Algorithm catalog (`CryptoAssets`).** The algorithm
+explorer table; clicking a row opens the verdict `Drawer` (quantum + lifecycle
+verdicts) and a usage/evidence panel. Badges state verdicts per algorithm; an
+algorithm with no usage evidence shows none — never implied use.
+
+**`/findings` — Findings (`Findings`).** Algorithm distribution, compliance
+split and confidence panels; the filter bar; the evidence findings table and the
+live runtime findings table side by side (each labelled with its evidence
+class); "Why it matters" drawer; evidence chain (`Code`), normalized crypto and
+policy evaluation panels. Findings rows carry content-hash + chain-hash
+provenance and open the detail drawer with verify actions.
+
+**`/pqc` — PQC readiness (`Pqc`).** Instances per migration phase, transition
+momentum and "what the estate model does not classify" panels (`Ring`, `Bar`,
+`HBars`). Phase and momentum are drawn only over classified instances — what
+the estate model cannot classify stays unclassified rather than guessed, and a
+library supporting ML-KEM is never drawn as PQC readiness (the full claim ladder
+is on the Intelligence workbench, where the real stage names are shown).
+
+**`/binary-intelligence` — Binary Intelligence (`Binary`).** Evidence-backed
+cryptographic discovery from compiled artifacts — **static analysis only**:
+binary scan jobs, per-scan detail, CBOM projection and the at-rest/batch
+panels. Results carry artifact hashes and evidence IDs; an empty scan is an
+empty result, not a clean estate.
+
+**`/os-kernel-intelligence` — OS & Kernel Intelligence (`OSKernel`).** Observed
+hosts, estate overview, Kernel Crypto API registrations, loaded modules,
+config-flag states, disk-encryption metadata, hardware trust facts, public
+certificate attributes and Tier-2 runtime sessions (metadata events only).
+Failed reads render a "Read failed" banner instead of an empty host list;
+registrations are never presented as runtime use (the page repeats it in its
+captions), and Tier-2 runtime rows carry the metadata-only collection boundary.
+
+**`/intelligence` — Intelligence workbench (`Intelligence`).** The roadmap
+models over live estate rows: evidence-linked findings, five risk dimensions,
+PQC claim stages, snapshot diffs and the model-catalog tabs. Copy strings pin
+the honesty lines ("A library supporting ML-KEM is not PQC readiness",
+"UNKNOWN — not zero", "not computed (denominator incomplete)", "Absence of rows
+is not absence of risk"). The `BACKEND OFFLINE` banner appears instead of
+fabricated model output when reads fail.
+
+**`/agility` — Crypto agility (`Agility`).** Deterministic remediation signals
+and scorecards: replaceability, migration readiness, dependencies and the
+remediation task surfaces (`HBars`, `GapBar`, `StateCell`). Reach is computed
+from evidence coverage, not assumed.
+
+**`/drift` — Crypto drift (`Drift`).** Drift by severity, by family and
+disposition progress (`Ring`, `Bar`, `HBars`): approved-baseline changes and
+drift events with their sources. A missing baseline is shown as a gap — never
+"no drift".
+
+**`/digital-twin` — Replica & scenarios (`DigitalTwin`).** Twin overview,
+fidelity, asset journal (time-travel), twin ↔ evidence reconciliation, the
+scenario launcher and scenario results. Scenario models are heuristic
+projections over the twin copy — never vendor simulations — and every result
+labels its projection id and evidence state.
+
+**`/estate-twin` — Twin chain (`EstateTwin`).** The chain, link by link:
+estate → assets → relationships → crypto graph → evidence graph → history →
+impact → simulation, each link's status vocabulary and a "what this is" panel.
+A broken read shows "No chain read" — the chain is never drawn as complete when
+a link failed.
+
+**`/twin-walkthrough` — Thirteen-step walkthrough (`TwinWalkthrough`).** One
+asset, thirteen investigations on one canvas: the thirteen steps with per-step
+panels reusing the same asset reads as `/assets`, with `HBars`/`StackedBar`
+summaries. The steps are navigation, not a new evidence class.
+
+**`/simulation` — What-if workspace (`Simulation`).** The scenario/cascade
+workspace: the question picker (with "start from a question this estate can
+already be asked"), the step flow (choose → build → run → result), run history
+and the permanent "What this workspace cannot tell you" panel. Scenarios copy
+the twin and re-project the six BOMs; cascades walk established edges and
+change nothing. Results report the live projection id unchanged; a failed
+simulation says "The simulation did not run" — and "no impact" is never
+rendered as zero impact ("this is not 'no impact'").
+
+**`/what-if` — Migration what-if (`WhatIf`).** Read-only migration feasibility:
+scenario picker, feasibility checks, protocol compatibility and a migration
+plan with `StepRail`/`Donut`. The scenarios are fixed templates and the page
+says so; nothing is mutated.
+
+**`/reports` — Reports (`Reports`).** Compliance frameworks, report schedules,
+the PoC exit report, snapshot pinning ("Pin a scan's report now") and generated
+reports. Schedule/pin actions are writes with the request-feedback semantics;
+generated artifacts carry their evidence hashes.
+
+### Governance
+
+**`/banking-regulatory` — Banking & SWIFT (`BankingRegulatory`).** The banking,
+payment and SWIFT regulatory mapping: framework tables, control mappings and
+evidence links (`Bar`, `Ring`, `Table`). Mappings are repository records, not
+regulator assurances, and the page says which is which.
+
+**`/security-policy` — Policies (`SecurityPolicy`).** Scanning policy,
+rate-limiting (four layers) and privacy policy panels with read/edit controls.
+Policy changes are writes (auth-checked, audited) reported with the
+draft/unknown/outcome wording.
+
+**`/compliance` — Compliance (`Compliance`).** Framework posture, evidence
+pinning, retention and sign-off: requirement tables with per-requirement
+evidence, pin/sign-off actions and the `Bar`/`Ring` posture visuals. Sign-off
+records who accepted what and when; the page never marks an external
+assurance done from inside the repo.
+
+**`/evidence` — Evidence (`Evidence`).** The evidence chain: hashes, manifests,
+scan verification with an "X of Y verified" coverage line (an incomplete
+denominator stays visible), per-record verification buttons, the filterable
+audit ledger and export actions. Verification results are per record — a passed
+read never inflates the coverage line.
+
+**`/remediation` — Tasks (`Remediation`).** The remediation task list with
+accept/complete/verify actions and machine verification against rescan
+evidence. Verification states are `StateCell` chips; an unverified fix stays
+open.
+
+**`/priorities` — Priorities (`Priorities`).** The ranked remediation queue
+with ranking-input panels that state their coverage honestly ("Ranking inputs —
+honest coverage"); task creation is a write. The ranking is deterministic and
+explained per row, not a black-box score.
+
+**`/migration` — Migration (`Migration`).** The migration workflow: inventory,
+the Mosca risk model, replacement workstreams, plan summary and system
+migration order. The velocity forecast states its model is simple and is drawn
+as a forecast, never as a fact.
+
+**`/assurance-records` — Records (`AssuranceRecords`).** Independent-report and
+operational-duty records with revision-checked structured actions. Blocks are
+explicit (no on-site validation → not marked done); live read from the scoped
+gate registers.
+
+**`/assurance-coverage` — Coverage (`AssuranceCoverage`).** Registered coverage
+of the assurance programme: denominators, not a score; `GapBar` draws the
+incomplete ones with refusal wording.
+
+**`/assurance-trace` — Application trace (`AssuranceTrace`).** Requirement
+trace from an application to its evidence: the trace table and per-hop evidence
+links; a broken hop is shown as broken, never skipped.
+
+**`/assurance-sampling` — Accuracy sampling (`AssuranceSampling`).** The
+sampling plan and measured accuracy: sample table, result panels and the
+coverage line. Accuracy is reported only over what was sampled.
+
+**`/assurance-qualification` — Qualification (`AssuranceQualification`).**
+Local qualification results with explicit external gates — site acceptance
+requires external evidence and is never marked done from local runs.
+
+**`/security-center` — Posture (`SecurityCenter`).** Security posture over
+time, the live threat feed and event stream, agents, plugins, audit & evidence
+integrity and control-plane health (`Feed`, `Table`, `Code`, `Bar`/`Ring`).
+Each panel names its source; plugin/agent inventories list what is connected,
+not what is possible.
+
+**`/security-controls` — Control estate (`SecurityControls`).** The security
+controls themselves: findings, health, verification and export URL controls.
+Verify/export actions report the server's answer through request feedback.
+
+**`/audit` — Audit trail (`Audit`).** The platform's hash-chained audit record:
+the filterable ledger, verification and export — who did what, when.
+
+### Administration
+
+**`/system-health` — System health (`SystemHealth`).** Health, readiness and
+platform service status with independently measured worker-fleet and connector
+health (`Badge` states) — never derived from API liveness. A failed probe shows
+unknown.
+
+**`/state-machines` — State machines (`StateMachines`).** The state vocabulary
+on screen: how to read the register, the state classes with their tones
+(`toneColor`), the transitions code actually makes and the honesty invariants
+("unknown is never zero", "Capability is never usage", "NEVER means used").
+Machines whose vocabulary is not yet observed render "Vocabulary not yet
+observed" in slate instead of a guessed state.
+
+**`/settings` — Settings & org (`Settings`).** Organization sector, identity &
+SSO, safe-scan policy, notification routing and platform scope, each with
+read/edit controls. Changes are audited writes; a failure keeps the draft and
+says so.
+
+**`/identity` — Users & teams (`Identity`).** The user/role tables and the
+invite/role-action surfaces, plus account-level operations: MFA
+enrol/disable, SSO status and session details. Mutations are explicit buttons
+with confirmation and server-reported outcomes.
+
+**`/integrations` — Integrations & API (`Integrations`).** The credential
+vault, connected systems and the outbound delivery log for real signed HTTP
+fan-out (SIEM/SOC, ticketing, CMDB). Every attempt is audited and listed —
+including failures — and credential operations (create/rotate/lease/release)
+report through request feedback.
+
+### Routed pages outside the sidebar
+
+Deep-linked surfaces exist as their own routes (see the table below). What each
+presents, briefly:
+
+- `/scope` — the module→deterministic action map, the deterministic-vs-heuristic
+  split, and the `[!]` capability boundaries (bank validation, Ghidra,
+  HSM/KMS/PQC performance, Windows/macOS live collection, OT/banking vendor
+  telemetry, universal discovery, real exporter wiring).
+- `/crypto-assurance` — TLS/cipher enumeration, CT monitoring, expiry alerts &
+  SLA, HSM/KMS/PKCS#11 residence, trust-store inventory, hybrid-PQC downgrade
+  detector and weak-primitive code rules, in `Tabs` with `Code` output.
+- `/crypto-changes` — the change stream that feeds drift, CBOM bumps and alerts.
+- `/libraries` — the crypto library center: library · version · source package ·
+  processes · verdict from the live runtime scanner.
+- `/runtime` — runtime hosts: process-level crypto observed by the runtime
+  agent (TLS libraries, versions), with the deploy panel and the runtime scope —
+  "what may be instrumented" — controls and history.
+- `/protocols` — the network protocols & services catalog: port, transport,
+  category, encryption, exposure and risk verdict per named service.
+- `/catalog` — the three canonical catalogs on one screen: algorithms, network
+  services and hardware devices, each with its own verdict mix.
+- `/pqc-map` — the PQC migration map: current state → vulnerable inventory by
+  family → candidate PQC → migration waves.
+- `/live-environment` — the unified live graph across network, cloud, vendor,
+  hardware, cryptography and applications: scan orchestrator, environment map,
+  live events, dependency topology and run history.
+- `/cmdb` — CMDB-style live activity, asset types, unified risk (with "why this
+  score" inputs spelled out) and PQC posture.
+- `/governance` — ownership, exceptions, approval requests and the audit trail
+  in four panels.
+- `/trust` — key inventory & rotation, HSM ceremonies, workload SPIFFE/SVID and
+  OT safe-scan policy with the emergency-stop control.
+- `/platform-p2` — plugin marketplace, anomaly flags, governance approvals,
+  policy exceptions, the tamper-evident data-lake export chain, machine API
+  keys, remediation SLA, OT safety gates, vault leases and automation runs.
+- `/automation` — the automation workspace: the action safety ladder, rule
+  builder, active rules, ITSM/SIEM delivery and built-in playbooks.
+- `/alerts` — the findings alert feed ("All findings") with per-finding detail.
+- `/notifications` — in-app notification feed, event→channel routing and outward
+  delivery, including the durable delivery receipts view (`NotificationReceipts`
+  renders inside this page).
+- `/telecom` — the telecom realtime scanner (5G SBA/EPC/IMS/signalling/NDS-IP
+  classification), scan panel, event feed, PQC journey, roadmap, roaming
+  partners and estate registry.
+- `/organization` — org → region → BU → environment → assets → crypto, with
+  region comparison.
+- `/supervision` — the read-only supervisory portal: group posture, DORA
+  register, migration roadmap (requires `supervision.read`).
+- `/tenancy` — the SaaS control plane: switch organization, plan usage, members
+  and invites.
+- `/sectors` — the multi-sector profiles: which assets matter per sector and
+  which policy packs/frameworks apply, with the active-sector switch.
+- `/resilience` — backup policy/runs and the air-gap build/import tools
+  (authenticated flow with session-scoped import tokens).
+- `/security` — RBAC matrix, tenant isolation (ABAC), audit chain integrity,
+  safe-scan policy and baseline HTTP controls.
+- `/admin` — the live security enforcement panel, RBAC matrix, your own grants
+  and tenant administration.
+- `/security-intelligence` — scan profiles, universal asset identity,
+  verification & freshness, finding dedup/risk chain and scan triggers.
+- `/accuracy` — accuracy sampling truth: per-dataset breakdown, how accuracy is
+  verified and the honesty constraints, with explicit zero-denominator handling.
+- `/timeline` — one global timeline across the platform, for audits and
+  incidents.
+- `/vendor-due-diligence` — ten-section operational vendor profiles with
+  explicit unknowns, evidence provenance and immutable revisions.
+- `/onboarding` — the first-run organization/scope/connection wizard.
+- `/risk` — the weighted risk model (0–100, explained per factor, versioned),
+  per-system explanations and open drift/findings.
+- `/executive` — the board view: overall posture, priority queue and coverage
+  status, derived only from stored scan evidence; no targets or illustrative
+  figures.
+- `/search-results` — the global search screen with scope boundaries spelled
+  out (reached from the header search).
+- `/role-dashboard` — the persona dashboard for the signed-in role.
+- `/login`, `/register`, `/reset-password`, `/invite-accept` — authentication
+  flows rendered through `PublicEntry`, not sidebar entries.
+
 ## Routed pages reached by deep link
 
-These actual page routes are not current sidebar placements. Some were formerly
-deep links and now have sidebar entries; use the primary table rather than an old
-menu screenshot. Listed routes are not an assertion of production-profile enablement.
+These pages are routed but are not primary sidebar rows. They are reached from
+deep links, search, report templates or other workspaces. The root `/` and
+unknown paths redirect to `/command-center`; `/techbom` redirects to
+`/live-asset-intelligence`.
 
-| Route | Component |
+| Route | Component | Why it is outside the sidebar |
+|---|---|---|
+| `/scope` | `Scope` | Deterministic action map, the deterministic-vs-heuristic split and the `[!]` capability boundaries. |
+| `/crypto-assurance` | `CryptoAssurance` | Deep-link workbench for TLS, certificate-transparency, expiry, HSM/KMS and weak-primitive checks. |
+| `/crypto-changes` | `CryptoChanges` | The change stream for crypto-relevant deltas. |
+| `/libraries` | `Libraries` | The live runtime scanner's library inventory. |
+| `/runtime` | `Runtime` | Runtime-agent observations and instrumentation scope controls. |
+| `/protocols` | `Protocols` | The canonical network-service registry with verdicts. |
+| `/catalog` | `Catalog` | The combined canonical catalogs (algorithms, network services, hardware devices). |
+| `/pqc-map` | `PqcMap` | The migration-map projection over the PQC posture. |
+| `/live-environment` | `LiveEnvironment` | The cross-domain live environment map and orchestrator. |
+| `/cmdb` | `Cmdb` | CMDB-style inventory, unified risk with explained factors and PQC posture. |
+| `/governance` | `Governance` | Ownership, approvals, exceptions and audit trail. |
+| `/trust` | `Trust` | Key inventory, rotation, HSM ceremonies, SPIFFE/SVID and OT policy. |
+| `/platform-p2` | `PlatformP2` | Plugin marketplace, anomaly flags, governance, lake export, machine API keys, SLA, OT gates, vault leases and automation. |
+| `/automation` | `Automation` | Automation rules with the action safety ladder and ITSM/SIEM delivery. |
+| `/alerts` | `Alerts` | The findings alert feed. |
+| `/notifications` | `Notifications` | Notification feed, routing and outward delivery — including the durable delivery receipts (`NotificationReceipts` renders inside this page). |
+| `/telecom` | `Telecom` | Carrier-realtime scanner, event feed, PQC journey, roadmap, roaming and estate registry. |
+| `/organization` | `Organization` | Organization → region → BU → environment → assets → crypto. |
+| `/supervision` | `Supervision` | Read-only supervisory portal with role gate and declared limits. |
+| `/tenancy` | `Tenancy` | Organization switcher, plan usage and membership. |
+| `/sectors` | `Sectors` | Sector profiles and the active-sector switch. |
+| `/resilience` | `Resilience` | Backup/attestation operations and air-gap bundles. |
+| `/security` | `Security` | RBAC, tenant isolation, audit chain, safe-scan policy and baseline HTTP controls. |
+| `/admin` | `Admin` | Live security enforcement, RBAC matrix, your grants and tenants. |
+| `/security-intelligence` | `SecurityIntelligence` | Scan profiles, identity, verification, dedup and scan triggers. |
+| `/accuracy` | `Accuracy` | Accuracy truth tables with zero-denominator handling. |
+| `/timeline` | `Timeline` | The global timeline across the platform. |
+| `/vendor-due-diligence` | `VendorDueDiligence` | Operational vendor profiles with immutable revisions. |
+| `/onboarding` | `Onboarding` | The first-run organization/scope/connection wizard. |
+| `/risk` | `Risk` | Weighted risk model, per-system explanations and open drift. |
+| `/executive` | `Executive` | Board-level posture derived only from stored evidence. |
+| `/search-results` | `SearchResults` | Global search with explicit boundaries (from the header search). |
+| `/role-dashboard` | `RoleDashboard` | Persona dashboard for the signed-in role. |
+| `/login` | `PublicEntry` | Sign-in. |
+| `/register` | `PublicEntry` | Account registration. |
+| `/reset-password` | `PublicEntry` | Password recovery. |
+| `/invite-accept` | `PublicEntry` | Invitation acceptance. |
+
+## Feature ownership
+
+| User workflow | Primary module or workspace |
 |---|---|
-| `/accuracy` | `Accuracy` |
-| `/admin` | `Admin` |
-| `/alerts` | `Alerts` |
-| `/automation` | `Automation` |
-| `/catalog` | `Catalog` |
-| `/cmdb` | `Cmdb` |
-| `/crypto-assurance` | `CryptoAssurance` |
-| `/crypto-changes` | `CryptoChanges` |
-| `/executive` | `Executive` |
-| `/governance` | `Governance` |
-| `/libraries` | `Libraries` |
-| `/live-environment` | `LiveEnvironment` |
-| `/notifications` | `Notifications` |
-| `/onboarding` | `Onboarding` |
-| `/organization` | `Organization` |
-| `/platform-p2` | `PlatformP2` |
-| `/pqc-map` | `PqcMap` |
-| `/protocols` | `Protocols` |
-| `/resilience` | `Resilience` |
-| `/risk` | `Risk` |
-| `/role-dashboard` | `RoleDashboard` |
-| `/runtime` | `Runtime` |
-| `/scope` | `Scope` |
-| `/search-results` | `SearchResults` |
-| `/sectors` | `Sectors` |
-| `/security` | `Security` |
-| `/security-intelligence` | `SecurityIntelligence` |
-| `/supervision` | `Supervision` |
-| `/telecom` | `Telecom` |
-| `/tenancy` | `Tenancy` |
-| `/timeline` | `Timeline` |
-| `/trust` | `Trust` |
-| `/vendor-due-diligence` | `VendorDueDiligence` |
+| See every discovered crypto asset | Cryptography |
+| Find weak or vulnerable cryptography | Risk, Findings |
+| Prepare quantum-safe migration | PQC readiness, Migration |
+| Understand key and certificate lifecycle | Certificates, Trust & key operations |
+| Measure cryptographic performance | Performance |
+| Investigate machine-level crypto behavior | OS & Kernel Intelligence, Runtime |
+| Produce audit or regulator evidence | Evidence, Reports |
+| Track remediation ownership | Remediation, Priorities |
+| Study binary and SDK cryptography | Binary Intelligence |
+| Work with operational technology | Trust & key operations (OT policy), hardware telemetry |
+| Work the banking estates | Banking & SWIFT (Governance), payment keys & ceremonies (Trust), HSM fleet / HNDL / mainframe (Technology BOM) |
+| Understand the live environment | Live estate, Live environment |
+| Follow live security changes | Live crypto changes, Live stream |
+| Run realtime investigations | Realtime scanners, Live monitor, CryptoLog |
+| Plan and govern remediation | Governance |
+| Configure secure operations | Scope, Security policy, Tenancy |
+| Apply sector policy packs | Multi-sector profiles |
 
-Authentication/entry routes are `/login`, `/register`, `/reset-password` and
-`/invite-accept`; self-serve registration is not enabled merely by a route existing.
-The root `/` and unknown authenticated paths redirect to `/command-center`.
-`/audit` redirects to `/security-center`; `/techbom` redirects to
-`/live-asset-intelligence`. The backend still controls authorization and availability.
+## Binary artifact scanning workflow
 
-**Launch readiness** and **Operator decisions** remain **Preview**. Launch records
-track independent reports/retests, nine-duty ownership/exercises and a bounded
-six-BOM payments pilot; no page manufactures an assessor, SLA or customer acceptance.
-See [current implementation status](CURRENT-IMPLEMENTATION-STATUS.md).
+Developer-facing `/dev-sec-ops` exposes container, Kubernetes, cloud, SBOM,
+license and component workflows. Artifact ingestion is routed through the
+signed `/api/v1/binary/*` upload, scan-job and CBOM surfaces, which accept
+`sha256`, `sha1` and `md5` digests and return canonical
+`evidence_class: static`. The completed binary workflow and its boundaries are
+recorded in [PRODUCT-CAPABILITIES-END-TO-END.md](PRODUCT-CAPABILITIES-END-TO-END.md);
+absent live dynamic analysis and Ghidra, the static pipeline is bounded and
+stated.
 
-## Feature ownership by navigation area
+## Related developer documentation
 
-| Area | Main evidence and outputs |
-|---|---|
-| Overview | Live events, scan status, summary metrics and the current Technology BOM state. |
-| Discovery | Authorized source, dependency, container, binary, firmware, network, cloud, hardware, certificate and vendor observations. |
-| Intelligence | SBOM/CBOM/HBOM/NBOM/VBOM correlations, vulnerability BOM findings, graph relationships, PQC and agility analysis, and simulation: a scenario previewed against the twin's own selectors and run on a copy with the six BOMs re-projected, or a failure cascaded outward from seed assets wave by wave; both stored quarantined. |
-| Governance | Deterministic policy, compliance mappings, approvals, audit history, assurance records, remediation and evidence verification. |
-| Administration | Health, the platform's own state vocabulary (the state machine register), organization, identity, security posture, integrations and API access. |
-| (folded into Intelligence) | Reports, signed/exportable artifacts and both what-if surfaces now sit under Intelligence — Simulation (the workspace and the older migration what-if) and Reports; the separate Output section existed only to hold three links. |
-
-### Binary application workflow
-
-The **Applications** page is the console entry point for the binary inventory
-pipeline. One bounded binary or firmware scan can materialize:
-
-- **SBOM:** binaries, packages, libraries, versions, hashes, dependency edges,
-  nested provenance and package/signing metadata;
-- **CBOM:** algorithms, cryptographic libraries, protocols, key/certificate
-  metadata, evidence level, confidence and PQC/migration status;
-- **HBOM:** architecture, machine type, firmware/container identity, device-tree
-  and image/bootloader context, with explicit unknown fields;
-- **NBOM:** static network capability/listener candidates with `observed: false`
-  until a separately authorized network probe corroborates them;
-- **VBOM:** vendor, product, provider, package, linked-library and signing
-  relationships;
-- **Vulnerability BOM:** normalized binary findings, advisory-feed matches,
-  malformed/truncated/refused states, hardening failures and weak/deprecated
-  algorithm findings; and
-- **Technology BOM:** a correlated snapshot with stable references, provenance,
-  fingerprint, scan metadata and layer diff support.
-
-Binary evidence is bounded and metadata-only. Imported socket/TLS names do not
-prove a live endpoint, package signatures are not trusted merely because a
-signature artifact is present, and a clean or empty view does not prove that no
-unobserved estate exists.
-
-## Related implementation documentation
-
-- [Product overview](product/README.md)
-- [Product features](product/02-features.md)
-- [Product architecture](product/03-architecture.md)
-- [Binary and firmware scanning](user-guide/binary-firmware-scanning.md)
-- [SBOM scanner architecture](architecture/sbom-scanner-architecture.md)
-- [Capability maturity](CAPABILITY-MATURITY.md)
-- [State machine register](state-machines/README.md) · [developer reference](api-reference/state-machines.md)
-- [Vendor and network inventory](user-guide/vendor-network-inventory.md)
-- [REST API reference](api-reference/rest-api.md)
-
-Back to [the end-to-end product capability map](PRODUCT-CAPABILITIES-END-TO-END.md).
+- [State machine register](state-machines/README.md) — the canonical state
+  vocabulary every page renders through `stateTone()`.
+- [API reference](api-reference/rest-api.md) — how each page's reads and writes
+  map to the platform's typed operations.
+- [PLATFORM-STATUS.md](PLATFORM-STATUS.md) — what the whole platform supports
+  today, measured from source.
