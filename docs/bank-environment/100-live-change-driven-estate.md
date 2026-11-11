@@ -3,7 +3,7 @@
 Status: **the live slice is built** on `arena/bb4b80dd-cryproscan`: intake, twin, BOM
 downloads, patterns with collector corroboration, the bank-side agent, and manual retention.
 Companions: [`93-estate-evidence-graph-and-six-bom-projections.md`](93-estate-evidence-graph-and-six-bom-projections.md),
-[`94-digital-twin.md`](94-digital-twin.md), [`97-operator-cli.md`](97-operator-cli.md),
+[`94-cryptoscan-digital-twin.md`](94-cryptoscan-digital-twin.md), [`97-operator-cli.md`](97-operator-cli.md),
 [`98-cli-architecture.md`](98-cli-architecture.md).
 
 > **The direction, in one sentence.** CryptoScan observes the authorised bank estate

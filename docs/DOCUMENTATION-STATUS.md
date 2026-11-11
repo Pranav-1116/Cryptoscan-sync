@@ -5,7 +5,7 @@
 > historical; no generated readiness verdict or external acceptance is promoted.
 
 
-**Review date:** 2026-10-22
+**Review date:** 2026-11-11
 **Repository:** CryptoScan
 **Purpose:** identify which documentation is authoritative, which material is historical, and which product areas still require evidence or deeper guides.
 
@@ -15,16 +15,18 @@ every documented capability is generally available.
 
 ## 1. Repository-wide inventory
 
-The `docs/` tree currently contains **455 files**, including **385 Markdown
-files**, plus generated diagrams, JSON/CSV evidence, templates, and scoped
-qualification artifacts. The files cover product behavior, architecture, user
-workflows, deployment, security, operations, company diligence, commercial
-planning, and historical evidence.
+The `docs/` tree currently contains **1,076 files**, including **655 Markdown
+files** (working-tree actuals, including the untracked user-local
+`readiness-evidence/` store), plus generated diagrams, JSON/CSV evidence,
+templates, and scoped qualification artifacts. The files cover product behavior,
+architecture, user workflows, deployment, security, operations, company
+diligence, commercial planning, and historical evidence.
 
-Counts are a documentation snapshot. At this refresh there are **490 Markdown
-files repository-wide**, including 385 under `docs/`. The all-repository inventory
-uses tracked `*.md` plus this change’s new guides; the `docs/` total counts actual
-files. Regenerate these counts rather than copying them into product claims.
+Counts are a documentation snapshot. At this refresh the repository carries **701
+tracked Markdown files**, **588 of them under `docs/`**; the `docs/` working-tree
+total counts actual files and includes the untracked evidence store, so the two
+numbers answer different questions. Regenerate these counts rather than copying
+them into product claims.
 
 ## 2. Source-of-truth order
 
@@ -36,24 +38,28 @@ When two documents disagree, use this order:
 3. **`frontend/src/components/Layout.tsx` and `frontend/src/App.tsx`**, with
    `docs/NAVIGATION-FEATURE-REFERENCE.md` updated in the same change, for
    navigation and route coverage.
-4. **`docs/api-reference/rest-api.md`** for the generated API snapshot. Its
+4. **`shared_models/state_machines.json`** (canonical, mirrored byte-identical to
+   `frontend/src/lib/stateMachines.json`) for every state vocabulary, transition
+   and honesty invariant — see `docs/state-machines/README.md` and
+   `docs/api-reference/state-machines.md`.
+5. **`docs/api-reference/rest-api.md`** for the generated API snapshot. Its
    header contains the generation date and count; it is not a promise that an
    old snapshot contains later endpoints.
-5. **Root `PRODUCTION-READINESS.md` and
+6. **Root `PRODUCTION-READINESS.md` and
    `docs/readiness-evidence/bank-readiness.{json,md}`** for the current
    evidence gate.
-6. **`docs/PRODUCT-CAPABILITIES-END-TO-END.md`, product manuals, and
+7. **`docs/PRODUCT-CAPABILITIES-END-TO-END.md`, product manuals, and
    `docs/PLATFORM-STATUS.md`** for explanatory context. Historical updates in
    those files must retain their original date and commit context.
-7. **Market, pricing, roadmap, pilot, company, and policy documents** for
+8. **Market, pricing, roadmap, pilot, company, and policy documents** for
    planning or templates. They must not be read as proof of revenue, valuation,
    certification, customer count, market share, or production qualification.
 
-The current API reference was generated **in-process on 2026-10-22** and reports
-**917 paths / 1,008 operations** across **105 tagged groups**. No application server
-or deployment was started for schema generation. The current maturity
-snapshot reports **33 GA, 32 Beta, and 12 Preview surfaces** (77 classified
-console surfaces). The dates and scope matter: do not merge historical counts
+The current API reference was generated **in-process on 2026-11-11** and reports
+**1,319 paths / 1,445 operations** across **122 tagged groups**. No application
+server or deployment was started for schema generation. The current maturity
+snapshot reports **98 GA surfaces (0 Beta, 0 Preview)** — 98 classified console
+surfaces. The dates and scope matter: do not merge historical counts
 with the current snapshot.
 
 ## 3. Documentation family map
@@ -67,7 +73,8 @@ with the current snapshot.
 | Vendor/network evidence | [user-guide/vendor-network-inventory.md](user-guide/vendor-network-inventory.md) | Versioned vendor profiles, network inventory sections, endpoint lifecycle, provenance, tenant isolation and no-secret rules |
 | Administration | [admin-guide/](admin-guide/) | Installation, production, air-gap, hardening, policy, scanners, backup/restore, integrations and system configuration |
 | Architecture and decisions | [architecture/](architecture/), [decisions/](decisions/) | Service boundaries, dataflow, evidence, tenancy, scanners, BOMs, graph, roadmap and ADRs |
-| API and developer | [api-reference/rest-api.md](api-reference/rest-api.md), [plugin-sdk.md](plugin-sdk.md), [dev/](dev/) | Generated API snapshot, plugin extension, testing, live scanning and developer workflows |
+| API and developer | [api-reference/rest-api.md](api-reference/rest-api.md), [api-reference/state-machines.md](api-reference/state-machines.md), [plugin-sdk.md](plugin-sdk.md), [dev/](dev/) | Generated API snapshot, state machine register interfaces (Python/TypeScript/CLI), plugin extension, testing, live scanning and developer workflows |
+| State machines | [state-machines/README.md](state-machines/README.md) | The canonical state machine register: 97 machines, 294 states, 91 model fields — every state observed from code, honesty invariants, the full inventory table and the drift-guard rules |
 | Security and privacy | [security/](security/), [company/security-architecture.md](company/security-architecture.md), [company/privacy-documentation-index.md](company/privacy-documentation-index.md) | Threat model, hardening, network controls, dependency audit, privacy and assurance material |
 | Operations and qualification | [operations/](operations/), [ops/](ops/), [runbooks/](runbooks/), [production-qualification-runbook.md](production-qualification-runbook.md) | Production procedures, vendor due diligence, scanner qualification, recovery, DR, telecom, monitoring and support |
 | Readiness evidence | [readiness-evidence/README.md](readiness-evidence/README.md), [root production gate](../PRODUCTION-READINESS.md) | Timestamped PASS/FAIL/SKIP artifacts; synthetic or skipped checks are not approvals |
@@ -120,6 +127,22 @@ reports, and market reports are time-scoped. Keep the original date and result;
 add a newer dated artifact rather than silently rewriting an old pass/fail record.
 Historical documents that contain obsolete counts should link back to the current
 source of truth and label the old measurement as historical.
+
+### 4.6 Links into the untracked evidence store (2026-11-11 link audit)
+
+`docs/readiness-evidence/` is a **user-local, untracked evidence store** (the
+repository history deliberately returns it to untracked state). Tracked documents
+link into it as their local-validation record; those links resolve in a working
+checkout that carries the store, not in a fresh clone. The 2026-11-11 audit of
+all `docs/` Markdown links found **2,976 local links**, of which **58 do not
+resolve in this working tree** — all of them concern the untracked store: 45
+links from tracked documents into store artifacts (dated 2026-10-25/26
+local-validation records) and 13 links inside store reports pointing at
+`quality-*-2026-10-23/` log directories absent from this checkout's copy.
+Those references are recorded here as **UNAVAILABLE in this checkout** — not
+rewritten and not silently assumed present; a checkout that carries the full
+store resolves them. The audit also found one tracked-to-tracked break
+(`94-digital-twin.md` → `94-cryptoscan-digital-twin.md`), now fixed.
 
 ## 5. Required documentation invariants
 
@@ -249,6 +272,16 @@ not fresh runtime test results for the quality-program addition in section 10.
 
 | Check | Result | Scope / limits |
 |---|---|---|
+| Focused source contracflows are changed or dispatched by this refresh.
+
+
+## 9. Validation retained from the preceding documentation refresh
+
+The results below belong to the docs refresh published as `bfc42df0`. They are
+not fresh runtime test results for the quality-program addition in section 10.
+
+| Check | Result | Scope / limits |
+|---|---|---|
 | Focused source contracts | **43 passed**, 7 existing Alembic deprecation warnings, 3.42 s | `scripts/tests/test_ci_suites.py`, `services/devsecops/tests/test_ci_workflow_contract.py`, `shared/shared_models/tests/test_capability_maturity.py`, `services/database/tests/unit/test_monitor_event_type_migration.py`; local Python 3.11.2, locked requirements. Not a full-suite/live-PostgreSQL rerun. |
 | API regeneration | **917 paths / 1,008 operations / 105 groups** | In-process OpenAPI; no application server or provider probes. Existing reference already matches this baseline. |
 | Maturity regeneration | **33 GA / 32 Beta / 12 Preview** | Shared source, generated Markdown and frontend artifact match; no tier promotion. |
@@ -282,14 +315,7 @@ unexecuted review/evidence templates.
 Recommendations are distinguished from observed defects, retained results and
 external acceptance. No collector/profile, API, menu or feature is added. Existing
 local-source/v1 refusals, history/CAS, original evidence, independent review and
-UNKNOWN/INCONCLUSIVE semantics are preserved. The user's remaining workflow
-failure is left untouched. No new percentage, certification, SLA or site result
-is claimed.
-
-The inventory at the top includes this addition. The preceding section's 474-file
-check remains historical. Validation for this addition is documentation-only:
-repository-local Markdown targets/heading anchors, new shell-example syntax,
-linked source/test-path checks and patch whitespace. Application/runtime suites,
+UNKNOWN/INCONCLUSIVE semantics are preserved. The user's rem source/test-path checks and patch whitespace. Application/runtime suites,
 CI, site drills and external assessments are **not run** by this documentation task.
 
 
@@ -432,3 +458,42 @@ with balanced fences and **5 labeled shell examples** syntax checked. **53 exter
 links** were not fetched. Patch whitespace passes. Read-only checks confirm all
 **20 retained source/lock hashes** still match; application tests are not rerun.
 No example's mutating deployment command is executed.
+olved heading anchors; **10 changed Markdown files**
+with balanced fences and **5 labeled shell examples** syntax checked. **53 external
+links** were not fetched. Patch whitespace passes. Read-only checks confirm all
+**20 retained source/lock hashes** still match; application tests are not rerun.
+No example's mutating deployment command is executed.
+
+## 17. Documentation refresh — state machine register (2026-11-11)
+
+This refresh accompanies the canonical **state machine register** (97 machines /
+294 states / 91 `db.models` fields — every state observed from code, never
+invented; 15 vocabularies honestly marked unobserved). Documentation changes:
+
+- **New:** [state machine register](state-machines/README.md) (inventory, rules,
+  consumers) and the [developer/agent reference](api-reference/state-machines.md)
+  (Python API, TypeScript API, CLI, register shape, drift guards).
+- **Regenerated:** [REST API reference](api-reference/rest-api.md) in-process from
+  the OpenAPI schema — **1,319 paths / 1,445 operations / 122 tagged groups**
+  (was 917 / 1,008 / 105); withdrawn-route markers retained and re-verified.
+- **Navigation reference** updated in the same change as the sidebar edit:
+  `/state-machines` added under a System health group; counts re-measured
+  (**five sections / 30 rows / 74 links**).
+- **Current counts re-measured and corrected** in the root README, platform
+  status, current-implementation status and capability map: 56 services, 139 API
+  router modules, 147 migrations (head **0147**), 105 frontend page components,
+  1291 backend test files, 1294-test/143-file Vitest suite with clean `tsc`
+  (measured this refresh; the full backend suite was last run 2026-10-16 and is
+  labelled as such). Maturity is **98 GA / 0 Beta / 0 Preview**. Dated
+  historical snapshots in those files keep their original scope and numbers.
+- **Link audit:** 2,976 local links under `docs/`; 58 unresolved, all within the
+  untracked user-local evidence store (see §4.6); the one tracked-to-tracked
+  break is fixed. Code fences balanced in every changed file.
+
+Validation for this refresh: `scripts/gen_rest_api.py` and
+`scripts/gen_capability_maturity.py` re-run from source; shared-models battery
+(1,440 tests incl. 19 register pins), register/stack pins (40) and the
+claim-hygiene surfaces reviewed for the banned claims. No application behavior
+changed by this documentation set beyond the register work it documents; no
+historical evidence record is rewritten; no readiness verdict or external
+acceptance is promoted.

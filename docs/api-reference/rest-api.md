@@ -1,7 +1,7 @@
 # REST API reference
 
-Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on 2026-10-31:
-**1141 paths, 1255 operations** across 114 tagged groups.
+Generated in-process from the application OpenAPI schema (`GET /api/openapi.json`) on 2026-11-11:
+**1319 paths, 1445 operations** across 122 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 **3 route(s) in this schema are withdrawn and answer `410 Gone`** — see [Withdrawn routes](#withdrawn-routes) before integrating with anything named there.
@@ -289,6 +289,28 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/saas/billing/status` | Billing Status |
 | `POST` | `/api/v1/saas/billing/webhook` | Stripe Webhook |
 
+## binary-intelligence
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/binary/artifacts/{artifact_id}` | Artifact Details |
+| `GET` | `/api/v1/binary/artifacts/{artifact_id}/bom` | Artifact Bom |
+| `GET` | `/api/v1/binary/artifacts/{artifact_id}/comparison` | Artifact Comparison |
+| `GET` | `/api/v1/binary/artifacts/{artifact_id}/coverage` | Artifact Coverage |
+| `GET` | `/api/v1/binary/artifacts/{artifact_id}/evidence` | Artifact Evidence |
+| `GET` | `/api/v1/binary/artifacts/{artifact_id}/findings` | Artifact Findings |
+| `GET` | `/api/v1/binary/artifacts/{artifact_id}/history` | Artifact History |
+| `POST` | `/api/v1/binary/artifacts/{artifact_id}/rescan` | Rescan Artifact |
+| `GET` | `/api/v1/binary/artifacts/{artifact_id}/twin` | Artifact Twin Edges |
+| `GET` | `/api/v1/binary/drift` | Drift Series |
+| `GET` | `/api/v1/binary/estate` | Estate View |
+| `POST` | `/api/v1/binary/firmware/scan` | Firmware Scan |
+| `POST` | `/api/v1/binary/scan` | Submit Scan |
+| `POST` | `/api/v1/binary/scan/async` | Submit Scan Async |
+| `POST` | `/api/v1/binary/scan/jobs/{job_id}/process` | Process Job |
+| `GET` | `/api/v1/binary/scans/{scan_id}` | Scan Status |
+| `GET` | `/api/v1/binary/worker/status` | Worker Status |
+
 ## business
 
 | Method | Path | Summary |
@@ -358,12 +380,21 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/cbom/` | Cbom Catalog |
 | `POST` | `/api/v1/cbom/assess` | Cbom Assess |
 | `GET` | `/api/v1/cbom/assess/portfolio` | Cbom Assess Portfolio |
+| `POST` | `/api/v1/cbom/certificate-chain` | Cbom Certificate Chain |
+| `POST` | `/api/v1/cbom/cipher-suite` | Cbom Cipher Suite |
+| `POST` | `/api/v1/cbom/completeness` | Cbom Completeness |
 | `GET` | `/api/v1/cbom/coverage` | Cbom Coverage |
 | `GET` | `/api/v1/cbom/cross-links` | Cbom Cross Links |
 | `POST` | `/api/v1/cbom/custom` | Cbom Custom |
 | `POST` | `/api/v1/cbom/diff` | Cbom Diff |
+| `POST` | `/api/v1/cbom/estate-chain` | Cbom Estate Chain |
 | `GET` | `/api/v1/cbom/evidence/{content_hash}` | Cbom Components For Evidence Hash |
+| `POST` | `/api/v1/cbom/history/compare` | Cbom History Compare |
+| `POST` | `/api/v1/cbom/history/correlate` | Cbom History Correlate |
+| `POST` | `/api/v1/cbom/hsm-evidence` | Cbom Hsm Evidence |
 | `POST` | `/api/v1/cbom/ingest` | Cbom Ingest |
+| `POST` | `/api/v1/cbom/ipsec` | Cbom Ipsec |
+| `POST` | `/api/v1/cbom/kms/keys` | Cbom Kms Keys |
 | `POST` | `/api/v1/cbom/legacy-assets/{asset_id}/assign` | Assign |
 | `GET` | `/api/v1/cbom/legacy-assets/{asset_id}/review` | Orphan Review |
 | `GET` | `/api/v1/cbom/legacy-imports` | List Legacy Imports |
@@ -371,9 +402,18 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/cbom/nbom` | Nbom Live |
 | `POST` | `/api/v1/cbom/nbom` | Nbom Build |
 | `POST` | `/api/v1/cbom/nbom/cascade` | Nbom Cascade |
+| `POST` | `/api/v1/cbom/nbom/coverage` | Nbom Coverage |
+| `POST` | `/api/v1/cbom/nbom/coverage/from-probes` | Nbom Coverage From Probes |
+| `POST` | `/api/v1/cbom/network-assets` | Cbom Network Assets |
+| `POST` | `/api/v1/cbom/network-identity` | Cbom Network Identity |
+| `POST` | `/api/v1/cbom/passive` | Cbom Passive |
 | `GET` | `/api/v1/cbom/portfolio` | Cbom Portfolio |
+| `POST` | `/api/v1/cbom/pqc-handoff` | Cbom Pqc Handoff |
+| `POST` | `/api/v1/cbom/promote` | Cbom Promote |
 | `GET` | `/api/v1/cbom/query` | Cbom Query |
+| `POST` | `/api/v1/cbom/reconcile` | Cbom Reconcile |
 | `GET` | `/api/v1/cbom/retained-histories` | Retained |
+| `POST` | `/api/v1/cbom/runtime-traces` | Cbom Runtime Traces |
 | `POST` | `/api/v1/cbom/scan-uncovered` | Cbom Scan Uncovered |
 | `GET` | `/api/v1/cbom/scan/{scan_id}` | Cbom For Scan |
 | `POST` | `/api/v1/cbom/scan/{scan_id}/snapshot` | Create Scan Snapshot |
@@ -381,6 +421,7 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/cbom/search` | Cbom Search |
 | `GET` | `/api/v1/cbom/snapshots/{snapshot_id}` | Get Cbom Snapshot |
 | `GET` | `/api/v1/cbom/snapshots/{snapshot_id}/diff` | Diff Cbom Snapshot |
+| `POST` | `/api/v1/cbom/ssh` | Cbom Ssh |
 | `GET` | `/api/v1/cbom/system/{system_id}` | Cbom For System |
 | `GET` | `/api/v1/cbom/system/{system_id}/legacy-imports` | Get Legacy Imports |
 | `GET` | `/api/v1/cbom/system/{system_id}/mixed-review` | Case |
@@ -388,8 +429,31 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/cbom/system/{system_id}/mixed-review/approve` | Approve |
 | `POST` | `/api/v1/cbom/system/{system_id}/reconcile-legacy` | Reconcile Legacy |
 | `GET` | `/api/v1/cbom/system/{system_id}/rescan-inspection` | Inspect |
+| `POST` | `/api/v1/cbom/techbom` | Cbom Techbom |
+| `POST` | `/api/v1/cbom/techbom/answers` | Cbom Techbom Answers |
+| `POST` | `/api/v1/cbom/techbom/context` | Cbom Techbom Context |
+| `POST` | `/api/v1/cbom/techbom/timeline` | Cbom Techbom Timeline |
+| `POST` | `/api/v1/cbom/termination-paths` | Cbom Termination Paths |
+| `POST` | `/api/v1/cbom/tls-paths` | Cbom Tls Paths |
+| `POST` | `/api/v1/cbom/tls-state` | Cbom Tls State |
+| `POST` | `/api/v1/cbom/topology` | Cbom Topology |
+| `POST` | `/api/v1/cbom/twin` | Cbom Twin |
+| `POST` | `/api/v1/cbom/usage` | Cbom Usage |
+| `POST` | `/api/v1/cbom/usage/collect` | Cbom Usage Collect |
+| `POST` | `/api/v1/cbom/usage/graph` | Cbom Usage Graph |
+| `GET` | `/api/v1/cbom/usage/network` | Cbom Usage Network |
 | `POST` | `/api/v1/cbom/validate` | Cbom Validate |
 | `POST` | `/api/v1/cbom/verify` | Cbom Verify |
+
+## cbom-vbom
+
+| Method | Path | Summary |
+|---|---|---|
+| `POST` | `/api/v1/cbom/vbom/answer/{question}` | Answer |
+| `POST` | `/api/v1/cbom/vbom/assess` | Assess |
+| `POST` | `/api/v1/cbom/vbom/export/cyclonedx` | Export Cyclonedx |
+| `GET` | `/api/v1/cbom/vbom/questions` | List Questions |
+| `POST` | `/api/v1/cbom/vbom/summary` | Summary |
 
 ## certificates
 
@@ -477,6 +541,15 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/collection/snapshots` | Snapshots |
 | `POST` | `/api/v1/collection/snapshots` | Create Snapshot |
 | `GET` | `/api/v1/collection/snapshots/{identifier}` | Snapshot |
+
+## collectors
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/collectors/authority` | Collector Authority Matrix |
+| `POST` | `/api/v1/collectors/authority/{plane}` | Approve Collector Authority |
+| `POST` | `/api/v1/collectors/authority/{plane}/revoke` | Revoke Collector Authority |
+| `POST` | `/api/v1/collectors/authorize` | Authorize Collection |
 
 ## compliance
 
@@ -593,6 +666,32 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/crypto-assurance/tls-audit` | Tls Audit |
 | `POST` | `/api/v1/crypto-assurance/trust-store` | Trust Store |
 
+## cryptolog
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/cryptolog/alerts` | List Alerts |
+| `POST` | `/api/v1/cryptolog/alerts/evaluate` | Evaluate Alerts |
+| `POST` | `/api/v1/cryptolog/alerts/transition` | Alert Transition |
+| `GET` | `/api/v1/cryptolog/alerts/{alert_id}` | Get Alert |
+| `POST` | `/api/v1/cryptolog/alerts/{alert_id}/transition` | Transition Alert State |
+| `GET` | `/api/v1/cryptolog/events` | List Events |
+| `POST` | `/api/v1/cryptolog/events` | Ingest Event |
+| `POST` | `/api/v1/cryptolog/events/batch` | Ingest Batch |
+| `GET` | `/api/v1/cryptolog/events/{event_id}` | Get Event |
+| `GET` | `/api/v1/cryptolog/events/{event_id}/corrections` | List Corrections |
+| `POST` | `/api/v1/cryptolog/events/{event_id}/corrections` | Correct Event |
+| `POST` | `/api/v1/cryptolog/integrity/checkpoint` | Create Checkpoint |
+| `GET` | `/api/v1/cryptolog/integrity/checkpoints` | List Checkpoints |
+| `GET` | `/api/v1/cryptolog/integrity/merkle-proof` | Get Merkle Proof |
+| `POST` | `/api/v1/cryptolog/integrity/verify` | Verify Integrity |
+| `GET` | `/api/v1/cryptolog/overview` | Cryptolog Overview |
+| `POST` | `/api/v1/cryptolog/reports/export` | Export Report |
+| `POST` | `/api/v1/cryptolog/reports/verify` | Verify Report Bundle |
+| `POST` | `/api/v1/cryptolog/retention/plan` | Plan Retention |
+| `GET` | `/api/v1/cryptolog/retention/policy` | Get Retention Policy |
+| `GET` | `/api/v1/cryptolog/timeline` | Event Timeline |
+
 ## ct-scans
 
 | Method | Path | Summary |
@@ -641,17 +740,21 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/devsecops/sbom/artifacts` | Sbom Artifacts |
 | `DELETE` | `/api/v1/devsecops/sbom/artifacts` | Sbom Prune |
 | `GET` | `/api/v1/devsecops/sbom/components` | Sbom Components |
+| `POST` | `/api/v1/devsecops/sbom/deployments` | Sbom Deployments |
 | `POST` | `/api/v1/devsecops/sbom/diff` | Sbom Diff |
 | `POST` | `/api/v1/devsecops/sbom/export` | Sbom Export |
 | `POST` | `/api/v1/devsecops/sbom/import` | Sbom Import |
 | `POST` | `/api/v1/devsecops/sbom/license` | Sbom License |
+| `POST` | `/api/v1/devsecops/sbom/obligations` | Sbom Obligations |
 | `POST` | `/api/v1/devsecops/sbom/scan` | Sbom Scan |
 | `POST` | `/api/v1/devsecops/sbom/validate` | Sbom Validate |
 | `POST` | `/api/v1/devsecops/sbom/vex` | Sbom Vex |
 | `GET` | `/api/v1/devsecops/sbom/{artifact_id}/download` | Sbom Download |
 | `POST` | `/api/v1/devsecops/sbom/{artifact_id}/gate` | Sbom Gate |
+| `GET` | `/api/v1/devsecops/sbom/{artifact_id}/history` | Sbom History |
 | `GET` | `/api/v1/devsecops/sbom/{artifact_id}/report` | Sbom Report |
 | `POST` | `/api/v1/devsecops/sbom/{artifact_id}/rescan` | Sbom Rescan |
+| `POST` | `/api/v1/devsecops/sbom/{artifact_id}/twin` | Sbom Twin |
 | `GET` | `/api/v1/devsecops/sbom/{artifact_id}/verify` | Sbom Verify |
 | `GET` | `/api/v1/devsecops/sbom/{artifact_id}/vex` | Sbom Vex For Artifact |
 | `POST` | `/api/v1/devsecops/tickets/sync-pull` | Ticket Sync Pull |
@@ -717,6 +820,8 @@ This schema snapshot does not certify a deployed production topology or route av
 |---|---|---|
 | `GET` | `/api/v1/estate/campaigns` | Preview Campaign |
 | `POST` | `/api/v1/estate/campaigns` | Start Campaign |
+| `GET` | `/api/v1/estate/evidence/validation/failure-matrix` | Failure Matrix |
+| `GET` | `/api/v1/estate/evidence/validation/scale-curve` | Scale Curve |
 | `GET` | `/api/v1/estate/scans/due` | Preview Due Scans |
 | `POST` | `/api/v1/estate/scans/run-due` | Run Due Scans |
 
@@ -746,6 +851,7 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/estate/evidence/coverage` | Estate Coverage |
 | `POST` | `/api/v1/estate/evidence/discover` | Estate Discover |
 | `GET` | `/api/v1/estate/evidence/discovery/bom-maturity` | Bom Maturity Matrix |
+| `GET` | `/api/v1/estate/evidence/discovery/collector-families` | Collector Family Matrix |
 | `GET` | `/api/v1/estate/evidence/discovery/maturity` | Maturity |
 | `GET` | `/api/v1/estate/evidence/discovery/network-protocols` | Network Protocol Matrix |
 | `GET` | `/api/v1/estate/evidence/discovery/runtime-depth` | Runtime Depth Matrix |
@@ -769,14 +875,20 @@ This schema snapshot does not certify a deployed production topology or route av
 | `DELETE` | `/api/v1/estate/evidence/schedules/{identifier}` | Estate Schedule Delete |
 | `GET` | `/api/v1/estate/evidence/search` | Estate Search Query |
 | `GET` | `/api/v1/estate/evidence/simulation/catalog` | Simulation Catalog |
+| `GET` | `/api/v1/estate/evidence/simulation/engine/models` | Simulation Models |
+| `POST` | `/api/v1/estate/evidence/simulation/engine/run` | Engine Simulation Run |
 | `POST` | `/api/v1/estate/evidence/simulation/plan` | Simulation Plan |
 | `POST` | `/api/v1/estate/evidence/simulation/run` | Simulation Run |
 | `GET` | `/api/v1/estate/evidence/simulation/runs` | Simulation Runs |
 | `GET` | `/api/v1/estate/evidence/summary` | Estate Summary |
 | `GET` | `/api/v1/estate/evidence/threat/patterns` | Estate Threat Patterns |
+| `GET` | `/api/v1/estate/evidence/threat/planes` | Estate Threat Planes |
 | `POST` | `/api/v1/estate/evidence/tick` | Estate Tick |
 | `GET` | `/api/v1/estate/evidence/twin` | Estate Twin Overview |
 | `GET` | `/api/v1/estate/evidence/twin/algorithm/{name}` | Estate Twin Algorithm |
+| `GET` | `/api/v1/estate/evidence/twin/artifacts` | Estate Twin Artifact Status |
+| `POST` | `/api/v1/estate/evidence/twin/artifacts` | Estate Twin Artifact Store |
+| `GET` | `/api/v1/estate/evidence/twin/artifacts/{digest}` | Estate Twin Artifact Read |
 | `GET` | `/api/v1/estate/evidence/twin/assets/{ref}` | Estate Twin Asset |
 | `GET` | `/api/v1/estate/evidence/twin/chain` | Estate Twin Chain Read |
 | `GET` | `/api/v1/estate/evidence/twin/compare` | Estate Twin Compare |
@@ -787,11 +899,14 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/estate/evidence/twin/graph/load` | Estate Twin Graph Load |
 | `GET` | `/api/v1/estate/evidence/twin/graph/traversal` | Estate Twin Graph Traversal |
 | `POST` | `/api/v1/estate/evidence/twin/graph/verify` | Estate Twin Graph Verify |
+| `POST` | `/api/v1/estate/evidence/twin/ground-truth` | Estate Twin Ground Truth |
 | `POST` | `/api/v1/estate/evidence/twin/impact` | Estate Twin Impact |
 | `POST` | `/api/v1/estate/evidence/twin/impact-as-of` | Estate Twin Impact As Of |
 | `GET` | `/api/v1/estate/evidence/twin/intel` | Estate Twin Intel |
 | `GET` | `/api/v1/estate/evidence/twin/lifecycle` | Estate Twin Lifecycle |
+| `GET` | `/api/v1/estate/evidence/twin/path` | Estate Twin Path |
 | `GET` | `/api/v1/estate/evidence/twin/placement` | Estate Twin Placement |
+| `GET` | `/api/v1/estate/evidence/twin/protocol-floor` | Estate Twin Protocol Floor |
 | `POST` | `/api/v1/estate/evidence/twin/remediate` | Estate Twin Remediate |
 | `GET` | `/api/v1/estate/evidence/twin/remediation` | Estate Twin Remediation |
 | `POST` | `/api/v1/estate/evidence/twin/remediation/reconcile` | Estate Twin Reconcile |
@@ -804,6 +919,7 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/estate/evidence/twin/snapshot` | Estate Twin Snapshot |
 | `GET` | `/api/v1/estate/evidence/twin/snapshots` | Estate Twin Snapshots |
 | `POST` | `/api/v1/estate/evidence/twin/snapshots` | Estate Twin Capture |
+| `GET` | `/api/v1/estate/evidence/twin/spec-conformance` | Estate Twin Spec Conformance |
 | `GET` | `/api/v1/estate/evidence/twin/trust-paths` | Estate Twin Trust Paths |
 | `GET` | `/api/v1/estate/evidence/twin/why` | Estate Twin Why |
 | `GET` | `/api/v1/estate/evidence/unknown` | Estate Unknown Workflow |
@@ -998,6 +1114,7 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/healthz` | Healthz |
 | `GET` | `/api/v1/healthz/dependencies` | Healthz Dependencies |
 | `GET` | `/api/v1/healthz/schema` | Healthz Schema |
+| `GET` | `/api/v1/healthz/workers` | Workers Liveness |
 | `GET` | `/api/v1/meta` | Meta |
 | `GET` | `/api/v1/readyz` | Readyz |
 
@@ -1045,6 +1162,50 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/ci/gate` | Ci Gate |
 | `GET` | `/api/v1/ci/gate-evaluations` | Ci Gate Evaluations |
 | `POST` | `/api/v1/evidence-pack/verify` | Verify Pack |
+| `POST` | `/api/v1/intelligence/asset-alias/merge` | Api Asset Alias Merge |
+| `POST` | `/api/v1/intelligence/asset-alias/resolve` | Api Asset Alias Resolve |
+| `POST` | `/api/v1/intelligence/collector-contracts` | Api Collection Report |
+| `POST` | `/api/v1/intelligence/compliance/assessments` | Api Compliance Assessment |
+| `POST` | `/api/v1/intelligence/compliance/status` | Api Compliance Status |
+| `GET` | `/api/v1/intelligence/coverage` | Api Estate Coverage |
+| `POST` | `/api/v1/intelligence/coverage` | Api File Coverage Batch |
+| `POST` | `/api/v1/intelligence/deployment/attestations` | Api File Attestation |
+| `PUT` | `/api/v1/intelligence/deployment/custody` | Api Set Custody |
+| `GET` | `/api/v1/intelligence/deployment/readiness` | Api Deployment Readiness |
+| `POST` | `/api/v1/intelligence/evidence-reprocess` | Api Evidence Reprocess |
+| `GET` | `/api/v1/intelligence/external-validations` | Api External Validation Register |
+| `POST` | `/api/v1/intelligence/external-validations` | Api File External Validation |
+| `GET` | `/api/v1/intelligence/findings` | Intelligence Findings |
+| `POST` | `/api/v1/intelligence/findings` | Api File Finding |
+| `POST` | `/api/v1/intelligence/findings/assign` | Api Assign Finding |
+| `POST` | `/api/v1/intelligence/findings/confirm` | Api Confirm Finding |
+| `GET` | `/api/v1/intelligence/gates` | Api Gates Status |
+| `POST` | `/api/v1/intelligence/gates` | Api File Gate Evidence |
+| `GET` | `/api/v1/intelligence/governance/tickets` | Api List Tickets |
+| `POST` | `/api/v1/intelligence/governance/tickets` | Api Start Ticket |
+| `GET` | `/api/v1/intelligence/governance/tickets/{ticket_id}` | Api Get Ticket |
+| `POST` | `/api/v1/intelligence/governance/tickets/{ticket_id}/transition` | Api Transition Ticket |
+| `POST` | `/api/v1/intelligence/graph-projection` | Api Graph Projection |
+| `POST` | `/api/v1/intelligence/investigation/certificate` | Api Investigate Certificate |
+| `POST` | `/api/v1/intelligence/migration/plans` | Api Make Migration Plan |
+| `POST` | `/api/v1/intelligence/migration/validate` | Api Validate Migration |
+| `POST` | `/api/v1/intelligence/observations/intake` | Api Observation Intake |
+| `GET` | `/api/v1/intelligence/overview` | Intelligence Overview |
+| `GET` | `/api/v1/intelligence/pqc/claims` | Intelligence Pqc Claims |
+| `POST` | `/api/v1/intelligence/production-qualification/file` | Api File Production Qualification |
+| `POST` | `/api/v1/intelligence/production-qualification/status` | Api Production Qualification Status |
+| `POST` | `/api/v1/intelligence/qualification` | Api File Qualification |
+| `GET` | `/api/v1/intelligence/qualification/claim` | Api Qualification Claim |
+| `GET` | `/api/v1/intelligence/qualification/summary` | Api Qualification Summary |
+| `POST` | `/api/v1/intelligence/reconciliation` | Api Reconcile Boms |
+| `POST` | `/api/v1/intelligence/reconciliation/attribution` | Api Attribute Operation |
+| `GET` | `/api/v1/intelligence/risk/{asset_id}` | Intelligence Risk |
+| `POST` | `/api/v1/intelligence/simulation` | Intelligence Simulation |
+| `POST` | `/api/v1/intelligence/supplier-concentration` | Api Supplier Concentration |
+| `POST` | `/api/v1/intelligence/supplier-readiness` | Api Supplier Readiness |
+| `POST` | `/api/v1/intelligence/supplier-readiness/least-ready` | Api Least Ready Suppliers |
+| `POST` | `/api/v1/intelligence/vendor-exposure` | Api Vendor Exposure |
+| `POST` | `/api/v1/intelligence/vendor-risk` | Api Vendor Risk |
 | `GET` | `/api/v1/report-templates` | List Report Templates |
 | `POST` | `/api/v1/report/verify` | Verify Report Signature |
 | `POST` | `/api/v1/scans/import` | Import Scan Transfer |
@@ -1158,6 +1319,7 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/network/cloud-correlate` | Network Cloud Correlate |
 | `GET` | `/api/v1/network/crypto-budget` | Network Crypto Budget |
 | `GET` | `/api/v1/network/crypto-cbom` | Network Crypto Cbom |
+| `POST` | `/api/v1/network/crypto-client-offers` | Network Crypto Client Offers |
 | `POST` | `/api/v1/network/crypto-correlate` | Network Crypto Correlate |
 | `POST` | `/api/v1/network/crypto-estate-risk` | Network Crypto Estate Risk |
 | `GET` | `/api/v1/network/crypto-evidence` | Network Crypto Evidence |
@@ -1287,12 +1449,36 @@ This schema snapshot does not certify a deployed production topology or route av
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/ops/alerts` | Self Alerts |
+| `POST` | `/api/v1/ops/alerts/alertmanager` | Alertmanager Webhook |
 | `GET` | `/api/v1/ops/capacity/forecast` | Capacity Forecast |
 | `GET` | `/api/v1/ops/evidence/chain-status` | Evidence Chain Status |
 | `GET` | `/api/v1/ops/metrics` | Prometheus Metrics |
 | `GET` | `/api/v1/ops/signing` | Signing Status |
 | `GET` | `/api/v1/ops/slo` | Slo Status |
 | `GET` | `/api/v1/ops/traces` | Recent Traces |
+
+## os-kernel-intelligence
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/os-intelligence/assets` | List Assets |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}` | Asset Details |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}/bom` | Asset Bom |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}/certificates` | Asset Certificates |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}/config-flags` | Asset Config Flags |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}/coverage` | Asset Coverage |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}/crypto-capabilities` | Asset Capabilities |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}/findings` | Asset Findings |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}/hardware-trust` | Asset Hardware Trust |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}/modules` | Asset Modules |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}/rule-evaluation` | Asset Rule Evaluation |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}/runtime-events` | List Runtime Events |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}/runtime-sessions` | List Runtime Sessions |
+| `POST` | `/api/v1/os-intelligence/assets/{asset_id}/runtime-sessions` | Submit Runtime Session |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}/runtime-usage` | Runtime Usage |
+| `GET` | `/api/v1/os-intelligence/assets/{asset_id}/storage` | Asset Storage |
+| `POST` | `/api/v1/os-intelligence/collections` | Submit Collection |
+| `GET` | `/api/v1/os-intelligence/rules` | Rule Catalogue |
 
 ## ot
 
@@ -1345,6 +1531,34 @@ This schema snapshot does not certify a deployed production topology or route av
 | `POST` | `/api/v1/pentest/findings` | Ingest Findings |
 | `POST` | `/api/v1/pentest/findings/{finding_id}/status` | Set Status |
 | `GET` | `/api/v1/pentest/summary` | Summary |
+
+## performance
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/performance/alerts` | Alerts |
+| `GET` | `/api/v1/performance/applications` | Applications |
+| `GET` | `/api/v1/performance/assets/{asset_id}` | Asset Metrics |
+| `GET` | `/api/v1/performance/baselines` | Baselines |
+| `GET` | `/api/v1/performance/benchmarks` | List Benchmarks |
+| `POST` | `/api/v1/performance/benchmarks` | Benchmarks |
+| `GET` | `/api/v1/performance/capacity` | Capacity |
+| `GET` | `/api/v1/performance/cloud` | Cloud |
+| `GET` | `/api/v1/performance/collectors` | Collector Health |
+| `GET` | `/api/v1/performance/cryptography` | Cryptography |
+| `GET` | `/api/v1/performance/databases` | Databases |
+| `GET` | `/api/v1/performance/definitions` | Metric Definitions |
+| `POST` | `/api/v1/performance/definitions` | Sync Metric Definitions |
+| `GET` | `/api/v1/performance/health` | Engine Health |
+| `GET` | `/api/v1/performance/infrastructure` | Infrastructure |
+| `POST` | `/api/v1/performance/ingest` | Ingest Metric |
+| `POST` | `/api/v1/performance/ingest/batch` | Ingest Batch |
+| `GET` | `/api/v1/performance/network` | Network |
+| `GET` | `/api/v1/performance/overview` | Overview |
+| `GET` | `/api/v1/performance/reports` | Reports |
+| `GET` | `/api/v1/performance/samples` | Query Samples |
+| `GET` | `/api/v1/performance/slo` | Slo |
+| `GET` | `/api/v1/performance/storage` | Storage |
 
 ## platform
 
@@ -1618,6 +1832,17 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/api/v1/security/profiles` | List Scan Profiles |
 | `POST` | `/api/v1/security/profiles/resolve` | Resolve Scan Profile |
 
+## security-controls
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/security-controls/export` | Export Estate |
+| `GET` | `/api/v1/security-controls/findings` | List Findings |
+| `GET` | `/api/v1/security-controls/health` | Control Health |
+| `GET` | `/api/v1/security-controls/snapshots` | List Snapshots |
+| `POST` | `/api/v1/security-controls/snapshots` | Post Snapshot |
+| `GET` | `/api/v1/security-controls/verify` | Verify Chain |
+
 ## site-security
 
 | Method | Path | Summary |
@@ -1727,6 +1952,8 @@ This schema snapshot does not certify a deployed production topology or route av
 | `PUT` | `/api/v1/technology-bom/export-schedules/{schedule_id}` | Update Export Schedule |
 | `DELETE` | `/api/v1/technology-bom/export-schedules/{schedule_id}` | Delete Export Schedule |
 | `POST` | `/api/v1/technology-bom/export-schedules/{schedule_id}/run` | Run Export Schedule |
+| `GET` | `/api/v1/technology-bom/graph` | Technology Bom Graph |
+| `GET` | `/api/v1/technology-bom/hardware` | Technology Bom Hardware |
 | `GET` | `/api/v1/technology-bom/history` | Technology Bom History |
 | `GET` | `/api/v1/technology-bom/history/versions` | Technology Bom Versions |
 | `GET` | `/api/v1/technology-bom/runtime-verify` | Technology Bom Runtime Verify |
@@ -1817,6 +2044,16 @@ This schema snapshot does not certify a deployed production topology or route av
 | `GET` | `/healthz` | Healthz Root Alias |
 | `GET` | `/ready` | Ready Check |
 | `GET` | `/readyz` | Readyz Root Alias |
+
+## vbom
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/vbom/dependency` | Vendor Dependency |
+| `GET` | `/api/v1/vbom/dependency/assets/{asset}` | Asset Detail |
+| `GET` | `/api/v1/vbom/dependency/export` | Vendor Dependency Export |
+| `GET` | `/api/v1/vbom/dependency/questions` | Vendor Dependency Questions |
+| `GET` | `/api/v1/vbom/dependency/vendors/{vendor}` | Vendor Detail |
 
 ## vulnerabilities
 

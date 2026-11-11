@@ -27,12 +27,12 @@ turn them into evidence for a newer build.
 
 | Topic | Current repository state | Qualification boundary |
 |---|---|---|
-| Schema | Alembic head **0106**, following 0105 (long monitor-event types). 0106 adds native PostgreSQL UNKNOWN/DEFERRED/CANCELLED job identities. | Normal coordinated migration only. PostgreSQL 0106 downgrade refuses while UNKNOWN remains and retains additive labels; 0105 still refuses long-event truncation. Never relabel uncertainty or release reservations to force rollback. |
+| Schema | Alembic head **0147** (0001–0147). 0106 added native PostgreSQL UNKNOWN/DEFERRED/CANCELLED job identities; 0124/0125 repaired the scans status CHECK and added HOST_SNAPSHOT_IMPORT; 0107–0147 continue additive schema work (estate schedules, daemons, twin snapshots, simulation runs and later platform tables). | Normal coordinated migration only. Downgrade paths that would relabel uncertainty or release reservations to force rollback are refused; additive labels are retained. Never relabel uncertainty to force rollback. |
 | Controlled deployment | `kubernetes-external-services/local-source-v1`: API, coordinated worker, frontend, isolated digest-pinned parser, regional external PostgreSQL and verified-TLS Redis. | Local-source acquisition is the reviewed adapter. Other unqualified collection/realtime/graph/export/notification surfaces remain refused in the controlled profile. Development API availability does not qualify an adapter. |
 | CI | Active main workflow plus reusable scanner, PostgreSQL migration/parity and six-image build-only workflows; manual unsigned release preflight. | A source-controlled workflow is not evidence of its execution or branch protection. |
 | Frontend checks | Node 22.22.3, frozen npm install, typecheck, Vitest, coverage instrumentation smoke, build and toolchain checks are configured. | DOM/mock tests and an image build do not establish site/browser endurance. |
-| Console | **87 classified surfaces, all supported**; five sidebar sections, 28 rows over 50 primary links. | Labels describe individual engineering surfaces, not approval of the complete platform or their availability under every deployment profile. |
-| REST reference | **917 paths / 1,008 operations / 105 tagged groups** in the reviewed generated schema snapshot. | Route registration does not guarantee production-profile availability or current user's authorization. |
+| Console | **98 classified surfaces, all supported**; five sidebar sections, 30 rows over 74 links; the `/state-machines` page draws the canonical state register (97 machines / 294 states, observed from code). | Labels describe individual engineering surfaces, not approval of the complete platform or their availability under every deployment profile. |
+| REST reference | **1319 paths / 1445 operations / 122 tagged groups** in the regenerated schema snapshot (2026-11-11). | Route registration does not guarantee production-profile availability or current user's authorization. |
 | Launch evidence | Preview independent-report/retest, nine-duty operating ownership and bounded payments-pilot records. | Real assessor procurement/testing, actual owners/site exercises and customer acceptance must be supplied externally. |
 | Supply chain | Python CI and API/worker/scanner images use committed version constraints; third-party workflow Actions are SHA-pinned. | A constraints file is not a hash-verified cross-platform lock. Build-only image checks do not publish registry digests or prove a signed release. |
 
@@ -317,7 +317,7 @@ libraries **929 passed / 1 skipped / 8 deselected**, typecheck/build/toolchain a
 configured Ruff pass. Counts overlap; warnings/skips and exact source hashes are
 retained in the dated records, not erased. Old pg_virtualenv skip is not completion.
 
-Current package/schema contract is **0106**. No workflow/dependency/service/collector
+Current package/schema contract is **0147**. No workflow/dependency/service/collector
 expansion, generated readiness-verdict promotion, CI success, installation, HA/PITR,
 SLA or independent/customer acceptance is implied. Actual site/browser/SSO/TLS,
 Redis/Docker/endurance, broader six-BOM and deployment recovery qualification remain.

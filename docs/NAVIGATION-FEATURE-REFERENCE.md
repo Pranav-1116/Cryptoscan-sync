@@ -5,12 +5,13 @@
 > route changes, update this page in the same change. This is documentation of
 > the current repository, not a product promise or an external assurance claim.
 
-The console has **five primary sidebar sections**, **28 rows** and **50 links**.
+The console has **five primary sidebar sections**, **30 rows** and **74 links**.
 Pages that answer one question share a **group** — the six BOMs, the five
 assurance records, remediation, infrastructure, monitors, oversight, posture,
-dependencies and simulation — and a group is a disclosure: the pages inside it are
+dependencies, simulation and system health — and a group is a disclosure: the pages inside it are
 one click away and only rendered when it is opened. Only the section holding the
-current page is open on arrival, so an operator reads about six rows, not fifty.
+current page is open on arrival, so an operator reads about six rows, not all
+seventy-four links.
 The duplicate `Security Center` placement is gone: the route is reached once, as
 **Audit log** under Governance, and the header's Security Center button opens the
 admin drawer rather than a second nav row.
@@ -20,7 +21,7 @@ routes are authentication flows, not primary navigation entries.
 
 ## Primary sidebar
 
-**Reviewed 2026-10-29.** The table below matches every current sidebar placement.
+**Reviewed 2026-11-11.** The table below matches every current sidebar placement.
 Rows with a group render as a disclosure; the `—` rows are links.
 
 ### Overview
@@ -102,7 +103,9 @@ Rows with a group render as a disclosure; the `—` rows are links.
 
 | Sidebar label | Group | Route | Component | Purpose |
 |---|---|---|---|---|
-| System health | — | `/system-health` | `SystemHealth` | Health, readiness and platform service status — with independently measured worker-fleet and connector health (never derived from API liveness). |
+| System health | System health | `/system-health` | — | One row over the two platform-introspection pages. |
+| System health | System health | `/system-health` | `SystemHealth` | Health, readiness and platform service status — with independently measured worker-fleet and connector health (never derived from API liveness). |
+| State machines | System health | `/state-machines` | `StateMachines` | The canonical state machine register on screen: every state the product can be in — observed from code, never invented — with one tone per semantic class, the transitions code actually makes, the honesty invariants, and machines whose vocabulary is not yet observed listed as such instead of guessed. The same register is machine-readable (shared_models state machines module and the console's library copy, pinned byte-identical by tests). See [state machine register](state-machines/README.md) and the [developer reference](api-reference/state-machines.md). |
 | Settings & org | — | `/settings` | `Settings` | Organization and application settings. |
 | Users & teams | — | `/identity` | `Identity` | Users, roles, MFA and identity administration. |
 | Integrations & API | — | `/integrations` | `Integrations` | Connectors, API and delivery integrations. |
@@ -189,7 +192,7 @@ See [current implementation status](CURRENT-IMPLEMENTATION-STATUS.md).
 | Discovery | Authorized source, dependency, container, binary, firmware, network, cloud, hardware, certificate and vendor observations. |
 | Intelligence | SBOM/CBOM/HBOM/NBOM/VBOM correlations, vulnerability BOM findings, graph relationships, PQC and agility analysis, and simulation: a scenario previewed against the twin's own selectors and run on a copy with the six BOMs re-projected, or a failure cascaded outward from seed assets wave by wave; both stored quarantined. |
 | Governance | Deterministic policy, compliance mappings, approvals, audit history, assurance records, remediation and evidence verification. |
-| Administration | Health, organization, identity, security posture, integrations and API access. |
+| Administration | Health, the platform's own state vocabulary (the state machine register), organization, identity, security posture, integrations and API access. |
 | (folded into Intelligence) | Reports, signed/exportable artifacts and both what-if surfaces now sit under Intelligence — Simulation (the workspace and the older migration what-if) and Reports; the separate Output section existed only to hold three links. |
 
 ### Binary application workflow
@@ -226,6 +229,7 @@ unobserved estate exists.
 - [Binary and firmware scanning](user-guide/binary-firmware-scanning.md)
 - [SBOM scanner architecture](architecture/sbom-scanner-architecture.md)
 - [Capability maturity](CAPABILITY-MATURITY.md)
+- [State machine register](state-machines/README.md) · [developer reference](api-reference/state-machines.md)
 - [Vendor and network inventory](user-guide/vendor-network-inventory.md)
 - [REST API reference](api-reference/rest-api.md)
 

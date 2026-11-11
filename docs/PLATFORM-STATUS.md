@@ -1,12 +1,14 @@
 # CryptoScan platform status — the full plan vs. what ships here
 
-> **Current-reading authority — 2026-10-22, `698beb38`:**
-> [Implementation status](CURRENT-IMPLEMENTATION-STATUS.md): migration **0106**;
-> generated REST **917 paths / 1,008 operations / 105 groups**; maturity **33 GA /
-> 32 Beta / 12 Preview** (77 surfaces); sidebar **41 placements / 40 unique routes**.
-> Discovered CI and unsigned preflight are configured, not release/site approval.
-> The user reports one unresolved workflow failure; Actions results were not
-> independently accessible here. The dated tables below remain historical.
+> **Current-reading authority — 2026-11-11, `e3917908`:**
+> [Implementation status](CURRENT-IMPLEMENTATION-STATUS.md): migration head **0147**;
+> generated REST **1319 paths / 1445 operations / 122 groups**; maturity **98 GA /
+> 0 Beta / 0 Preview** (98 surfaces); sidebar **five sections / 30 rows / 74 links**.
+> The state machine register (`/state-machines`, shared_models state-machines
+> module) documents every state the product can be in. Discovered CI and unsigned
+> preflight are configured, not release/site approval. The dated tables below
+> remain historical; the previous current-reading block (2026-10-22, `698beb38`)
+> is superseded by this one and kept as part of the dated record.
 
 > **2026-10-21 execution/replay increment:** [Guide 44](bank-environment/44-queued-authority-and-durable-ssh.md)
 > records persisted queue matching/current authority and durable SSH receipts;
@@ -55,7 +57,21 @@ real infrastructure or credentials.
 > Per-round ledger: [`audit_reports/00_ROUND_STATUS.md`](../audit_reports/00_ROUND_STATUS.md).
 > The paragraphs below record earlier measurements and dated implementation updates.
 
-> **Current documentation state (2026-10-16, rounds 50–79):** **95 migrations**
+> **Current documentation state (2026-11-11, state-machine register wave):** **147 migrations**
+> (0001–0147), **105 frontend page components**, **1291 backend test files**, and a
+> **1294-test / 143-file** Vitest frontend suite with clean `tsc --noEmit` (measured at
+> this refresh). The regenerated API reference reports **1319 paths / 1445 operations**
+> across 122 tagged groups. The full local backend suite was last run in full at
+> 7,629 passed / 34 skipped (2026-10-16); this refresh ran the shared-models,
+> register-pin and stack-contract batteries only. This wave added the canonical
+> state machine register (97 machines / 294 states / 91 model fields — shared JSON,
+> Python and TypeScript projections, the `/state-machines` explorer page and
+> drift-guard tests) and refreshed the documentation set: regenerated API snapshot,
+> navigation reference, documentation status map and the state-machine developer
+> reference. The paragraphs below record earlier measurements and dated
+> implementation updates.
+
+> **Historical documentation state (2026-10-16, rounds 50–79):** **95 migrations**
 > (0001–0095), **75 frontend page components**, and the full local backend suite at
 > **7,618 passed / 34 skipped** (per-round serial gate before push: ruff repo-wide,
 > rest + api suites, Vitest, `tsc --noEmit`) plus a **334-test / 34-file** Vitest

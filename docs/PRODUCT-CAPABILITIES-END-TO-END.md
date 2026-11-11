@@ -1,8 +1,17 @@
 # CryptoScan — end-to-end product capabilities
 
+**2026-11-11 correction:** the numerical table below remains a dated snapshot. The
+regenerated [API reference](api-reference/rest-api.md) now reports **1,319 paths /
+1,445 operations / 122 groups**; the console carries **98 classified surfaces** in
+five sidebar sections (**30 rows / 74 links**) including the `/state-machines`
+register page; the schema head is **0147**. Current queue authority,
+durable SSH and TLS/Sentinel replay controls are summarized in the
+[API contract companion](api-reference/execution-and-replay.md); production
+acceptance remains the [root gate](../PRODUCTION-READINESS.md).
+
 **2026-10-22 correction:** the numerical table below is a dated snapshot, not a
 current census or production claim. The regenerated [API reference](api-reference/rest-api.md)
-now reports **917 paths / 1,008 operations / 105 groups**. Current queue authority,
+reported at that correction **917 paths / 1,008 operations / 105 groups**. Current queue authority,
 durable SSH and TLS/Sentinel replay controls are summarized in the
 [API contract companion](api-reference/execution-and-replay.md); production
 acceptance remains the [root gate](../PRODUCTION-READINESS.md).
