@@ -222,6 +222,7 @@
             "NETWORK_TLS_SESSION",
             "NETWORK_TLS13_KEY_SHARE",
             "NETWORK_TLS13_HYBRID",
+            "NETWORK_TLS_CLIENT_OFFER",
             "OCI_IMAGE_METADATA",
             "OCI_IMAGE_CONTENT",
             "OCI_RUNTIME_PROCESS",
@@ -383,6 +384,9 @@
               },
               {
                 "$ref": "#/$defs/TlsSessionFact"
+              },
+              {
+                "$ref": "#/$defs/TlsClientOfferFact"
               },
               {
                 "$ref": "#/$defs/TlsKeyShareFact"
@@ -1627,6 +1631,239 @@
         "identity_key"
       ],
       "title": "RuntimeFact",
+      "type": "object"
+    },
+    "TlsClientOfferFact": {
+      "additionalProperties": false,
+      "description": "One sealed observation: client X, connecting to an approved probe, offered these.",
+      "properties": {
+        "algorithm": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "alpn": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Alpn",
+          "type": "array"
+        },
+        "application_data_sent": {
+          "const": false,
+          "default": false,
+          "title": "Application Data Sent",
+          "type": "boolean"
+        },
+        "authorized_operation": {
+          "const": "OBSERVE_APPROVED_CLIENT_HELLO",
+          "default": "OBSERVE_APPROVED_CLIENT_HELLO",
+          "title": "Authorized Operation",
+          "type": "string"
+        },
+        "bind_address": {
+          "maxLength": 45,
+          "title": "Bind Address",
+          "type": "string"
+        },
+        "bind_port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Bind Port",
+          "type": "integer"
+        },
+        "capabilities_observed": {
+          "const": false,
+          "default": false,
+          "title": "Capabilities Observed",
+          "type": "boolean"
+        },
+        "client_address": {
+          "maxLength": 45,
+          "title": "Client Address",
+          "type": "string"
+        },
+        "client_identity_resolved": {
+          "const": false,
+          "default": false,
+          "title": "Client Identity Resolved",
+          "type": "boolean"
+        },
+        "client_port": {
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "Client Port",
+          "type": "integer"
+        },
+        "grease_values_seen": {
+          "default": 0,
+          "maximum": 32,
+          "minimum": 0,
+          "title": "Grease Values Seen",
+          "type": "integer"
+        },
+        "handshake_completed": {
+          "const": false,
+          "default": false,
+          "title": "Handshake Completed",
+          "type": "boolean"
+        },
+        "identity_key": {
+          "maxLength": 400,
+          "title": "Identity Key",
+          "type": "string"
+        },
+        "interface": {
+          "const": "BOUND_NUMERIC_LISTEN_SOCKET_CLIENT_HELLO_ONLY",
+          "default": "BOUND_NUMERIC_LISTEN_SOCKET_CLIENT_HELLO_ONLY",
+          "title": "Interface",
+          "type": "string"
+        },
+        "interface_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Interface Sha256",
+          "type": "string"
+        },
+        "key_size": {
+          "default": null,
+          "title": "Key Size",
+          "type": "null"
+        },
+        "kind": {
+          "const": "NETWORK_TLS_CLIENT_OFFER",
+          "default": "NETWORK_TLS_CLIENT_OFFER",
+          "title": "Kind",
+          "type": "string"
+        },
+        "local_basis": {
+          "const": "OBSERVED",
+          "default": "OBSERVED",
+          "title": "Local Basis",
+          "type": "string"
+        },
+        "offered_cipher_suites": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Offered Cipher Suites",
+          "type": "array"
+        },
+        "offered_groups": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Offered Groups",
+          "type": "array"
+        },
+        "offered_signature_algorithms": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Offered Signature Algorithms",
+          "type": "array"
+        },
+        "offered_versions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Offered Versions",
+          "type": "array"
+        },
+        "operation_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Operation Use",
+          "type": "string"
+        },
+        "policy_result": {
+          "const": "NOT_EVALUATED",
+          "default": "NOT_EVALUATED",
+          "title": "Policy Result",
+          "type": "string"
+        },
+        "pqc_assessment": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Pqc Assessment",
+          "type": "string"
+        },
+        "purpose": {
+          "const": "CLIENT_HELLO_OFFERS_OBSERVED",
+          "default": "CLIENT_HELLO_OFFERS_OBSERVED",
+          "title": "Purpose",
+          "type": "string"
+        },
+        "reviewed_target_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Reviewed Target Sha256",
+          "type": "string"
+        },
+        "runtime_use": {
+          "const": "UNKNOWN",
+          "default": "UNKNOWN",
+          "title": "Runtime Use",
+          "type": "string"
+        },
+        "sni": {
+          "anyOf": [
+            {
+              "maxLength": 253,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sni"
+        },
+        "software_name": {
+          "default": null,
+          "title": "Software Name",
+          "type": "null"
+        },
+        "software_version": {
+          "default": null,
+          "title": "Software Version",
+          "type": "null"
+        },
+        "versions_field": {
+          "default": "supported_versions",
+          "enum": [
+            "supported_versions",
+            "legacy_version"
+          ],
+          "title": "Versions Field",
+          "type": "string"
+        },
+        "wire_bytes_received": {
+          "maximum": 4096,
+          "minimum": 1,
+          "title": "Wire Bytes Received",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reviewed_target_sha256",
+        "bind_address",
+        "bind_port",
+        "client_address",
+        "client_port",
+        "offered_versions",
+        "offered_cipher_suites",
+        "wire_bytes_received",
+        "identity_key",
+        "interface_sha256"
+      ],
+      "title": "TlsClientOfferFact",
       "type": "object"
     },
     "TlsHybridFact": {

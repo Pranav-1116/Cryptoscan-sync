@@ -122,6 +122,10 @@
           "value": ""
         },
         {
+          "name": "cryptoscan:host:configured_directives_unparsed",
+          "value": "False"
+        },
+        {
           "name": "cryptoscan:host:signature_hash",
           "value": "SHA256"
         },

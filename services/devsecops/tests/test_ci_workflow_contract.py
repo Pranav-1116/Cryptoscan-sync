@@ -72,7 +72,10 @@ def test_discovery_matches_every_existing_service_and_shared_suite():
     scanner_suites = set(suites.discover_suites(ROOT, scanners_only=True))
     non_scanner_suites = set(suites.discover_suites(ROOT, non_scanners_only=True))
     assert sorted(all_suites) == expected
-    assert len(all_suites) == 54
+    # Acknowledgment ratchet: bump when a suite is added or retired, so the
+    # change is conscious. binary_intelligence, cryptolog and os_intelligence
+    # suites landed since the last bump (one earlier suite retired).
+    assert len(all_suites) == 57
     assert scanner_suites and non_scanner_suites
     assert scanner_suites.isdisjoint(non_scanner_suites)
     assert scanner_suites | non_scanner_suites == all_suites
