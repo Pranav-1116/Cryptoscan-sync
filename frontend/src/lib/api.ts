@@ -636,6 +636,77 @@ export const apiHbomWorkspaceHistory = (): Promise<ApiResult<Record<string, unkn
 export const apiHbomWorkspaceExport = (): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/hbom/workspace/export");
 
+/* ── NBOM workspace (contracts in api/routers/nbom_workspace.py; docs/boms/01_PRODUCT_SPEC.md §4) ──
+ * The server renders negotiated TLS facts only where a handshake was
+ * observed; everywhere else the value is the string "unknown" — never
+ * "none", never "plaintext". */
+
+export interface NbomEndpointRow {
+  endpoint: string;
+  host?: string | null;
+  port?: string | number | null;
+  protocol?: string | null;
+  service?: string | null;
+  tls_version: string;
+  cipher_suite: string;
+  negotiation: { state: string; basis: string };
+  certificate?: {
+    subject?: string | null;
+    fingerprint_sha256?: string | null;
+    issuer?: string | null;
+    public_key_algorithm?: string | null;
+    public_key_size?: number | null;
+    expiry_status?: string | null;
+  } | null;
+  source: string;
+  scan_run_id?: string | null;
+  first_observed?: string | null;
+  last_observed?: string | null;
+  freshness: string;
+}
+
+export const apiNbomWorkspaceOverview = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/nbom/workspace/overview");
+
+export const apiNbomWorkspaceEndpoints = (q?: string): Promise<ApiResult<{ state: string; total: number; rows: NbomEndpointRow[] }>> =>
+  call(`/api/v1/nbom/workspace/endpoints${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+
+export const apiNbomWorkspaceEndpointDetail = (endpoint: string): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/nbom/workspace/endpoints/${encodeURIComponent(endpoint)}`);
+
+export const apiNbomWorkspaceAssets = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/nbom/workspace/assets");
+
+export const apiNbomWorkspaceServices = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/nbom/workspace/services");
+
+export const apiNbomWorkspaceTls = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/nbom/workspace/tls");
+
+export const apiNbomWorkspaceSsh = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/nbom/workspace/ssh");
+
+export const apiNbomWorkspaceIpsec = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/nbom/workspace/ipsec");
+
+export const apiNbomWorkspaceCertificates = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/nbom/workspace/certificates");
+
+export const apiNbomWorkspaceDependencies = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/nbom/workspace/dependencies");
+
+export const apiNbomWorkspaceChanges = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/nbom/workspace/changes");
+
+export const apiNbomWorkspaceEvidence = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/nbom/workspace/evidence");
+
+export const apiNbomWorkspaceHistory = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/nbom/workspace/history");
+
+export const apiNbomWorkspaceExport = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/nbom/workspace/export");
+
 
 export const apiSecurity = (request: Record<string, unknown>): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/platform/security", { method: "POST", body: JSON.stringify({ request }) });

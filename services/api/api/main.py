@@ -94,6 +94,7 @@ from api.routers import (
     hardware,
     hbom,
     hbom_workspace,
+    nbom_workspace,
     health,
     hsm_scans,
     intelligence,
@@ -638,6 +639,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(sbom.router, prefix=prefix)
     app.include_router(cbom_workspace.router, prefix=prefix)
     app.include_router(hbom_workspace.router, prefix=prefix)
+    app.include_router(nbom_workspace.router, prefix=prefix)
     app.include_router(graph.router, prefix=prefix)
     app.include_router(reachability.router, prefix=prefix)
     app.include_router(remediation.router, prefix=prefix)

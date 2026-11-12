@@ -1,8 +1,16 @@
 import React, { useCallback, useEffect, useState, useMemo } from "react";
 import BomCrossNav from "../components/BomCrossNav";
-import { Link } from "react-router-dom";
-import { Panel, Badge, Bar, Ring } from "../components/ui";
-import { apiNbomLive, NbomCascadeEntry, NbomComponent, NbomResponse } from "../lib/api.js";
+import { Link, useSearchParams } from "react-router-dom";
+import { Panel, Badge, Bar, Ring, Drawer } from "../components/ui";
+import { useApi } from "../lib/apiUi.jsx";
+import {
+  apiNbomLive, NbomCascadeEntry, NbomComponent, NbomResponse,
+  apiNbomWorkspaceOverview, apiNbomWorkspaceEndpoints, apiNbomWorkspaceEndpointDetail,
+  apiNbomWorkspaceAssets, apiNbomWorkspaceServices, apiNbomWorkspaceTls,
+  apiNbomWorkspaceSsh, apiNbomWorkspaceIpsec, apiNbomWorkspaceCertificates,
+  apiNbomWorkspaceDependencies, apiNbomWorkspaceChanges, apiNbomWorkspaceEvidence,
+  apiNbomWorkspaceHistory, apiNbomWorkspaceExport, type NbomEndpointRow,
+} from "../lib/api.js";
 import { IconCrypto, IconHardware, IconTarget, IconClock, IconSecurity, IconWarn, IconSearch, IconInfo, IconCertificate } from "../components/icons";
 
 /* NBOM — Network Bill of Materials — visualized.
@@ -23,7 +31,75 @@ function prop(component: NbomComponent, key: string): string | undefined {
   return properties.find((p) => p.name === `cryptoscan:${key}`)?.value;
 }
 
+const NBOM_TABS: Array<{ id: string; label: string }> = [
+  { id: "overview", label: "NBOM Overview" },
+  { id: "assets", label: "Network Asset Inventory" },
+  { id: "endpoints", label: "Endpoint Inventory" },
+  { id: "services", label: "Service & Port Inventory" },
+  { id: "tls", label: "TLS Intelligence" },
+  { id: "ssh", label: "SSH Intelligence" },
+  { id: "ipsec", label: "IPsec / VPN Intelligence" },
+  { id: "certificates", label: "Certificate Exposure" },
+  { id: "dependencies", label: "Network Dependencies" },
+  { id: "changes", label: "Network Change History" },
+  { id: "evidence", label: "Evidence & Provenance" },
+  { id: "history", label: "NBOM History" },
+  { id: "export", label: "Export & Validation" },
+];
+
+/* A read that did not return is never an inventory of zero records. */
+function WsState({ read, noun, children }: {
+  read: { data: Record<string, unknown> | null; running: boolean; source: string; detail?: string | null };
+  noun: string;
+  children: React.ReactNode;
+}) {
+  if (read.running && !read.data) return <p className="faint" style={{ fontSize: 12 }}>Reading the {noun}…</p>;
+  if (read.source !== "live" || read.data == null)
+    return (
+      <Panel title={`${noun} not read`} sub={read.source === "live" ? "the read returned nothing" : "the control plane did not answer"}>
+        <p role="status" style={{ margin: 0, fontSize: 12, color: "var(--amber)" }}>
+          {read.source === "live"
+            ? `The ${noun} read returned nothing — nothing is claimed here.`
+            : `The ${noun} could not be read${read.detail ? ` — ${read.detail}` : ""}. An unread inventory is not an empty one.`}
+        </p>
+      </Panel>
+    );
+  return <>{children}</>;
+}
+
+function WsTable({ head, rows, colSpan }: { head: string[]; rows: React.ReactNode[]; colSpan: number }) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table className="tbl" style={{ width: "100%" }}>
+        <thead><tr>{head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
+        <tbody>
+          {rows.length ? rows : (
+            <tr><td colSpan={colSpan} style={{ padding: 26, textAlign: "center", color: "var(--dim)", fontSize: 12 }}>
+              <div style={{ fontWeight: 600, color: "var(--text)" }}>Nothing stored yet</div>
+              <div style={{ fontSize: 11.5, marginTop: 4 }}>Empty rows here mean no stored observations — not a healthy zero.</div>
+            </td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function NegotiationBadge({ negotiation }: { negotiation: { state: string; basis: string } }) {
+  return negotiation.state === "OBSERVED"
+    ? <Badge tone="pass">observed</Badge>
+    : <Badge tone="slate">unknown</Badge>;
+}
+
+function NegotiatedValue({ value }: { value: string }) {
+  return value === "unknown"
+    ? <span style={{ fontSize: 11, fontStyle: "italic", color: "var(--faint)" }}>unknown</span>
+    : <span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{value}</span>;
+}
+
 export default function Nbom() {
+  const [wsParams, setWsParams] = useSearchParams();
+  const active = NBOM_TABS.some((t) => t.id === wsParams.get("tab")) ? wsParams.get("tab") as string : "overview";
   const [data, setData] = useState<NbomResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -113,6 +189,20 @@ export default function Nbom() {
         </div>
       </div>
 
+      <div role="tablist" aria-label="NBOM sections" style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "2px 0 16px" }}>
+        {NBOM_TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={active === t.id} title={t.label}
+            onClick={() => setWsParams({ tab: t.id })}
+            style={{
+              fontSize: 11, padding: "6px 11px", borderRadius: 999, cursor: "pointer",
+              border: `1px solid ${active === t.id ? "var(--accent)" : "var(--line-strong)"}`,
+              background: active === t.id ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "var(--panel-2)",
+              color: active === t.id ? "var(--accent)" : "var(--dim)", fontFamily: "var(--mono)", letterSpacing: ".03em",
+            }}>{t.label}</button>
+        ))}
+      </div>
+
+      {active === "overview" && (<>
       {/* KPI cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 18 }}>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--accent)" }}>
@@ -404,6 +494,333 @@ export default function Nbom() {
           <span style={{ marginLeft: "auto", fontFamily: "var(--mono)" }}>{components.length} components · scanner truth</span>
         </div>
       </div>
+      </>)}
+      {active === "assets" && <NbomAssets />}
+      {active === "endpoints" && <NbomEndpoints />}
+      {active === "services" && <NbomServices />}
+      {active === "tls" && <NbomProtocol kind="tls" label="TLS Intelligence" />}
+      {active === "ssh" && <NbomProtocol kind="ssh" label="SSH Intelligence" />}
+      {active === "ipsec" && <NbomProtocol kind="ipsec" label="IPsec / VPN Intelligence" />}
+      {active === "certificates" && <NbomCertificates />}
+      {active === "dependencies" && <NbomDependencies />}
+      {active === "changes" && <NbomChanges />}
+      {active === "evidence" && <NbomEvidence />}
+      {active === "history" && <NbomHistory />}
+      {active === "export" && <NbomExport />}
     </div>
+  );
+}
+
+/* ── workspace sections (docs/boms/01_PRODUCT_SPEC.md §4 navigation) ─── */
+
+function NbomEndpoints() {
+  const [q, setQ] = useState("");
+  const read = useApi(() => apiNbomWorkspaceEndpoints(q || undefined), [q]);
+  const rows = (read.data?.rows ?? []) as NbomEndpointRow[];
+  const [selected, setSelected] = useState<NbomEndpointRow | null>(null);
+  const detail = useApi(
+    () => apiNbomWorkspaceEndpointDetail(selected?.endpoint ?? ""),
+    [selected?.endpoint],
+  );
+  return (
+    <>
+      <Panel title="Endpoint Inventory" sub="negotiated TLS facts appear only where a handshake was observed — elsewhere the value is unknown">
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <input value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="search by endpoint or service"
+            aria-label="search endpoints"
+            style={{ flex: 1, minWidth: 220, padding: "7px 10px", borderRadius: "var(--r)", border: "1px solid var(--line-strong)", background: "var(--panel-2)", color: "var(--text)", fontSize: 12 }} />
+          <Badge tone="slate">{read.data?.total ?? (read.source === "live" ? rows.length : "—")} endpoints</Badge>
+        </div>
+        <WsState read={read} noun="endpoint inventory">
+          <WsTable
+            head={["Endpoint", "Port", "Protocol", "Service", "TLS version", "Cipher suite", "Certificate", "Source", "First / last observed"]}
+            colSpan={9}
+            rows={rows.map((r) => (
+              <tr key={r.endpoint} style={{ cursor: "pointer" }} onClick={() => setSelected(r)}>
+                <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.endpoint}</span></td>
+                <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{String(r.port ?? "—")}</span></td>
+                <td><Badge tone="slate">{r.protocol || "—"}</Badge></td>
+                <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.service || "NOT_COLLECTED"}</span></td>
+                <td><NegotiatedValue value={r.tls_version} /></td>
+                <td><NegotiatedValue value={r.cipher_suite} /></td>
+                <td>{r.certificate
+                  ? <Badge tone="violet">{String(r.certificate.subject || r.certificate.fingerprint_sha256 || "").slice(0, 24)}</Badge>
+                  : <span style={{ fontSize: 11, color: "var(--faint)" }}>none served</span>}</td>
+                <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.source}</span></td>
+                <td><span style={{ fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--dim)" }}>{String(r.first_observed ?? "—").slice(0, 10)} → {String(r.last_observed ?? "—").slice(0, 10)}</span></td>
+              </tr>
+            ))}
+          />
+        </WsState>
+      </Panel>
+      {selected && (
+        <Drawer title={selected.endpoint} sub={`${selected.protocol || "—"} · port ${String(selected.port ?? "—")}`} onClose={() => setSelected(null)}>
+          {!detail.data ? <p className="faint" style={{ fontSize: 12 }}>{detail.running ? "Reading the endpoint…" : "The endpoint detail did not return."}</p> : (
+            (() => {
+              const d = detail.data as Record<string, any>;
+              const e: NbomEndpointRow = d.endpoint ?? selected;
+              return (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                    <div><b>Endpoint</b> {e.endpoint} · <b>Service</b> {e.service || "NOT_COLLECTED"}</div>
+                    <div><b>Source</b> {e.source}</div>
+                    <div><b>First observed</b> {String(e.first_observed ?? "—").slice(0, 19)} · <b>Last observed</b> {String(e.last_observed ?? "—").slice(0, 19)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>NEGOTIATED CRYPTOGRAPHY</div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+                      <NegotiationBadge negotiation={e.negotiation} />
+                      <span style={{ fontSize: 11.5 }}>TLS <NegotiatedValue value={e.tls_version} /> · <NegotiatedValue value={e.cipher_suite} /></span>
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "var(--faint)" }}>{e.negotiation.basis}</div>
+                  </div>
+                  {(d.observations ?? []).length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>RUNTIME SESSION OBSERVATIONS</div>
+                      {(d.observations ?? []).map((o: Record<string, unknown>, i: number) => (
+                        <div key={i} style={{ fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)" }}>
+                          {String(o.tls_version ?? "—")} · {String(o.cipher_suite ?? "—")} · {String(o.observation_count ?? 0)}× · last {String(o.last_seen ?? "—").slice(0, 19)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {d.certificate_detail ? (
+                    <div>
+                      <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>CERTIFICATE METADATA</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {Object.entries(d.certificate_detail).map(([k, v]) => <Badge key={k} tone="slate">{k}: {String(v)}</Badge>)}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11.5, color: "var(--dim)" }}>No certificate metadata collected for this endpoint.</div>
+                  )}
+                  {(d.dependencies ?? []).length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>DEPENDENCIES</div>
+                      {(d.dependencies ?? []).map((x: Record<string, unknown>, i: number) => (
+                        <div key={i} style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--dim)" }}>{String(x.type)} → {String(x.target)}</div>
+                      ))}
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>EVIDENCE</div>
+                    <div style={{ fontSize: 11.5, color: "var(--dim)" }}>{String(d.evidence?.method ?? "")} · {String(d.evidence?.runs ?? 0)} run(s)</div>
+                    <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4 }}>{String(d.related?._note ?? "")}</div>
+                  </div>
+                </div>
+              );
+            })()
+          )}
+        </Drawer>
+      )}
+    </>
+  );
+}
+
+function NbomAssets() {
+  const read = useApi(apiNbomWorkspaceAssets);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Network Asset Inventory" sub="host-level rollup over the stored probes">
+      <WsState read={read} noun="host inventory">
+        <WsTable head={["Host", "Endpoints", "Ports", "Protocols", "Observed", "Unknown negotiation", "Last observed"]} colSpan={7}
+          rows={rows.slice(0, 200).map((r) => (
+            <tr key={r.host}>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.host}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.endpoints}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{(r.ports ?? []).join(", ")}</span></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{Object.entries(r.protocols ?? {}).map(([k, v]) => `${k} (${v})`).join(", ")}</span></td>
+              <td><Badge tone="pass">{r.observed}</Badge></td>
+              <td><Badge tone="slate">{r.unknown_negotiation} unknown</Badge></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.last_observed ?? "—").slice(0, 10)}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function NbomServices() {
+  const read = useApi(apiNbomWorkspaceServices);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Service & Port Inventory" sub="identified services as the collector recorded them">
+      <WsState read={read} noun="service inventory">
+        <WsTable head={["Endpoint", "Host", "Port", "Service", "Protocol", "Negotiation", "Last observed"]} colSpan={7}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.endpoint}</span></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.host || "—"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{String(r.port ?? "—")}</span></td>
+              <td><span style={{ fontSize: 11 }}>{r.service || "NOT_COLLECTED"}</span></td>
+              <td><Badge tone="slate">{r.protocol || "—"}</Badge></td>
+              <td><NegotiationBadge negotiation={{ state: r.negotiation_state, basis: "" }} /></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.last_observed ?? "—").slice(0, 10)}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function NbomProtocol({ kind, label }: { kind: "tls" | "ssh" | "ipsec"; label: string }) {
+  const read = useApi(() => kind === "tls" ? apiNbomWorkspaceTls() : kind === "ssh" ? apiNbomWorkspaceSsh() : apiNbomWorkspaceIpsec(), [kind]);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title={label} sub="supported, configured and negotiated are kept apart — unknown where the collector cannot establish it">
+      <WsState read={read} noun={label.toLowerCase()}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <Badge tone="pass">{String(read.data?.observed ?? 0)} observed</Badge>
+          <Badge tone="slate">{String(read.data?.unknown ?? 0)} unknown</Badge>
+        </div>
+        <WsTable head={["Endpoint", "Host", "Port", "TLS version", "Cipher suite", "Negotiation", "Probe status", "Last observed"]} colSpan={8}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.endpoint}</span></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.host || "—"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{String(r.port ?? "—")}</span></td>
+              <td><NegotiatedValue value={r.tls_version} /></td>
+              <td><NegotiatedValue value={r.cipher_suite} /></td>
+              <td><NegotiationBadge negotiation={r.negotiation} /></td>
+              <td><Badge tone="slate">{r.status || "—"}</Badge></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.last_observed ?? "—").slice(0, 10)}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function NbomCertificates() {
+  const read = useApi(apiNbomWorkspaceCertificates);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Certificate Exposure" sub="certificates served on the wire, joined to the certificate store only where the fingerprint matches">
+      <WsState read={read} noun="certificate exposure">
+        <WsTable head={["Endpoint", "Subject", "Issuer", "Public key", "Expiry", "In store", "Last observed"]} colSpan={7}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.endpoint}</span></td>
+              <td><span style={{ fontSize: 11.5 }}>{r.subject || <span style={{ color: "var(--faint)" }}>no subject collected</span>}</span></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.issuer || "—"}</span></td>
+              <td><Badge tone="slate">{r.public_key_algorithm || "?"}{r.public_key_size ? ` ${r.public_key_size}` : ""}</Badge></td>
+              <td><Badge tone={r.expiry_status === "EXPIRED" ? "red" : "slate"}>{r.expiry_status || "UNKNOWN"}</Badge></td>
+              <td>{r.in_store ? <Badge tone="pass">joined</Badge> : <Badge tone="slate">probe only</Badge>}</td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.last_observed ?? "—").slice(0, 10)}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function NbomDependencies() {
+  const read = useApi(apiNbomWorkspaceDependencies);
+  const edges = (read.data?.edges ?? []) as Array<Record<string, string>>;
+  const roots = (read.data?.roots ?? []) as string[];
+  return (
+    <Panel title="Network Dependencies" sub="edges come from stored relationships only — exposed_on and served_by, never guessed links">
+      <WsState read={read} noun="dependency inventory">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          <Badge tone="violet">{edges.length} edges</Badge>
+          <Badge tone="slate">{roots.length} roots</Badge>
+        </div>
+        <WsTable head={["Source", "Target", "Type"]} colSpan={3}
+          rows={edges.slice(0, 300).map((e, i) => (
+            <tr key={i}>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{e.source}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{e.target}</span></td>
+              <td><Badge tone="slate">{e.type}</Badge></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function NbomChanges() {
+  const read = useApi(apiNbomWorkspaceChanges);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Network Change History" sub="newest run wins per endpoint; every run that recorded it is observation history">
+      <WsState read={read} noun="change history">
+        <WsTable head={["Endpoint", "Current scan run", "Recorded", "Runs observed"]} colSpan={4}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.endpoint}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.scan_run_id ?? "—").slice(0, 12)}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.recorded_at ?? "—").slice(0, 19)}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.runs}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function NbomEvidence() {
+  const read = useApi(apiNbomWorkspaceEvidence);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Evidence & Provenance" sub="the collection method is named — a probe without a successful handshake is recorded as exactly that">
+      <WsState read={read} noun="evidence inventory">
+        <WsTable head={["Endpoint", "Source", "Method", "Probe status", "Last observed", "Freshness"]} colSpan={6}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.endpoint}</span></td>
+              <td><span style={{ fontSize: 11 }}>{r.source}</span></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.method}</span></td>
+              <td><Badge tone="slate">{r.status || "—"}</Badge></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.last_observed ?? "—").slice(0, 10)}</span></td>
+              <td><Badge tone={r.freshness === "CURRENT" ? "pass" : r.freshness === "STALE" ? "amber" : "slate"}>{r.freshness}</Badge></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function NbomHistory() {
+  const read = useApi(apiNbomWorkspaceHistory);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="NBOM History" sub="stored scan runs — probed and ok counts as the run recorded them">
+      <WsState read={read} noun="scan history">
+        <WsTable head={["Scan run", "Target kind", "Verdict", "Probed", "OK", "Created"]} colSpan={6}
+          rows={rows.slice(0, 100).map((r) => (
+            <tr key={r.scan_run_id}>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.scan_run_id).slice(0, 12)}…</span></td>
+              <td><Badge tone="slate">{r.target_kind || "—"}</Badge></td>
+              <td><Badge tone={r.verdict === "OK" ? "pass" : r.verdict ? "amber" : "slate"}>{r.verdict || "UNKNOWN"}</Badge></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{String(r.probed ?? "—")}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{String(r.ok ?? "—")}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.created_at ?? "—").slice(0, 19)}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function NbomExport() {
+  const read = useApi(apiNbomWorkspaceExport);
+  const formats = (read.data?.formats ?? []) as Array<Record<string, unknown>>;
+  return (
+    <Panel title="Export & Validation" sub="the NBOM exports as the scanner recorded it — endpoints the collector could not establish stay unknown in the document too">
+      <WsState read={read} noun="export inventory">
+        <WsTable head={["Format", "Validator", "State"]} colSpan={3}
+          rows={formats.map((f, i) => (
+            <tr key={i}>
+              <td><span style={{ fontSize: 12, fontWeight: 600 }}>{String(f.format)}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--dim)" }}>{String(f.validator)}</span></td>
+              <td><Badge tone="pass">{String(f.state)}</Badge></td>
+            </tr>
+          ))} />
+        <div style={{ marginTop: 12, fontSize: 11.5, color: "var(--dim)" }}>
+          Live document: <Link to="/live-asset-intelligence" style={{ color: "var(--accent)" }}>NBOM export →</Link>
+        </div>
+      </WsState>
+    </Panel>
   );
 }
