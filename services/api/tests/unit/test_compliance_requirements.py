@@ -25,7 +25,10 @@ from api.main import create_app
 from db.connection.session import Base
 from db.models.compliance_record import ComplianceAttestation, ComplianceEvidencePack
 
-NOW = datetime(2026, 10, 13, tzinfo=timezone.utc)
+# Anchored to real time so expiry assertions stay deterministic whenever the
+# suite runs: ages are always computed relative to "now" (a frozen absolute
+# date decays and starts failing once the real clock crosses a window edge).
+NOW = datetime.now(timezone.utc)
 
 
 def _make_app(user: str = "admin", roles: list[str] | None = None):
