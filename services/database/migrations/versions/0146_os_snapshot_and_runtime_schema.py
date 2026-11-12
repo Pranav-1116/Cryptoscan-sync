@@ -45,8 +45,13 @@ def upgrade() -> None:
         _change_id(table, sa.String(36), "id::varchar(36)")
         # TenantScoped permits NULL for the pre-tenancy/platform estate.
         # Keep the existing VARCHAR(64) width to avoid truncating legacy IDs.
-        op.alter_column(table, "tenant_id", existing_type=sa.String(64),
-                        existing_nullable=False, nullable=True)
+        if op.get_bind().dialect.name == "postgresql":
+            op.alter_column(table, "tenant_id", existing_type=sa.String(64),
+                            existing_nullable=False, nullable=True)
+        else:
+            with op.batch_alter_table(table, recreate="always") as batch:
+                batch.alter_column("tenant_id", existing_type=sa.String(64),
+                                   existing_nullable=False, nullable=True)
         op.add_column(table, sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True))
         op.execute(sa.text(f"UPDATE {table} SET updated_at = created_at"))
         with op.batch_alter_table(table) as batch:
@@ -59,8 +64,13 @@ def downgrade() -> None:
     # can return to 0145 (e.g. the migration-chain test).
     for table in reversed(_BASEMODEL_TABLES):
         op.drop_column(table, "updated_at")
-        op.alter_column(table, "tenant_id", existing_type=sa.String(64),
-                        existing_nullable=True, nullable=False)
+        if op.get_bind().dialect.name == "postgresql":
+            op.alter_column(table, "tenant_id", existing_type=sa.String(64),
+                            existing_nullable=True, nullable=False)
+        else:
+            with op.batch_alter_table(table, recreate="always") as batch:
+                batch.alter_column("tenant_id", existing_type=sa.String(64),
+                                   existing_nullable=True, nullable=False)
         _change_id(table, sa.Integer(), "id::integer")
         if op.get_bind().dialect.name == "postgresql":
             op.execute(sa.text(
