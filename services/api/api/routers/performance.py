@@ -38,6 +38,7 @@ from shared_models.performance_intelligence import (
 )
 from shared_models.performance_metrics import PerformanceMetric
 from shared_models.performance_views import (
+    hsm_view, workload_view,
     application_view, cryptography_view, database_view, domain_view,
     network_view, overview as view_overview, storage_view,
     summarize_metric as summarize, window_check,
@@ -205,11 +206,49 @@ class Tile(BaseModel):
     note: Optional[str] = None
 
 
+class ServiceRowOut(BaseModel):
+    service: str
+    p95_latency_ms: Optional[float] = None
+    error_rate_pct: Optional[float] = None
+    requests_per_sec: Optional[float] = None
+    sample_count: int = 0
+
+
 class OverviewResponse(BaseModel):
     storage_usage_pct: Tile
     network_throughput_mbps: Tile
     api_p95_latency_ms: Tile
     requests_per_sec: Tile
+    # the UI brief's headline cards (docs/performance/03_UI_SPEC.md §1)
+    cpu_utilization_pct: Optional[Tile] = None
+    memory_utilization_pct: Optional[Tile] = None
+    app_p95_latency_ms: Optional[Tile] = None
+    error_rate_pct: Optional[Tile] = None
+    services: List[ServiceRowOut] = Field(default_factory=list)
+    note: str
+
+
+class HsmDeviceOut(BaseModel):
+    device: str
+    operation_latency_ms: Optional[float] = None
+    queue_depth: Optional[float] = None
+    utilization_pct: Optional[float] = None
+    provider_errors: Optional[float] = None
+    samples: int = 0
+    last_observed: Optional[str] = None
+
+
+class HsmResponse(BaseModel):
+    devices: List[HsmDeviceOut]
+    families: Dict[str, Any]
+    measurement_kind: str
+    note: str
+
+
+class WorkloadResponse(BaseModel):
+    workload_metrics: Dict[str, Any]
+    correlation_candidates: List[Dict[str, Any]]
+    causation: str
     note: str
 
 
@@ -439,6 +478,31 @@ def cryptography(tenant_id: str = Query(...),
     window_start, window_end = window
     rows = _tenant_rows(db, tenant_id, window_start, window_end)
     return CryptographyResponse(**cryptography_view(rows))
+
+
+@router.get("/hsm", response_model=HsmResponse)
+def hsm(tenant_id: str = Query(...),
+        window: Tuple[datetime, datetime] = Depends(_window_params),
+        db: Session = Depends(get_db_session),
+        user: str = Depends(get_current_user)) -> HsmResponse:
+    """HSM & KMS performance (docs/performance/03_UI_SPEC.md §7) —
+    read-only projections of stored vendor-interface telemetry."""
+    window_start, window_end = window
+    rows = _tenant_rows(db, tenant_id, window_start, window_end)
+    return HsmResponse(**hsm_view(rows))
+
+
+@router.get("/workloads", response_model=WorkloadResponse)
+def workloads(tenant_id: str = Query(...),
+              window: Tuple[datetime, datetime] = Depends(_window_params),
+              db: Session = Depends(get_db_session),
+              user: str = Depends(get_current_user)) -> WorkloadResponse:
+    """Workload & transaction intelligence (docs/performance/03_UI_SPEC.md
+    §8) — correlation candidates only; causation stays unproven until
+    timestamps and traces establish it."""
+    window_start, window_end = window
+    rows = _tenant_rows(db, tenant_id, window_start, window_end)
+    return WorkloadResponse(**workload_view(rows))
 
 
 @router.get("/assets/{asset_id}", response_model=AssetResponse)

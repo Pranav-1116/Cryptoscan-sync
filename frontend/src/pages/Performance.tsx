@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { activeTenantId, ensureActiveTenant } from "../lib/api";
+import {
+  PerformanceServiceRow, activeTenantId, ensureActiveTenant } from "../lib/api";
 import { Badge, Panel, PageHead } from "../components/ui.jsx";
 import {
   apiPerformanceAlerts, apiPerformanceApplications, apiPerformanceBaselines,
+  apiPerformanceHsm, apiPerformanceWorkloads, apiPerformanceSamples,
   apiPerformanceBenchmarks, apiPerformanceCapacity, apiPerformanceCloud,
   apiPerformanceCryptography, apiPerformanceDatabases, apiPerformanceHealth,
   apiPerformanceInfrastructure, apiPerformanceInvestigation,
@@ -27,21 +29,23 @@ import {
 
 type View =
   | "overview" | "infrastructure" | "storage" | "network" | "applications"
-  | "databases" | "cryptography" | "cloud" | "alerts" | "capacity"
-  | "benchmarks" | "reports" | "collectors" | "slo";
+  | "databases" | "cryptography" | "hsm" | "workloads" | "cloud" | "alerts"
+  | "capacity" | "benchmarks" | "reports" | "collectors" | "slo";
 
 const VIEWS: Array<{ key: View; label: string }> = [
   { key: "overview", label: "Performance Overview" },
-  { key: "infrastructure", label: "Infrastructure Monitoring" },
-  { key: "storage", label: "Storage Intelligence" },
-  { key: "network", label: "Network Intelligence" },
+  { key: "infrastructure", label: "Infrastructure Performance" },
+  { key: "storage", label: "Storage Performance" },
+  { key: "network", label: "Network Performance" },
   { key: "applications", label: "Application Performance" },
   { key: "databases", label: "Database Performance" },
   { key: "cryptography", label: "Cryptographic Performance" },
+  { key: "hsm", label: "HSM & KMS Performance" },
+  { key: "workloads", label: "Workload & Transaction Intelligence" },
   { key: "cloud", label: "Cloud & Container Performance" },
   { key: "alerts", label: "Performance Alerts" },
-  { key: "capacity", label: "Capacity Planning" },
-  { key: "benchmarks", label: "Benchmark Lab" },
+  { key: "capacity", label: "Capacity & Forecasting" },
+  { key: "benchmarks", label: "Cryptographic Benchmark Laboratory" },
   { key: "reports", label: "Historical Reports" },
   { key: "collectors", label: "Collector Health" },
   { key: "slo", label: "SLO and SLA Management" },
@@ -140,6 +144,57 @@ export function SummaryTable({ metrics }: { metrics: Record<string, PerformanceS
   );
 }
 
+/** Delivered trend samples as a labelled list — a missing series stays
+ *  missing; the shape never draws a fabricated flat line. */
+export function TrendList({ samples }: { samples: Array<Record<string, unknown>> }) {
+  return (
+    <div style={{ display: "grid", gap: 6 }}>
+      {samples.slice(0, 12).map((s, i) => (
+        <div key={i} style={{ display: "flex", gap: 10, fontSize: 12, alignItems: "baseline" }}>
+          <span style={{ opacity: 0.7, minWidth: 130 }}>{String(s.observed_at ?? "").slice(0, 19).replace("T", " ")}</span>
+          <span style={{ fontWeight: 600 }}>{String(s.metric_name ?? "")}</span>
+          <span>{s.metric_value === null || s.metric_value === undefined ? "—" : `${String(s.metric_value)} ${String(s.unit ?? "")}`}</span>
+          <span style={{ opacity: 0.65 }}>{String(s.asset_id ?? "")}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Per-service latency/errors as delivered — an unread column stays "—". */
+export function ServiceTable({ services }: { services: PerformanceServiceRow[] }) {
+  if (!services.length) {
+    return (
+      <div style={{ fontSize: 12, opacity: 0.75 }}>
+        No service telemetry is stored in this window — a missing service is a
+        collection gap, not a healthy service.
+      </div>
+    );
+  }
+  return (
+    <table style={{ width: "100%", fontSize: 12 }}>
+      <thead>
+        <tr>
+          <th style={{ textAlign: "left", padding: 6 }}>Service</th>
+          <th style={{ textAlign: "left", padding: 6 }}>p95 latency</th>
+          <th style={{ textAlign: "left", padding: 6 }}>Errors</th>
+          <th style={{ textAlign: "left", padding: 6 }}>Requests/sec</th>
+        </tr>
+      </thead>
+      <tbody>
+        {services.map((row) => (
+          <tr key={row.service}>
+            <td style={{ padding: 6 }}>{row.service}</td>
+            <td style={{ padding: 6 }}>{row.p95_latency_ms ?? "—"}</td>
+            <td style={{ padding: 6 }}>{row.error_rate_pct ?? "—"}</td>
+            <td style={{ padding: 6 }}>{row.requests_per_sec ?? "—"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function Note({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 11, opacity: 0.75, marginTop: 8 }}>{children}</div>;
 }
@@ -213,6 +268,9 @@ export default function Performance() {
   const benchmarks = useAsync(() => apiPerformanceBenchmarks({ tenant_id: tenant }), [reloadKey]);
   const health = useAsync(() => apiPerformanceHealth({ tenant_id: tenant }), [reloadKey]);
   const slo = useAsync(() => apiPerformanceSlo(w), [reloadKey]);
+  const hsm = useAsync(() => apiPerformanceHsm(w), [reloadKey]);
+  const workloads = useAsync(() => apiPerformanceWorkloads(w), [reloadKey]);
+  const trends = useAsync(() => apiPerformanceSamples({ ...w, limit: 240 }), [reloadKey]);
 
   return (
     <div>
@@ -281,6 +339,60 @@ export default function Performance() {
             <Note>{overview.data?.note ?? "Tiles show delivered values only."}</Note>
           </Panel>
         )
+      )}
+
+      {view === "overview" && !overview.error && (
+        <Panel title="Headline metrics" sub="the brief's four cards — CPU, memory, application p95 and error rate">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            <TileView tile={overview.data?.cpu_utilization_pct} label="CPU utilization" />
+            <TileView tile={overview.data?.memory_utilization_pct} label="Memory utilization" />
+            <TileView tile={overview.data?.app_p95_latency_ms} label="Application p95 latency" />
+            <TileView tile={overview.data?.error_rate_pct} label="Error rate" />
+          </div>
+        </Panel>
+      )}
+
+      {view === "overview" && !overview.error && (
+        <Panel title="Infrastructure trends" sub="CPU and memory utilisation over the selected window">
+          {trends.error || !(trends.data?.samples ?? []).length ? (
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
+              No trend samples are stored in this window — a missing trend is a
+              collection gap, not a flat line.
+            </div>
+          ) : (
+            <TrendList samples={trends.data?.samples ?? []} />
+          )}
+        </Panel>
+      )}
+
+      {view === "overview" && !overview.error && (
+        <Panel title="Service performance" sub="per-service latency and errors as delivered">
+          <ServiceTable services={overview.data?.services ?? []} />
+        </Panel>
+      )}
+
+      {view === "overview" && !overview.error && (
+        <Panel title="Performance alerts" sub="warning and critical performance conditions">
+          {alerts.error ? (
+            <div style={{ fontSize: 12, opacity: 0.75 }}>Alerts could not be read — an unread alert list is not an empty one.</div>
+          ) : (alerts.data ?? []).length === 0 ? (
+            <div style={{ fontSize: 12, opacity: 0.75 }}>No performance alerts are recorded in this window.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 6 }}>
+              {(alerts.data ?? []).slice(0, 5).map((a, i) => (
+                <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12 }}>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999,
+                    border: `1px solid ${a.severity === "CRITICAL" ? "var(--red, #ef4444)" : "var(--amber, #f59e0b)"}`,
+                    color: a.severity === "CRITICAL" ? "var(--red, #ef4444)" : "var(--amber, #f59e0b)",
+                  }}>{a.severity === "CRITICAL" ? "Critical" : "Warning"}</span>
+                  <span style={{ fontWeight: 600 }}>{a.metric_name}</span>
+                  <span style={{ opacity: 0.7 }}>{(a.not_proven ?? [])[0] ?? ""}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
       )}
 
       {view === "infrastructure" && (
@@ -354,6 +466,71 @@ export default function Performance() {
             <Badge tone="gray">{cryptography.data?.measurement_kind ?? "observed-production"}</Badge>
             <SummaryTable metrics={cryptography.data?.metrics ?? {}} />
             <Note>{cryptography.data?.note}</Note>
+          </Panel>
+        )
+      )}
+
+      {view === "hsm" && (
+        hsm.error ? <ErrorNote error={hsm.error} /> : (
+          <Panel title="HSM & KMS Performance" sub="vendor-supported read-only management and performance interfaces">
+            {(hsm.data?.devices ?? []).length === 0 ? (
+              <div style={{ fontSize: 12, opacity: 0.75 }}>
+                No HSM or KMS performance telemetry is stored in this window —
+                absence of telemetry is not a healthy device.
+              </div>
+            ) : (
+              <table style={{ width: "100%", fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left", padding: 6 }}>Device</th>
+                    <th style={{ textAlign: "left", padding: 6 }}>Operation latency</th>
+                    <th style={{ textAlign: "left", padding: 6 }}>Queue depth</th>
+                    <th style={{ textAlign: "left", padding: 6 }}>Utilization</th>
+                    <th style={{ textAlign: "left", padding: 6 }}>Provider errors</th>
+                    <th style={{ textAlign: "left", padding: 6 }}>Last observed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(hsm.data?.devices ?? []).map((d) => (
+                    <tr key={d.device}>
+                      <td style={{ padding: 6 }}>{d.device}</td>
+                      <td style={{ padding: 6 }}>{d.operation_latency_ms ?? "—"}</td>
+                      <td style={{ padding: 6 }}>{d.queue_depth ?? "—"}</td>
+                      <td style={{ padding: 6 }}>{d.utilization_pct ?? "—"}</td>
+                      <td style={{ padding: 6 }}>{d.provider_errors ?? "—"}</td>
+                      <td style={{ padding: 6 }}>{d.last_observed ? String(d.last_observed).slice(0, 10) : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <Note>{hsm.data?.note ?? ""}</Note>
+          </Panel>
+        )
+      )}
+
+      {view === "workloads" && (
+        workloads.error ? <ErrorNote error={workloads.error} /> : (
+          <Panel title="Workload & Transaction Intelligence" sub="where infrastructure and application performance meet business workloads">
+            {Object.keys(workloads.data?.workload_metrics ?? {}).length === 0 ? (
+              <div style={{ fontSize: 12, opacity: 0.75 }}>
+                No workload telemetry is stored in this window — workload
+                performance is not inferred from infrastructure metrics.
+              </div>
+            ) : (
+              <SummaryTable metrics={workloads.data?.workload_metrics ?? {}} />
+            )}
+            {(workloads.data?.correlation_candidates ?? []).map((c, i) => (
+              <div key={i} style={{ marginTop: 10, fontSize: 12, border: "1px solid var(--rule)", borderRadius: 8, padding: "8px 10px" }}>
+                <div style={{ fontWeight: 600 }}>{String(c.question ?? "")}</div>
+                <div style={{ opacity: 0.8, marginTop: 4 }}>
+                  TLS handshake {String(c.tls_handshake_ms ?? "—")} · application p95 {String(c.app_p95_latency_ms ?? "—")}
+                </div>
+                <div style={{ marginTop: 4, color: "var(--amber, #f59e0b)" }}>Causation: {String(c.causation ?? "unproven")}</div>
+                <div style={{ opacity: 0.7 }}>{String(c.basis ?? "")}</div>
+              </div>
+            ))}
+            <Note>{workloads.data?.note ?? ""}</Note>
           </Panel>
         )
       )}

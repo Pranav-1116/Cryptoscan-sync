@@ -195,4 +195,90 @@ describe("ZELNX Performance Intelligence (§7)", () => {
     expect(screen.getByText(/never prints zeros/)).toBeInTheDocument();
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
+
+  it("renders the brief's headline cards as unknown, never zero", async () => {
+    mockFetch({
+      "/api/v1/performance/overview": {
+        storage_usage_pct: unknownTile, network_throughput_mbps: unknownTile,
+        api_p95_latency_ms: tile(42, "ms"), requests_per_sec: unknownTile,
+        note: "tiles show delivered values only; an unknown tile is unknown, never zero",
+      },
+    });
+    renderPage();
+    expect(await screen.findByText("CPU utilization")).toBeInTheDocument();
+    expect(screen.getByText("Memory utilization")).toBeInTheDocument();
+    expect(screen.getByText("Application p95 latency")).toBeInTheDocument();
+    expect(screen.getByText("Error rate")).toBeInTheDocument();
+    // absent headline fields fall back to the unknown card — never a zero
+    expect(screen.getAllByText(/unknown, never zero/).length).toBeGreaterThanOrEqual(4);
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+  });
+
+  it("keeps unread service columns apart from measured zeros", async () => {
+    mockFetch({
+      "/api/v1/performance/overview": {
+        storage_usage_pct: unknownTile, network_throughput_mbps: unknownTile,
+        api_p95_latency_ms: unknownTile, requests_per_sec: unknownTile,
+        services: [{ service: "svc-payments", p95_latency_ms: 28.4, sample_count: 12 }],
+        note: "tiles show delivered values only; an unknown tile is unknown, never zero",
+      },
+    });
+    renderPage();
+    expect(await screen.findByText("svc-payments")).toBeInTheDocument();
+    expect(screen.getByText("28.4")).toBeInTheDocument();
+    // error rate and rps were never delivered — unknown columns stay "—"
+    const cells = screen.getAllByText("—");
+    expect(cells.length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+  });
+
+  it("keeps the HSM workspace read-only and honest about unknowns", async () => {
+    mockFetch({
+      "/api/v1/performance/overview": {
+        storage_usage_pct: unknownTile, network_throughput_mbps: unknownTile,
+        api_p95_latency_ms: unknownTile, requests_per_sec: unknownTile,
+        note: "tiles show delivered values only; an unknown tile is unknown, never zero",
+      },
+      "/api/v1/performance/hsm": {
+        devices: [{ device: "hsm-payments-1", operation_latency_ms: 2.7, samples: 12, last_observed: "2026-10-16T10:00:00Z" }],
+        families: {},
+        measurement_kind: "observed-production",
+        note: "vendor-supported read-only management and performance interfaces only — key material is never collected and HSM operations are never interfered with",
+      },
+    });
+    renderPage();
+    selectView("hsm");
+    expect(await screen.findByText("hsm-payments-1")).toBeInTheDocument();
+    expect(screen.getByText("2.7")).toBeInTheDocument();
+    expect(screen.getByText(/key material is never collected/)).toBeInTheDocument();
+    expect(screen.getByText(/HSM operations are never interfered/)).toBeInTheDocument();
+    // queue depth, utilization and provider errors were never delivered
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("never upgrades a workload correlation to causation", async () => {
+    mockFetch({
+      "/api/v1/performance/overview": {
+        storage_usage_pct: unknownTile, network_throughput_mbps: unknownTile,
+        api_p95_latency_ms: unknownTile, requests_per_sec: unknownTile,
+        note: "tiles show delivered values only; an unknown tile is unknown, never zero",
+      },
+      "/api/v1/performance/workloads": {
+        workload_metrics: { "api.requests_per_sec": summary() },
+        correlation_candidates: [{
+          question: "does TLS handshake time contribute to application latency?",
+          tls_handshake_ms: 41, app_p95_latency_ms: 210, causation: "unproven",
+          basis: "a time correlation alone never proves causation — timestamps and traces must correlate before causation is suggested",
+        }],
+        causation: "unproven",
+        note: "the engine reports correlation candidates only — it must correlate timestamps and traces before suggesting causation",
+      },
+    });
+    renderPage();
+    selectView("workloads");
+    expect(await screen.findByText(/does TLS handshake time contribute/)).toBeInTheDocument();
+    expect(screen.getByText(/Causation: unproven/)).toBeInTheDocument();
+    expect(screen.getByText(/timestamps and traces must correlate before causation/)).toBeInTheDocument();
+    expect(screen.queryByText(/caused/i)).not.toBeInTheDocument();
+  });
 });

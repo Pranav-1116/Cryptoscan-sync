@@ -8817,11 +8817,47 @@ export interface PerformanceSummary {
   p99: number | null;
 }
 
+export interface PerformanceServiceRow {
+  service: string;
+  p95_latency_ms?: number | null;
+  error_rate_pct?: number | null;
+  requests_per_sec?: number | null;
+  sample_count: number;
+}
+
 export interface PerformanceOverview {
   storage_usage_pct: PerformanceTile;
   network_throughput_mbps: PerformanceTile;
   api_p95_latency_ms: PerformanceTile;
   requests_per_sec: PerformanceTile;
+  /** UI brief headline cards (docs/performance/03_UI_SPEC.md §1). */
+  cpu_utilization_pct?: PerformanceTile;
+  memory_utilization_pct?: PerformanceTile;
+  app_p95_latency_ms?: PerformanceTile;
+  error_rate_pct?: PerformanceTile;
+  services?: PerformanceServiceRow[];
+  note: string;
+}
+
+export interface PerformanceHsm {
+  devices: Array<{
+    device: string;
+    operation_latency_ms?: number | null;
+    queue_depth?: number | null;
+    utilization_pct?: number | null;
+    provider_errors?: number | null;
+    samples: number;
+    last_observed?: string | null;
+  }>;
+  families: Record<string, PerformanceSummary>;
+  measurement_kind: string;
+  note: string;
+}
+
+export interface PerformanceWorkloads {
+  workload_metrics: Record<string, PerformanceSummary>;
+  correlation_candidates: Array<Record<string, unknown>>;
+  causation: string;
   note: string;
 }
 
@@ -8959,6 +8995,15 @@ const performanceQuery = (params: object): string => {
 
 export const apiPerformanceOverview = (p: PerformanceWindow): Promise<ApiResult<PerformanceOverview>> =>
   call<PerformanceOverview>(`/api/v1/performance/overview${performanceQuery(p)}`);
+
+export const apiPerformanceHsm = (p: PerformanceWindow): Promise<ApiResult<PerformanceHsm>> =>
+  call<PerformanceHsm>(`/api/v1/performance/hsm${performanceQuery(p)}`);
+
+export const apiPerformanceWorkloads = (p: PerformanceWindow): Promise<ApiResult<PerformanceWorkloads>> =>
+  call<PerformanceWorkloads>(`/api/v1/performance/workloads${performanceQuery(p)}`);
+
+export const apiPerformanceSamples = (p: PerformanceWindow & { metric_name?: string; limit?: number }): Promise<ApiResult<{ samples?: Array<Record<string, unknown>>; note?: string }>> =>
+  call(`/api/v1/performance/samples${performanceQuery(p)}`);
 
 export const apiPerformanceNetwork = (p: PerformanceWindow): Promise<ApiResult<PerformanceNetwork>> =>
   call<PerformanceNetwork>(`/api/v1/performance/network${performanceQuery(p)}`);

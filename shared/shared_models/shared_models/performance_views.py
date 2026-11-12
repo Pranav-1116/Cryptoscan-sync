@@ -227,9 +227,34 @@ def cryptography_view(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
     }
 
 
+def _service_rows(rows: Sequence[PerformanceMetric]) -> List[Dict[str, Any]]:
+    """Per-service figures for the landing table. One row per asset that
+    delivered any api.* telemetry; missing columns stay None (unknown)."""
+    by_asset: Dict[str, List[PerformanceMetric]] = {}
+    for row in rows:
+        if (row.metric_name or "").startswith("api."):
+            by_asset.setdefault(row.asset_id, []).append(row)
+    out: List[Dict[str, Any]] = []
+    for asset_id, arows in sorted(by_asset.items()):
+        by_name: Dict[str, List[PerformanceMetric]] = {}
+        for row in arows:
+            by_name.setdefault(row.metric_name, []).append(row)
+        out.append({
+            "service": asset_id,
+            "p95_latency_ms": _latest(by_name.get("api.latency_p95_ms", [])),
+            "error_rate_pct": _latest(by_name.get("api.error_rate_pct", [])),
+            "requests_per_sec": _latest(by_name.get("api.requests_per_sec", [])),
+            "sample_count": len(arows),
+        })
+    return out
+
+
 def overview(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
     """The overview tiles (§7). Each tile is either a computed figure
-    from delivered samples or ``unknown`` — never a zero filler."""
+    from delivered samples or ``unknown`` — never a zero filler.
+
+    The headline set carries the UI brief's four cards (CPU, memory,
+    application p95, error rate) beside the estate tiles."""
     by_name = _rows_by_name(rows)
     storage_pct = _latest(by_name.get("storage.utilization_pct", []))
     if storage_pct is None:
@@ -245,8 +270,108 @@ def overview(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
             _latest(by_name.get("api.latency_p95_ms", [])), "ms"),
         "requests_per_sec": _tile(
             _latest(by_name.get("api.requests_per_sec", [])), "requests/sec"),
+        "cpu_utilization_pct": _tile(
+            _latest(by_name.get("cpu.utilization_pct", [])), "percent"),
+        "memory_utilization_pct": _tile(
+            _latest(by_name.get("ram.utilization_pct", [])), "percent"),
+        "app_p95_latency_ms": _tile(
+            _latest(by_name.get("api.latency_p95_ms", [])), "ms"),
+        "error_rate_pct": _tile(
+            _latest(by_name.get("api.error_rate_pct", [])), "percent"),
+        "services": _service_rows(rows),
         "note": "tiles show delivered values only; an unknown tile is "
                 "unknown, never zero",
+    }
+
+
+#: HSM/KMS metric families (UI spec §7). Read-only projections of stored
+#: telemetry — the collector rule (vendor-supported, read-only, no key
+#: material, no interference) governs collection and is not narrated here.
+_HSM_METRICS = (
+    "crypto.hsm_operation_latency_ms", "crypto.hsm_queue_depth",
+    "crypto.hsm_utilization_pct", "crypto.sign_latency_ms",
+    "crypto.verify_latency_ms", "crypto.keygen_duration_ms",
+    "crypto.provider_errors", "crypto.kms_response_ms",
+    "cloud.kms_service_latency_ms",
+)
+
+
+def hsm_view(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
+    """HSM & KMS performance (UI spec §7): per-device rows plus the
+    measured families. Unknowns stay unknown; key material never appears
+    because only metric rows are read."""
+    by_name = _rows_by_name(rows)
+    families = {name: summarize_metric(by_name.get(name, []))
+                for name in _HSM_METRICS if name in by_name}
+    per_device: Dict[str, Dict[str, List[PerformanceMetric]]] = {}
+    for row in rows:
+        if row.metric_name not in _HSM_METRICS:
+            continue
+        per_device.setdefault(row.asset_id, {}).setdefault(
+            row.metric_name, []).append(row)
+    devices: List[Dict[str, Any]] = []
+    for device_id, by_metric in sorted(per_device.items()):
+        flat = [r for rs in by_metric.values() for r in rs]
+        devices.append({
+            "device": device_id,
+            "operation_latency_ms": _latest(
+                by_metric.get("crypto.hsm_operation_latency_ms", [])),
+            "queue_depth": _latest(by_metric.get("crypto.hsm_queue_depth", [])),
+            "utilization_pct": _latest(
+                by_metric.get("crypto.hsm_utilization_pct", [])),
+            "provider_errors": _latest(
+                by_metric.get("crypto.provider_errors", [])),
+            "samples": len(flat),
+            "last_observed": max((r.observed_at for r in flat), default=None),
+        })
+    for entry in devices:
+        entry["last_observed"] = (entry["last_observed"].isoformat()
+                                  if entry["last_observed"] else None)
+    return {
+        "devices": devices,
+        "families": families,
+        "measurement_kind": "observed-production",
+        "note": "vendor-supported read-only management and performance "
+                "interfaces only — key material is never collected and HSM "
+                "operations are never interfered with",
+    }
+
+
+def workload_view(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
+    """Workload & transaction intelligence (UI spec §8): business-facing
+    throughput and latency joined to the estate metrics — with the
+    causation rule enforced: a time correlation is reported as correlation,
+    never as cause, until timestamps and traces establish it."""
+    by_name = _rows_by_name(rows)
+    workload = {name: summarize_metric(values)
+                for name, values in sorted(by_name.items())
+                if name in ("api.requests_per_sec", "api.requests_total",
+                            "api.latency_p50_ms", "api.latency_p95_ms",
+                            "api.latency_p99_ms", "api.error_rate_pct",
+                            "api.timeout_rate_pct", "api.throughput_bytes",
+                            "db.transactions_per_sec", "db.query_throughput",
+                            "crypto.tls_handshake_ms",
+                            "crypto.hsm_operation_latency_ms")}
+    candidates = []
+    tls = _latest(by_name.get("crypto.tls_handshake_ms", []))
+    app_p95 = _latest(by_name.get("api.latency_p95_ms", []))
+    if tls is not None and app_p95 is not None:
+        candidates.append({
+            "question": "does TLS handshake time contribute to application latency?",
+            "tls_handshake_ms": tls,
+            "app_p95_latency_ms": app_p95,
+            "causation": "unproven",
+            "basis": ("a time correlation alone never proves causation — "
+                      "timestamps and traces must correlate before causation "
+                      "is suggested"),
+        })
+    return {
+        "workload_metrics": workload,
+        "correlation_candidates": candidates,
+        "causation": "unproven",
+        "note": "workload performance meets business workloads here; the "
+                "engine reports correlation candidates only — it must "
+                "correlate timestamps and traces before suggesting causation",
     }
 
 
