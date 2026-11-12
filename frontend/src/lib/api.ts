@@ -440,6 +440,79 @@ export const apiDigitalTwinSimulate = (scenario: string, params: Record<string, 
 export const apiDigitalTwinTimeline = (assetId: string): Promise<ApiResult<Record<string, unknown>>> =>
   call(`/api/v1/digital-twin/timeline/${encodeURIComponent(assetId)}`);
 
+/* ── SBOM workspace (contracts in api/routers/sbom.py; docs/boms/01_PRODUCT_SPEC.md §1) ── */
+
+export interface SbomInventoryRow {
+  coordinate: string;
+  component_type?: string | null;
+  name: string;
+  version?: string | null;
+  ecosystem?: string | null;
+  purl?: string | null;
+  application?: string | null;
+  source?: string | null;
+  license?: string | null;
+  vulnerability: { count: number; max_severity?: string | null };
+  evidence: { type?: string | null; declared_in?: string | null; confidence?: string | null };
+  last_observed?: string | null;
+  dependency_type?: string | null;
+  crypto_bearing?: boolean;
+}
+
+export interface SbomUsageState {
+  algorithm: string;
+  usage_state: "capability_detected" | "configuration_observed" | "operation_observed";
+  basis: string;
+  runtime_evidence: string[];
+}
+
+export interface SbomComponentDetail {
+  component: SbomInventoryRow;
+  usage_states: SbomUsageState[];
+  supplier?: string | null;
+  dependencies: { direct: Array<Record<string, string>>; transitive: Array<Record<string, string>>; unresolved_parent: boolean };
+  vulnerabilities: Array<Record<string, unknown>>;
+  manifests: string[];
+  versions: string[];
+  flags: { declared_but_unused: boolean; used_but_undeclared: boolean };
+}
+
+export const apiSbomOverview = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/sbom/overview");
+
+export const apiSbomInventory = (q?: string): Promise<ApiResult<{ state?: string; scan_id?: string; total: number; rows: SbomInventoryRow[] }>> =>
+  call(`/api/v1/sbom/components${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+
+export const apiSbomComponentDetail = (coordinate: string): Promise<ApiResult<SbomComponentDetail>> =>
+  call(`/api/v1/sbom/components/${coordinate}`);
+
+export const apiSbomDependencies = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/sbom/dependencies");
+
+export const apiSbomLicenses = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/sbom/licenses");
+
+export const apiSbomVulnerabilities = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/sbom/vulnerabilities");
+
+export const apiSbomVersions = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/sbom/versions");
+
+export const apiSbomContainers = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/sbom/containers");
+
+export const apiSbomBinaries = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/sbom/binaries");
+
+export const apiSbomEvidence = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/sbom/evidence");
+
+export const apiSbomHistory = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/sbom/history");
+
+export const apiSbomExportStatus = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/sbom/export");
+
 
 export const apiSecurity = (request: Record<string, unknown>): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/platform/security", { method: "POST", body: JSON.stringify({ request }) });

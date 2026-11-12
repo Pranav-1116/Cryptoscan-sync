@@ -84,6 +84,7 @@ from api.routers import (
     exposure,
     trust_model,
     techbom,
+    sbom,
     exceptions,
     notifications,
     export,
@@ -632,6 +633,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(exposure.router, prefix=prefix)
     app.include_router(trust_model.router, prefix=prefix)
     app.include_router(techbom.router, prefix=prefix)
+    app.include_router(sbom.router, prefix=prefix)
     app.include_router(graph.router, prefix=prefix)
     app.include_router(reachability.router, prefix=prefix)
     app.include_router(remediation.router, prefix=prefix)
