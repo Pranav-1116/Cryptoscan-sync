@@ -580,6 +580,62 @@ export const apiCbomWorkspaceHistory = (): Promise<ApiResult<Record<string, unkn
 export const apiCbomWorkspaceExport = (): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/cbom/workspace/export");
 
+/* ── HBOM workspace (contracts in api/routers/hbom_workspace.py; docs/boms/01_PRODUCT_SPEC.md §3) ──
+ * The server never returns HSM key material, private keys, secrets or device
+ * credentials and serial references arrive masked; this client adds no
+ * un-masking. Hardware capability is never drawn as use. */
+
+export interface HbomAssetRow {
+  asset_id: string;
+  manufacturer?: string | null;
+  model?: string | null;
+  serial_reference?: string | null;
+  firmware?: string | null;
+  category: string;
+  device_type?: string | null;
+  location?: string | null;
+  crypto_capabilities: Record<string, unknown>;
+  lifecycle: string;
+  lifecycle_basis: string;
+  evidence: {
+    agent_id?: string | null;
+    last_seen?: string | null;
+    fingerprinted: boolean;
+    evidence_records: number;
+    freshness: string;
+  };
+}
+
+export const apiHbomWorkspaceOverview = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/hbom/workspace/overview");
+
+export const apiHbomWorkspaceAssets = (q?: string): Promise<ApiResult<{ state: string; total: number; rows: HbomAssetRow[] }>> =>
+  call(`/api/v1/hbom/workspace/assets${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+
+export const apiHbomWorkspaceAssetDetail = (assetId: string): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/hbom/workspace/assets/${encodeURIComponent(assetId)}`);
+
+export const apiHbomWorkspaceCategory = (category: "compute" | "hsm" | "tpm" | "network" | "storage"): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/hbom/workspace/${category}`);
+
+export const apiHbomWorkspaceFirmware = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/hbom/workspace/firmware");
+
+export const apiHbomWorkspaceCrypto = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/hbom/workspace/crypto");
+
+export const apiHbomWorkspaceLifecycle = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/hbom/workspace/lifecycle");
+
+export const apiHbomWorkspaceEvidence = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/hbom/workspace/evidence");
+
+export const apiHbomWorkspaceHistory = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/hbom/workspace/history");
+
+export const apiHbomWorkspaceExport = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/hbom/workspace/export");
+
 
 export const apiSecurity = (request: Record<string, unknown>): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/platform/security", { method: "POST", body: JSON.stringify({ request }) });

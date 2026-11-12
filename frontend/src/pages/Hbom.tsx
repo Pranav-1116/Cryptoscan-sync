@@ -1,8 +1,14 @@
 import React, { useEffect, useState, useMemo } from "react";
 import BomCrossNav from "../components/BomCrossNav";
-import { Link } from "react-router-dom";
-import { Panel, Badge, Bar, Ring } from "../components/ui";
-import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
+import { Link, useSearchParams } from "react-router-dom";
+import { Panel, Badge, Bar, Ring, Drawer } from "../components/ui";
+import { usePollingApi, LiveBadge, useApi } from "../lib/apiUi.jsx";
+import {
+  apiHbomWorkspaceOverview, apiHbomWorkspaceAssets, apiHbomWorkspaceAssetDetail,
+  apiHbomWorkspaceCategory, apiHbomWorkspaceFirmware, apiHbomWorkspaceCrypto,
+  apiHbomWorkspaceLifecycle, apiHbomWorkspaceEvidence, apiHbomWorkspaceHistory,
+  apiHbomWorkspaceExport, type HbomAssetRow,
+} from "../lib/api.js";
 import { useChannelRefresh } from "../lib/realtime.js";
 import { apiLiveBom, LiveBomResponse, apiHbomEstate, apiHbomPin, apiHbomSnapshot, apiHbomSnapshots, apiHbomSnapshotDiff, HbomEstateDocument, HbomEstateComponent, HbomSnapshotMeta, HbomSnapshotDiff } from "../lib/api.js";
 import { IconCertificate, IconCrypto, IconHardware, IconTarget, IconClock, IconSecurity, IconInfo, IconWarn, IconSearch } from "../components/icons";
@@ -20,7 +26,79 @@ const observationSource = (doc: HbomEstateDocument | null): string | null => {
 const fromObservation = (component: HbomEstateComponent, source: string | null): boolean =>
   Boolean(source) && component.evidence?.source === source;
 
+const HBOM_TABS: Array<{ id: string; label: string }> = [
+  { id: "overview", label: "HBOM Overview" },
+  { id: "inventory", label: "Hardware Inventory" },
+  { id: "compute", label: "Servers & Compute" },
+  { id: "hsm", label: "HSM Inventory" },
+  { id: "tpm", label: "TPM & Secure Elements" },
+  { id: "network", label: "Network Hardware" },
+  { id: "storage", label: "Storage Hardware" },
+  { id: "firmware", label: "Firmware Intelligence" },
+  { id: "crypto", label: "Hardware Crypto Capabilities" },
+  { id: "lifecycle", label: "Hardware Lifecycle" },
+  { id: "evidence", label: "Evidence & Provenance" },
+  { id: "history", label: "HBOM History" },
+  { id: "export", label: "Export & Validation" },
+];
+
+/* A read that did not return is never an inventory of zero records. */
+function WsState({ read, noun, children }: {
+  read: { data: Record<string, unknown> | null; running: boolean; source: string; detail?: string | null };
+  noun: string;
+  children: React.ReactNode;
+}) {
+  if (read.running && !read.data) return <p className="faint" style={{ fontSize: 12 }}>Reading the {noun}…</p>;
+  if (read.source !== "live" || read.data == null)
+    return (
+      <Panel title={`${noun} not read`} sub={read.source === "live" ? "the read returned nothing" : "the control plane did not answer"}>
+        <p role="status" style={{ margin: 0, fontSize: 12, color: "var(--amber)" }}>
+          {read.source === "live"
+            ? `The ${noun} read returned nothing — nothing is claimed here.`
+            : `The ${noun} could not be read${read.detail ? ` — ${read.detail}` : ""}. An unread inventory is not an empty one.`}
+        </p>
+      </Panel>
+    );
+  return <>{children}</>;
+}
+
+function WsTable({ head, rows, colSpan }: { head: string[]; rows: React.ReactNode[]; colSpan: number }) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table className="tbl" style={{ width: "100%" }}>
+        <thead><tr>{head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
+        <tbody>
+          {rows.length ? rows : (
+            <tr><td colSpan={colSpan} style={{ padding: 26, textAlign: "center", color: "var(--dim)", fontSize: 12 }}>
+              <div style={{ fontWeight: 600, color: "var(--text)" }}>Nothing stored yet</div>
+              <div style={{ fontSize: 11.5, marginTop: 4 }}>Empty rows here mean no stored observations — not a healthy zero.</div>
+            </td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function LifeBadge({ lifecycle }: { lifecycle: string }) {
+  const tone = lifecycle === "END_OF_LIFE" ? "red" : lifecycle === "SUPPORTED" ? "pass" : "slate";
+  return <Badge tone={tone}>{lifecycle}</Badge>;
+}
+
+function CapList({ caps }: { caps: Record<string, unknown> }) {
+  const algos = Array.isArray(caps.algorithms) ? (caps.algorithms as unknown[]).map(String) : [];
+  if (!algos.length && !caps.acceleration) return <span style={{ fontSize: 11, color: "var(--faint)" }}>none recorded</span>;
+  return (
+    <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+      {algos.slice(0, 4).map((a) => <Badge key={a} tone="slate">{a}</Badge>)}
+      {caps.acceleration ? <Badge tone="violet">ACCELERATION</Badge> : null}
+    </span>
+  );
+}
+
 export default function Hbom() {
+  const [wsParams, setWsParams] = useSearchParams();
+  const active = HBOM_TABS.some((t) => t.id === wsParams.get("tab")) ? wsParams.get("tab") as string : "overview";
   const res = usePollingApi(apiLiveBom, 8000, [], { channels: ["crypto", "estate"] });
   useChannelRefresh(["crypto", "estate"], [res.run]);
   const live = res.source === "live";
@@ -176,6 +254,20 @@ export default function Hbom() {
         </div>
       </div>
 
+      <div role="tablist" aria-label="HBOM sections" style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "2px 0 16px" }}>
+        {HBOM_TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={active === t.id} title={t.label}
+            onClick={() => setWsParams({ tab: t.id })}
+            style={{
+              fontSize: 11, padding: "6px 11px", borderRadius: 999, cursor: "pointer",
+              border: `1px solid ${active === t.id ? "var(--accent)" : "var(--line-strong)"}`,
+              background: active === t.id ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "var(--panel-2)",
+              color: active === t.id ? "var(--accent)" : "var(--dim)", fontFamily: "var(--mono)", letterSpacing: ".03em",
+            }}>{t.label}</button>
+        ))}
+      </div>
+
+      {active === "overview" && (<>
       {/* KPI cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 18 }}>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--accent)" }}>
@@ -458,6 +550,297 @@ export default function Hbom() {
           </div>
         )}
       </div>
+      </>)}
+      {active === "inventory" && <HbomInventory />}
+      {active === "compute" && <HbomCategory kind="compute" label="Servers & Compute" noun="server or compute" />}
+      {active === "hsm" && <HbomCategory kind="hsm" label="HSM Inventory" noun="HSM" />}
+      {active === "tpm" && <HbomCategory kind="tpm" label="TPM & Secure Elements" noun="TPM record" />}
+      {active === "network" && <HbomCategory kind="network" label="Network Hardware" noun="network device" />}
+      {active === "storage" && <HbomCategory kind="storage" label="Storage Hardware" noun="storage device" />}
+      {active === "firmware" && <HbomFirmware />}
+      {active === "crypto" && <HbomCrypto />}
+      {active === "lifecycle" && <HbomLifecycle />}
+      {active === "evidence" && <HbomEvidence />}
+      {active === "history" && <HbomHistory />}
+      {active === "export" && <HbomExport />}
     </div>
+  );
+}
+
+/* ── workspace sections (docs/boms/01_PRODUCT_SPEC.md §3 navigation) ─── */
+
+function HbomInventory() {
+  const [q, setQ] = useState("");
+  const read = useApi(() => apiHbomWorkspaceAssets(q || undefined), [q]);
+  const rows = (read.data?.rows ?? []) as HbomAssetRow[];
+  const [selected, setSelected] = useState<HbomAssetRow | null>(null);
+  const detail = useApi(
+    () => apiHbomWorkspaceAssetDetail(selected?.asset_id ?? ""),
+    [selected?.asset_id],
+  );
+  return (
+    <>
+      <Panel title="Hardware Inventory" sub="serial references are masked at the API boundary — click a device for firmware, TPM/HSM metadata and evidence">
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <input value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="search by asset id, manufacturer or model"
+            aria-label="search hardware assets"
+            style={{ flex: 1, minWidth: 220, padding: "7px 10px", borderRadius: "var(--r)", border: "1px solid var(--line-strong)", background: "var(--panel-2)", color: "var(--text)", fontSize: 12 }} />
+          <Badge tone="slate">{read.data?.total ?? (read.source === "live" ? rows.length : "—")} assets</Badge>
+        </div>
+        <WsState read={read} noun="hardware inventory">
+          <WsTable
+            head={["Asset ID", "Manufacturer", "Model", "Serial reference", "Firmware", "Category", "Location", "Crypto capabilities", "Lifecycle", "Evidence"]}
+            colSpan={10}
+            rows={rows.map((r) => (
+              <tr key={r.asset_id} style={{ cursor: "pointer" }} onClick={() => setSelected(r)}>
+                <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.asset_id}</span></td>
+                <td><span style={{ fontSize: 11.5 }}>{r.manufacturer || "—"}</span></td>
+                <td><span style={{ fontSize: 11.5 }}>{r.model || "—"}</span></td>
+                <td><span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--dim)" }}>{r.serial_reference || "NOT_COLLECTED"}</span></td>
+                <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.firmware || "NOT_COLLECTED"}</span></td>
+                <td><Badge tone="slate">{r.category}</Badge></td>
+                <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.location || "NOT_COLLECTED"}</span></td>
+                <td><CapList caps={r.crypto_capabilities} /></td>
+                <td><LifeBadge lifecycle={r.lifecycle} /></td>
+                <td>
+                  <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    <Badge tone={r.evidence.freshness === "CURRENT" ? "pass" : r.evidence.freshness === "STALE" ? "amber" : "slate"}>{r.evidence.freshness}</Badge>
+                    {r.evidence.fingerprinted ? <Badge tone="violet">fingerprinted</Badge> : <Badge tone="slate">not fingerprinted</Badge>}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          />
+        </WsState>
+      </Panel>
+      {selected && (
+        <Drawer title={selected.model || selected.asset_id} sub={selected.asset_id} onClose={() => setSelected(null)}>
+          {!detail.data ? <p className="faint" style={{ fontSize: 12 }}>{detail.running ? "Reading the device…" : "The device detail did not return."}</p> : (
+            (() => {
+              const d = detail.data as Record<string, any>;
+              const a: HbomAssetRow = d.asset ?? selected;
+              return (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                    <div><b>Device</b> {a.manufacturer || "—"} {a.model || ""} · {a.category}</div>
+                    <div><b>Firmware</b> {a.firmware || "NOT_COLLECTED"} · <b>Serial</b> <span style={{ fontFamily: "var(--mono)" }}>{a.serial_reference || "NOT_COLLECTED"}</span></div>
+                    <div><b>Location</b> {a.location || "NOT_COLLECTED"}</div>
+                    <div><b>Lifecycle</b> <LifeBadge lifecycle={a.lifecycle} /> <span style={{ fontSize: 10.5, color: "var(--faint)" }}>{a.lifecycle_basis}</span></div>
+                  </div>
+                  {Object.keys(d.tpm ?? {}).length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>TPM & SECURE BOOT</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {Object.entries(d.tpm).map(([k, v]) => <Badge key={k} tone="slate">{k}: {String(v)}</Badge>)}
+                      </div>
+                    </div>
+                  )}
+                  {Object.keys(d.hsm ?? {}).length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>HSM CAPABILITIES — APPROVED METADATA ONLY</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {Object.entries(d.hsm).map(([k, v]) => <Badge key={k} tone="slate">{k}: {String(v)}</Badge>)}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>CPU CRYPTOGRAPHIC ACCELERATION</div>
+                    <CapList caps={d.cpu_acceleration ?? {}} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>HARDWARE CAPABILITIES — CAPABILITY IS NEVER USE</div>
+                    <CapList caps={a.crypto_capabilities} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>RELATED ASSETS</div>
+                    <div style={{ fontSize: 11.5, color: "var(--dim)" }}>{String(d.related?._note ?? "no stored cross-BOM link rows name this hardware asset")}</div>
+                  </div>
+                  {(d.firmware_history ?? []).length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>FIRMWARE CHANGE HISTORY</div>
+                      {(d.firmware_history ?? []).slice(0, 8).map((h: Record<string, unknown>, i: number) => (
+                        <div key={i} style={{ fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)" }}>
+                          {String(h.observed_at ?? "—").slice(0, 19)} · {String(h.event_type)}{h.change_class ? ` · ${String(h.change_class)}` : ""}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>EVIDENCE</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                      <Badge tone={a.evidence.freshness === "CURRENT" ? "pass" : "slate"}>{a.evidence.freshness}</Badge>
+                      <Badge tone="slate">{a.evidence.evidence_records} evidence record(s)</Badge>
+                      {a.evidence.agent_id ? <Badge tone="violet">agent {a.evidence.agent_id}</Badge> : <Badge tone="slate">no agent</Badge>}
+                    </div>
+                    {(d.evidence_history ?? []).slice(0, 6).map((e: Record<string, unknown>, i: number) => (
+                      <div key={i} style={{ fontSize: 11, color: "var(--dim)" }}>{String(e.event_type)} · {String(e.source)} · {String(e.observed_at ?? "—").slice(0, 19)}</div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()
+          )}
+        </Drawer>
+      )}
+    </>
+  );
+}
+
+function HbomCategory({ kind, label, noun }: { kind: "compute" | "hsm" | "tpm" | "network" | "storage"; label: string; noun: string }) {
+  const read = useApi(() => apiHbomWorkspaceCategory(kind), [kind]);
+  const rows = (read.data?.rows ?? []) as HbomAssetRow[];
+  return (
+    <Panel title={label} sub={`stored ${noun} records — metadata only, key material never`}>
+      <WsState read={read} noun={noun}>
+        <WsTable head={["Asset ID", "Manufacturer", "Model", "Firmware", "Crypto capabilities", "Lifecycle", "Evidence"]} colSpan={7}
+          rows={rows.map((r) => (
+            <tr key={r.asset_id}>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.asset_id}</span></td>
+              <td><span style={{ fontSize: 11.5 }}>{r.manufacturer || "—"}</span></td>
+              <td><span style={{ fontSize: 11.5 }}>{r.model || "—"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.firmware || "NOT_COLLECTED"}</span></td>
+              <td><CapList caps={r.crypto_capabilities} /></td>
+              <td><LifeBadge lifecycle={r.lifecycle} /></td>
+              <td><Badge tone={r.evidence.freshness === "CURRENT" ? "pass" : "slate"}>{r.evidence.freshness}</Badge></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function HbomFirmware() {
+  const read = useApi(apiHbomWorkspaceFirmware);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Firmware Intelligence" sub="firmware versions and change events as recorded — an unrecorded version is NOT_COLLECTED, never current">
+      <WsState read={read} noun="firmware inventory">
+        <WsTable head={["Asset", "Model", "Firmware", "Last check", "Freshness", "Change events"]} colSpan={6}
+          rows={rows.slice(0, 200).map((r) => (
+            <tr key={r.asset_id}>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.asset_id}</span></td>
+              <td><span style={{ fontSize: 11.5 }}>{r.model || "—"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.firmware || "NOT_COLLECTED"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)" }}>{String(r.last_firmware_check ?? "—").slice(0, 10)}</span></td>
+              <td><Badge tone={r.freshness === "CURRENT" ? "pass" : r.freshness === "STALE" ? "amber" : "slate"}>{r.freshness}</Badge></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.change_events}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function HbomCrypto() {
+  const read = useApi(apiHbomWorkspaceCrypto);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Hardware Crypto Capabilities" sub="supported features as reported — a hardware capability is never drawn as use">
+      <WsState read={read} noun="crypto-capability inventory">
+        <WsTable head={["Asset", "Model", "Capabilities", "Usage state", "Basis"]} colSpan={5}
+          rows={rows.slice(0, 200).map((r) => (
+            <tr key={r.asset_id}>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.asset_id}</span></td>
+              <td><span style={{ fontSize: 11.5 }}>{r.model || "—"}</span></td>
+              <td><CapList caps={r.capabilities} /></td>
+              <td><Badge tone="slate">{r.usage_state}</Badge></td>
+              <td><span style={{ fontSize: 10.5, color: "var(--faint)" }}>{r.basis}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function HbomLifecycle() {
+  const read = useApi(apiHbomWorkspaceLifecycle);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Hardware Lifecycle" sub="supported, end-of-life or unknown — an unrecorded lifecycle is UNKNOWN, never assumed supported">
+      <WsState read={read} noun="lifecycle inventory">
+        <WsTable head={["Asset", "Model", "Lifecycle", "Basis", "Last seen", "Freshness"]} colSpan={6}
+          rows={rows.slice(0, 200).map((r) => (
+            <tr key={r.asset_id}>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.asset_id}</span></td>
+              <td><span style={{ fontSize: 11.5 }}>{r.model || "—"}</span></td>
+              <td><LifeBadge lifecycle={r.lifecycle} /></td>
+              <td><span style={{ fontSize: 10.5, color: "var(--faint)" }}>{r.lifecycle_basis}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.last_seen ?? "—").slice(0, 10)}</span></td>
+              <td><Badge tone={r.freshness === "CURRENT" ? "pass" : r.freshness === "STALE" ? "amber" : "slate"}>{r.freshness}</Badge></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function HbomEvidence() {
+  const read = useApi(apiHbomWorkspaceEvidence);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  const cov = (read.data?.collection_coverage ?? {}) as Record<string, number>;
+  return (
+    <Panel title="Evidence & Provenance" sub="what backs each record and how complete the collection is — a gap is a collection gap, not a healthy device">
+      <WsState read={read} noun="evidence inventory">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          {Object.entries(cov).map(([k, v]) => <Badge key={k} tone="slate">{k.replace(/_/g, " ")}: {v}</Badge>)}
+        </div>
+        <WsTable head={["Asset", "Event", "Change class", "Source", "Observed", "Evidence ID", "Freshness"]} colSpan={7}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><span style={{ fontSize: 11.5, fontWeight: 600 }}>{r.asset_id}</span></td>
+              <td><Badge tone="slate">{r.event_type}</Badge></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.change_class || "—"}</span></td>
+              <td><span style={{ fontSize: 11 }}>{r.source || "—"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.observed_at ?? "—").slice(0, 19)}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)" }}>{r.evidence_id ? `${String(r.evidence_id).slice(0, 10)}…` : "—"}</span></td>
+              <td><Badge tone={r.freshness === "CURRENT" ? "pass" : r.freshness === "STALE" ? "amber" : "slate"}>{r.freshness}</Badge></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function HbomHistory() {
+  const read = useApi(apiHbomWorkspaceHistory);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="HBOM History" sub="hardware events as stored — an immutable record of what changed and when">
+      <WsState read={read} noun="history">
+        <WsTable head={["Asset", "Event", "Change class", "Source", "Observed"]} colSpan={5}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><span style={{ fontSize: 11.5, fontWeight: 600 }}>{r.asset_id}</span></td>
+              <td><Badge tone="slate">{r.event_type}</Badge></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.change_class || "—"}</span></td>
+              <td><span style={{ fontSize: 11 }}>{r.source || "—"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.observed_at ?? "—").slice(0, 19)}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function HbomExport() {
+  const read = useApi(apiHbomWorkspaceExport);
+  const snapshots = (read.data?.snapshots ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Export & Validation" sub="pinned snapshots are content-addressed — a hash proves the bytes are unchanged, not that the estate is healthy">
+      <WsState read={read} noun="snapshot inventory">
+        <WsTable head={["Snapshot", "Content hash", "Components", "Generator", "Environment", "Pinned"]} colSpan={6}
+          rows={snapshots.map((s) => (
+            <tr key={s.snapshot_id}>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(s.snapshot_id).slice(0, 12)}…</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)" }}>{String(s.content_hash).slice(0, 16)}…</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{s.component_count}</span></td>
+              <td><Badge tone="slate">{s.generator}</Badge></td>
+              <td><span style={{ fontSize: 11 }}>{s.environment || "—"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(s.snapshotted_at ?? "—").slice(0, 19)}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
   );
 }
