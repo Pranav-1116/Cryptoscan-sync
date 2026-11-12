@@ -1,0 +1,85 @@
+/* Workspace 1 — Crypto Event Stream. The pipeline is on screen, the example
+   is labelled illustrative, and the stream counts what the store returned:
+   never an invented total, never events invented from silence. */
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+import { mockFetch } from "../test/setup";
+import CryptoLogStream from "./CryptoLogStream";
+
+const eventRow = (over: Record<string, unknown> = {}) => ({
+  event_id: "clog_01ABC",
+  event_type: "TLS_NEGOTIATION_OBSERVED",
+  category: "TLS",
+  logging_kind: "ACTIVITY",
+  severity: "INFO",
+  investigation_status: "OBSERVED",
+  asset_id: "asset_gateway_001",
+  source: { collector_id: "collector_nbom_01" },
+  cryptographic_context: { protocol: "TLS" },
+  observation: { observed_at: "2026-11-12T10:00:00Z" },
+  evidence: { evidence_ids: ["evidence_001"] },
+  relationships: {},
+  processing: {},
+  attributes: {},
+  ...over,
+});
+
+const renderStream = () =>
+  render(
+    <MemoryRouter>
+      <CryptoLogStream />
+    </MemoryRouter>,
+  );
+
+describe("Crypto Event Stream", () => {
+  it("draws the pipeline and labels the example as illustrative", async () => {
+    mockFetch({ "/api/v1/cryptolog/events": { events: [], returned: 0, next_cursor: null } });
+    renderStream();
+    expect(screen.getByText("How CryptoLog works")).toBeInTheDocument();
+    expect(screen.getByText("Normalization")).toBeInTheDocument();
+    expect(screen.getByText("Integrity engine")).toBeInTheDocument();
+    const label = await screen.findByTestId("stream-illustrative-label");
+    expect(label).toHaveTextContent(/Illustrative timeline, not a claim about an existing CryptoScan\s+live event feed/);
+    expect(label).toHaveTextContent(/synthetic, never events from any deployment/);
+  });
+
+  it("streams recorded events newest first with an honest loaded count", async () => {
+    mockFetch({
+      "/api/v1/cryptolog/events": {
+        events: [
+          eventRow(),
+          eventRow({ event_id: "clog_02DEF", event_type: "HSM_KEY_METADATA_CHANGE",
+            observation: { observed_at: "2026-11-12T11:30:00Z" } }),
+        ],
+        returned: 2, next_cursor: null,
+      },
+    });
+    renderStream();
+    const line = await screen.findByTestId("stream-loaded");
+    expect(line).toHaveTextContent(/2 loaded/);
+    expect(line).toHaveTextContent(/the store may hold more/);
+    const rows = screen.getAllByTestId("stream-row-time");
+    expect(rows[0]).toHaveTextContent("2026-11-12T11:30:00Z");
+    expect(rows[1]).toHaveTextContent("2026-11-12T10:00:00Z");
+  });
+
+  it("an empty stream is absence of recorded events — never a quiet estate", async () => {
+    mockFetch({ "/api/v1/cryptolog/events": { events: [], returned: 0, next_cursor: null } });
+    renderStream();
+    const empty = await screen.findByTestId("stream-empty");
+    expect(empty).toHaveTextContent(/never a quiet estate/);
+    expect(empty).toHaveTextContent(/never invents events/);
+  });
+
+  it("a failed read is named — not a source with no events", async () => {
+    mockFetch({
+      "/api/v1/cryptolog/events": () =>
+        new Response(JSON.stringify({ detail: "boom" }), { status: 500 }),
+    });
+    renderStream();
+    const failure = await screen.findByTestId("stream-failure");
+    expect(failure).toHaveTextContent(/not a source with no events/);
+    expect(screen.queryByTestId("stream-rows")).not.toBeInTheDocument();
+  });
+});

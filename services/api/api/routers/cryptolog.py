@@ -27,7 +27,9 @@ from db.repositories.cryptolog_repository import (
 from shared_models.bulk_result import (
     ACCEPTED, REJECTED, SKIPPED, bulk_result, item as bulk_item,
 )
-from shared_models.cryptolog_alerts import evaluate as evaluate_rules, transition as transition_alert
+from shared_models.cryptolog_alerts import (
+    RULES as DETECTION_RULES, evaluate as evaluate_rules, transition as transition_alert,
+)
 from shared_models.cryptolog_integrity import (
     build_chain, chain_genesis, make_checkpoint, merkle_proof, merkle_root,
     verify_merkle_proof, verify_checkpoint, verify_range,
@@ -798,6 +800,10 @@ class CollectorHealth(BaseModel):
     collector_id: str
     event_count: int = 0
     telemetry_modes: dict[str, int] = Field(default_factory=dict)
+    first_seen: Optional[str] = None
+    last_seen: Optional[str] = None
+    asset_count: int = 0
+    assets: list[str] = Field(default_factory=list)
 
 
 class IntegritySummary(BaseModel):
@@ -852,10 +858,21 @@ def cryptolog_overview(
         source = event.get("source") or {}
         cid = str(source.get("collector_id") or "unattributed")
         entry = collectors.setdefault(cid, {
-            "collector_id": cid, "event_count": 0, "telemetry_modes": {}})
+            "collector_id": cid, "event_count": 0, "telemetry_modes": {},
+            "first_seen": None, "last_seen": None,
+            "assets": []})
         entry["event_count"] += 1
         mode = str(event.get("telemetry_mode") or "EVENT")
         entry["telemetry_modes"][mode] = entry["telemetry_modes"].get(mode, 0) + 1
+        stamp = _observed_at(event)
+        if stamp and (entry["last_seen"] is None or stamp > entry["last_seen"]):
+            entry["last_seen"] = stamp
+        if stamp and (entry["first_seen"] is None or stamp < entry["first_seen"]):
+            entry["first_seen"] = stamp
+        asset_id = str(event.get("asset_id") or "")
+        if asset_id and asset_id not in entry["assets"]:
+            entry["assets"].append(asset_id)
+        entry["asset_count"] = len(entry["assets"])
 
     alert_rows = CryptoLogAlertRepository(db).list_alerts(
         tenant_id=tenant_id, limit=1)
@@ -1216,3 +1233,148 @@ def plan_retention(
     result = build_plan([r["event"] for r in records], payload.policy,
                         datetime.now(timezone.utc))
     return RetentionPlanOut(**result)
+
+
+# ── Phase 5 reads: the deterministic rule catalogue and event correlation ──
+
+
+class RuleOut(BaseModel):
+    rule_id: str
+    detection: str
+    suggested_severity: str
+    investigation: str
+
+
+class RulesOut(BaseModel):
+    rules: list[RuleOut]
+    note: str
+
+
+@router.get("/rules", response_model=RulesOut)
+def list_rules(user=Depends(get_current_user)) -> RulesOut:
+    """The deterministic detection catalogue that /alerts/evaluate applies.
+    A rule states what it detects and the investigation it suggests; it is
+    a detection, never a verdict."""
+    rows = [RuleOut(rule_id=rid,
+                    detection=str(spec.get("detection", "")),
+                    suggested_severity=str(spec.get("suggested_severity", "")),
+                    investigation=str(spec.get("investigation", "")))
+            for rid, spec in sorted(DETECTION_RULES.items())]
+    return RulesOut(
+        rules=rows,
+        note="Deterministic rules over recorded CryptoLog events only. A "
+             "rule is a detection, never a verdict: it carries a suggested "
+             "investigation, it never names a system weak or broken on its "
+             "own, and a rule that did not run is unmeasured, never clean.")
+
+
+class CorrelationGroup(BaseModel):
+    basis: str
+    key: str
+    event_ids: list[str] = Field(default_factory=list)
+    asset_ids: list[str] = Field(default_factory=list)
+    event_count: int = 0
+    evidence_backed: bool = False
+    note: str = ""
+
+
+class CorrelationOut(BaseModel):
+    groups: list[CorrelationGroup] = Field(default_factory=list)
+    event_count: int = 0
+    groups_truncated: bool = False
+    note: str = ""
+
+
+_GROUP_BASIS_NOTES = {
+    "shared_evidence": "Events carrying the same recorded evidence "
+                       "reference — the relation rests on shared evidence.",
+    "shared_asset": "Events recorded on the same asset identity — the "
+                    "recorded identity is the basis; relatedness of the "
+                    "underlying changes is never inferred.",
+    "shared_algorithm": "The same algorithm name appears across these "
+                        "assets — a possible dependency and a hypothesis "
+                        "only, never an established edge.",
+}
+
+
+@router.get("/correlation", response_model=CorrelationOut)
+def correlate_events(
+    tenant_id: Optional[str] = Query(None),
+    start_occurred: Optional[str] = Query(None),
+    end_occurred: Optional[str] = Query(None),
+    db: Session = Depends(get_db_session),
+    user=Depends(get_current_user),
+) -> CorrelationOut:
+    """Deterministic correlation over the recorded event store: shared
+    evidence references, recorded asset identity and repeated algorithm
+    names. A group is a pattern in the record — never proof of dependency,
+    and an empty result is absence of recorded correlation, never proof
+    that nothing relates."""
+    repo = CryptoLogAlertRepository(db)
+    events = [r["event"] for r in repo.events_in_range(
+        tenant_id=tenant_id, start_occurred=start_occurred,
+        end_occurred=end_occurred)]
+
+    by_algorithm: dict[str, list[Mapping[str, Any]]] = {}
+    by_asset: dict[str, list[Mapping[str, Any]]] = {}
+    by_evidence: dict[str, list[Mapping[str, Any]]] = {}
+    for event in events:
+        event_id = str(event.get("event_id") or "")
+        if not event_id:
+            continue
+        asset_id = str(event.get("asset_id") or "")
+        context = event.get("cryptographic_context") or {}
+        attributes = event.get("attributes") or {}
+        algorithm = str(context.get("algorithm") or attributes.get("algorithm") or "")
+        if algorithm:
+            by_algorithm.setdefault(algorithm, []).append(event)
+        if asset_id:
+            by_asset.setdefault(asset_id, []).append(event)
+        evidence = event.get("evidence") or {}
+        for ev_id in (evidence.get("evidence_ids") or []):
+            ev_id = str(ev_id)
+            if ev_id:
+                by_evidence.setdefault(ev_id, []).append(event)
+
+    groups: list[CorrelationGroup] = []
+
+    def _add(basis: str, key: str, members: list[Mapping[str, Any]]) -> None:
+        if len(members) < 2:
+            return
+        seen: list[str] = []
+        assets: list[str] = []
+        for event in members:
+            event_id = str(event.get("event_id") or "")
+            if event_id and event_id not in seen:
+                seen.append(event_id)
+            asset_id = str(event.get("asset_id") or "")
+            if asset_id and asset_id not in assets:
+                assets.append(asset_id)
+        groups.append(CorrelationGroup(
+            basis=basis, key=key, event_ids=sorted(seen),
+            asset_ids=sorted(assets), event_count=len(seen),
+            evidence_backed=basis in ("shared_evidence", "shared_asset"),
+            note=_GROUP_BASIS_NOTES[basis]))
+
+    for key, members in sorted(by_evidence.items()):
+        _add("shared_evidence", key, members)
+    for key, members in sorted(by_asset.items()):
+        _add("shared_asset", key, members)
+    for key, members in sorted(by_algorithm.items()):
+        _add("shared_algorithm", key, members)
+
+    groups.sort(key=lambda g: (-g.event_count, g.basis, g.key))
+    truncated = len(groups) > 50
+    shown = groups[:50]
+    return CorrelationOut(
+        groups=shown,
+        event_count=len(events),
+        groups_truncated=truncated,
+        note="Correlation groups are computed from recorded CryptoLog events "
+             "only. Shared evidence references and recorded asset identity "
+             "are evidence-backed relations; a shared algorithm name is a "
+             "possible dependency — a hypothesis, never an established "
+             "edge. Absence of groups is absence of recorded correlation, "
+             "never proof that nothing relates."
+             + (" The list is truncated at 50 groups."
+                if truncated else ""))

@@ -2,6 +2,7 @@
    auditor and management exports. One archive whose manifest hashes every
    file: an examiner proves the pack is untouched with any sha256sum-style
    check, and a missing artifact is unverifiable, not valid. */
+import CryptoLogRetention from "./CryptoLogRetention.js";
 import React, { useState } from "react";
 import { Panel } from "../components/ui.jsx";
 import {
@@ -51,7 +52,7 @@ export default function CryptoLogReports() {
 
   return (
     <div data-testid="cryptolog-reports" style={{ display: "grid", gap: 16 }}>
-      <Panel title="Reports" sub="Auditor and management exports — one archive, every file hashed into its manifest">
+      <Panel title="Audit & export" sub="Auditor and management exports — one archive, every file hashed into its manifest">
         <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <input aria-label="report start" placeholder="Window start (e.g. 2026-11-01)" value={start}
             onChange={(e) => setStart(e.target.value)} style={CONTROL_STYLE} />
@@ -88,6 +89,7 @@ export default function CryptoLogReports() {
           </div>
         )}
       </Panel>
+    <CryptoLogRetention />
     </div>
   );
 }

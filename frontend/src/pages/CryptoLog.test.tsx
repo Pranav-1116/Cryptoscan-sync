@@ -32,12 +32,15 @@ const eventRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const renderPage = () =>
+const renderPage = () => {
   render(
     <MemoryRouter initialEntries={["/cryptolog"]}>
       <CryptoLog />
     </MemoryRouter>,
   );
+  // the shell opens on the Crypto Event Stream; these tests cover the explorer
+  fireEvent.click(screen.getByTestId("cryptolog-view-explorer"));
+};
 
 describe("CryptoLog workspace (§9, Phase 6)", () => {
   it("loads events and sends filters to the store, never a page-local filter", async () => {

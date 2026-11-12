@@ -8334,6 +8334,38 @@ export const apiCryptologRetentionPlan = (filters: {
     }),
   });
 
+// ── CryptoLog Phase-5 reads: rules catalogue and event correlation ──
+export interface CryptologRule {
+  rule_id: string; detection: string; suggested_severity: string;
+  investigation: string;
+}
+export interface CryptologRuleCatalogue {
+  rules: CryptologRule[]; note: string;
+}
+export interface CryptologCorrelationGroup {
+  basis: "shared_evidence" | "shared_asset" | "shared_algorithm" | string;
+  key: string; event_ids: string[]; asset_ids: string[];
+  event_count: number; evidence_backed: boolean; note: string;
+}
+export interface CryptologCorrelation {
+  groups: CryptologCorrelationGroup[]; event_count: number;
+  groups_truncated: boolean; note: string;
+}
+
+export const apiCryptologRules = (): Promise<ApiResult<CryptologRuleCatalogue>> =>
+  call<CryptologRuleCatalogue>("/api/v1/cryptolog/rules");
+
+export const apiCryptologCorrelation = (params: {
+  tenant_id?: string; start_occurred?: string; end_occurred?: string;
+} = {}): Promise<ApiResult<CryptologCorrelation>> => {
+  const query = new URLSearchParams();
+  if (params.tenant_id) query.set("tenant_id", params.tenant_id);
+  if (params.start_occurred) query.set("start_occurred", params.start_occurred);
+  if (params.end_occurred) query.set("end_occurred", params.end_occurred);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return call<CryptologCorrelation>(`/api/v1/cryptolog/correlation${suffix}`);
+};
+
 /* ZELNX Performance Intelligence (docs/performance/01_PRODUCT_SPEC.md).
    Every query is tenant-scoped and time-bounded; a failed read is a
    failure, never zeros; an unknown tile is unknown, never zero. */

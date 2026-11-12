@@ -6,7 +6,8 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Panel } from "../components/ui.jsx";
 import {
-  apiCryptologAlert, apiCryptologAlerts,
+  apiCryptologAlert, apiCryptologAlerts, apiCryptologRules,
+  type CryptologRuleCatalogue,
   type ApiResult, type CryptologAlert, type CryptologAlertParams,
 } from "../lib/api.js";
 
@@ -39,6 +40,8 @@ export default function CryptoLogAlerts() {
   const [hasMore, setHasMore] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
+  const [rules, setRules] = useState<CryptologRuleCatalogue | null>(null);
+  const [rulesFailure, setRulesFailure] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<CryptologAlert | null>(null);
   const [detailFailure, setDetailFailure] = useState<string | null>(null);
@@ -103,8 +106,56 @@ export default function CryptoLogAlerts() {
     });
   };
 
+  useEffect(() => {
+    let alive = true;
+    apiCryptologRules().then((result) => {
+      if (!alive) return;
+      if (!result.data) {
+        setRulesFailure(result.error ?? "the rule catalogue did not load");
+        return;
+      }
+      setRules(result.data);
+    });
+    return () => { alive = false; };
+  }, []);
+
   return (
     <div data-testid="cryptolog-alerts" style={{ display: "grid", gap: 16 }}>
+      <Panel title="Event rules & detection" sub="the deterministic detection catalogue — weak algorithms, unexpected provider changes, certificate expiry and more: a rule is a detection, never a verdict">
+        {rulesFailure ? (
+          <div className="dim" data-testid="rules-failure">
+            {rulesFailure} A failed catalogue read is a failure — never zero rules,
+            never a clean estate.
+          </div>
+        ) : !rules ? (
+          <div className="dim">Reading the detection catalogue…</div>
+        ) : (
+          <>
+            <div className="dim" data-testid="rules-note" style={{ fontSize: 12, lineHeight: 1.55, marginBottom: 10 }}>
+              {rules.note}
+            </div>
+            <div data-testid="rules-rows" style={{ display: "grid", gap: 6 }}>
+              {rules.rules.map((rule) => (
+                <div key={rule.rule_id} style={{
+                  border: "1px solid var(--rule)", borderRadius: 6, padding: "8px 10px",
+                  display: "grid", gap: 4,
+                }}>
+                  <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <span className="mono" style={{ fontSize: 12 }}>{rule.rule_id}</span>
+                    <span style={{ fontSize: 12.5 }}>{rule.detection}</span>
+                    <span className="dim" style={{ fontSize: 11, marginLeft: "auto" }}>
+                      suggested severity · {rule.suggested_severity}
+                    </span>
+                  </div>
+                  <div className="dim" style={{ fontSize: 11.5, lineHeight: 1.5 }}>
+                    investigation: {rule.investigation}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </Panel>
       <Panel title="Threat investigation" sub="Rule findings with their boundaries: what is proven AND what is not proven — a pattern never automatically becomes a confirmed compromise">
         <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <select aria-label="alert state" value={state} onChange={(e) => setState(e.target.value)} style={CONTROL_STYLE}>

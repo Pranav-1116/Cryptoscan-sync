@@ -33,6 +33,24 @@ const alertRow = (over: Record<string, unknown> = {}) => ({
 const renderAlerts = () => render(<CryptoLogAlerts />);
 
 describe("CryptoLog threat investigation (§9)", () => {
+  it("shows the deterministic rule catalogue: a detection, never a verdict", async () => {
+    mockFetch({
+      "/api/v1/cryptolog/rules": {
+        rules: [{
+          rule_id: "CL-002", detection: "Weak cipher suite observed",
+          suggested_severity: "High",
+          investigation: "identify the endpoint offering the weak suite and whether policy permits it",
+        }],
+        note: "Deterministic rules over recorded CryptoLog events only. A rule is a detection, never a verdict.",
+      },
+      "/api/v1/cryptolog/alerts": { rows: [], total_count: 0, next_cursor: null, has_more: false },
+    });
+    render(<CryptoLogAlerts />);
+    await screen.findByText("Weak cipher suite observed");
+    expect(screen.getByTestId("rules-note")).toHaveTextContent(/a detection, never a verdict/);
+    expect(screen.getByText(/identify the endpoint offering the weak suite/)).toBeInTheDocument();
+  });
+
   it("renders alerts with the server's totals, never a page count as a total", async () => {
     mockFetch({
       "/api/v1/cryptolog/alerts": {

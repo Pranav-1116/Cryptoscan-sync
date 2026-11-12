@@ -2,10 +2,11 @@ import React, { useEffect, useState } from "react";
 import { HBars } from "../components/viz";
 import { Badge, Panel, PageHead } from "../components/ui.jsx";
 import CryptoLogAlerts from "./CryptoLogAlerts.js";
+import CryptoLogCorrelation from "./CryptoLogCorrelation.js";
+import CryptoLogCoverage from "./CryptoLogCoverage.js";
 import CryptoLogIntegrity from "./CryptoLogIntegrity.js";
-import CryptoLogOverview from "./CryptoLogOverview.js";
 import CryptoLogReports from "./CryptoLogReports.js";
-import CryptoLogRetention from "./CryptoLogRetention.js";
+import CryptoLogStream from "./CryptoLogStream.js";
 import CryptoLogTimeline from "./CryptoLogTimeline.js";
 import {
   apiCryptologCorrections, apiCryptologEvent, apiCryptologEvents,
@@ -55,7 +56,7 @@ function observedAt(event: CryptologEventRow): string {
 }
 
 export default function CryptoLog() {
-  const [view, setView] = useState<"explorer" | "alerts" | "integrity" | "timeline" | "overview" | "reports" | "retention">("explorer");
+  const [view, setView] = useState<"stream" | "explorer" | "timeline" | "integrity" | "correlation" | "rules" | "audit" | "coverage">("stream");
   const [category, setCategory] = useState("");
   const [severity, setSeverity] = useState("");
   const [status, setStatus] = useState("");
@@ -157,7 +158,7 @@ export default function CryptoLog() {
       />
 
       <div className="row" data-testid="cryptolog-views" style={{ gap: 8, marginBottom: 16 }}>
-        {([["overview", "Overview"], ["explorer", "Event explorer"], ["alerts", "Threat investigation"], ["timeline", "Crypto timeline"], ["integrity", "Integrity monitor"], ["reports", "Reports"], ["retention", "Retention"]] as const).map(([key, label]) => (
+        {([["stream", "Crypto Event Stream"], ["explorer", "Event Explorer"], ["timeline", "Asset Crypto Timeline"], ["integrity", "Integrity Verification"], ["correlation", "Event Correlation"], ["rules", "Event Rules & Detection"], ["audit", "Crypto Audit & Export"], ["coverage", "Collector & Coverage Health"]] as const).map(([key, label]) => (
           <button key={key} className="btn" data-testid={`cryptolog-view-${key}`}
             aria-pressed={view === key}
             onClick={() => setView(key)}
@@ -167,7 +168,7 @@ export default function CryptoLog() {
         ))}
       </div>
 
-      {view === "alerts" ? <CryptoLogAlerts /> : view === "integrity" ? <CryptoLogIntegrity /> : view === "timeline" ? <CryptoLogTimeline /> : view === "overview" ? <CryptoLogOverview /> : view === "reports" ? <CryptoLogReports /> : view === "retention" ? <CryptoLogRetention /> : (
+      {view === "stream" ? <CryptoLogStream /> : view === "timeline" ? <CryptoLogTimeline /> : view === "integrity" ? <CryptoLogIntegrity /> : view === "correlation" ? <CryptoLogCorrelation /> : view === "rules" ? <CryptoLogAlerts /> : view === "audit" ? <CryptoLogReports /> : view === "coverage" ? <CryptoLogCoverage /> : (
       <><Panel title="Event explorer" sub="Filters are server-side: the term travels to the event store, never a page-local filter">
         <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <select aria-label="category" value={category} onChange={(e) => setCategory(e.target.value)} style={CONTROL_STYLE}>
