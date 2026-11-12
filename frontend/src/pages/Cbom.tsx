@@ -1,8 +1,16 @@
 import { Link } from "react-router-dom";
 import BomCrossNav from "../components/BomCrossNav";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Badge, Bar, Panel, Ring } from "../components/ui";
-import { usePollingApi } from "../lib/apiUi.jsx";
+import { useSearchParams } from "react-router-dom";
+import { Badge, Bar, Panel, Ring, Drawer } from "../components/ui";
+import { usePollingApi, useApi } from "../lib/apiUi.jsx";
+import {
+  apiCbomWorkspaceOverview, apiCbomWorkspaceAssets, apiCbomWorkspaceAssetDetail,
+  apiCbomWorkspaceAlgorithms, apiCbomWorkspaceLibraries, apiCbomWorkspaceCertificates,
+  apiCbomWorkspaceKeys, apiCbomWorkspaceOperations, apiCbomWorkspaceProtocols,
+  apiCbomWorkspacePqc, apiCbomWorkspaceDependencies, apiCbomWorkspaceEvidence,
+  apiCbomWorkspaceHistory, apiCbomWorkspaceExport, type CbomCryptoAssetRow,
+} from "../lib/api.js";
 import {
   apiCbomCoverage,
   apiCbomIngest,
@@ -42,11 +50,84 @@ interface CbomItem {
 
 const LINKAGE_FILTERS = ["ALL", "LINKED", "UNLINKED", "CONFLICTS"] as const;
 
+const CBOM_TABS: Array<{ id: string; label: string }> = [
+  { id: "overview", label: "CBOM Overview" },
+  { id: "assets", label: "Cryptographic Asset Inventory" },
+  { id: "algorithms", label: "Algorithm Intelligence" },
+  { id: "libraries", label: "Crypto Library & Provider Inventory" },
+  { id: "certificates", label: "Certificate & PKI Inventory" },
+  { id: "keys", label: "Key Metadata Inventory" },
+  { id: "operations", label: "Cryptographic Operations" },
+  { id: "protocols", label: "TLS / SSH / IPsec Cryptography" },
+  { id: "pqc", label: "PQC Readiness" },
+  { id: "dependencies", label: "Crypto Dependencies" },
+  { id: "evidence", label: "Evidence & Provenance" },
+  { id: "history", label: "CBOM History" },
+  { id: "export", label: "Export & Validation" },
+];
+
+/* A read that did not return is never an inventory of zero records. */
+function WsState({ read, noun, children }: {
+  read: { data: Record<string, unknown> | null; running: boolean; source: string; detail?: string | null };
+  noun: string;
+  children: React.ReactNode;
+}) {
+  if (read.running && !read.data) return <p className="faint" style={{ fontSize: 12 }}>Reading the {noun}…</p>;
+  if (read.source !== "live" || read.data == null)
+    return (
+      <Panel title={`${noun} not read`} sub={read.source === "live" ? "the read returned nothing" : "the control plane did not answer"}>
+        <p role="status" style={{ margin: 0, fontSize: 12, color: "var(--amber)" }}>
+          {read.source === "live"
+            ? `The ${noun} read returned nothing — nothing is claimed here.`
+            : `The ${noun} could not be read${read.detail ? ` — ${read.detail}` : ""}. An unread inventory is not an empty one.`}
+        </p>
+      </Panel>
+    );
+  return <>{children}</>;
+}
+
+function WsTable({ head, rows, colSpan }: { head: string[]; rows: React.ReactNode[]; colSpan: number }) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table className="tbl" style={{ width: "100%" }}>
+        <thead><tr>{head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
+        <tbody>
+          {rows.length ? rows : (
+            <tr><td colSpan={colSpan} style={{ padding: 26, textAlign: "center", color: "var(--dim)", fontSize: 12 }}>
+              <div style={{ fontWeight: 600, color: "var(--text)" }}>Nothing stored yet</div>
+              <div style={{ fontSize: 11.5, marginTop: 4 }}>Empty rows here mean no stored observations — not a healthy zero.</div>
+            </td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function UsageBadge({ usage }: { usage: { usage_state: string; basis: string } }) {
+  const tone = usage.usage_state === "operation_observed" ? "green"
+    : usage.usage_state === "configuration_observed" ? "amber" : "slate";
+  return <Badge tone={tone}>{usage.usage_state}</Badge>;
+}
+
+function EvidenceBadge({ status }: { status: string }) {
+  const tone = status === "MEASURED" ? "green" : status === "CONTRADICTED" ? "red"
+    : status === "INFERRED" ? "amber" : status === "IMPORTED" ? "violet" : "slate";
+  return <Badge tone={tone}>{status}</Badge>;
+}
+
+function PqcBadge({ family }: { family: string }) {
+  const tone = family === "MIGRATION_RELEVANT" ? "amber" : family === "QUANTUM_RESISTANT" ? "violet" : "slate";
+  return <Badge tone={tone}>{family}</Badge>;
+}
+
 export default function Cbom() {
   return <PrivateScope><CbomContent /></PrivateScope>;
 }
 
 function CbomContent() {
+  const [wsParams, setWsParams] = useSearchParams();
+  const active = CBOM_TABS.some((t) => t.id === wsParams.get("tab")) ? wsParams.get("tab") as string : "overview";
   const current = usePrivateScopeCurrent();
   const selectionGeneration = useRef(0);
   const viewRequest = useRef(0);
@@ -346,6 +427,20 @@ function CbomContent() {
         </div>
       </div>
 
+      <div role="tablist" aria-label="CBOM sections" style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "2px 0 16px" }}>
+        {CBOM_TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={active === t.id} title={t.label}
+            onClick={() => setWsParams({ tab: t.id })}
+            style={{
+              fontSize: 11, padding: "6px 11px", borderRadius: 999, cursor: "pointer",
+              border: `1px solid ${active === t.id ? "var(--accent)" : "var(--line-strong)"}`,
+              background: active === t.id ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "var(--panel-2)",
+              color: active === t.id ? "var(--accent)" : "var(--dim)", fontFamily: "var(--mono)", letterSpacing: ".03em",
+            }}>{t.label}</button>
+        ))}
+      </div>
+
+      {active === "overview" && (<>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 18 }}>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--accent)" }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -903,6 +998,408 @@ function CbomContent() {
       </div>
 
       <PortfolioDependencyPanel />
+      </>)}
+      {active === "assets" && <CbomAssets />}
+      {active === "algorithms" && <CbomAlgorithms />}
+      {active === "libraries" && <CbomLibraries />}
+      {active === "certificates" && <CbomCertificates />}
+      {active === "keys" && <CbomKeys />}
+      {active === "operations" && <CbomOperations />}
+      {active === "protocols" && <CbomProtocols />}
+      {active === "pqc" && <CbomPqc />}
+      {active === "dependencies" && <CbomDependencies />}
+      {active === "evidence" && <CbomEvidence />}
+      {active === "history" && <CbomHistory />}
+      {active === "export" && <CbomExport />}
     </div>
+  );
+}
+
+/* ── workspace sections (docs/boms/01_PRODUCT_SPEC.md §2 navigation) ─── */
+
+function CbomAssets() {
+  const [q, setQ] = useState("");
+  const read = useApi(() => apiCbomWorkspaceAssets(q || undefined), [q]);
+  const rows = (read.data?.rows ?? []) as CbomCryptoAssetRow[];
+  const [selected, setSelected] = useState<CbomCryptoAssetRow | null>(null);
+  const detail = useApi(
+    () => apiCbomWorkspaceAssetDetail(selected?.asset_id ?? ""),
+    [selected?.asset_id],
+  );
+  return (
+    <>
+      <Panel title="Cryptographic Asset Inventory" sub="every row is a stored record — click an asset for parameters, evidence and migration relevance">
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <input value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="search by algorithm, location or implementation"
+            aria-label="search crypto assets"
+            style={{ flex: 1, minWidth: 220, padding: "7px 10px", borderRadius: "var(--r)", border: "1px solid var(--line-strong)", background: "var(--panel-2)", color: "var(--text)", fontSize: 12 }} />
+          <Badge tone="slate">{read.data?.total ?? (read.source === "live" ? rows.length : "—")} assets</Badge>
+        </div>
+        <WsState read={read} noun="crypto-asset inventory">
+          <WsTable
+            head={["Crypto asset", "Algorithm", "Operation", "Implementation", "Location", "Key metadata", "Evidence status", "PQC status", "Last observed"]}
+            colSpan={9}
+            rows={rows.map((r) => (
+              <tr key={r.asset_id} style={{ cursor: "pointer" }} onClick={() => setSelected(r)}>
+                <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)" }}>{r.asset_id.slice(0, 12)}…</span></td>
+                <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.algorithm || "—"}{r.mode ? <span style={{ color: "var(--faint)", fontWeight: 400 }}> · {r.mode}</span> : null}</span></td>
+                <td><Badge tone="slate">{r.operation || "UNKNOWN"}</Badge></td>
+                <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.implementation.length ? r.implementation.join(", ") : "—"}</span></td>
+                <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)" }}>{r.location || "—"}</span></td>
+                <td>
+                  <span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {r.key_metadata.size ? <Badge tone="slate">{r.key_metadata.size}-bit</Badge> : null}
+                    {r.key_metadata.named_reference ? <Badge tone="slate">named key ref</Badge> : null}
+                    {r.key_metadata.hardcoded_material_flag ? <Badge tone="red">HARDCODED KEY FLAG</Badge> : null}
+                    {!r.key_metadata.size && !r.key_metadata.named_reference && !r.key_metadata.hardcoded_material_flag
+                      ? <span style={{ fontSize: 11, color: "var(--faint)" }}>none collected</span> : null}
+                  </span>
+                </td>
+                <td><EvidenceBadge status={r.evidence_status} /></td>
+                <td><PqcBadge family={r.pqc_family} /></td>
+                <td><span style={{ fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--dim)" }}>{r.last_observed ? String(r.last_observed).slice(0, 19) : "—"}</span></td>
+              </tr>
+            ))}
+          />
+        </WsState>
+      </Panel>
+      {selected && (
+        <Drawer title={selected.algorithm || "crypto asset"} sub={selected.location || selected.asset_id} onClose={() => setSelected(null)}>
+          {!detail.data ? <p className="faint" style={{ fontSize: 12 }}>{detail.running ? "Reading the asset…" : "The asset detail did not return."}</p> : (
+            (() => {
+              const d = detail.data as Record<string, any>;
+              const a: CbomCryptoAssetRow = d.asset ?? selected;
+              return (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                    <div><b>Algorithm</b> {a.algorithm || "—"}{a.mode ? ` · mode ${a.mode}` : ""}{a.key_metadata.size ? ` · ${a.key_metadata.size}-bit` : ""}</div>
+                    <div><b>Implementation</b> {a.implementation.length ? a.implementation.join(", ") : "not collected"}</div>
+                    <div><b>Operation</b> {a.operation || "UNKNOWN"}</div>
+                    <div><b>Location</b> <span style={{ fontFamily: "var(--mono)" }}>{a.location || "—"}</span></div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>KEY METADATA — KEY MATERIAL IS NEVER COLLECTED</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {a.key_metadata.size ? <Badge tone="slate">{a.key_metadata.size}-bit</Badge> : <Badge tone="slate">size not collected</Badge>}
+                      {a.key_metadata.named_reference ? <Badge tone="slate">named reference present</Badge> : null}
+                      {a.key_metadata.hardcoded_material_flag ? <Badge tone="red">HARDCODED KEY MATERIAL FLAGGED AT THIS LOCATION</Badge> : null}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>USAGE — STATES ARE NOT EQUIVALENT</div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12 }}>
+                      <UsageBadge usage={a.usage} />
+                      <span style={{ fontSize: 10.5, color: "var(--faint)" }}>{a.usage.basis}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>EVIDENCE</div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, marginBottom: 4 }}>
+                      <EvidenceBadge status={a.evidence_status} />
+                      <span style={{ fontSize: 10.5, color: "var(--faint)" }}>{a.evidence_basis}</span>
+                    </div>
+                    {(d.evidence ?? []).map((e: Record<string, unknown>, i: number) => (
+                      <div key={i} style={{ fontSize: 11, color: "var(--dim)" }}>{String(e.observation_method)} · <span style={{ fontFamily: "var(--mono)" }}>{String(e.evidence_id).slice(0, 12)}…</span></div>
+                    ))}
+                    {!((d.evidence ?? []).length) && <div style={{ fontSize: 11.5, color: "var(--dim)" }}>No evidence records linked.</div>}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>ASSOCIATED ASSETS</div>
+                    {(d.associated_assets ?? []).map((x: Record<string, unknown>, i: number) => (
+                      <div key={i} style={{ fontSize: 11.5, color: "var(--dim)" }}>{String(x.type)} · <span style={{ fontFamily: "var(--mono)" }}>{String(x.ref)}</span></div>
+                    ))}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>PQC MIGRATION RELEVANCE</div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <PqcBadge family={String(d.pqc?.family ?? a.pqc_family)} />
+                      <span style={{ fontSize: 11, color: "var(--dim)" }}>{String(d.pqc?.migration_relevance ?? "")}</span>
+                    </div>
+                  </div>
+                  {(d.history ?? []).length > 0 && (
+                    <div>
+                      <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>HISTORICAL OBSERVATIONS</div>
+                      {(d.history ?? []).slice(0, 6).map((h: Record<string, unknown>, i: number) => (
+                        <div key={i} style={{ fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)" }}>
+                          {String(h.location ?? "")} · first {String(h.first_seen ?? "—").slice(0, 10)} · last {String(h.last_seen ?? "—").slice(0, 10)} · {String(h.observation_count ?? 0)}×
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()
+          )}
+        </Drawer>
+      )}
+    </>
+  );
+}
+
+function CbomAlgorithms() {
+  const read = useApi(apiCbomWorkspaceAlgorithms);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Algorithm Intelligence" sub="per-algorithm rollups over the stored crypto-asset records">
+      <WsState read={read} noun="algorithm inventory">
+        <WsTable head={["Algorithm", "Assets", "Operations", "Key sizes", "Usage states", "PQC family", "Evidence"]} colSpan={7}
+          rows={rows.map((r) => (
+            <tr key={r.algorithm}>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.algorithm}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.assets}</span></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{Object.entries(r.operations ?? {}).map(([k, v]) => `${k} (${v})`).join(", ")}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{(r.key_sizes ?? []).join(", ") || "—"}</span></td>
+              <td><span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>{Object.entries(r.usage_states ?? {}).map(([k, v]) => <span key={k}><Badge tone={k === "operation_observed" ? "green" : k === "configuration_observed" ? "amber" : "slate"}>{k}: {String(v)}</Badge>{" "}</span>)}</span></td>
+              <td><PqcBadge family={r.pqc_family} /></td>
+              <td><span style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>{Object.entries(r.evidence_status ?? {}).map(([k, v]) => <span key={k}><EvidenceBadge status={k} /> {String(v)}</span>)}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function CbomLibraries() {
+  const read = useApi(apiCbomWorkspaceLibraries);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Crypto Library & Provider Inventory" sub="a library capability is never promoted to use — the claim lives on the asset rows with their own evidence">
+      <WsState read={read} noun="library inventory">
+        <WsTable head={["Library / provider", "Algorithms supported", "Usage state", "Basis", "Assets referencing"]} colSpan={5}
+          rows={rows.map((r) => (
+            <tr key={r.name}>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.name}</span></td>
+              <td><span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--dim)" }}>{(r.algorithms ?? []).join(", ") || "—"}</span></td>
+              <td><UsageBadge usage={{ usage_state: r.usage_state, basis: r.basis }} /></td>
+              <td><span style={{ fontSize: 10.5, color: "var(--faint)" }}>{r.basis}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.crypto_bearing_components}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function CbomCertificates() {
+  const read = useApi(apiCbomWorkspaceCertificates);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Certificate & PKI Inventory" sub="certificate metadata and validity as collected — public-key metadata only">
+      <WsState read={read} noun="certificate inventory">
+        <WsTable head={["Subject", "Issuer", "Public key", "Validity", "Expiry", "Revocation", "Renewal", "PQC family"]} colSpan={8}
+          rows={rows.slice(0, 200).map((c) => (
+            <tr key={c.fingerprint_sha256}>
+              <td><span style={{ fontSize: 11.5, fontWeight: 600 }}>{c.subject || <span style={{ color: "var(--faint)" }}>no subject collected</span>}</span></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{c.issuer || "—"}</span></td>
+              <td><Badge tone="slate">{c.public_key_algorithm || "?"}{c.public_key_size ? ` ${c.public_key_size}` : ""}</Badge></td>
+              <td><span style={{ fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--dim)" }}>{String(c.not_before ?? "—").slice(0, 10)} → {String(c.not_after ?? "—").slice(0, 10)}</span></td>
+              <td><Badge tone={c.expiry_status === "EXPIRED" ? "red" : c.days_until_expiry != null && c.days_until_expiry < 30 ? "amber" : "pass"}>{c.expiry_status || "UNKNOWN"}{c.days_until_expiry != null ? ` · ${c.days_until_expiry}d` : ""}</Badge></td>
+              <td>{c.revocation_status ? <Badge tone={String(c.revocation_status).toUpperCase().includes("REVOKED") ? "red" : "slate"}>{c.revocation_status}</Badge> : <span style={{ fontSize: 11, color: "var(--faint)" }}>not checked</span>}</td>
+              <td><Badge tone="slate">{c.renewal_status || "NONE"}</Badge></td>
+              <td><PqcBadge family={c.pqc_family} /></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function CbomKeys() {
+  const read = useApi(apiCbomWorkspaceKeys);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Key Metadata Inventory" sub="type, size and parameter set only — key material is never collected into this view">
+      <WsState read={read} noun="key-metadata inventory">
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <Badge tone="slate">{String(read.data?.total ?? 0)} with key metadata</Badge>
+          {Number(read.data?.hardcoded_flagged ?? 0) > 0 && <Badge tone="red">{String(read.data?.hardcoded_flagged)} hardcoded-material flags</Badge>}
+        </div>
+        <WsTable head={["Location", "Algorithm", "Size", "Mode", "Named reference", "Hardcoded-material flag"]} colSpan={6}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{r.location}</span></td>
+              <td><span style={{ fontSize: 12 }}>{r.algorithm || "—"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.size ? `${r.size}-bit` : "—"}</span></td>
+              <td><span style={{ fontSize: 11 }}>{r.mode || "—"}</span></td>
+              <td>{r.named_reference ? <Badge tone="slate">{r.named_reference}</Badge> : <span style={{ fontSize: 11, color: "var(--faint)" }}>none</span>}</td>
+              <td>{r.hardcoded_material_flag ? <Badge tone="red">FLAGGED</Badge> : <span style={{ fontSize: 11, color: "var(--faint)" }}>no</span>}</td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function CbomOperations() {
+  const read = useApi(apiCbomWorkspaceOperations);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Cryptographic Operations" sub="static references and observed operations kept in separate counts">
+      <WsState read={read} noun="operation inventory">
+        <WsTable head={["Operation", "Static references", "Observed operations", "Usage state", "Basis"]} colSpan={5}
+          rows={rows.map((r) => (
+            <tr key={r.operation}>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.operation}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.static_references}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.observed_operations}</span></td>
+              <td><UsageBadge usage={{ usage_state: r.usage_state, basis: r.basis }} /></td>
+              <td><span style={{ fontSize: 10.5, color: "var(--faint)" }}>{r.basis}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function CbomProtocols() {
+  const read = useApi(apiCbomWorkspaceProtocols);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="TLS / SSH / IPsec Cryptography" sub="supported, configured and negotiated are kept apart — a scan that saw a protocol proves nothing about what is in use">
+      <WsState read={read} noun="protocol observations">
+        <WsTable head={["Protocol", "Version", "Cipher suite", "Algorithm", "Host", "Seen", "Registry verdict", "Quantum impact"]} colSpan={8}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><Badge tone="violet">{r.protocol}</Badge></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.tls_version || "—"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)" }}>{r.cipher_suite || "—"}</span></td>
+              <td><span style={{ fontSize: 11 }}>{r.algorithm || "—"}{r.key_size ? ` · ${r.key_size}` : ""}</span></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.hostname || "—"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.last_seen ?? "—").slice(0, 19)}</span></td>
+              <td><Badge tone={r.weak_tls ? "red" : "slate"}>{r.registry_status || "UNKNOWN"}{r.weak_tls ? " · weak" : ""}</Badge></td>
+              <td><Badge tone={r.quantum_impact === "CRITICAL" ? "red" : "slate"}>{r.quantum_impact || "NOT_ASSESSED"}</Badge></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function CbomPqc() {
+  const read = useApi(apiCbomWorkspacePqc);
+  const families = (read.data?.by_family ?? {}) as Record<string, number>;
+  const certKeys = (read.data?.certificate_keys ?? {}) as Record<string, number>;
+  const waves = (read.data?.migration_waves ?? []) as Array<Record<string, unknown>>;
+  return (
+    <Panel title="PQC Readiness" sub="algorithm-family classification and registered migration waves — support is never use">
+      <WsState read={read} noun="PQC assessment">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          {Object.entries(families).map(([k, v]) => <span key={k}><PqcBadge family={k} /> {v}</span>)}
+          {Object.entries(certKeys).map(([k, v]) => <span key={k}><Badge tone="slate">certificate · {k}: {v}</Badge></span>)}
+        </div>
+        {waves.length ? (
+          <WsTable head={["Wave", "Title", "Status", "Planned window"]} colSpan={4}
+            rows={waves.map((w) => (
+              <tr key={String(w.wave_key)}>
+                <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{String(w.wave_key)}</span></td>
+                <td><span style={{ fontSize: 12 }}>{String(w.title)}</span></td>
+                <td><Badge tone={String(w.status) === "completed" ? "pass" : "amber"}>{String(w.status)}</Badge></td>
+                <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{String(w.planned_window ?? "—")}</span></td>
+              </tr>
+            ))} />
+        ) : (
+          <div style={{ padding: 22, textAlign: "center", color: "var(--dim)", fontSize: 12 }}>
+            <div style={{ fontWeight: 600, color: "var(--text)" }}>No migration waves registered.</div>
+            <div style={{ fontSize: 11.5, marginTop: 4 }}>Absence of rows is absence of a plan, not a clean estate.</div>
+          </div>
+        )}
+      </WsState>
+    </Panel>
+  );
+}
+
+function CbomDependencies() {
+  const read = useApi(apiCbomWorkspaceDependencies);
+  const edges = (read.data?.edges ?? []) as Array<Record<string, string>>;
+  const roots = (read.data?.roots ?? []) as string[];
+  return (
+    <Panel title="Crypto Dependencies" sub="asset → implementation edges; an edge without a stored relationship is not drawn">
+      <WsState read={read} noun="dependency inventory">
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+          <Badge tone="violet">{edges.length} edges</Badge>
+          <Badge tone="slate">{roots.length} roots</Badge>
+          {Number(read.data?.unresolved ?? 0) > 0 && <Badge tone="amber">{String(read.data?.unresolved)} unresolved</Badge>}
+        </div>
+        <WsTable head={["Source", "Target", "Type"]} colSpan={3}
+          rows={edges.slice(0, 300).map((e, i) => (
+            <tr key={i}>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{e.source}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{e.target}</span></td>
+              <td><Badge tone="slate">{e.type}</Badge></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function CbomEvidence() {
+  const read = useApi(apiCbomWorkspaceEvidence);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Evidence & Provenance" sub="one evidence vocabulary: Measured, Imported, Inferred, Unknown, Contradicted — with the observation method named">
+      <WsState read={read} noun="evidence inventory">
+        <WsTable head={["Algorithm", "Observation method", "Observations", "Evidence status", "First seen", "Last seen", "Freshness"]} colSpan={7}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><span style={{ fontSize: 12, fontWeight: 600 }}>{r.algorithm || "—"}</span></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.observation_method}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.observation_count}</span></td>
+              <td><EvidenceBadge status={r.evidence_status} /></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.first_seen ?? "—").slice(0, 10)}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.last_seen ?? "—").slice(0, 10)}</span></td>
+              <td><Badge tone={r.freshness === "CURRENT" ? "pass" : r.freshness === "STALE" ? "amber" : "slate"}>{r.freshness}</Badge></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function CbomHistory() {
+  const read = useApi(apiCbomWorkspaceHistory);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="CBOM History" sub="first and last observation per stored fact — events are immutable records">
+      <WsState read={read} noun="history">
+        <WsTable head={["Algorithm", "Location", "First seen", "Last seen", "Observations", "Freshness"]} colSpan={6}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><span style={{ fontSize: 12, fontWeight: 600 }}>{r.algorithm || "—"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--dim)" }}>{r.location || "—"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.first_seen ?? "—").slice(0, 10)}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.last_seen ?? "—").slice(0, 10)}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.observation_count}</span></td>
+              <td><Badge tone={r.freshness === "CURRENT" ? "pass" : r.freshness === "STALE" ? "amber" : "slate"}>{r.freshness}</Badge></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function CbomExport() {
+  const read = useApi(apiCbomWorkspaceExport);
+  const formats = (read.data?.formats ?? []) as Array<Record<string, unknown>>;
+  const signed = (read.data?.signed_variants ?? []) as string[];
+  return (
+    <Panel title="Export & Validation" sub="validators run over the stored document; a signature is integrity provenance, not a risk score">
+      <WsState read={read} noun="export inventory">
+        <WsTable head={["Format", "Validator", "State"]} colSpan={3}
+          rows={formats.map((f, i) => (
+            <tr key={i}>
+              <td><span style={{ fontSize: 12, fontWeight: 600 }}>{String(f.format)}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--dim)" }}>{String(f.validator)}</span></td>
+              <td><Badge tone="pass">{String(f.state)}</Badge></td>
+            </tr>
+          ))} />
+        {signed.length > 0 && (
+          <div style={{ marginTop: 12, fontSize: 11.5, color: "var(--dim)" }}>
+            Signed variants: {signed.map((v) => <Badge key={v} tone="violet">{v}</Badge>)} — the signed export carries an external signature over the exact payload.
+          </div>
+        )}
+      </WsState>
+    </Panel>
   );
 }

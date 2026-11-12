@@ -66,6 +66,7 @@ from api.routers import (
     cbom,
     cbom_usage,
     cbom_vbom,
+    cbom_workspace,
     certificates,
     cloud,
     cloud_scans,
@@ -634,6 +635,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(trust_model.router, prefix=prefix)
     app.include_router(techbom.router, prefix=prefix)
     app.include_router(sbom.router, prefix=prefix)
+    app.include_router(cbom_workspace.router, prefix=prefix)
     app.include_router(graph.router, prefix=prefix)
     app.include_router(reachability.router, prefix=prefix)
     app.include_router(remediation.router, prefix=prefix)

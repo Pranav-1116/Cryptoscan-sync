@@ -513,6 +513,73 @@ export const apiSbomHistory = (): Promise<ApiResult<Record<string, unknown>>> =>
 export const apiSbomExportStatus = (): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/sbom/export");
 
+/* ── CBOM workspace (contracts in api/routers/cbom_workspace.py; docs/boms/01_PRODUCT_SPEC.md §2) ──
+ * Names carry "Workspace" — the apiCbom* family below belongs to the
+ * catalog/ingest surface. Crypto rows carry key metadata only: the server
+ * never returns key material and neither does this client. */
+
+export interface CbomCryptoAssetRow {
+  asset_id: string;
+  algorithm?: string | null;
+  operation?: string | null;
+  mode?: string | null;
+  implementation: string[];
+  location?: string | null;
+  file_path?: string | null;
+  source_language?: string | null;
+  key_metadata: { size?: number | null; hardcoded_material_flag: boolean; named_reference?: string | null };
+  evidence_status: string;
+  evidence_basis: string;
+  usage: { usage_state: string; basis: string };
+  pqc_family: string;
+  confidence?: string | null;
+  occurrence_count: number;
+  last_observed?: string | null;
+  freshness: string;
+}
+
+export const apiCbomWorkspaceOverview = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/cbom/workspace/overview");
+
+export const apiCbomWorkspaceAssets = (q?: string): Promise<ApiResult<{ state: string; total: number; rows: CbomCryptoAssetRow[] }>> =>
+  call(`/api/v1/cbom/workspace/assets${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+
+export const apiCbomWorkspaceAssetDetail = (assetId: string): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/cbom/workspace/assets/${encodeURIComponent(assetId)}`);
+
+export const apiCbomWorkspaceAlgorithms = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/cbom/workspace/algorithms");
+
+export const apiCbomWorkspaceLibraries = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/cbom/workspace/libraries");
+
+export const apiCbomWorkspaceCertificates = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/cbom/workspace/certificates");
+
+export const apiCbomWorkspaceKeys = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/cbom/workspace/keys");
+
+export const apiCbomWorkspaceOperations = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/cbom/workspace/operations");
+
+export const apiCbomWorkspaceProtocols = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/cbom/workspace/protocols");
+
+export const apiCbomWorkspacePqc = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/cbom/workspace/pqc");
+
+export const apiCbomWorkspaceDependencies = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/cbom/workspace/dependencies");
+
+export const apiCbomWorkspaceEvidence = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/cbom/workspace/evidence");
+
+export const apiCbomWorkspaceHistory = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/cbom/workspace/history");
+
+export const apiCbomWorkspaceExport = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/cbom/workspace/export");
+
 
 export const apiSecurity = (request: Record<string, unknown>): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/platform/security", { method: "POST", body: JSON.stringify({ request }) });
