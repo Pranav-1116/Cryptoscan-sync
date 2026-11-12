@@ -71,7 +71,9 @@ def _model_fields() -> dict[str, str | None]:
                                 val = ast.literal_eval(kw.value)
                                 if isinstance(val, str):
                                     default = val
-                            except Exception:
+                            except (ValueError, TypeError):
+                                # literal_eval fails exactly like this on a
+                                # non-literal default; the default stays None.
                                 pass
                 found[f"{path.stem}.{node.name}.{name}"] = default
     return found
@@ -169,7 +171,8 @@ def test_usage_status_enum_equals_register():
                 if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name):
                     try:
                         v = ast.literal_eval(st.value)
-                    except Exception:
+                    except (ValueError, TypeError):
+                        # non-literal class attribute — not an enum value
                         continue
                     if isinstance(v, str):
                         vals.add(v)

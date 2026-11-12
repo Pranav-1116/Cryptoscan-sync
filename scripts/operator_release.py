@@ -24,7 +24,7 @@ from verify_release_attestation import verify_attestation
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = "kubernetes-external-services/local-source-v1"
-MIGRATION_HEAD = "0147"  # 0146 OS schema parity, 0147 forced tenant RLS/write isolation
+MIGRATION_HEAD = "0148"  # 0147 forced tenant RLS/write isolation, 0148 PQC migration intelligence
 IMAGE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}$")
 EXAMPLE_NAMES = {"15-secret.example.yaml"}
 DOCS = ["docs/CURRENT-STATE.md", "docs/runbooks/launch-assurance-handoff.md",
