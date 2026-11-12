@@ -831,6 +831,41 @@ export const apiTechBomWorkspaceHistory = (): Promise<ApiResult<Record<string, u
 export const apiTechBomWorkspaceExport = (): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/techbom/workspace/export");
 
+/* ── Shared asset detail (components/AssetDetail.tsx; docs/boms/01_PRODUCT_SPEC.md §7) ──
+ * One canonical detail surface for every BOM record: header record,
+ * cross-BOM panel (linked / not established / unknown / primary record,
+ * never conflated) and the nine detail tabs. */
+
+export interface AssetDetailHeader {
+  asset_ref: string;
+  name: string;
+  status: string;
+  description: string;
+  asset_id: string;
+  environment: string;
+  category: string;
+  owner: string;
+  source: string;
+  last_observed?: string | null;
+  primary_bom: string;
+  related: Array<{ bom: string; state: string; basis: string }>;
+  chips: string[];
+  evidence: Record<string, string>;
+}
+
+export interface AssetDetailTab {
+  asset_ref: string;
+  tab: string;
+  rows: Array<Record<string, unknown>>;
+  note: string;
+}
+
+export const apiAssetDetailHeader = (assetRef: string): Promise<ApiResult<AssetDetailHeader>> =>
+  call(`/api/v1/asset-detail/${assetRef}`);
+
+export const apiAssetDetailTab = (assetRef: string, tab: string): Promise<ApiResult<AssetDetailTab>> =>
+  call(`/api/v1/asset-detail/${assetRef}/${tab}`);
+
 
 export const apiSecurity = (request: Record<string, unknown>): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/platform/security", { method: "POST", body: JSON.stringify({ request }) });

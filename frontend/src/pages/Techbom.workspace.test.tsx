@@ -36,15 +36,21 @@ const HSM_ROW = {
   last_observed: "2026-11-10T00:00:00Z",
 };
 
-const DETAIL = {
-  asset_ref: "app:sys-pay", name: "payments", category: "SOFTWARE", environment: "Production",
-  owner: "", source: "Software record", last_observed: "2026-11-01T00:00:00Z",
+const ASSET_HEADER = {
+  asset_ref: "app:sys-pay", name: "payments", status: "UNKNOWN · NOT_COLLECTED",
+  description: "Payment API Server", asset_id: "app:sys-pay",
+  environment: "Production", category: "SOFTWARE", owner: "payments-team",
+  source: "System registry", last_observed: "2026-11-01T00:00:00Z",
+  primary_bom: "TechBOM",
   related: [
-    { bom: "SBOM", state: "PRIMARY_RECORD", basis: "this asset is a record of that BOM" },
+    { bom: "TechBOM", state: "PRIMARY_RECORD", basis: "the canonical asset record lives in the technology inventory" },
+    { bom: "SBOM", state: "LINKED", basis: "this system materializes into the SBOM layer" },
     { bom: "CBOM", state: "LINKED", basis: "a stored relationship establishes this link" },
     { bom: "HBOM", state: "NOT_ESTABLISHED", basis: "no stored relationship establishes this link" },
+    { bom: "NBOM", state: "NOT_ESTABLISHED", basis: "no stored relationship establishes this link" },
+    { bom: "VBOM", state: "LINKED", basis: "a stored SystemVendor link establishes this link" },
   ],
-  dependencies: [{ to: "crypto:cr-linked", type: "system_asset", evidence: "stored system_assets link" }],
+  chips: ["TechBOM primary record", "SBOM linked", "CBOM linked", "VBOM linked"],
   evidence: { state: "UNKNOWN", freshness: "NOT_COLLECTED", basis: "registration only" },
 };
 
@@ -70,7 +76,12 @@ describe("TechBOM workspace", () => {
   it("keeps the cross-BOM relationship states apart — linked, primary record and not established never collapse", async () => {
     mockFetch({
       "/api/v1/techbom/workspace/inventory": { state: "techbom-inventory", total: 2, rows: [SYSTEM_ROW, HSM_ROW], note: "n" },
-      "/api/v1/techbom/workspace/inventory/app:sys-pay": DETAIL,
+      "/api/v1/asset-detail/app:sys-pay": ASSET_HEADER,
+      "/api/v1/asset-detail/app:sys-pay/overview": { asset_ref: "app:sys-pay", tab: "overview", rows: [], note: "n" },
+      "/api/v1/asset-detail/app:sys-pay/dependencies": {
+        asset_ref: "app:sys-pay", tab: "dependencies", note: "verified dependency paths only",
+        rows: [{ from: "app:sys-pay", to: "crypto:cr-linked", type: "system_asset", evidence: "stored system_assets link" }],
+      },
     });
     renderPage();
     fireEvent.click(screen.getByRole("tab", { name: "Technology Inventory" }));
@@ -80,14 +91,17 @@ describe("TechBOM workspace", () => {
     // evidence states render as their own words
     expect(screen.getAllByText("MEASURED").length).toBeGreaterThan(0);
     expect(screen.getAllByText("UNKNOWN").length).toBeGreaterThan(0);
-    // opening the asset shows the cross-BOM panel — including the honest
-    // "not established": the hardware row is NOT linked to the SBOM because
-    // no stored mapping exists, and none is invented.
+    // clicking the row opens the SHARED canonical asset detail — the cross-BOM
+    // panel shows the honest "not established" too: the hardware row is NOT
+    // linked to the SBOM because no stored mapping exists, and none is invented.
     fireEvent.click(screen.getByText("payments"));
     await waitFor(() => {
       expect(screen.getAllByText("CROSS-BOM RELATIONSHIPS").length).toBeGreaterThan(0);
       expect(screen.getAllByText("not established").length).toBeGreaterThan(0);
       expect(screen.getAllByText(/a stored relationship establishes this link/).length).toBeGreaterThan(0);
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Dependencies" }));
+    await waitFor(() => {
       expect(screen.getAllByText(/stored system_assets link/).length).toBeGreaterThan(0);
     });
   });

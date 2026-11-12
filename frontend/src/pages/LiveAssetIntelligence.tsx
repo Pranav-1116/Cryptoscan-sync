@@ -4,6 +4,7 @@ import {
 } from "../components/ui.jsx";
 import { useRealtime, useRealtimeRefresh, severityOf } from "../lib/realtime.js";
 import { usePollingApi, useApi } from "../lib/apiUi.jsx";
+import AssetDetail from "../components/AssetDetail";
 import { useSearchParams } from "react-router-dom";
 import { ICON_MD, ICON_SM, IconCalendar, IconClose, IconWarn, IconClock, IconCrypto, IconHardware, IconTarget, IconSecurity, IconInfo, IconSearch, IconComponent, IconCertificate } from "../components/icons";
 import {
@@ -745,6 +746,7 @@ function EvidenceBadge({ evidence }: { evidence: { state: string; freshness: str
 export default function LiveAssetIntelligence() {
   const [wsParams, setWsParams] = useSearchParams();
   const wsActive = TECHBOM_TABS.some((t) => t.id === wsParams.get("tab")) ? wsParams.get("tab") as string : "overview";
+  const wsAsset = wsParams.get("asset");
   const [view, setView] = useState(0);
   const live = usePollingApi(apiTechBomLive, 15000);
   const versions = usePollingApi(apiTechBomVersions, 30000);
@@ -888,7 +890,9 @@ export default function LiveAssetIntelligence() {
             }}>{t.label}</button>
         ))}
       </div>
-      {wsActive === "overview" && (<>
+      {wsAsset ? (
+        <AssetDetail assetRef={wsAsset} onBack={() => setWsParams({ tab: wsActive })} />
+      ) : wsActive === "overview" ? (<>
       {/* Visual Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 460px", minWidth: 280 }}>
@@ -1245,30 +1249,28 @@ export default function LiveAssetIntelligence() {
           </Panel>
         </div>
       )}
-      </>)}
-      {wsActive === "inventory" && <TechbomInventory />}
-      {wsActive === "applications" && <TechbomApplications />}
-      {wsActive === "infrastructure" && <TechbomInfrastructure />}
-      {wsActive === "layers" && <TechbomLayers />}
-      {wsActive === "reconciliation" && <TechbomReconciliation />}
-      {wsActive === "relationships" && <TechbomRelationships />}
-      {wsActive === "lifecycle" && <TechbomLifecycle />}
-      {wsActive === "evidence" && <TechbomEvidence />}
-      {wsActive === "history" && <TechbomHistory />}
-      {wsActive === "export" && <TechbomExport />}
+      </>) : null}
+      {!wsAsset && wsActive === "inventory" && <TechbomInventory onOpen={(ref) => setWsParams({ tab: "inventory", asset: ref })} />}
+      {!wsAsset && wsActive === "applications" && <TechbomApplications />}
+      {!wsAsset && wsActive === "infrastructure" && <TechbomInfrastructure />}
+      {!wsAsset && wsActive === "layers" && <TechbomLayers />}
+      {!wsAsset && wsActive === "reconciliation" && <TechbomReconciliation />}
+      {!wsAsset && wsActive === "relationships" && <TechbomRelationships />}
+      {!wsAsset && wsActive === "lifecycle" && <TechbomLifecycle />}
+      {!wsAsset && wsActive === "evidence" && <TechbomEvidence />}
+      {!wsAsset && wsActive === "history" && <TechbomHistory />}
+      {!wsAsset && wsActive === "export" && <TechbomExport />}
     </div>
   );
 }
 
 /* ── workspace sections (docs/boms/01_PRODUCT_SPEC.md §6 navigation) ─── */
 
-function TechbomInventory() {
+function TechbomInventory({ onOpen }: { onOpen: (assetRef: string) => void }) {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState("");
   const read = useApi(() => apiTechBomWorkspaceInventory(q || undefined, cat || undefined), [q, cat]);
   const rows = (read.data?.rows ?? []) as TechbomInventoryRow[];
-  const [selected, setSelected] = useState<TechbomInventoryRow | null>(null);
-  const detail = useApi(() => apiTechBomWorkspaceAssetDetail(selected?.asset_ref ?? ""), [selected?.asset_ref]);
   return (
     <>
       <Panel title="Technology Inventory" sub="one canonical asset model — Related BOMs cite primary records and verified links only; a shared name or layer is never a link">
@@ -1293,7 +1295,7 @@ function TechbomInventory() {
             head={["Asset ID", "Asset name", "Category", "Vendor", "Product/version", "Environment", "Related BOMs", "Dependencies", "Evidence", "Last observed"]}
             colSpan={10}
             rows={rows.slice(0, 200).map((r, i) => (
-              <tr key={`${r.asset_ref}-${i}`} style={{ cursor: "pointer" }} onClick={() => setSelected(r)}>
+              <tr key={`${r.asset_ref}-${i}`} style={{ cursor: "pointer" }} onClick={() => onOpen(r.asset_ref)}>
                 <td><code style={{ fontSize: 10.5 }}>{r.asset_ref}</code></td>
                 <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.name}</span></td>
                 <td><Badge tone="slate">{r.category}</Badge></td>
@@ -1316,46 +1318,6 @@ function TechbomInventory() {
           />
         </WsState>
       </Panel>
-      {selected && (
-        <Drawer title={selected.name} sub={`${selected.category} · ${selected.asset_ref}`} onClose={() => setSelected(null)}>
-          {!detail.data ? <p className="faint" style={{ fontSize: 12 }}>{detail.running ? "Reading the asset…" : "The asset detail did not return."}</p> : (
-            (() => {
-              const d = detail.data as Record<string, any>;
-              return (
-                <div style={{ display: "grid", gap: 12 }}>
-                  <div style={{ fontSize: 12, display: "grid", gap: 4 }}>
-                    <div><b>Asset ID</b> <code>{String(d.asset_ref)}</code> · <b>Environment</b> {String(d.environment || "—")} · <b>Category</b> {String(d.category)}</div>
-                    <div><b>Owner</b> {String(d.owner || "—")} · <b>Source</b> {String(d.source || "—")} · <b>Last observed</b> {String(d.last_observed ?? "—").slice(0, 10)}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>CROSS-BOM RELATIONSHIPS</div>
-                    {(d.related ?? []).map((rel: Record<string, any>, i: number) => (
-                      <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11.5, color: "var(--dim)", marginBottom: 3 }}>
-                        <span style={{ width: 62, fontWeight: 600, color: "var(--text)" }}>{String(rel.bom)}</span>
-                        <RelatedBadge state={String(rel.state)} />
-                        <span style={{ fontSize: 10.5, color: "var(--faint)" }}>{String(rel.basis)}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>DEPENDENCIES — VERIFIED ONLY</div>
-                    {(d.dependencies ?? []).length ? (d.dependencies ?? []).map((dep: Record<string, any>, i: number) => (
-                      <div key={i} style={{ fontSize: 11, color: "var(--dim)" }}>{String(dep.to)} · {String(dep.type)} · {String(dep.evidence)}</div>
-                    )) : <div style={{ fontSize: 11.5, color: "var(--dim)" }}>No verified dependency recorded — a shared name is not a relationship.</div>}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>EVIDENCE</div>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <EvidenceBadge evidence={d.evidence ?? { state: "UNKNOWN", freshness: "NOT_COLLECTED" }} />
-                      <span style={{ fontSize: 10.5, color: "var(--faint)" }}>{String(d.evidence?.basis ?? "")}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()
-          )}
-        </Drawer>
-      )}
     </>
   );
 }
