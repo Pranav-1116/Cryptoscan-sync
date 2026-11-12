@@ -707,6 +707,71 @@ export const apiNbomWorkspaceHistory = (): Promise<ApiResult<Record<string, unkn
 export const apiNbomWorkspaceExport = (): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/nbom/workspace/export");
 
+/* ── VBOM workspace (contracts in api/routers/vbom_workspace.py; docs/boms/01_PRODUCT_SPEC.md §5) ──
+ * Relationship states are kept apart: CONFIRMED (stored link), IMPORTED,
+ * PUBLICLY_REPORTED, UNKNOWN. A public association never becomes bank use
+ * here; bank-asset counts include verified links only. */
+
+export interface VbomVendorRow {
+  vendor: string;
+  vendor_id: string;
+  product?: string | null;
+  version?: string | null;
+  category: string;
+  bank_assets: number;
+  association_state: string;
+  association_basis: string;
+  support_lifecycle: string;
+  support_level?: string | null;
+  eol_date?: string | null;
+  crypto_dependency: string;
+  pqc_roadmap: string;
+  evidence: { profile_status: string; source?: string | null; captured_at?: string | null; freshness: string };
+  last_reviewed?: string | null;
+}
+
+export const apiVbomWorkspaceOverview = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/vbom/workspace/overview");
+
+export const apiVbomWorkspaceVendors = (q?: string): Promise<ApiResult<{ state: string; total: number; rows: VbomVendorRow[] }>> =>
+  call(`/api/v1/vbom/workspace/vendors${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+
+export const apiVbomWorkspaceVendorDetail = (vendorId: string): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/vbom/workspace/vendors/${encodeURIComponent(vendorId)}`);
+
+export const apiVbomWorkspaceProducts = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/vbom/workspace/products");
+
+export const apiVbomWorkspaceRelationships = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/vbom/workspace/relationships");
+
+export const apiVbomWorkspaceLifecycle = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/vbom/workspace/lifecycle");
+
+export const apiVbomWorkspaceSecurity = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/vbom/workspace/security");
+
+export const apiVbomWorkspaceCrypto = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/vbom/workspace/crypto");
+
+export const apiVbomWorkspacePqc = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/vbom/workspace/pqc");
+
+export const apiVbomWorkspaceExposure = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/vbom/workspace/exposure");
+
+export const apiVbomWorkspaceContracts = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/vbom/workspace/contracts");
+
+export const apiVbomWorkspaceEvidence = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/vbom/workspace/evidence");
+
+export const apiVbomWorkspaceHistory = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/vbom/workspace/history");
+
+export const apiVbomWorkspaceExport = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/vbom/workspace/export");
+
 
 export const apiSecurity = (request: Record<string, unknown>): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/platform/security", { method: "POST", body: JSON.stringify({ request }) });
