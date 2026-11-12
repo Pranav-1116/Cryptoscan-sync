@@ -1,6 +1,8 @@
-/* Workspace 1 — Crypto Event Stream. The pipeline is on screen, the example
-   is labelled illustrative, and the stream counts what the store returned:
-   never an invented total, never events invented from silence. */
+/* Workspace 1 — Crypto Event Stream: the chronological stream only. The
+   architecture, detection example and data-flow are rules this workspace
+   works by — never copy shown to the operator. The stream counts what the
+   store returned: never an invented total, never events invented from
+   silence. */
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
@@ -33,15 +35,16 @@ const renderStream = () =>
   );
 
 describe("Crypto Event Stream", () => {
-  it("draws the pipeline and labels the example as illustrative", async () => {
+  it("works by the architecture rules without narrating them to the operator", async () => {
     mockFetch({ "/api/v1/cryptolog/events": { events: [], returned: 0, next_cursor: null } });
     renderStream();
-    expect(screen.getByText("How CryptoLog works")).toBeInTheDocument();
-    expect(screen.getByText("Normalization")).toBeInTheDocument();
-    expect(screen.getByText("Integrity engine")).toBeInTheDocument();
-    const label = await screen.findByTestId("stream-illustrative-label");
-    expect(label).toHaveTextContent(/Illustrative timeline, not a claim about an existing CryptoScan\s+live event feed/);
-    expect(label).toHaveTextContent(/synthetic, never events from any deployment/);
+    // the design rules are internal: the pipeline, the illustrative example
+    // and the product data flow are never rendered as UI copy
+    expect(screen.queryByText(/How CryptoLog works/)).toBeNull();
+    expect(screen.queryByTestId("stream-illustrative-label")).toBeNull();
+    expect(screen.queryByText(/Illustrative timeline/)).toBeNull();
+    expect(screen.queryByText(/How the data moves between pages/)).toBeNull();
+    expect(screen.queryByText(/event intelligence pipeline/)).toBeNull();
   });
 
   it("streams recorded events newest first with an honest loaded count", async () => {

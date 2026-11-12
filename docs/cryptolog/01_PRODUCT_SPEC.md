@@ -533,13 +533,15 @@ existing authoritative evidence records and Digital Twin assets.
 ## 16. Update 2026-11-12 — the eight internal workspaces (user recommendation)
 
 The user's design supersedes the §9 screen list. CryptoLog contains **eight
-internal workspaces**, and the architecture is part of the product, not a
-footer diagram. Nothing here invents an engine: every workspace reads the
-recorded stores that Phases 1–5 built, and thin spots are drawn as thin.
+internal workspaces**. The architecture, the detection example and the data
+flow below are RULES the product works by — the user was explicit on
+2026-11-12: they are never narrated to the UI. Nothing here invents an
+engine: every workspace reads the recorded stores that Phases 1–5 built,
+and thin spots are drawn as thin.
 
 | # | Workspace | Implementation |
 |---|---|---|
-| 1 | Crypto Event Stream | the pipeline panel (below), the illustrative example, the product data flow, then the chronological stream over `GET /cryptolog/events` |
+| 1 | Crypto Event Stream | the chronological stream over `GET /cryptolog/events` — the pipeline, example and data flow below govern how it works and are not rendered |
 | 2 | Event Explorer | the server-side search and filter surface (asset, category, severity, investigation state, timestamp, evidence) over `GET /cryptolog/events` |
 | 3 | Asset Crypto Timeline | per-asset historical changes over `GET /cryptolog/timeline` |
 | 4 | Integrity Verification | event digests, hash-chain continuity, signed checkpoints, Merkle proofs and evidence references over `/cryptolog/integrity/*` |
@@ -548,7 +550,7 @@ recorded stores that Phases 1–5 built, and thin spots are drawn as thin.
 | 7 | Crypto Audit & Export | `POST /cryptolog/reports/export` + `/reports/verify`, with the retention policy/plan surfaces folded in |
 | 8 | Collector & Coverage Health | `GET /cryptolog/overview` collectors (event counts, per-collector first/last seen, asset lists); missing sources and collector errors are **unmeasured** in this build — never zero, never healthy |
 
-### The pipeline (drawn on the stream workspace)
+### The pipeline (a working rule — not UI copy)
 
 Authorized event sources (Applications · TLS · Certificates · HSM/KMS ·
 OS/Kernel · Cloud · Network · crypto libraries) → Event collectors
@@ -559,19 +561,18 @@ reference (source · digest · provenance · confidence) · Integrity engine
 (hash chain · signatures · checkpoints) → CryptoLog intelligence (correlation
 · rules · change detection · historical timeline) → consumers (Digital Twin ·
 Risk & PQC · Governance · Command Center). The consumers strip is drawn with
-state **unknown**: they read shared registers and exports, and an automatic
-feed is not claimed in this build.
+state **unknown** wherever they appear in code: they read shared registers
+and exports, and an automatic feed is not claimed in this build.
 
-### The illustrative detection example (drawn on the stream workspace)
+### The illustrative detection example (a working rule — not UI copy)
 
 The eight-step sequence — Observed (10:00) → Change detected (10:30) → Event
 recorded (10:31) → Integrity verification (10:32) → Correlation (10:33) →
 Digital Twin update (10:34) → Risk assessment (10:35) → Verification (later) —
-is labelled on screen: *Illustrative timeline, not a claim about an existing
-CryptoScan live event feed.* The steps are synthetic, never events from any
-deployment.
+is synthetic — illustrative only, never events from any deployment, and
+never shown on screen as if it were a feed.
 
-### How the data moves between pages (drawn on the stream workspace)
+### How the data moves between pages (a working rule — not UI copy)
 
 Discovery collects authorized HSM metadata and application evidence →
 Evidence Processing stores observations and provenance → HBOM records
@@ -583,4 +584,5 @@ records the cryptographic events and their integrity → PQC Intelligence
 evaluates algorithm exposure and migration constraints → Simulation estimates
 the impact of a proposed change → Remediation tracks the approved work →
 Rescanning verifies the resulting state. The navigation is one connected
-workflow, not a collection of dashboards.
+workflow, not a collection of dashboards — and this flow is how the product
+works, never a panel the operator is told.
