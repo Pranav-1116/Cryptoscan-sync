@@ -133,7 +133,7 @@ export default function LiveEnvironment() {
         )}
       </Panel>
 
-      <Panel title="Unified environment map" sub="every domain feeds the same pipeline — evidence → normalization → identity → graph → CBOM/HBOM/SBOM → risk → PQC → live state">
+      <Panel title="Unified environment map" sub="the estate as one map across every collected domain — read-only">
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "18px 0 8px", overflowX: "auto" }}>
           <div className="row" style={{ justifyContent: "center", gap: 16, flexWrap: "wrap" }}>
             {domainTiles.map((d) => <EnvNode key={d.name} name={d.name} icon={d.icon} count={d.value} active={d.active} />)}

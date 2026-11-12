@@ -28,49 +28,6 @@ function Err({ res }: { res: ApiResult<any> | null }) {
   return <Badge tone="red"><span className="dot" /> {res.error || "OFFLINE / UNAUTHORIZED"}</Badge>;
 }
 
-function EvidenceBoundaryStrip() {
-  const stages: Array<[string, string, string, any]> = [
-    ["01", "Source / binary", "observed scope", IconCode],
-    ["02", "SBOM + CBOM", "components + crypto", IconComponent],
-    ["03", "HBOM + NBOM", "context / candidates", IconHardware],
-    ["04", "VBOM + advisories", "provider provenance", IconCloud],
-    ["05", "Policy + evidence", "gates / tasks", IconSecurity],
-  ];
-  return (
-    <section className="pipeline-strip" aria-label="Applications evidence pipeline" style={{ background: "linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%)", border: "1px solid var(--line)", overflow: "hidden" }}>
-      <div className="pipeline-strip-head" style={{ alignItems: "center" }}>
-        <div>
-          <span className="kicker" style={{ color: "var(--accent)" }}>Bounded evidence pipeline</span>
-          <h2 style={{ display: "flex", gap: 10, alignItems: "center" }}><IconTarget size={22} style={{ color: "var(--accent)" }} /> From artifact to accountable decision</h2>
-          <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 4, fontFamily: "var(--mono)" }}>Deterministic, fail-closed · every finding cites its evidence · no inferred clean</div>
-        </div>
-        <span style={{ fontFamily: "var(--mono)", letterSpacing: ".04em" }}><Badge tone="amber"><span className="dot" /> CLEAN ≠ COMPLETE</Badge></span>
-      </div>
-      <div className="pipeline-stages" style={{ gap: 10 }}>
-        {stages.map(([number, title, detail, Ico], index) => (
-          <React.Fragment key={number}>
-            <div className="pipeline-stage" style={{ flex: 1, minWidth: 0, padding: "14px 12px", border: "1px solid var(--line)", borderRadius: 10, background: "var(--panel-2)", display: "flex", flexDirection: "column", gap: 8, position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: index === 0 ? "var(--accent)" : index === 1 ? "var(--cyan)" : index === 2 ? "var(--violet)" : index === 3 ? "var(--amber)" : "var(--green)" }} />
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span className="pipeline-number" style={{ color: "var(--accent)", fontWeight: 700 }}>{number}</span>
-                <Ico size={14} style={{ color: "var(--faint)" }} />
-              </div>
-              <strong style={{ fontSize: 11.5, lineHeight: 1.2 }}>{title}</strong>
-              <small style={{ color: "var(--faint)", fontFamily: "var(--mono)", fontSize: 9.5 }}>{detail}</small>
-            </div>
-            {index < stages.length - 1 && <span className="pipeline-arrow" aria-hidden="true" style={{ color: "var(--accent)", opacity: .6 }}>→</span>}
-          </React.Fragment>
-        ))}
-      </div>
-      <div className="pipeline-boundaries" style={{ background: "var(--bg-2)", margin: "14px -20px -20px", padding: "10px 20px", borderTop: "1px solid var(--line)", display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <span style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 11 }}><span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--accent)" }} /><b>Observed</b> is not inferred.</span>
-        <span style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 11 }}><span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--cyan)" }} /><b>Signatures</b> are not trust decisions.</span>
-        <span style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 11 }}><span style={{ width: 6, height: 6, borderRadius: 999, background: "var(--amber)" }} /><b>No finding</b> means no match in scope, never an unobserved clean estate.</span>
-      </div>
-    </section>
-  );
-}
-
 function sevTone(s: string) { return s === "CRITICAL" ? "red" : s === "HIGH" ? "red" : s === "MEDIUM" ? "amber" : "green"; }
 
 const SEV_ORDER = ["CRITICAL", "HIGH", "MEDIUM", "LOW"];
@@ -1776,7 +1733,6 @@ export default function DevSecOps() {
         right={<Badge tone=""><span className="dot" /> SHIFT-LEFT GATES</Badge>}
       />
       <DomainCrossNav current="applications" />
-      <EvidenceBoundaryStrip />
       <div className="mt"><Tabs tabs={tabs} active={tab} onChange={setTab} /></div>
       {tab === 0 && <ContainerPanel />}
       {tab === 1 && <K8sPanel />}

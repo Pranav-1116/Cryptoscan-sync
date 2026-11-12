@@ -53,24 +53,6 @@ export default function Accuracy() {
         />
         {rows.length === 0 && !loading && <p className="dim" style={{ fontSize: 13 }}>Benchmark metrics unavailable — run the benchmark to populate.</p>}
       </Panel>
-      <div className="grid cols-2 mt">
-        <Panel title="How accuracy is verified" sub="labeled corpus · deterministic rules · replayable evidence">
-          <ol className="dim" style={{ fontSize: 13.5, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 8 }}>
-            <li>Review the dataset version, labels, supported inputs and excluded cases before interpreting a metric.</li>
-            <li>Corpus results describe that detector and workload; they do not measure all bank platforms or inaccessible systems.</li>
-            <li>A field accuracy claim requires independently reviewed positives, misses and a declared measurement unit.</li>
-            <li>A false-positive rate needs true negatives; precision alone is not that rate. Check current release evidence separately.</li>
-          </ol>
-        </Panel>
-        <Panel title="Honesty constraints" sub="what the platform refuses to claim">
-          <ul className="dim" style={{ fontSize: 13.5, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 8 }}>
-            <li>Unregistered algorithms → <Badge tone="amber">PQC_UNKNOWN</Badge>, never guessed.</li>
-            <li>AES-256 · ML-KEM-768 · ML-DSA-65 → <Badge tone="green">ALGORITHM CANDIDATES — NOT DEPLOYMENT PROOF</Badge></li>
-            <li>RSA-2048 · ECDSA-P-256 · X25519 · Ed25519 → <Badge tone="red">QUANTUM_VULNERABLE</Badge></li>
-            <li>Unknown crypto is reported as unknown — that is the finding.</li>
-          </ul>
-        </Panel>
-      </div>
     </>
   );
 }

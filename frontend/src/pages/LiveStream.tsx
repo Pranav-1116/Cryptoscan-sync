@@ -242,7 +242,7 @@ export default function LiveStream() {
       <PageHead
         crumb="Platform / Stream"
         title="Live stream & attack detection"
-        sub="Signed event bus → deterministic pipeline → real-time detections and a hash-chained Live CBOM."
+        sub="recorded live events, detections and the Live CBOM"
         right={<Badge tone=""><span className="dot" /> DETERMINISTIC RULES</Badge>}
       />
       <AttacksPanel />
