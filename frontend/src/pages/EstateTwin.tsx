@@ -139,7 +139,7 @@ export default function EstateTwin() {
       <PageHead
         crumb="twin / chain"
         title="Twin chain"
-        sub="estate → assets → relationships → crypto graph → evidence graph → history → impact → simulation"
+        sub="the stored twin snapshot, measured link by link"
         right={<LiveBadge source={read.source} label={read.source === "live" ? "TWIN SNAPSHOT" : "BACKEND OFFLINE"} />}
       />
 
