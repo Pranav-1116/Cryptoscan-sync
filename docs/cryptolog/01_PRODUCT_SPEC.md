@@ -529,3 +529,58 @@ migration event tracking; enterprise audit and reporting.
 **One architectural decision:** CryptoLog must not become a second evidence
 database. It should be an event intelligence domain that references the
 existing authoritative evidence records and Digital Twin assets.
+
+## 16. Update 2026-11-12 — the eight internal workspaces (user recommendation)
+
+The user's design supersedes the §9 screen list. CryptoLog contains **eight
+internal workspaces**, and the architecture is part of the product, not a
+footer diagram. Nothing here invents an engine: every workspace reads the
+recorded stores that Phases 1–5 built, and thin spots are drawn as thin.
+
+| # | Workspace | Implementation |
+|---|---|---|
+| 1 | Crypto Event Stream | the pipeline panel (below), the illustrative example, the product data flow, then the chronological stream over `GET /cryptolog/events` |
+| 2 | Event Explorer | the server-side search and filter surface (asset, category, severity, investigation state, timestamp, evidence) over `GET /cryptolog/events` |
+| 3 | Asset Crypto Timeline | per-asset historical changes over `GET /cryptolog/timeline` |
+| 4 | Integrity Verification | event digests, hash-chain continuity, signed checkpoints, Merkle proofs and evidence references over `/cryptolog/integrity/*` |
+| 5 | Event Correlation | `GET /cryptolog/correlation`: deterministic groups — shared evidence references and recorded asset identity (evidence-backed) and repeated algorithm names (possible dependency, a hypothesis, never an established edge) |
+| 6 | Event Rules & Detection | `GET /cryptolog/rules` (the deterministic CL-001… catalogue — a rule is a detection, never a verdict) with the alert lifecycle beneath it |
+| 7 | Crypto Audit & Export | `POST /cryptolog/reports/export` + `/reports/verify`, with the retention policy/plan surfaces folded in |
+| 8 | Collector & Coverage Health | `GET /cryptolog/overview` collectors (event counts, per-collector first/last seen, asset lists); missing sources and collector errors are **unmeasured** in this build — never zero, never healthy |
+
+### The pipeline (drawn on the stream workspace)
+
+Authorized event sources (Applications · TLS · Certificates · HSM/KMS ·
+OS/Kernel · Cloud · Network · crypto libraries) → Event collectors
+(read-only adapters · approved APIs · native events · metrics · scheduled
+observations) → Event normalization (canonical schema · timestamp
+normalization · asset identity · deduplication · classification) → Evidence
+reference (source · digest · provenance · confidence) · Integrity engine
+(hash chain · signatures · checkpoints) → CryptoLog intelligence (correlation
+· rules · change detection · historical timeline) → consumers (Digital Twin ·
+Risk & PQC · Governance · Command Center). The consumers strip is drawn with
+state **unknown**: they read shared registers and exports, and an automatic
+feed is not claimed in this build.
+
+### The illustrative detection example (drawn on the stream workspace)
+
+The eight-step sequence — Observed (10:00) → Change detected (10:30) → Event
+recorded (10:31) → Integrity verification (10:32) → Correlation (10:33) →
+Digital Twin update (10:34) → Risk assessment (10:35) → Verification (later) —
+is labelled on screen: *Illustrative timeline, not a claim about an existing
+CryptoScan live event feed.* The steps are synthetic, never events from any
+deployment.
+
+### How the data moves between pages (drawn on the stream workspace)
+
+Discovery collects authorized HSM metadata and application evidence →
+Evidence Processing stores observations and provenance → HBOM records
+hardware and firmware → CBOM records cryptographic assets and observed usage
+→ SBOM records software dependencies → TechBOM provides the wider technology
+inventory → the Digital Twin connects the application and HSM **only if
+evidence or an approved mapping establishes that relationship** → CryptoLog
+records the cryptographic events and their integrity → PQC Intelligence
+evaluates algorithm exposure and migration constraints → Simulation estimates
+the impact of a proposed change → Remediation tracks the approved work →
+Rescanning verifies the resulting state. The navigation is one connected
+workflow, not a collection of dashboards.
