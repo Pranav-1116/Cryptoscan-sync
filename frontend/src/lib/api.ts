@@ -772,6 +772,65 @@ export const apiVbomWorkspaceHistory = (): Promise<ApiResult<Record<string, unkn
 export const apiVbomWorkspaceExport = (): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/vbom/workspace/export");
 
+/* ── TechBOM workspace (api/routers/techbom_workspace.py; docs/boms/01_PRODUCT_SPEC.md §6/§9) ──
+ * The cross-estate entry point. A relationship is established only where
+ * stored evidence establishes it; reconciliation connects records only when
+ * the evidence does. */
+
+export interface TechbomInventoryRow {
+  asset_ref: string;
+  name: string;
+  category: string;
+  vendor: string;
+  product_version: string;
+  environment: string;
+  related: Record<string, string>;
+  dependencies: number;
+  evidence: { state: string; freshness: string; basis: string };
+  last_observed?: string | null;
+}
+
+export const apiTechBomWorkspaceOverview = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/techbom/workspace/overview");
+
+export const apiTechBomWorkspaceInventory = (q?: string, category?: string): Promise<ApiResult<{ state: string; total: number; rows: TechbomInventoryRow[]; note: string }>> => {
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (category) params.set("category", category);
+  const qs = params.toString();
+  return call(`/api/v1/techbom/workspace/inventory${qs ? `?${qs}` : ""}`);
+};
+
+export const apiTechBomWorkspaceAssetDetail = (assetRef: string): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/techbom/workspace/inventory/${assetRef}`);
+
+export const apiTechBomWorkspaceApplications = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/techbom/workspace/applications");
+
+export const apiTechBomWorkspaceInfrastructure = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/techbom/workspace/infrastructure");
+
+export const apiTechBomWorkspaceLayers = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/techbom/workspace/layers");
+
+export const apiTechBomWorkspaceReconciliation = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/techbom/workspace/reconciliation");
+
+export const apiTechBomWorkspaceRelationships = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/techbom/workspace/relationships");
+
+export const apiTechBomWorkspaceLifecycle = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/techbom/workspace/lifecycle");
+
+export const apiTechBomWorkspaceEvidence = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/techbom/workspace/evidence");
+
+export const apiTechBomWorkspaceHistory = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/techbom/workspace/history");
+
+export const apiTechBomWorkspaceExport = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/techbom/workspace/export");
+
 
 export const apiSecurity = (request: Record<string, unknown>): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/platform/security", { method: "POST", body: JSON.stringify({ request }) });

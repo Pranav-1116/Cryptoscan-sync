@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Badge, Feed, Kpi, PageHead, Panel, Stat, Table, Tabs, Code, Bar, Ring,
+  Badge, Feed, Kpi, PageHead, Panel, Stat, Table, Tabs, Code, Bar, Ring, Drawer,
 } from "../components/ui.jsx";
 import { useRealtime, useRealtimeRefresh, severityOf } from "../lib/realtime.js";
-import { usePollingApi } from "../lib/apiUi.jsx";
+import { usePollingApi, useApi } from "../lib/apiUi.jsx";
+import { useSearchParams } from "react-router-dom";
 import { ICON_MD, ICON_SM, IconCalendar, IconClose, IconWarn, IconClock, IconCrypto, IconHardware, IconTarget, IconSecurity, IconInfo, IconSearch, IconComponent, IconCertificate } from "../components/icons";
 import {
   apiTechBomLive, apiTechBomSnapshot, apiTechBomVersions, apiTechBomCompare,
@@ -17,6 +18,11 @@ import {
   apiBankingMainframeAnalyze, apiBankingHsmParse, apiBankingFipsLookup, downloadBankingArtifact,
   apiBankingJurisdictions, apiBankingKeys, apiBankingSwiftCsp, apiBankingActionPlanJurisdiction, downloadBankingArtifactIntl,
   apiGroupEntities, apiGroupEntityAdd, apiGroupEntityDelete, apiGroupRollup, downloadDoraRegister,
+  apiTechBomWorkspaceOverview, apiTechBomWorkspaceInventory, apiTechBomWorkspaceAssetDetail,
+  apiTechBomWorkspaceApplications, apiTechBomWorkspaceInfrastructure, apiTechBomWorkspaceLayers,
+  apiTechBomWorkspaceReconciliation, apiTechBomWorkspaceRelationships, apiTechBomWorkspaceLifecycle,
+  apiTechBomWorkspaceEvidence, apiTechBomWorkspaceHistory, apiTechBomWorkspaceExport,
+  type TechbomInventoryRow,
   downloadGroupRoadmap,
   downloadSupervisorPack,
   BankJurisdictionPack, BankKeyLifecycle, BankSwiftCsp, GroupEntityRec, GroupRollup,
@@ -665,7 +671,80 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
   );
 }
 
+const TECHBOM_TABS: Array<{ id: string; label: string }> = [
+  { id: "overview", label: "TechBOM Overview" },
+  { id: "inventory", label: "Technology Inventory" },
+  { id: "applications", label: "Application & Service Registry" },
+  { id: "infrastructure", label: "Infrastructure Inventory" },
+  { id: "layers", label: "Technology Layers" },
+  { id: "reconciliation", label: "Six-BOM Reconciliation" },
+  { id: "relationships", label: "Technology Relationships" },
+  { id: "lifecycle", label: "Lifecycle Intelligence" },
+  { id: "evidence", label: "Evidence & Provenance" },
+  { id: "history", label: "TechBOM History" },
+  { id: "export", label: "Export & Validation" },
+];
+
+/* A read that did not return is never an inventory of zero records. */
+function WsState({ read, noun, children }: {
+  read: { data: Record<string, unknown> | null; running: boolean; source: string; detail?: string | null };
+  noun: string;
+  children: React.ReactNode;
+}) {
+  if (read.running && !read.data) return <p className="faint" style={{ fontSize: 12 }}>Reading the {noun}…</p>;
+  if (read.source !== "live" || read.data == null)
+    return (
+      <Panel title={`${noun} not read`} sub={read.source === "live" ? "the read returned nothing" : "the control plane did not answer"}>
+        <p role="status" style={{ margin: 0, fontSize: 12, color: "var(--amber)" }}>
+          {read.source === "live"
+            ? `The ${noun} read returned nothing — nothing is claimed here.`
+            : `The ${noun} could not be read${read.detail ? ` — ${read.detail}` : ""}. An unread inventory is not an empty one.`}
+        </p>
+      </Panel>
+    );
+  return <>{children}</>;
+}
+
+function WsTable({ head, rows, colSpan }: { head: string[]; rows: React.ReactNode[]; colSpan: number }) {
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table className="tbl" style={{ width: "100%" }}>
+        <thead><tr>{head.map((h) => <th key={h}>{h}</th>)}</tr></thead>
+        <tbody>
+          {rows.length ? rows : (
+            <tr><td colSpan={colSpan} style={{ padding: 26, textAlign: "center", color: "var(--dim)", fontSize: 12 }}>
+              <div style={{ fontWeight: 600, color: "var(--text)" }}>Nothing stored yet</div>
+              <div style={{ fontSize: 11.5, marginTop: 4 }}>Empty rows here mean no stored observations — not a healthy zero.</div>
+            </td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/* Cross-BOM relationship states (spec §7 vocabulary): primary record /
+ * linked / not established / unknown — never conflated. */
+function RelatedBadge({ state }: { state: string }) {
+  const tone = state === "PRIMARY_RECORD" ? "pass" : state === "LINKED" ? "cyan" : state === "UNKNOWN" ? "slate" : "default";
+  const label = state === "PRIMARY_RECORD" ? "primary record" : state === "LINKED" ? "linked" : state === "NOT_ESTABLISHED" ? "not established" : "unknown";
+  return <Badge tone={tone}>{label}</Badge>;
+}
+
+function EvidenceBadge({ evidence }: { evidence: { state: string; freshness: string } }) {
+  const tone = evidence.state === "MEASURED" ? "pass" : evidence.state === "IMPORTED" ? "cyan"
+    : evidence.state === "INFERRED" ? "amber" : evidence.state === "CONTRADICTED" ? "red" : "slate";
+  return (
+    <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
+      <Badge tone={tone}>{evidence.state}</Badge>
+      <Badge tone={evidence.freshness === "CURRENT" ? "green" : evidence.freshness === "STALE" ? "amber" : "slate"}>{evidence.freshness}</Badge>
+    </span>
+  );
+}
+
 export default function LiveAssetIntelligence() {
+  const [wsParams, setWsParams] = useSearchParams();
+  const wsActive = TECHBOM_TABS.some((t) => t.id === wsParams.get("tab")) ? wsParams.get("tab") as string : "overview";
   const [view, setView] = useState(0);
   const live = usePollingApi(apiTechBomLive, 15000);
   const versions = usePollingApi(apiTechBomVersions, 30000);
@@ -797,6 +876,19 @@ export default function LiveAssetIntelligence() {
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
+      <div role="tablist" aria-label="TechBOM sections" style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "2px 0 16px" }}>
+        {TECHBOM_TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={wsActive === t.id} title={t.label}
+            onClick={() => setWsParams({ tab: t.id })}
+            style={{
+              fontSize: 11, padding: "6px 11px", borderRadius: 999, cursor: "pointer",
+              border: `1px solid ${wsActive === t.id ? "var(--accent)" : "var(--line-strong)"}`,
+              background: wsActive === t.id ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "var(--panel-2)",
+              color: wsActive === t.id ? "var(--accent)" : "var(--dim)", fontFamily: "var(--mono)", letterSpacing: ".03em",
+            }}>{t.label}</button>
+        ))}
+      </div>
+      {wsActive === "overview" && (<>
       {/* Visual Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 460px", minWidth: 280 }}>
@@ -1153,6 +1245,325 @@ export default function LiveAssetIntelligence() {
           </Panel>
         </div>
       )}
+      </>)}
+      {wsActive === "inventory" && <TechbomInventory />}
+      {wsActive === "applications" && <TechbomApplications />}
+      {wsActive === "infrastructure" && <TechbomInfrastructure />}
+      {wsActive === "layers" && <TechbomLayers />}
+      {wsActive === "reconciliation" && <TechbomReconciliation />}
+      {wsActive === "relationships" && <TechbomRelationships />}
+      {wsActive === "lifecycle" && <TechbomLifecycle />}
+      {wsActive === "evidence" && <TechbomEvidence />}
+      {wsActive === "history" && <TechbomHistory />}
+      {wsActive === "export" && <TechbomExport />}
     </div>
+  );
+}
+
+/* ── workspace sections (docs/boms/01_PRODUCT_SPEC.md §6 navigation) ─── */
+
+function TechbomInventory() {
+  const [q, setQ] = useState("");
+  const [cat, setCat] = useState("");
+  const read = useApi(() => apiTechBomWorkspaceInventory(q || undefined, cat || undefined), [q, cat]);
+  const rows = (read.data?.rows ?? []) as TechbomInventoryRow[];
+  const [selected, setSelected] = useState<TechbomInventoryRow | null>(null);
+  const detail = useApi(() => apiTechBomWorkspaceAssetDetail(selected?.asset_ref ?? ""), [selected?.asset_ref]);
+  return (
+    <>
+      <Panel title="Technology Inventory" sub="one canonical asset model — Related BOMs cite primary records and verified links only; a shared name or layer is never a link">
+        <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          <input value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="search by asset, component, vendor, version or ID"
+            aria-label="search technology inventory"
+            style={{ flex: 1, minWidth: 220, padding: "7px 10px", borderRadius: "var(--r)", border: "1px solid var(--line-strong)", background: "var(--panel-2)", color: "var(--text)", fontSize: 12 }} />
+          {["SOFTWARE", "CRYPTO", "HARDWARE", "NETWORK", "SUPPLIER"].map((c) => (
+            <button key={c} onClick={() => setCat(cat === c ? "" : c)}
+              style={{
+                fontSize: 10.5, padding: "5px 10px", borderRadius: 999, cursor: "pointer", fontFamily: "var(--mono)",
+                border: `1px solid ${cat === c ? "var(--accent)" : "var(--line-strong)"}`,
+                background: cat === c ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "var(--panel-2)",
+                color: cat === c ? "var(--accent)" : "var(--dim)",
+              }}>{c}</button>
+          ))}
+          <Badge tone="slate">{read.data?.total ?? (read.source === "live" ? rows.length : "—")} rows</Badge>
+        </div>
+        <WsState read={read} noun="technology inventory">
+          <WsTable
+            head={["Asset ID", "Asset name", "Category", "Vendor", "Product/version", "Environment", "Related BOMs", "Dependencies", "Evidence", "Last observed"]}
+            colSpan={10}
+            rows={rows.slice(0, 200).map((r, i) => (
+              <tr key={`${r.asset_ref}-${i}`} style={{ cursor: "pointer" }} onClick={() => setSelected(r)}>
+                <td><code style={{ fontSize: 10.5 }}>{r.asset_ref}</code></td>
+                <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.name}</span></td>
+                <td><Badge tone="slate">{r.category}</Badge></td>
+                <td><span style={{ fontSize: 11 }}>{r.vendor || "—"}</span></td>
+                <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.product_version || "—"}</span></td>
+                <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.environment || "—"}</span></td>
+                <td>
+                  <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
+                    {Object.entries(r.related).map(([bom, state]) =>
+                      state === "NOT_ESTABLISHED" ? null : <RelatedBadge key={bom} state={state} />)}
+                    {Object.values(r.related).every((st) => st === "NOT_ESTABLISHED")
+                      ? <span style={{ fontSize: 10.5, color: "var(--faint)" }}>not established</span> : null}
+                  </span>
+                </td>
+                <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.dependencies}</span></td>
+                <td><EvidenceBadge evidence={r.evidence} /></td>
+                <td><span style={{ fontSize: 10.5, fontFamily: "var(--mono)", color: "var(--dim)" }}>{String(r.last_observed ?? "—").slice(0, 10)}</span></td>
+              </tr>
+            ))}
+          />
+        </WsState>
+      </Panel>
+      {selected && (
+        <Drawer title={selected.name} sub={`${selected.category} · ${selected.asset_ref}`} onClose={() => setSelected(null)}>
+          {!detail.data ? <p className="faint" style={{ fontSize: 12 }}>{detail.running ? "Reading the asset…" : "The asset detail did not return."}</p> : (
+            (() => {
+              const d = detail.data as Record<string, any>;
+              return (
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div style={{ fontSize: 12, display: "grid", gap: 4 }}>
+                    <div><b>Asset ID</b> <code>{String(d.asset_ref)}</code> · <b>Environment</b> {String(d.environment || "—")} · <b>Category</b> {String(d.category)}</div>
+                    <div><b>Owner</b> {String(d.owner || "—")} · <b>Source</b> {String(d.source || "—")} · <b>Last observed</b> {String(d.last_observed ?? "—").slice(0, 10)}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>CROSS-BOM RELATIONSHIPS</div>
+                    {(d.related ?? []).map((rel: Record<string, any>, i: number) => (
+                      <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 11.5, color: "var(--dim)", marginBottom: 3 }}>
+                        <span style={{ width: 62, fontWeight: 600, color: "var(--text)" }}>{String(rel.bom)}</span>
+                        <RelatedBadge state={String(rel.state)} />
+                        <span style={{ fontSize: 10.5, color: "var(--faint)" }}>{String(rel.basis)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>DEPENDENCIES — VERIFIED ONLY</div>
+                    {(d.dependencies ?? []).length ? (d.dependencies ?? []).map((dep: Record<string, any>, i: number) => (
+                      <div key={i} style={{ fontSize: 11, color: "var(--dim)" }}>{String(dep.to)} · {String(dep.type)} · {String(dep.evidence)}</div>
+                    )) : <div style={{ fontSize: 11.5, color: "var(--dim)" }}>No verified dependency recorded — a shared name is not a relationship.</div>}
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, letterSpacing: ".08em", color: "var(--faint)", marginBottom: 6 }}>EVIDENCE</div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <EvidenceBadge evidence={d.evidence ?? { state: "UNKNOWN", freshness: "NOT_COLLECTED" }} />
+                      <span style={{ fontSize: 10.5, color: "var(--faint)" }}>{String(d.evidence?.basis ?? "")}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()
+          )}
+        </Drawer>
+      )}
+    </>
+  );
+}
+
+function TechbomApplications() {
+  const read = useApi(apiTechBomWorkspaceApplications);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Application & Service Registry" sub="registered systems with their verified links — crypto assets, suppliers, dependency edges">
+      <WsState read={read} noun="application registry">
+        <WsTable head={["ID", "Name", "Version", "Owner", "Environment", "Criticality", "Crypto assets", "Vendors", "Dependencies"]} colSpan={9}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><code style={{ fontSize: 10.5 }}>{r.id}</code></td>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.name}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.version || "—"}</span></td>
+              <td><span style={{ fontSize: 11 }}>{r.owner || "—"}</span></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.environment || "—"}</span></td>
+              <td><Badge tone={r.criticality === "HIGH" ? "amber" : "slate"}>{r.criticality || "—"}</Badge></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.crypto_assets}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.vendors}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.dependencies}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function TechbomInfrastructure() {
+  const read = useApi(apiTechBomWorkspaceInfrastructure);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Infrastructure Inventory" sub="hardware and network as stored — an unrecorded lifecycle is UNKNOWN, never assumed supported">
+      <WsState read={read} noun="infrastructure inventory">
+        <WsTable head={["Kind", "ID", "Name", "Detail", "Vendor", "Last seen", "Lifecycle"]} colSpan={7}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><Badge tone={r.kind === "HARDWARE" ? "slate" : "cyan"}>{r.kind}</Badge></td>
+              <td><code style={{ fontSize: 10.5 }}>{r.id}</code></td>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.name}</span></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.detail || "—"}</span></td>
+              <td><span style={{ fontSize: 11 }}>{r.vendor || "—"}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.last_seen ?? "—").slice(0, 10)}</span></td>
+              <td><Badge tone="slate">{r.lifecycle}</Badge></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function TechbomLayers() {
+  const read = useApi(apiTechBomWorkspaceLayers);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Technology Layers" sub="one asset model, materialized per layer — a row's layer is its primary record">
+      <WsState read={read} noun="layer inventory">
+        <WsTable head={["Layer", "Label", "Count", "Source"]} colSpan={4}
+          rows={rows.map((r, i) => (
+            <tr key={i}>
+              <td><Badge tone="cyan">{r.layer}</Badge></td>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.label}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 12 }}>{r.count}</span></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.source}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function TechbomReconciliation() {
+  const read = useApi(apiTechBomWorkspaceReconciliation);
+  const screens = (read.data?.screens ?? []) as Array<Record<string, any>>;
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <Panel title="Six-BOM Reconciliation" sub="records are connected only where stored evidence establishes the relationship">
+      <WsState read={read} noun="reconciliation">
+        <div style={{ display: "grid", gap: 8 }}>
+          {screens.map((s) => (
+            <div key={s.screen} className="panel" style={{ padding: "10px 12px" }}>
+              <div style={{ display: "flex", gap: 10, alignItems: "center", cursor: "pointer" }}
+                onClick={() => setOpen(open === s.screen ? null : s.screen)}>
+                <Badge tone={s.count ? "amber" : "green"}>{s.count}</Badge>
+                <span style={{ fontSize: 12, fontWeight: 600 }}>{s.question}</span>
+                <span style={{ marginLeft: "auto", fontSize: 10, color: "var(--faint)", fontFamily: "var(--mono)" }}>{open === s.screen ? "hide" : "show"}</span>
+              </div>
+              {open === s.screen && (
+                <div style={{ marginTop: 8, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+                  {(s.rows ?? []).length ? (s.rows ?? []).slice(0, 50).map((row: Record<string, any>, i: number) => (
+                    <div key={i} style={{ fontSize: 11, color: "var(--dim)", marginBottom: 2, fontFamily: "var(--mono)" }}>
+                      {Object.entries(row).map(([k, v]) => `${k}=${Array.isArray(v) ? v.join("|") : String(v)}`).join("  ·  ")}
+                    </div>
+                  )) : <div style={{ fontSize: 11.5, color: "var(--dim)" }}>Nothing stored to reconcile — not a healthy zero.</div>}
+                </div>
+              )}
+            </div>
+          ))}
+          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4 }}>{String(read.data?.rule ?? "")}</div>
+        </div>
+      </WsState>
+    </Panel>
+  );
+}
+
+function TechbomRelationships() {
+  const read = useApi(apiTechBomWorkspaceRelationships);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Technology Relationships" sub="verified relationships only — a shared name or layer is not a relationship">
+      <WsState read={read} noun="relationship inventory">
+        <WsTable head={["Source", "Target", "Type", "Evidence"]} colSpan={4}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><code style={{ fontSize: 10.5 }}>{r.source}</code></td>
+              <td><code style={{ fontSize: 10.5 }}>{r.target}</code></td>
+              <td><Badge tone="slate">{r.type}</Badge></td>
+              <td><span style={{ fontSize: 11, color: "var(--dim)" }}>{r.evidence}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function TechbomLifecycle() {
+  const read = useApi(apiTechBomWorkspaceLifecycle);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Lifecycle Intelligence" sub="an unrecorded lifecycle is UNKNOWN, never assumed supported">
+      <WsState read={read} noun="lifecycle inventory">
+        <WsTable head={["Asset", "Name", "Kind", "Lifecycle", "Risk level", "Last verified"]} colSpan={6}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><code style={{ fontSize: 10.5 }}>{r.asset_ref}</code></td>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.name}</span></td>
+              <td><Badge tone="slate">{r.kind}</Badge></td>
+              <td><Badge tone={r.lifecycle === "END_OF_LIFE" ? "red" : r.lifecycle === "SUPPORTED" ? "pass" : "slate"}>{r.lifecycle}</Badge></td>
+              <td><Badge tone={r.risk_level === "HIGH" ? "amber" : "slate"}>{r.risk_level}</Badge></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.last_verified ?? "—").slice(0, 10)}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function TechbomEvidence() {
+  const read = useApi(apiTechBomWorkspaceEvidence);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="Evidence & Provenance" sub="Measured / Imported / Inferred / Unknown / Contradicted with freshness — never a generic green">
+      <WsState read={read} noun="evidence inventory">
+        <WsTable head={["Asset", "Name", "Category", "Evidence", "Freshness", "Basis", "Last observed"]} colSpan={7}
+          rows={rows.slice(0, 200).map((r, i) => (
+            <tr key={i}>
+              <td><code style={{ fontSize: 10.5 }}>{r.asset_ref}</code></td>
+              <td><span style={{ fontWeight: 700, fontSize: 12 }}>{r.name}</span></td>
+              <td><Badge tone="slate">{r.category}</Badge></td>
+              <td><Badge tone={r.evidence_state === "MEASURED" ? "pass" : r.evidence_state === "IMPORTED" ? "cyan" : r.evidence_state === "INFERRED" ? "amber" : r.evidence_state === "CONTRADICTED" ? "red" : "slate"}>{r.evidence_state}</Badge></td>
+              <td><Badge tone={r.freshness === "CURRENT" ? "green" : r.freshness === "STALE" ? "amber" : "slate"}>{r.freshness}</Badge></td>
+              <td><span style={{ fontSize: 10.5, color: "var(--faint)" }}>{r.basis}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.last_observed ?? "—").slice(0, 10)}</span></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function TechbomHistory() {
+  const read = useApi(apiTechBomWorkspaceHistory);
+  const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
+  return (
+    <Panel title="TechBOM History" sub="captured snapshots as stored — content-addressed, no invented versions">
+      <WsState read={read} noun="history">
+        <WsTable head={["Version", "Snapshot", "State", "Captured", "Components", "SHA-256"]} colSpan={6}
+          rows={rows.slice(0, 100).map((r, i) => (
+            <tr key={i}>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>v{r.version}</span></td>
+              <td><code style={{ fontSize: 10.5 }}>{String(r.snapshot_id ?? "").slice(0, 16)}</code></td>
+              <td><Badge tone="slate">{r.state}</Badge></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 10.5 }}>{String(r.captured_at ?? "—").slice(0, 10)}</span></td>
+              <td><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{r.total_components}</span></td>
+              <td><code style={{ fontSize: 10.5 }}>{String(r.content_sha256 ?? "").slice(0, 12)}…</code></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
+  );
+}
+
+function TechbomExport() {
+  const read = useApi(apiTechBomWorkspaceExport);
+  const formats = (read.data?.formats ?? []) as Array<Record<string, unknown>>;
+  return (
+    <Panel title="Export & Validation" sub="exports carry the stored relationship states as recorded">
+      <WsState read={read} noun="export inventory">
+        <WsTable head={["Format", "Path", "State"]} colSpan={3}
+          rows={formats.map((f, i) => (
+            <tr key={i}>
+              <td><span style={{ fontSize: 12, fontWeight: 600 }}>{String(f.format)}</span></td>
+              <td><code style={{ fontSize: 11 }}>{String(f.path)}</code></td>
+              <td><Badge tone="pass">{String(f.state)}</Badge></td>
+            </tr>
+          ))} />
+      </WsState>
+    </Panel>
   );
 }
