@@ -161,6 +161,7 @@ def test_worker_production_requires_postgres_and_redis():
 def test_hashed_admin_password(monkeypatch):
     hashed = hash_password("operator-pass-123")
     monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ADMIN_PASSWORD", "unused-plaintext")
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", hashed)
     get_settings.cache_clear()
@@ -176,6 +177,7 @@ def test_login_lockout(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.setenv("LOGIN_MAX_FAILURES", "2")
     monkeypatch.setenv("LOGIN_LOCKOUT_SECONDS", "600")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ADMIN_PASSWORD", "cryptoscan")
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", "")
     get_settings.cache_clear()
@@ -195,6 +197,7 @@ def test_login_me_meta_and_security_headers(monkeypatch, tmp_path):
     # another test in the same process may have rotated the shared admin row
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'hardening.db'}")
     monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
     monkeypatch.setenv("ADMIN_PASSWORD", "cryptoscan")
     monkeypatch.setenv("ADMIN_PASSWORD_HASH", "")
     get_settings.cache_clear()

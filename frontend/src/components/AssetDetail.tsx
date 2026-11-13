@@ -155,3 +155,21 @@ export default function AssetDetail({ assetRef, onBack, initialTab }: { assetRef
     </div>
   );
 }
+
+/** Open the same nine-tab detail from any BOM inventory without discarding
+ * that BOM's specialist drawer. No asset reference means no claimed link. */
+export function CanonicalDetailLink({ assetRef }: { assetRef?: string | null }) {
+  const [open, setOpen] = useState(false);
+  if (!assetRef) return <p className="faint">No canonical asset reference was recorded for this row.</p>;
+  return (
+    <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 12 }}>
+      <button className="btn outline" type="button" aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}>
+        {open ? "Close shared asset detail" : "Open shared asset detail"}
+      </button>
+      {open && <div style={{ marginTop: 12 }}>
+        <AssetDetail assetRef={assetRef} onBack={() => setOpen(false)} />
+      </div>}
+    </div>
+  );
+}

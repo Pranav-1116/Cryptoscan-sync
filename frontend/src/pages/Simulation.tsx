@@ -25,7 +25,7 @@ import {
 } from "../lib/api.js";
 import type {
   SimulationCatalog, SimulationPreview, SimulationRun, SimulationRuns, SimulationScenario,
-  SimulationPreset, SimulationWave, EstateTwinSnapshotSummary,
+  SimulationPerformanceInput, SimulationPreset, SimulationWave, EstateTwinSnapshotSummary,
 } from "../lib/api.js";
 
 const FIELD_LABEL: Record<string, string> = {
@@ -158,6 +158,7 @@ export default function Simulation() {
   const [targets, setTargets] = useState<string[]>([]);
   const [depth, setDepth] = useState<number>(3);
   const [label, setLabel] = useState("");
+  const [performanceText, setPerformanceText] = useState("");
   const [preset, setPreset] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ key: string; data: SimulationPreview } | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -257,6 +258,25 @@ export default function Simulation() {
     return errors;
   }, [fields]);
 
+  const performanceInput = useMemo(() => {
+    if (!performanceText.trim()) return { value: null, error: null };
+    try {
+      const parsed: unknown = JSON.parse(performanceText);
+      const required = ["tenant_id", "asset_ref", "metric_name", "source_id",
+        "change_event_id", "before_start", "before_end", "after_start", "after_end"];
+      const optional = ["baseline_benchmark_run_id", "candidate_benchmark_run_id"];
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed) ||
+          required.some((key) => typeof (parsed as Record<string, unknown>)[key] !== "string" ||
+            !(parsed as Record<string, string>)[key].trim()) ||
+          Object.keys(parsed).some((key) => ![...required, ...optional].includes(key))) {
+        return { value: null, error: "Provide the exact tenant, asset, source, change and four measurement windows." };
+      }
+      return { value: parsed as SimulationPerformanceInput, error: null };
+    } catch {
+      return { value: null, error: "Performance context must be valid JSON." };
+    }
+  }, [performanceText]);
+
   const scenario: SimulationScenario = useMemo(() => {
     const built: SimulationScenario = { kind: entry?.kind ?? kind };
     for (const name of formFields) {
@@ -284,8 +304,9 @@ export default function Simulation() {
     if (targets.length) built.targets = targets;
     if (isCascade) built.depth = depth;
     if (label.trim()) built.label = label.trim();
+    if (!isCascade && performanceInput.value) built.performance_context = performanceInput.value;
     return built;
-  }, [entry, kind, formFields, fields, targets, depth, isCascade, label]);
+  }, [entry, kind, formFields, fields, targets, depth, isCascade, label, performanceInput]);
 
   const scenarioKey = JSON.stringify(scenario);
   const previewIsCurrent = preview?.key === scenarioKey;
@@ -353,8 +374,10 @@ export default function Simulation() {
   const catalogProblem = catalog && !catalog.ok;
   const estate = catalog?.data?.estate;
   const selector = catalog?.data?.selector;
-  const canRun = previewIsCurrent && preview?.data.status === "WOULD_MATCH";
-  const previewNote = missing.length > 0
+  const canRun = !performanceInput.error && previewIsCurrent && preview?.data.status === "WOULD_MATCH";
+  const previewNote = performanceInput.error
+    ? performanceInput.error
+    : missing.length > 0
     ? `Still needed: ${missing.join(", ")}`
     : seedsMissing
       ? "Pick at least one seed asset — a cascade with no starting point has nothing to propagate."
@@ -764,6 +787,26 @@ export default function Simulation() {
             </label>
           )}
 
+          {!isCascade && (
+            <div style={{ marginTop: 14 }}>
+              <label style={labelStyle} htmlFor="simulation-performance-input">
+                Recorded performance context (optional JSON — input to this simulation only)
+              </label>
+              <textarea id="simulation-performance-input"
+                aria-label="Recorded performance context (optional JSON)"
+                value={performanceText}
+                onChange={(event) => { setPerformanceText(event.target.value); resetOutputs(); }}
+                rows={4} style={inputStyle}
+                placeholder={'{"tenant_id":"<tenant>","asset_ref":"app:<id>","metric_name":"crypto.tls_handshake_ms","source_id":"<exporter>","change_event_id":"<stored change>","before_start":"<ISO-8601>","before_end":"<ISO-8601>","after_start":"<ISO-8601>","after_end":"<ISO-8601>"}'} />
+              <div style={{ marginTop: 4, fontSize: 11, color: "var(--dim)" }}>
+                The preview checks the Twin selector only. Run checks measurement provenance,
+                the recorded change and exact asset identity; unsigned captures remain provisional.
+                No future performance or migration wave is inferred.
+              </div>
+              {performanceInput.error && <div role="alert" style={{ fontSize: 11, color: "var(--amber)" }}>{performanceInput.error}</div>}
+            </div>
+          )}
+
           <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
             <label style={{ flex: "1 1 240px" }}>
               <span style={labelStyle}>Label this run (optional)</span>
@@ -778,12 +821,12 @@ export default function Simulation() {
             <button
               type="button"
               onClick={() => void runPreview()}
-              disabled={busy !== null || missing.length > 0 || seedsMissing}
+              disabled={busy !== null || missing.length > 0 || seedsMissing || Boolean(performanceInput.error)}
               style={{
                 padding: "8px 14px", borderRadius: "var(--r)", fontWeight: 700, fontSize: 12,
-                cursor: busy !== null || missing.length || seedsMissing ? "not-allowed" : "pointer",
+                cursor: busy !== null || missing.length || seedsMissing || performanceInput.error ? "not-allowed" : "pointer",
                 background: "var(--panel-2)", border: "1px solid var(--accent)", color: "var(--accent)",
-                opacity: busy !== null || missing.length || seedsMissing ? 0.55 : 1,
+                opacity: busy !== null || missing.length || seedsMissing || performanceInput.error ? 0.55 : 1,
               }}
             >
               {busy === "plan" ? "Previewing…" : (isCascade ? "Preview reach" : "Preview match")}
@@ -996,6 +1039,8 @@ function SimulationResult({ result }: { result: SimulationRun }) {
   const counts = result.impact?.counts ?? {};
   const unknown = result.unknown ?? {};
   const refused = !result.persisted;
+  const performance = result.performance_context && !("state" in result.performance_context)
+    ? result.performance_context : null;
 
   return (
     <>
@@ -1125,6 +1170,33 @@ function SimulationResult({ result }: { result: SimulationRun }) {
           ))}
         </div>
       </Panel>
+
+      {result.performance_context && (
+        <Panel title="Measured performance context — not a migration verdict"
+          sub="Observed before/after measurements stay separate from the hypothetical BOM changes">
+          {!performance ? (
+            <p style={{ fontSize: 12 }}>{"reason" in result.performance_context ? result.performance_context.reason : "No performance context was attached."}</p>
+          ) : (
+            <div style={{ display: "grid", gap: 9, fontSize: 12 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <Badge tone="slate">{performance.status}</Badge>
+                <span>Identity link: {performance.link.state} — {performance.link.reason}</span>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table className="tbl"><thead><tr><th>Window</th><th>Valid</th><th>Signed capture samples</th><th>p95 ({performance.unit})</th></tr></thead>
+                  <tbody>{(["before", "after"] as const).map((period) => <tr key={period}>
+                    <td>{period}</td><td>{performance[period].valid}</td>
+                    <td>{performance[period].signed_capture_samples}</td>
+                    <td>{performance[period].p95 ?? "not derivable"}</td>
+                  </tr>)}</tbody></table>
+              </div>
+              <p>Measured difference: {performance.delta_p95 ?? "not derivable"} {performance.unit}.
+                Causation {performance.causation}. {performance.note}</p>
+              <p>Controlled benchmark: {performance.benchmark.status} — {performance.benchmark.note}</p>
+            </div>
+          )}
+        </Panel>
+      )}
 
       {refused && result.status === "NO_MATCH" && (
         <Panel title="Nothing to simulate">

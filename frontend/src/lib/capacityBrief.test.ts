@@ -52,6 +52,22 @@ describe("Capacity & Forecasting rules (§9)", () => {
     expect(featureState([], CAPACITY_FEATURES[6]).metrics).toEqual([]);
   });
 
+  it("does not call no-capacity or insufficient-data rows forecasts", () => {
+    const noCapacity: CapacityForecastRow = {
+      ...forecast, status: "no-capacity", estimated_seconds_to_exhaustion: null,
+      note: "a capacity ceiling was not supplied",
+    };
+    const sparse: CapacityForecastRow = {
+      ...forecast, metric_name: "network.throughput_mbps", status: "insufficient-data",
+      estimated_seconds_to_exhaustion: null, sample_count: 1,
+    };
+    const storage = featureState([noCapacity], CAPACITY_FEATURES[1]);
+    expect(storage.state).toBe("not derivable");
+    expect(storage.metrics).toContain("storage.used_bytes (no-capacity)");
+    expect(featureState([sparse], CAPACITY_FEATURES[2]).state).toBe("not derivable");
+    expect(capacityQuestions([noCapacity]).find((q) => q.question.startsWith("When will storage"))?.answered).toBe(false);
+  });
+
   it("without rows, even storage is a named gap", () => {
     const storage = capacityQuestions([]).find((q) => q.question.startsWith("When will storage"))!;
     expect(storage.answered).toBe(false);

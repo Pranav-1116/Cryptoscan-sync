@@ -342,6 +342,8 @@ async def test_infrastructure_workspace_links_only_verified_spine_identities():
     _metric(session, "ram.utilization_pct", 72.0, asset="srv-a", minutes=12)
     _metric(session, "cpu.utilization_pct", 33.0, asset="srv-sys", minutes=20)
     _metric(session, "cpu.utilization_pct", 88.0, asset="srv-ghost", minutes=5)
+    _metric(session, "cpu.utilization_pct", 20.0, asset="hw:missing", minutes=4)
+    _metric(session, "cpu.utilization_pct", 31.0, asset="hw:srv-a", minutes=3)
     _metric(session, "container.cpu_pct", 40.0, asset="pod-1", minutes=8)
     session.flush()
     res = await _get(app, "/api/v1/performance/infrastructure/workspace", _params())
@@ -353,6 +355,9 @@ async def test_infrastructure_workspace_links_only_verified_spine_identities():
     # an asset with no canonical spine record stays unlinked — never invented
     assert rows["srv-ghost"]["link"] is None
     assert rows["srv-ghost"]["link_state"] == "not established"
+    assert rows["hw:missing"]["link"] is None
+    assert rows["hw:missing"]["link_state"] == "not established"
+    assert rows["hw:srv-a"]["link"] == "hw:srv-a"
     assert rows["srv-a"]["cpu_pct"] == 61.5
     assert rows["srv-a"]["memory_pct"] == 72.0
     # virtualization is a named gap — not zeros, not a healthy host
@@ -400,7 +405,6 @@ async def test_hsm_per_device_trend_p95_and_measurement_gaps():
     assert device["availability_pct"] == 99.98
     assert device["operations_per_sec"] is None  # no counter family — never invented
     # trend buckets: delivered values only, hour-bucketed, stale excluded
-    trend = {t["bucket"]: t for t in device["trend"]}
     assert len(device["trend"]) == 2
     for point in device["trend"]:
         assert point["value"] is not None

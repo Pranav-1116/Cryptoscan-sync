@@ -3,11 +3,13 @@
 login → scanning → retained evidence → all six BOMs → digital twin → simulation in live.
 
 Every stage runs through the same HTTP surface a bank operator's browser calls.
-Nothing is mocked: the login mints a real session row, the trigger runs the real
-worker pipeline in-process (no queue configured — the production fallback), the
-evidence rows are that pipeline's own output, the six BOMs are the production
-routes reading those rows, the twin reads the same estate, and the final stage
-runs a change against a *copy* of the twin and re-projects the six BOMs from it.
+Nothing in the scanner-to-Twin chain is mocked: the login mints a real session
+row, the trigger runs the real worker pipeline in-process (development-only
+fallback, not a durable production queue), the evidence rows are the pipeline's
+output, the six BOMs are the application routes reading those rows, and the
+simulation runs against a copy. The final stage records a candidate remediation,
+rescans the changed disposable source and remains INCONCLUSIVE without approved
+condition-level assurance — never an invented closure or bank pilot.
 
 House rules hold inside the journey: a stage that failed must fail loudly — a
 read that errored is never accepted as "zero items" — and every claim the
@@ -43,14 +45,16 @@ def journey(tmp_path_factory):
     workdir = tmp_path_factory.mktemp("journey-src")
     (workdir / "payment_service.py").write_text(SOURCE_FILE)
 
+    keys = ("SECRET_KEY", "ENVIRONMENT", "ADMIN_USERNAME", "ADMIN_PASSWORD",
+            "DATABASE_URL", "CRYPTOSCAN_SOURCE_ROOTS")
+    previous = {key: os.environ.get(key) for key in keys}
     os.environ["SECRET_KEY"] = "test-secret-key-for-sessions-min-32-chars"
     os.environ["ENVIRONMENT"] = "development"
     os.environ["ADMIN_USERNAME"] = "admin"
     os.environ["ADMIN_PASSWORD"] = "cryptoscan"
-    db_file = os.path.join(tempfile.gettempdir(), "journey_login_to_simulation.db")
-    for ext in ("", "-wal", "-shm"):
-        if os.path.exists(db_file + ext):
-            os.remove(db_file + ext)
+    # Per-run disposable database: never delete a fixed /tmp path that may
+    # belong to another test or an operator's running local session.
+    db_file = workdir / "journey.sqlite"
     os.environ["DATABASE_URL"] = f"sqlite:///{db_file}"
     # The scan target must resolve inside a configured source root, exactly as
     # the production admission requires.
@@ -63,8 +67,16 @@ def journey(tmp_path_factory):
 
     get_settings.cache_clear()
     app = create_app()
-    with TestClient(app) as client:
-        yield {"client": client, "src": str(workdir), "state": {}}
+    try:
+        with TestClient(app) as client:
+            yield {"client": client, "src": str(workdir), "state": {}}
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        get_settings.cache_clear()
 
 
 def _bearer(state: dict) -> dict:
@@ -144,9 +156,11 @@ class TestOperatorJourney:
         assert inv["truncated"] is False and inv["records_inspected"] == inv["records_total"], (
             f"the inventory read is partial and must not be read as a total: {inv}"
         )
-        state["algorithm"] = next(
-            r["algorithm"] for r in rows if (r["algorithm"] or "").upper().startswith("MD5")
+        observed_md5 = next(
+            r for r in rows if (r["algorithm"] or "").upper().startswith("MD5")
         )
+        state["algorithm"] = observed_md5["algorithm"]
+        state["evidence_id"] = observed_md5["evidence_id"]
 
         disposition = client.get(f"/api/v1/evidence/disposition/{scan_id}", headers=_bearer(state))
         assert disposition.status_code == 200, disposition.text
@@ -215,28 +229,25 @@ class TestOperatorJourney:
         client, state = journey["client"], journey["state"]
         assert state.get("scan_id"), "the scanning stage must complete before this stage runs"
 
-        # The live twin refuses to answer for an estate nobody discovered
-        # ("an empty estate is NOT_OBSERVED, not an estate without crypto"), so
-        # the journey discovers one first — carrying the algorithm the scanner
-        # actually reported, not one invented here.
+        # Join the scanner's persisted evidence through the real STATIC
+        # adapter. No hand-authored asset or evidence is allowed here: a
+        # second seeding step would not prove the scanner-to-twin bridge.
         discovery = client.post(
-            "/api/v1/estate/evidence/discover",
-            json={
-                "estate": "journey-estate",
-                "assets": [{"ref": "svc", "type": "APPLICATION", "name": "payment_service"}],
-                "evidence": [{
-                    "source": "static_scanner",
-                    "evidence_type": "STATIC_OBSERVED",
-                    "target": "svc",
-                    "layer": "APPLICATION",
-                    "facts": {"algorithm": state["algorithm"], "purpose": "HASHING"},
-                }],
-                "collectors": [{"plane": "STATIC", "status": "COMPLETE", "expected": 1, "collected": 1}],
-                "coverage": [{"target": "STATIC", "expected": 1, "collected": 1}],
-            },
+            "/api/v1/estate/evidence/scan",
+            json={"estate": "journey-estate", "planes": ["STATIC"],
+                  "persist": True, "include_boms": True},
             headers=_bearer(state),
         )
         assert discovery.status_code == 200, discovery.text
+        joined = discovery.json()
+        assert joined["run_id"] and joined["storage"]["stored"] is True
+        assert joined["boms"] and set(joined["boms"]) == {
+            "SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "TECHBOM"}
+        assert state["algorithm"] in str(joined["boms"]["CBOM"]), \
+            "the scanner's actual algorithm must reach the same graph as the BOMs"
+        assert "STATIC" not in joined["failed_planes"] + joined["not_attempted_planes"]
+        assert joined["skipped_planes"], \
+            "other uncollected planes must not be misreported as covered"
 
         catalog = client.get("/api/v1/estate/evidence/twin/simulation-scenarios", headers=_bearer(state))
         assert catalog.status_code == 200, catalog.text
@@ -261,4 +272,61 @@ class TestOperatorJourney:
         assert after.status_code == 200, after.text
         # A simulation runs on a copy: the live twin must not have been mutated
         # by running it (the engine's own contract, re-checked from outside).
-        assert after.json().keys() == before.json().keys(), "running a simulation changed the live twin's shape"
+        assert after.json() == before.json(), \
+            "simulation must leave every authoritative live-twin field unchanged"
+
+    def test_07_remediation_rescan_is_not_auto_closed(self, journey):
+        """A proposed fix and a new scan are not an approved closure verdict."""
+        client, state = journey["client"], journey["state"]
+        evidence_id = state.get("evidence_id")
+        assert evidence_id, "the real scanner finding must seed the task"
+        created = client.post("/api/v1/remediation/tasks",
+                              json={"evidence_id": evidence_id,
+                                    "owner": "synthetic-test-operator"},
+                              headers=_bearer(state))
+        assert created.status_code == 200, created.text
+        task = created.json()
+        assert task["original_finding"]["algorithm"].upper().startswith("MD5")
+        accepted = client.post(f"/api/v1/remediation/tasks/{task['id']}/accept",
+                               headers=_bearer(state))
+        assert accepted.status_code == 200, accepted.text
+        completed = client.post(f"/api/v1/remediation/tasks/{task['id']}/complete",
+                                json={}, headers=_bearer(state))
+        assert completed.status_code == 200, completed.text
+        assert completed.json()["latest_verification"]["result"] == "INCONCLUSIVE"
+
+        # The fixture changes only its own disposable source; no bank file or
+        # approval is changed. This is a comparison, not automatic remediation.
+        (Path(journey["src"]) / "payment_service.py").write_text(
+            SOURCE_FILE.replace("hashlib.md5", "hashlib.sha256"))
+        time.sleep(0.05)
+        submitted = client.post("/api/v1/scans/trigger",
+                                json={"repo_url": journey["src"]},
+                                headers=_bearer(state))
+        assert submitted.status_code == 202, submitted.text
+        rescan = None
+        for _ in range(30):
+            listed = client.get("/api/v1/scans", params={"page_size": 50},
+                                headers=_bearer(state))
+            assert listed.status_code == 200, listed.text
+            candidates = [r for r in listed.json()["scans"]
+                          if r.get("target_location") == journey["src"]
+                          and r["scan_id"] != state["scan_id"]]
+            if candidates and candidates[0]["status"] in ("COMPLETED", "FAILED"):
+                rescan = candidates[0]
+                break
+            time.sleep(0.5)
+        assert rescan and rescan["status"] == "COMPLETED", rescan
+        result = client.post(f"/api/v1/remediation/tasks/{task['id']}/verify",
+                             json={"rescan_id": rescan["scan_id"]},
+                             headers=_bearer(state))
+        assert result.status_code == 200, result.text
+        assert result.json()["status"] != "VERIFIED"
+        assert result.json()["latest_verification"]["result"] == "INCONCLUSIVE"
+        # Original evidence remains queryable: a later candidate comparison
+        # never rewrites what the first scan found.
+        original = client.get(f"/api/v1/scans/{state['scan_id']}/findings",
+                              headers=_bearer(state))
+        assert original.status_code == 200
+        assert any(str(row["algorithm"]).upper().startswith("MD5")
+                   for row in original.json()["findings"])

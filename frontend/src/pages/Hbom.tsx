@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import BomCrossNav from "../components/BomCrossNav";
+import { CanonicalDetailLink } from "../components/AssetDetail";
 import { Link, useSearchParams } from "react-router-dom";
 import { Panel, Badge, Bar, Ring, Drawer } from "../components/ui";
 import { usePollingApi, LiveBadge, useApi } from "../lib/apiUi.jsx";
@@ -616,6 +617,7 @@ function HbomInventory() {
       </Panel>
       {selected && (
         <Drawer title={selected.model || selected.asset_id} sub={selected.asset_id} onClose={() => setSelected(null)}>
+          <CanonicalDetailLink assetRef={`hw:${selected.asset_id}`} />
           {!detail.data ? <p className="faint" style={{ fontSize: 12 }}>{detail.running ? "Reading the device…" : "The device detail did not return."}</p> : (
             (() => {
               const d = detail.data as Record<string, any>;

@@ -24,6 +24,7 @@ routes live under ``/estate/evidence`` so the two never shadow each other.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Mapping
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -1879,6 +1880,24 @@ def estate_twin_ground_truth(
 # scenario to a deep copy of the twin and projects the six BOMs from the copy.
 
 
+class SimulationPerformanceInput(BaseModel):
+    """Measured context linked only by an exact stored Twin identity."""
+
+    tenant_id: str = Field(..., min_length=1, max_length=120)
+    asset_ref: str = Field(..., min_length=1, max_length=120)
+    metric_name: str = Field(..., min_length=3, max_length=120)
+    source_id: str = Field(..., min_length=1, max_length=120)
+    change_event_id: str = Field(..., min_length=1, max_length=80)
+    before_start: datetime
+    before_end: datetime
+    after_start: datetime
+    after_end: datetime
+    baseline_benchmark_run_id: str | None = None
+    candidate_benchmark_run_id: str | None = None
+
+    model_config = {"extra": "forbid"}
+
+
 class SimulationRunRequest(BaseModel):
     """One scenario for the workspace — same shape the twin endpoint accepts.
 
@@ -1916,6 +1935,7 @@ class SimulationRunRequest(BaseModel):
     targets: list[str] | None = Field(default=None, max_length=200)
     depth: int = Field(default=3, ge=1, le=8, description="cascade hops to walk; ignored by a scenario")
     label: str | None = Field(default=None, max_length=160)
+    performance_context: SimulationPerformanceInput | None = None
     persist: bool = Field(
         default=True,
         description=(
@@ -1925,6 +1945,36 @@ class SimulationRunRequest(BaseModel):
     )
 
     model_config = {"populate_by_name": True}
+
+
+def _performance_twin_link(graph: Any, asset_ref: str,
+                           affected: list[dict[str, Any]]) -> dict[str, Any]:
+    """Only exact recorded identity keys link telemetry to a simulated node."""
+    kind, _, ident = asset_ref.partition(":")
+    accepted = {
+        "app": ({"SYSTEM", "APPLICATION"}, {"system_id", "asset_id"}),
+        "hw": ({"HOST", "HARDWARE", "HSM"}, {"host_id", "asset_id"}),
+        "vendor": ({"VENDOR"}, {"vendor_id", "asset_id"}),
+        "net": ({"NETWORK_ENDPOINT"}, {"endpoint", "asset_id"}),
+        "crypto": ({"CRYPTO_ASSET"}, {"crypto_asset_id", "asset_id"}),
+    }.get(kind)
+    if accepted is None or not ident:
+        return {"state": "NOT_ESTABLISHED", "twin_asset_id": None,
+                "reason": "no exact canonical identity mapping for this performance asset"}
+    types, keys = accepted
+    matches = [node["asset_id"] for node in graph.assets()
+               if node.get("type") in types
+               and isinstance(node.get("identity"), dict)
+               and any(str(node["identity"].get(key) or "") == ident for key in keys)]
+    if len(matches) != 1:
+        return {"state": "NOT_ESTABLISHED", "twin_asset_id": None,
+                "reason": "none or several Twin nodes match a stored exact identity; names do not establish links"}
+    selected = matches[0]
+    touched = {row.get("asset_id") for row in affected}
+    return {"state": "AFFECTED_EXACT_IDENTITY" if selected in touched else "OUTSIDE_SCENARIO",
+            "twin_asset_id": selected,
+            "reason": ("stored identity matches an affected Twin node" if selected in touched
+                       else "asset is recorded in the Twin but this scenario did not change it")}
 
 
 def _scenario_payload(body: SimulationRunRequest) -> dict[str, Any]:
@@ -2068,6 +2118,35 @@ def simulation_run(
                 "live_projection_after": graph.fingerprint(),
             },
         )
+    if body.performance_context is not None:
+        from api.routers.performance import performance_simulation_context
+
+        supplied = body.performance_context
+        if current_tenant() is not None and supplied.tenant_id != current_tenant():
+            raise HTTPException(status_code=403,
+                                detail="performance context tenant does not match the selected estate")
+        if result.get("status") != "SIMULATED":
+            result["performance_context"] = {
+                "state": "NOT_APPLICABLE", "purpose": "SIMULATION_INPUT",
+                "reason": "no hypothetical change matched, so no performance context was attached"}
+        else:
+            measured = performance_simulation_context(
+                tenant_id=supplied.tenant_id, asset_ref=supplied.asset_ref,
+                metric_name=supplied.metric_name, source_id=supplied.source_id,
+                change_event_id=supplied.change_event_id,
+                before_start=supplied.before_start, before_end=supplied.before_end,
+                after_start=supplied.after_start, after_end=supplied.after_end,
+                baseline_benchmark_run_id=supplied.baseline_benchmark_run_id,
+                candidate_benchmark_run_id=supplied.candidate_benchmark_run_id,
+                db=db, user=user)
+            link = _performance_twin_link(graph, supplied.asset_ref,
+                                          result.get("affected_assets") or [])
+            result["performance_context"] = {
+                **measured.model_dump(mode="json", by_alias=True),
+                "link": link,
+                "role": "MEASURED_CONTEXT_ONLY",
+                "note": "historical measurements inform the hypothetical change; "
+                        "they do not predict post-migration performance or select a wave"}
     response: dict[str, Any] = {
         "run_id": run.id,
         "plan": preview,

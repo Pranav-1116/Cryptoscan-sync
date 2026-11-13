@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from shared_models.performance_metrics import (
-    NO_VALUE_QUALITIES, PerformanceMetric,
+    NO_VALUE_QUALITIES, PerformanceMetric, QualityStatus,
 )
 from shared_models.performance_taxonomy import domain_of
 
@@ -50,18 +50,21 @@ def summarize_metric(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
     and percentiles cover delivered values only, unknowns are named."""
     delivered = _delivered(rows)
     unknown = _unknown_count(rows)
+    partial = sum(r.quality_status == QualityStatus.PARTIAL for r in rows)
     if not rows:
         state = "no samples"
     elif not delivered:
         state = "unknown — no delivered values"
-    elif unknown:
-        state = f"partial — {len(delivered)}/{len(rows)} delivered"
+    elif unknown or partial:
+        state = (f"partial — {len(delivered)}/{len(rows)} delivered; "
+                 f"{partial} partial-quality measurement(s)")
     else:
         state = "complete"
     return {
         "sample_count": len(rows),
         "value_count": len(delivered),
         "unknown_count": unknown,
+        "partial_count": partial,
         "coverage": state,
         "average": (sum(delivered) / len(delivered)) if delivered else None,
         "minimum": min(delivered) if delivered else None,

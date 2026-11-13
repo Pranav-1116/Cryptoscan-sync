@@ -82,6 +82,13 @@ def _repo(db: Session) -> CryptoLogRepository:
     return CryptoLogRepository(db)
 
 
+def _require_actor(actor: str, principal: str) -> None:
+    """An append-only correction/decision cannot impersonate another actor."""
+    if actor != principal:
+        raise HTTPException(status_code=403,
+                            detail="actor must match the authenticated principal")
+
+
 def _require_event_tenant(tenant_id: Optional[str]) -> None:
     from db.tenancy import current_tenant
 
@@ -180,6 +187,7 @@ def correct_event(event_id: str, body: CorrectionIn,
     """Supersede an event with a correction. The original row is preserved
     byte-identical; the correction carries its own reason, actor and
     evidence."""
+    _require_actor(body.actor, user)
     repo = _repo(db)
     row = repo.get_event(None, event_id)
     if row is None:
@@ -263,15 +271,62 @@ def evaluate_alerts(body: AlertEvaluateIn,
     if len(tenants) > 1:
         raise HTTPException(status_code=422,
                             detail="evaluate one tenant's recorded events at a time")
+    tenant = next(iter(tenants), None)
+    assets = {str(event.get("asset_id") or "") for event in stored_events}
+    if set(body.assessments) - assets:
+        raise HTTPException(status_code=422,
+                            detail="assessment names no recorded event asset")
+    if body.previous_by_asset and tenant is None:
+        raise HTTPException(status_code=422,
+                            detail="a predecessor requires a recorded current event")
+    previous: dict[str, dict[str, Any]] = {}
+    for asset, supplied in body.previous_by_asset.items():
+        if asset not in assets or not isinstance(supplied, dict):
+            raise HTTPException(status_code=422,
+                                detail="predecessor asset is not in the recorded event set")
+        prior_id = str(supplied.get("event_id") or "")
+        row = repo.get_event(tenant, prior_id) if prior_id else None
+        if row is None:
+            raise HTTPException(status_code=404,
+                                detail="recorded predecessor not found in selected tenant")
+        if row.asset_id != asset:
+            raise HTTPException(status_code=422,
+                                detail="predecessor does not belong to this asset")
+        try:
+            if event_hash(validate_event(supplied)) != row.event_hash:
+                raise HTTPException(status_code=409,
+                                    detail="predecessor differs from the recorded ledger")
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        prior = row_to_event(row)
+        try:
+            before = datetime.fromisoformat(str(prior["observation"]["observed_at"]).replace("Z", "+00:00"))
+            current = min(datetime.fromisoformat(str(event["observation"]["observed_at"]).replace("Z", "+00:00"))
+                          for event in stored_events if event.get("asset_id") == asset)
+            if before.tzinfo is None or current.tzinfo is None or before >= current:
+                raise ValueError("predecessor is not earlier than the recorded observation")
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(status_code=422,
+                                detail="predecessor and current events require ordered, timezone-aware observations") from exc
+        previous[asset] = prior
     try:
+        # Caller-declared factors are not independent severity evidence. Keep
+        # them as labelled context, but compute the authoritative rule severity
+        # only from the recorded event stream until backed assessments exist.
         alerts = evaluate_rules(stored_events,
-                                previous_by_asset=body.previous_by_asset,
-                                assessments=body.assessments)
+                                previous_by_asset=previous,
+                                assessments={})
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     store = CryptoLogAlertRepository(db)
-    tenant = next(iter(tenants), None)
-    by_id = {str(e["event_id"]): e for e in stored_events}
+    by_id = {str(e["event_id"]): e for e in [*previous.values(), *stored_events]}
+    for alert in alerts:
+        affected = (alert.get("affected") or {}).get("asset_ids") or []
+        if any(asset in body.assessments for asset in affected):
+            alert["severity_basis"]["unapplied_operator_assessments"] = True
+            alert["what_is_not_proven"] += (
+                "; caller-declared severity factors were not independently "
+                "verified and did not change the rule severity")
     persisted = {"INSERTED": 0, "DUPLICATE": 0}
     stored_alerts = []
     for alert in alerts:
@@ -401,6 +456,7 @@ def alert_transition(body: AlertTransitionIn,
     """Append-only alert lifecycle. CONFIRMED_INCIDENT is the only
     resolution that names a compromise, and it demands a named actor with
     evidence — the engine never declares one."""
+    _require_actor(body.actor, user)
     try:
         return transition_alert(body.alert, action=body.action,
                                 actor=body.actor, at=body.at, note=body.note,
@@ -480,6 +536,7 @@ def transition_alert_state(
 ) -> AlertOut:
     """Append-only transition: the history entry is added, never rewritten.
     CONFIRMED_INCIDENT stays governed by the Phase-5 transition rules."""
+    _require_actor(payload.actor, user)
     repo = CryptoLogAlertRepository(db)
     alert = repo.get_alert(payload.tenant_id, alert_id)
     if alert is None:
@@ -759,6 +816,7 @@ class TimelineOut(BaseModel):
 def event_timeline(
     bucket: str = Query("day", pattern="^(day|hour)$"),
     tenant_id: Optional[str] = Query(None),
+    asset_id: Optional[str] = Query(None),
     start_occurred: Optional[str] = Query(None),
     end_occurred: Optional[str] = Query(None),
     db: Session = Depends(get_db_session),
@@ -769,8 +827,8 @@ def event_timeline(
     estate was quiet."""
     repo = CryptoLogAlertRepository(db)
     events = [r["event"] for r in repo.events_in_range(
-        tenant_id=tenant_id, start_occurred=start_occurred,
-        end_occurred=end_occurred)]
+        tenant_id=tenant_id, asset_id=asset_id,
+        start_occurred=start_occurred, end_occurred=end_occurred)]
     width = 10 if bucket == "day" else 13
     grouped: dict[str, dict[str, Any]] = {}
     for event in events:
@@ -788,10 +846,13 @@ def event_timeline(
     buckets = [TimelineBucket(**grouped[k]) for k in sorted(grouped)]
     return TimelineOut(
         bucket=bucket,
-        window={"start_occurred": start_occurred, "end_occurred": end_occurred},
+        window={"start_occurred": start_occurred, "end_occurred": end_occurred,
+                "asset_id": asset_id},
         event_count=len(events),
         buckets=buckets,
-        note="Counts cover recorded CryptoLog events only. A gap is a gap "
+        note=("Counts cover this asset's recorded CryptoLog events only. "
+              if asset_id else "Counts cover all recorded CryptoLog events in the selected tenant. ")
+             + "A gap is a gap "
              "in the record, never proof the estate was quiet: sampling or "
              "aggregation never claims complete event coverage.")
 

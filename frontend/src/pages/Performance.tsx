@@ -275,7 +275,9 @@ export default function Performance() {
   const infrastructure = useAsync(() => apiPerformanceInfraWorkspace(w), [reloadKey]);
   const cloud = useAsync(() => apiPerformanceCloud(w), [reloadKey]);
   const alerts = useAsync(() => apiPerformanceAlerts(w), [reloadKey]);
-  const capacity = useAsync(() => apiPerformanceCapacity({ ...w, capacity_value: undefined }), [reloadKey]);
+  // No measured capacity ceiling is configured by this page. Request the
+  // recorded series as-is; the backend must say no-capacity, not forecast.
+  const capacity = useAsync(() => apiPerformanceCapacity(w), [reloadKey]);
   const baselines = useAsync(() => apiPerformanceBaselines(w), [reloadKey]);
   const benchmarks = useAsync(() => apiPerformanceBenchmarks({ tenant_id: tenant }), [reloadKey]);
   const health = useAsync(() => apiPerformanceHealth({ tenant_id: tenant }), [reloadKey]);

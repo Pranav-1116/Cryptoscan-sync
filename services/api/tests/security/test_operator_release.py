@@ -65,6 +65,8 @@ def test_offline_full_inventory_verified_without_claiming_site_ready(site, tmp_p
     assert (root / "docs/runbooks/operator-install-upgrade-recover.md").is_file()
     assert (root / "docs/runbooks/launch-assurance-handoff.md").is_file()
     assert (root / "scripts/independent_report.py").is_file()
+    assert (root / "scripts/readiness_attestation.py").is_file()
+    assert (root / "docs/runbooks/readiness-attestation.md").is_file()
     assert (root / "docs/templates/launch/assessment-report.json").is_file()
     assert len(json.loads((root / "operator-package.json").read_text())["images"]) == 4
 

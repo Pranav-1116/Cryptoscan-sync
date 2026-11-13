@@ -84,6 +84,32 @@ def test_discovery_matches_every_existing_service_and_shared_suite():
     assert {p.split("/")[1] for p in scanner_suites} == suites.SCANNERS
 
 
+def test_api_shards_partition_every_test_module_without_duplication():
+    expected = {
+        p.relative_to(ROOT).as_posix()
+        for p in (ROOT / "services/api/tests").rglob("test_*.py") if p.is_file()
+    }
+    shards = suites.discover_api_shards(ROOT, 8)
+    flattened = [item for shard in shards for item in shard]
+    assert all(shards), "a green empty API shard is not a test run"
+    assert len(flattened) == len(set(flattened))
+    assert set(flattened) == expected
+    assert shards == suites.discover_api_shards(ROOT, 8)
+    backend = set(suites.discover_suites(ROOT, non_scanners_only=True, exclude_api=True))
+    assert "services/api/tests" not in backend
+    assert backend | {"services/api/tests"} == set(suites.discover_suites(ROOT, non_scanners_only=True))
+
+
+def test_api_shard_validation_fails_closed(tmp_path):
+    root = _fixture(tmp_path)
+    (root / "services/api/tests").mkdir(parents=True)
+    (root / "services/api/tests/test_a.py").write_text("def test_a(): pass")
+    with pytest.raises(ValueError, match="fewer API test modules"):
+        suites.discover_api_shards(root, 2)
+    with pytest.raises(ValueError, match="between 1 and 32"):
+        suites.discover_api_shards(root, 0)
+
+
 def test_new_services_and_shared_packages_are_automatically_included(tmp_path):
     root = _fixture(tmp_path)
     for path in ("services/new_collector/tests", "shared/new_models/tests"):
@@ -172,7 +198,7 @@ def test_optional_skips_are_reported_but_cannot_replace_executed_proof(tmp_path)
 def test_main_ci_uses_discovery_and_a_fail_closed_aggregate():
     jobs = _workflow("ci.yml")["jobs"]
     discover = jobs["discover"]
-    assert "scripts/ci_suites.py --non-scanners" in json.dumps(discover)
+    assert "scripts/ci_suites.py --non-scanners --exclude-api" in json.dumps(discover)
     assert "matrix" in discover["outputs"]
     backend = jobs["backend"]
     assert backend["needs"] == "discover"
@@ -181,12 +207,38 @@ def test_main_ci_uses_discovery_and_a_fail_closed_aggregate():
     assert "-p no:xdist" in json.dumps(backend)
     assert "-c requirements.lock.txt" in json.dumps(backend)
     assert "scripts/check_junit.py --allow-skips" in json.dumps(backend)
-    assert "${PWD}/services/api/tests/unit" in json.dumps(backend)
-    assert "${PWD}/scripts" in json.dumps(backend)
+    assert "services/api/tests" not in json.dumps(backend), "API runs in bounded shards instead"
     assert any(
         step.get("uses", "").startswith("actions/upload-artifact@") and step.get("if") == "always()"
         for step in backend["steps"]
     )
+    api = jobs["api-tests"]
+    assert api["strategy"]["matrix"]["shard"] == [str(i) for i in range(8)]
+    assert api["strategy"]["fail-fast"] == "false"
+    api_text = json.dumps(api)
+    assert "scripts/ci_suites.py --api-shard" in api_text
+    assert "--api-shards 8" in api_text
+    assert "${PWD}/services/api/tests/unit" in api_text
+    assert "${PWD}/scripts" in api_text
+    assert "--disable-socket" in api_text
+    assert "--junitxml=test-results/api.xml" in api_text
+    assert "scripts/check_junit.py --allow-skips test-results/api.xml" in api_text
+    assert any(step.get("uses", "").startswith("actions/upload-artifact@")
+               and step.get("if") == "always()" for step in api["steps"])
+    tenant = jobs["tenant-security-contract"]
+    assert "test_tenant_isolation_os_intelligence.py" in json.dumps(tenant)
+    assert "test_cross_tenant_adversarial.py" in json.dumps(tenant)
+    assert "scripts/check_junit.py test-results/tenant-security.xml" in json.dumps(tenant)
+    performance = jobs["performance-contract"]
+    performance_text = json.dumps(performance)
+    assert "test_performance_simulation_api.py" in performance_text
+    assert "test_performance_capture_to_simulation.py" in performance_text
+    assert "test_performance_adapters.py" in performance_text
+    assert "test_estate_simulation_workspace.py" in performance_text
+    assert "scripts/check_junit.py test-results/performance.xml" in performance_text
+    assert "--allow-skips" not in performance_text
+    assert any(step.get("uses", "").startswith("actions/upload-artifact@")
+               and step.get("if") == "always()" for step in performance["steps"])
     for lane, workflow in (
         ("scanner-offline", "scanner-tests.yml"),
         ("db-migration", "db-migration.yml"),
@@ -266,6 +318,8 @@ def test_migration_lane_runs_alembic_tests_not_only_create_all():
     assert "SHOW server_version_num" in commands
     assert "-m live" in commands
     assert "test_migration_chain_postgres.py" in commands
+    assert "test_performance_capture_to_simulation.py" in commands
+    assert "performance-pg${{ matrix.postgres }}.xml" in commands
     assert "scripts/check_junit.py" in commands
     assert "scripts/check_junit.py --allow-skips" not in commands
     rls = next(step for step in postgres["steps"] if "scripts/check_runtime_rls_pg.py" in step.get("run", ""))

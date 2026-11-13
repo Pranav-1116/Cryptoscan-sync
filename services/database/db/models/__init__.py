@@ -69,7 +69,8 @@ from db.models.performance import (
     PerformanceAggregate, PerformanceAlert, PerformanceAsset,
     PerformanceBaseline, PerformanceBenchmarkRun,
     PerformanceCapacityForecast, PerformanceCollectorHealth,
-    PerformanceIncident, PerformanceMetric, PerformanceMetricDefinition,
+    PerformanceCaptureReceipt, PerformanceIncident, PerformanceMetric,
+    PerformanceMetricDefinition,
     PerformanceSloPolicy,
 )
 from db.models.verification_log import VerificationLog
@@ -153,6 +154,7 @@ __all__ = [
     "PerformanceBenchmarkRun",
     "PerformanceCapacityForecast",
     "PerformanceCollectorHealth",
+    "PerformanceCaptureReceipt",
     "PerformanceIncident",
     "PerformanceMetric",
     "PerformanceMetricDefinition",

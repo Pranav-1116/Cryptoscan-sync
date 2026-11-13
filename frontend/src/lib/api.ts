@@ -444,6 +444,7 @@ export const apiDigitalTwinTimeline = (assetId: string): Promise<ApiResult<Recor
 
 export interface SbomInventoryRow {
   coordinate: string;
+  asset_ref?: string;
   component_type?: string | null;
   name: string;
   version?: string | null;
@@ -8298,8 +8299,17 @@ export interface SimulationCatalog {
   selector: SimulationSelector; note: string; limits: string[];
 }
 
+export interface SimulationPerformanceInput {
+  tenant_id: string; asset_ref: string; metric_name: string;
+  source_id: string; change_event_id: string;
+  before_start: string; before_end: string;
+  after_start: string; after_end: string;
+  baseline_benchmark_run_id?: string; candidate_benchmark_run_id?: string;
+}
+
 export interface SimulationScenario {
   kind: string; from?: string; to?: string; key_size?: number | null;
+  performance_context?: SimulationPerformanceInput;
   targets?: string[]; depth?: number; label?: string | null;
   /* CUSTOM only: the scenario as data — a condition tree plus assignments. It is
      validated by the engine, which refuses a provenance write and refuses a program. */
@@ -8396,6 +8406,10 @@ export interface SimulationRun {
   plan: SimulationPreview | null; simulation_id: string | null;
   persisted: boolean; simulation_record: SimulationRecord | null;
   persist_refused_because?: string | null; persist_note?: string | null;
+  performance_context?: (SimulationPerformanceContext & {
+    link: { state: string; twin_asset_id: string | null; reason: string };
+    role: "MEASURED_CONTEXT_ONLY"; note: string;
+  }) | { state: "NOT_APPLICABLE"; purpose: "SIMULATION_INPUT"; reason: string };
   note: string;
 }
 export interface SimulationRuns {
@@ -8627,7 +8641,7 @@ export interface CryptologTimelineBucket {
 
 export interface CryptologTimeline {
   bucket: string;
-  window: { start_occurred?: string | null; end_occurred?: string | null };
+  window: { start_occurred?: string | null; end_occurred?: string | null; asset_id?: string | null };
   event_count: number;
   buckets: CryptologTimelineBucket[];
   note: string;
@@ -8635,11 +8649,13 @@ export interface CryptologTimeline {
 
 export const apiCryptologTimeline = (params: {
   bucket?: "day" | "hour";
+  asset_id?: string;
   start_occurred?: string;
   end_occurred?: string;
 } = {}): Promise<ApiResult<CryptologTimeline>> => {
   const qs = new URLSearchParams();
   if (params.bucket) qs.set("bucket", params.bucket);
+  if (params.asset_id) qs.set("asset_id", params.asset_id);
   if (params.start_occurred) qs.set("start_occurred", params.start_occurred);
   if (params.end_occurred) qs.set("end_occurred", params.end_occurred);
   const suffix = qs.toString();
@@ -8674,9 +8690,9 @@ export interface CryptologOverview {
 export const apiCryptologOverview = (): Promise<ApiResult<CryptologOverview>> =>
   call<CryptologOverview>("/api/v1/cryptolog/overview");
 
-/* CryptoLog reports (§9): the auditor pack is a binary archive — a raw
-   fetch, not the JSON bridge. The manifest inside hashes every file; a
-   missing artifact is unverifiable, not valid. */
+/* CryptoLog reports (§9): the auditor pack is a binary archive. It still
+   uses the authenticated tenant transport (not the JSON decoder); a tenant
+   switch before body read must never release the prior estate's bytes. */
 
 export interface CryptologReportExportResult {
   ok: boolean;
@@ -8686,7 +8702,7 @@ export interface CryptologReportExportResult {
   error?: string;
 }
 
-export const apiCryptologReportExport = (filters: {
+export const apiCryptologReportExport = async (filters: {
   start_occurred?: string;
   end_occurred?: string;
   severity?: string;
@@ -8697,21 +8713,33 @@ export const apiCryptologReportExport = (filters: {
   if (filters.end_occurred) body.end_occurred = filters.end_occurred;
   if (filters.severity) body.severity = filters.severity;
   if (filters.category) body.category = filters.category;
-  return fetch("/api/v1/cryptolog/reports/export", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).then(async (response) => {
-    if (!response.ok) {
-      return { ok: false, error: `HTTP ${response.status}` };
-    }
+  const token = getToken(), estate = activeTenantId();
+  const controller = new AbortController();
+  const stop = watchPrivateScope(() => controller.abort());
+  const guard = () => !controller.signal.aborted && token === getToken() && estate === activeTenantId();
+  try {
+    if (!guard()) return { ok: false, error: "context changed" };
+    const response = await tenantFetch("/api/v1/cryptolog/reports/export", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!guard()) return { ok: false, error: "context changed" };
+    if (!response.ok) return { ok: false, error: `HTTP ${response.status}` };
+    const blob = await response.blob();
+    if (!guard()) return { ok: false, error: "context changed" };
     return {
       ok: true,
-      blob: await response.blob(),
+      blob,
       reportId: response.headers.get("X-Report-Id") || undefined,
       fileCount: response.headers.get("X-Archive-Files") || undefined,
     };
-  }).catch(() => ({ ok: false, error: "offline" }));
+  } catch {
+    return { ok: false, error: guard() ? "offline" : "context changed" };
+  } finally {
+    stop();
+  }
 };
 
 /* CryptoLog retention (§10): policy in the open, plans as projections. */
@@ -9181,6 +9209,31 @@ export const apiPerformanceInvestigation = (p: {
   change_description: string; evidence_ids?: string;
 }): Promise<ApiResult<PerformanceInvestigation>> =>
   call<PerformanceInvestigation>(`/api/v1/performance/reports${performanceQuery(p)}`);
+
+export interface SimulationPerformanceContext {
+  schema: string;
+  purpose: "SIMULATION_INPUT";
+  status: string;
+  asset_ref: string;
+  metric_name: string;
+  unit: string;
+  source_id: string;
+  change: { event_id: string; observed_at: string; event_type: string;
+    evidence_refs_unverified: string[]; provenance_note: string };
+  before: { received: number; valid: number; signed_capture_samples: number; partial_quality: number;
+    missing_or_stale: number; p95: number | null; metric_ids: string[];
+    metric_ids_truncated: boolean };
+  after: { received: number; valid: number; signed_capture_samples: number; partial_quality: number;
+    missing_or_stale: number; p95: number | null; metric_ids: string[];
+    metric_ids_truncated: boolean };
+  delta_p95: number | null;
+  delta_percent: number | null;
+  causation: string;
+  benchmark: { status: string; note: string; operations?: Array<{
+    operation: string; baseline_mean_ms: number; candidate_mean_ms: number;
+    delta_percent: number }> };
+  not_proven: string[];
+}
 
 export const apiPerformanceBenchmarks = (p: { tenant_id: string }): Promise<ApiResult<{ runs: PerformanceBenchmarkRun[]; note: string }>> =>
   call<{ runs: PerformanceBenchmarkRun[]; note: string }>(`/api/v1/performance/benchmarks${performanceQuery(p)}`);

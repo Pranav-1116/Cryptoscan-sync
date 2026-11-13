@@ -28,10 +28,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
+from api.software_inventory import software_from_cascade
 from cbom.nbom import probe_to_endpoint
 from db.models.crypto_asset import CryptoAsset
 from db.models.crypto_asset_evidence import CryptoAssetEvidence
-from db.models.runtime_finding import RuntimeFinding
+from db.models.scan import Scan
 from db.models.evidence_record import EvidenceRecord
 from db.models.hardware_live import HardwareAsset
 from db.models.network_scan_run import NetworkScanRun
@@ -80,13 +81,6 @@ def _mask_serial(serial: Optional[str]) -> str:
     return f"••••{tail}"
 
 
-def _runtime_algorithms(db: Session) -> set:
-    """Algorithms a runtime observation NAMED — the only route to
-    operation_observed (the CBOM contract)."""
-    return {str(r.algorithm or "").upper()
-            for r in db.execute(select(RuntimeFinding)).scalars().all() if r.algorithm}
-
-
 def _safe_name(value: Any) -> bool:
     return not any(word in str(value).lower() for word in _DENY)
 
@@ -98,6 +92,40 @@ def _safe_name(value: Any) -> bool:
 def _resolve(db: Session, asset_ref: str) -> Dict[str, Any]:
     """One canonical asset -> its stored record. 404 when not stored."""
     kind, _, ident = asset_ref.partition(":")
+    if kind == "sbom":
+        from api.routers.sbom import _canonical_ref
+
+        scan_id, separator, digest = ident.partition(":")
+        if not separator or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise HTTPException(status_code=404, detail="component reference is not a stored scan identity")
+        scan = filtered_get(db, Scan, scan_id)
+        if scan is None or scan.status != "COMPLETED":
+            raise HTTPException(status_code=404, detail="component not found in a completed scan")
+        statistics = scan.statistics if isinstance(scan.statistics, dict) else {}
+        cascade = statistics.get("cascade")
+        if not isinstance(cascade, dict):
+            raise HTTPException(status_code=404, detail="scan has no stored component report")
+        for key in ("libraries", "package_dependencies"):
+            entries = cascade.get(key) or []
+            if not isinstance(entries, list) or len(entries) > 5000:
+                raise HTTPException(status_code=409,
+                                    detail="stored component report exceeds the detail read budget")
+        inventory = software_from_cascade(cascade, scan_id=scan_id,
+                                          target=scan.target_location,
+                                          completed_at=scan.scan_end)
+        matches = [r for r in inventory["components"]
+                   if _canonical_ref(scan_id, str(r.get("coordinate") or "")) == asset_ref]
+        if len(matches) != 1:
+            raise HTTPException(status_code=404,
+                                detail="component not uniquely identified in the stored scan")
+        component = matches[0]
+        return {"kind": kind, "ident": ident, "record": component,
+                "scan": scan, "inventory": inventory,
+                "name": str(component.get("name") or component["coordinate"]),
+                "category": "SOFTWARE", "environment": scan.target_location or "",
+                "owner": "", "description": "scan-reported component; declared is not runtime use",
+                "source": str(component.get("origin") or "UNKNOWN"),
+                "last_observed": _iso(scan.scan_end)}
     if kind == "app":
         rec = filtered_get(db, System, ident)
         if rec is None:
@@ -180,11 +208,17 @@ def _cross_bom(db: Session, ctx: Dict[str, Any]) -> List[Dict[str, str]]:
                 "basis": "no stored relationship establishes this link"}
 
     out: List[Dict[str, str]] = [
-        {"bom": "TechBOM", "state": "PRIMARY_RECORD",
-         "basis": "the canonical asset record lives in the technology inventory"},
+        {"bom": "TechBOM", "state": "NOT_ESTABLISHED" if kind == "sbom" else "PRIMARY_RECORD",
+         "basis": ("no verified technology-asset link for this scan component"
+                   if kind == "sbom" else
+                   "the canonical asset record lives in the technology inventory")},
     ]
 
-    if kind == "app":
+    if kind == "sbom":
+        out.append({"bom": "SBOM", "state": "PRIMARY_RECORD",
+                    "basis": "the component is identified in this completed scan"})
+        out.extend(none(bom) for bom in ("CBOM", "HBOM", "NBOM", "VBOM"))
+    elif kind == "app":
         has_crypto = db.execute(select(SystemAsset).where(SystemAsset.system_id == ident)).scalars().first()
         has_vendor = db.execute(select(SystemVendor).where(SystemVendor.system_id == ident)).scalars().first()
         out.append(linked("SBOM", "this system materializes into the SBOM layer"))
@@ -276,15 +310,22 @@ def asset_header(
         description=ctx["description"],
         asset_id=asset_ref, environment=ctx["environment"], category=ctx["category"],
         owner=ctx["owner"], source=ctx["source"], last_observed=ctx["last_observed"],
+        primary_bom="SBOM" if ctx["kind"] == "sbom" else "TechBOM",
         related=[BomRelationOut(**r) for r in related], chips=chips, evidence=evidence,
     )
 
 
 def _evidence_for(db: Session, ctx: Dict[str, Any]) -> Dict[str, str]:
     kind, ident = ctx["kind"], ctx["ident"]
+    if kind == "sbom":
+        return {"state": "IMPORTED", "freshness": _freshness(ctx["scan"].scan_end),
+                "basis": "component named by the stored scan cascade; this is not proof of execution"}
     if kind == "crypto":
+        from api.routers.cbom_workspace import _runtime_by_asset
+
         rec = ctx["record"]
-        if (str(rec.algorithm or "").upper() in _runtime_algorithms(db)
+        linked = _runtime_by_asset(db).get((rec.tenant_id, f"crypto:{rec.id}"), set())
+        if (str(rec.algorithm or "").upper() in linked
                 and (rec.occurrence_count or 0) > 0):
             return {"state": "MEASURED", "freshness": _freshness(getattr(rec, "updated_at", None)),
                     "basis": "a runtime observation named this algorithm"}
@@ -346,6 +387,12 @@ def tab_components(asset_ref: str, user: str = Depends(get_current_user), db: Se
     ctx = _resolve(db, asset_ref)
     kind, ident = ctx["kind"], ctx["ident"]
     rows: List[Dict[str, Any]] = []
+    if kind == "sbom":
+        rec = ctx["record"]
+        rows.append({"component_ref": asset_ref, "name": rec.get("name") or "",
+                     "type": rec.get("component_type") or "software",
+                     "version": rec.get("version") or "",
+                     "evidence": rec.get("origin") or "stored scan cascade"})
     if kind == "app":
         for link in db.execute(select(SystemAsset).where(SystemAsset.system_id == ident)).scalars().all():
             c = filtered_get(db, CryptoAsset, link.asset_id)
@@ -368,13 +415,27 @@ def tab_cryptography(asset_ref: str, user: str = Depends(get_current_user), db: 
     ctx = _resolve(db, asset_ref)
     kind, ident = ctx["kind"], ctx["ident"]
     rows: List[Dict[str, Any]] = []
-    runtime = _runtime_algorithms(db)
-    if kind == "app":
+    from api.routers.cbom_workspace import _runtime_by_asset
+
+    runtime = _runtime_by_asset(db)
+    if kind == "sbom":
+        from api.routers.sbom import _runtime_algorithms as sbom_runtime
+        from api.routers.sbom import _usage_state as sbom_usage
+
+        for usage in sbom_usage(ctx["record"], sbom_runtime(db),
+                                scan_id=ctx["scan"].id,
+                                tenant_id=ctx["scan"].tenant_id):
+            rows.append({"crypto_ref": asset_ref, "algorithm": usage["algorithm"],
+                         "key_size": None, "mode": "", "purpose": "",
+                         "usage_state": usage["usage_state"],
+                         "basis": usage["basis"]})
+    elif kind == "app":
         for link in db.execute(select(SystemAsset).where(SystemAsset.system_id == ident)).scalars().all():
             c = filtered_get(db, CryptoAsset, link.asset_id)
             if c is None:
                 continue
-            observed = str(c.algorithm or "").upper() in runtime
+            observed = str(c.algorithm or "").upper() in runtime.get(
+                (c.tenant_id, f"crypto:{c.id}"), set())
             rows.append({
                 "crypto_ref": f"crypto:{c.id}", "algorithm": c.algorithm or "",
                 "key_size": c.key_size, "mode": c.mode or "", "purpose": c.purpose or "",
@@ -384,7 +445,8 @@ def tab_cryptography(asset_ref: str, user: str = Depends(get_current_user), db: 
             })
     elif kind == "crypto":
         rec = ctx["record"]
-        observed = str(rec.algorithm or "").upper() in runtime
+        observed = str(rec.algorithm or "").upper() in runtime.get(
+            (rec.tenant_id, f"crypto:{rec.id}"), set())
         rows.append({
             "crypto_ref": asset_ref, "algorithm": rec.algorithm or "", "key_size": rec.key_size,
             "mode": rec.mode or "", "purpose": rec.purpose or "",
@@ -512,6 +574,13 @@ def tab_dependencies(asset_ref: str, user: str = Depends(get_current_user), db: 
     ctx = _resolve(db, asset_ref)
     kind, ident = ctx["kind"], ctx["ident"]
     rows: List[Dict[str, Any]] = []
+    if kind == "sbom":
+        coordinate = str(ctx["record"].get("coordinate") or "")
+        for edge in ctx["inventory"].get("edges") or []:
+            if coordinate in (edge.get("source"), edge.get("target")):
+                rows.append({"from": edge.get("source"), "to": edge.get("target"),
+                             "type": edge.get("type") or "dependency",
+                             "evidence": "stored scan cascade relationship"})
     if kind == "app":
         for row in db.execute(select(SystemDependency).where(
                 (SystemDependency.parent_id == ident) | (SystemDependency.child_id == ident))).scalars().all():
@@ -539,6 +608,14 @@ def tab_evidence(asset_ref: str, user: str = Depends(get_current_user), db: Sess
     ctx = _resolve(db, asset_ref)
     kind, ident = ctx["kind"], ctx["ident"]
     rows: List[Dict[str, Any]] = []
+    if kind == "sbom":
+        rec = ctx["record"]
+        path = str(rec.get("declared_in") or "")
+        rows.append({"evidence_id": None, "algorithm": "", "confidence": "IMPORTED",
+                     "content_hash": None, "chain_position": None,
+                     "file_path": path if _safe_name(path) else "withheld",
+                     "captured_at": _iso(ctx["scan"].scan_end),
+                     "freshness": _freshness(ctx["scan"].scan_end)})
     if kind == "crypto":
         for link in db.execute(select(CryptoAssetEvidence).where(CryptoAssetEvidence.asset_id == ident)).scalars().all():
             ev = filtered_get(db, EvidenceRecord, link.evidence_id)
@@ -576,7 +653,9 @@ def tab_evidence(asset_ref: str, user: str = Depends(get_current_user), db: Sess
                      "freshness": _freshness(row.get("observed_at"))})
     return TabResponse(
         asset_ref=asset_ref, tab="evidence", rows=rows,
-        note="source, timestamp and digest as recorded — freshness follows the shared policy"
+        note=("scan cascade source only — no per-component evidence ID or digest was recorded"
+              if kind == "sbom" else
+              "source, timestamp and digest as recorded — freshness follows the shared policy")
         if rows else "no stored evidence for this asset — evidence is insufficient, not absent of risk",
     )
 
@@ -591,6 +670,11 @@ def tab_history(asset_ref: str, user: str = Depends(get_current_user), db: Sessi
     if created or updated:
         rows.append({"event": "record timestamps", "captured_at": updated or created,
                      "created_at": created, "updated_at": updated, "basis": "the stored row"})
+    if ctx["kind"] == "sbom":
+        scan = ctx["scan"]
+        rows.append({"event": "scan cascade report", "captured_at": _iso(scan.scan_end),
+                     "created_at": _iso(scan.scan_start), "updated_at": None,
+                     "basis": "stored completed scan; no per-component change history"})
     if ctx["kind"] == "hw" and isinstance(rec, HardwareAsset):
         for label, ts in (("first seen", rec.first_seen), ("last seen", rec.last_seen),
                           ("last verified", rec.last_verified), ("last firmware check", rec.last_firmware_check),

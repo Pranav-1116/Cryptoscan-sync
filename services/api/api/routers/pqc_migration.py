@@ -39,6 +39,45 @@ MACHINES = {"wave": "pqc.wave_status", "blocker": "pqc.blocker_state",
             "progress": "pqc.progress_verification"}
 
 
+def _require_verified_evidence(db: Session, references: list[str]) -> None:
+    """Resolve every cited record and verify its complete committed scan.
+
+    A reference string alone is a claim, not evidence. ORM tenant scoping
+    keeps foreign records absent; tombstones and incomplete/broken scans
+    cannot advance a progress or wave verdict.
+    """
+    from db.models.evidence_record import EvidenceRecord
+    from db.models.scan import Scan
+    from evidence.verification.stored_scan import verify_stored_scan
+
+    ids = list(dict.fromkeys(str(ref).strip() for ref in references if str(ref).strip()))
+    if not ids:
+        raise HTTPException(status_code=422,
+                            detail="verified requires an evidence reference — a verdict without evidence is refused")
+    if len(ids) > 40:
+        raise HTTPException(status_code=413,
+                            detail="at most 40 evidence references per progress verdict")
+    rows = list(db.scalars(select(EvidenceRecord).where(
+        EvidenceRecord.id.in_(ids), EvidenceRecord.deleted_at.is_(None))))
+    if len(rows) != len(ids):
+        raise HTTPException(status_code=409,
+                            detail="referenced evidence is missing, withdrawn or outside the active tenant")
+    for scan_id in {row.scan_id for row in rows}:
+        scan = filtered_get(db, Scan, scan_id)
+        scan_rows = list(db.scalars(select(EvidenceRecord).where(
+            EvidenceRecord.scan_id == scan_id).order_by(
+            EvidenceRecord.chain_position).limit(10001)))
+        if scan is None or len(scan_rows) > 10000 or not scan_rows:
+            raise HTTPException(status_code=409,
+                                detail="referenced evidence scan is unavailable or exceeds the verification budget")
+        if any(row.tenant_id != scan.tenant_id for row in scan_rows):
+            raise HTTPException(status_code=409,
+                                detail="evidence and scan tenant ownership do not agree")
+        if verify_stored_scan(scan, scan_rows)["result"] != "PASS":
+            raise HTTPException(status_code=409,
+                                detail="referenced evidence scan integrity is not verified")
+
+
 # ----------------------------------------------------------------- schemas --
 class WaveCreate(BaseModel):
     wave_key: str = Field(..., min_length=1, max_length=80)
@@ -265,6 +304,10 @@ def transition_wave(
                 detail="a wave is verified only over verified progress records — "
                        f"{len(unverified)} of {len(claims)} claims are not verified",
             )
+        # An earlier verdict is not durable proof if its evidence was later
+        # tombstoned or corrupted. Recheck at the wave transition boundary.
+        for claim in claims:
+            _require_verified_evidence(db, list(claim.evidence_ids or []))
     _apply_transition(row, MACHINES["wave"], body.to, body.note)
     db.commit()
     emit_platform_event("pqc.migration.wave_transition",
@@ -308,13 +351,9 @@ def transition_progress(
     """Write a verification verdict. verified requires an evidence reference."""
     row = _row_or_404(db, PqcProgressRecord, record_id)
     if body.to == "verified":
-        verified_ids = [e for e in (body.evidence_ids or row.evidence_ids) if e]
-        if not verified_ids:
-            raise HTTPException(
-                status_code=422,
-                detail="verified requires an evidence reference — a verdict without evidence is refused",
-            )
-        row.evidence_ids = list(dict.fromkeys([*row.evidence_ids, *body.evidence_ids]))
+        verified_ids = list(dict.fromkeys([*(row.evidence_ids or []), *body.evidence_ids]))
+        _require_verified_evidence(db, verified_ids)
+        row.evidence_ids = verified_ids
         row.verified_by, row.verified_at = user, utcnow()
     _apply_transition(row, MACHINES["progress"], body.to, body.note)
     row.verification_note = body.note

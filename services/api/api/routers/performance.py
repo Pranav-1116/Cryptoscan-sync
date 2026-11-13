@@ -14,31 +14,47 @@ from authorized monitoring sources. It is not a load-testing engine.
 from __future__ import annotations
 
 import base64
+import os
+import re
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from api.config.settings import get_settings
 from api.dependencies import (get_current_user, get_db_session,
                               require_intelligence_manager,
                               require_intelligence_writer,
                               require_query_tenant_scope)
 from db.tenancy import filtered_get
 from db.repositories.performance_repository import (
-    DUPLICATE, INSERTED, PerformanceRepository,
+    CONFLICT, DUPLICATE, INSERTED, PerformanceRepository,
 )
 from shared_models.bulk_result import (
     ACCEPTED, REJECTED, SKIPPED,
 )
 from shared_models.performance_benchmarks import run_local_benchmark
+from shared_models.performance_collectors import (
+    translate_node_exporter, translate_postgres_exporter, translate_otlp,
+)
+from shared_models.performance_capture import (
+    SCHEMA as CAPTURE_SCHEMA, capture_binding, payload_sha256,
+    receipt_id as capture_receipt_id, verify_capture_attestation,
+)
 from shared_models.performance_intelligence import (
     compute_baseline, correlate_change_with_metrics, evaluate_alert,
     forecast_capacity,
 )
 from shared_models.performance_metrics import PerformanceMetric
+from shared_models.performance_simulation import (
+    compare_bank_windows, compare_controlled_benchmarks,
+)
+from shared_models.performance_taxonomy import definition_for
 from shared_models.performance_views import (
     database_workspace as database_workspace_view,
     application_workspace as application_workspace_view,
@@ -52,7 +68,8 @@ from shared_models.performance_views import (
 router = APIRouter(prefix="/performance", tags=["performance"],
                    dependencies=[Depends(require_query_tenant_scope)])
 
-_BATCH_OUTCOMES = {INSERTED: ACCEPTED, DUPLICATE: SKIPPED}
+_BATCH_OUTCOMES = {INSERTED: ACCEPTED, DUPLICATE: SKIPPED,
+                   CONFLICT: REJECTED}
 
 
 class IngestResult(BaseModel):
@@ -133,9 +150,18 @@ def ingest_metric(body: Dict[str, Any], response: Response,
     measurement carries no value (never a zero), labels are bounded, and
     every row keeps its unit, source and observation timestamp.
     """
+    if get_settings().is_production:
+        raise HTTPException(status_code=503,
+                            detail="direct Performance ingestion is unavailable in production; "
+                                   "use bank-signed capture intake")
     metric = _validate(body)
     _require_metric_tenant(metric.tenant_id)
+    if (metric.evidence_id or "").startswith(("signed-capture:", "signed-capture-sha256:")):
+        raise HTTPException(status_code=422,
+                            detail="signed capture provenance is reserved for verified capture intake")
     result = _repo(db).insert_metric(metric)
+    if result["outcome"] == CONFLICT:
+        raise HTTPException(status_code=409, detail=result["note"])
     if result["outcome"] == DUPLICATE:
         response.status_code = 200
     return IngestResult(outcome=result["outcome"],
@@ -151,6 +177,10 @@ def ingest_batch(body: BatchIn,
     """Batch ingestion with explicit partial success: every item carries
     an ACCEPTED / SKIPPED / REJECTED outcome and a reason; totals are
     derived from the items, never invented."""
+    if get_settings().is_production:
+        raise HTTPException(status_code=503,
+                            detail="direct Performance ingestion is unavailable in production; "
+                                   "use bank-signed capture intake")
     rows: List[BatchItemResult] = []
     repo = _repo(db)
     for index, raw in enumerate(body.metrics):
@@ -158,6 +188,9 @@ def ingest_batch(body: BatchIn,
         try:
             metric = PerformanceMetric.model_validate(raw)
             _require_metric_tenant(metric.tenant_id)
+            if (metric.evidence_id or "").startswith(("signed-capture:", "signed-capture-sha256:")):
+                raise HTTPException(status_code=422,
+                                    detail="signed capture provenance is reserved for verified capture intake")
         except (ValueError, HTTPException) as exc:
             reason = exc.detail if isinstance(exc, HTTPException) else str(exc)
             rows.append(BatchItemResult(key=key, status=REJECTED,
@@ -173,6 +206,258 @@ def ingest_batch(body: BatchIn,
         rejected=sum(1 for r in rows if r.status == REJECTED),
     )
     return BatchResult(totals=totals, items=rows)
+
+
+class CaptureImportIn(BaseModel):
+    """One bank-provided exporter snapshot, not permission to probe a host."""
+    tenant_id: str = Field(..., min_length=1, max_length=120)
+    asset_ref: str = Field(..., min_length=1, max_length=120)
+    source_id: str = Field(..., min_length=1, max_length=120)
+    source_type: Literal["node_exporter", "postgres_exporter", "otlp"]
+    authorization_ref: str = Field(..., min_length=1, max_length=120)
+    observed_at: datetime
+    payload: Dict[str, Any]
+    previous_observed_at: Optional[datetime] = None
+    previous: Optional[Dict[str, Any]] = None
+    attestation: Optional[Dict[str, Any]] = None
+
+
+class CaptureImportOut(BaseModel):
+    receipt_id: str
+    outcome: str
+    source_type: str
+    payload_sha256: str
+    provenance_state: str
+    signer: Optional[Dict[str, str]] = None
+    accepted: int
+    duplicate: int
+    rejected: int
+    metric_ids: List[str]
+    metric_ids_truncated: bool
+    refused: List[Dict[str, str]]
+    refusals_truncated: bool
+    note: str
+
+
+def _capture_budget(payload: Dict[str, Any]) -> None:
+    families = payload.get("metrics")
+    if not isinstance(families, dict) or not families or len(families) > 100:
+        raise HTTPException(status_code=422,
+                            detail="capture requires 1..100 named metric families")
+    count = 0
+    for samples in families.values():
+        if not isinstance(samples, list):
+            raise HTTPException(status_code=422,
+                                detail="each captured family must be a list of samples")
+        count += len(samples)
+        if count > 1000:
+            raise HTTPException(status_code=413,
+                                detail="capture exceeds 1000 exporter samples")
+
+
+@router.post("/captures/import", response_model=CaptureImportOut,
+             dependencies=[Depends(require_intelligence_writer)])
+def import_capture(body: CaptureImportIn,
+                   db: Session = Depends(get_db_session),
+                   user: str = Depends(get_current_user)) -> CaptureImportOut:
+    """Translate approved bank-side exporter captures without contacting a host.
+
+    The bank retains raw snapshots; only normalized, bounded metrics and a
+    digest are stored here. Authorization and producer authenticity are NOT
+    established by a caller-written reference alone.
+    """
+    from api.routers.asset_detail import _resolve
+
+    _require_metric_tenant(body.tenant_id)
+    _resolve(db, body.asset_ref)
+    _capture_budget(body.payload)
+    if body.previous is not None:
+        _capture_budget(body.previous)
+    if (body.observed_at.tzinfo is None or body.observed_at > datetime.now(timezone.utc)
+            or (body.previous is None) != (body.previous_observed_at is None)):
+        raise HTTPException(status_code=422,
+                            detail="capture timestamps must be timezone-aware, ordered, and complete")
+    interval = None
+    if body.previous_observed_at is not None:
+        if body.previous_observed_at.tzinfo is None:
+            raise HTTPException(status_code=422,
+                                detail="previous capture timestamp requires a timezone")
+        interval = (body.observed_at - body.previous_observed_at).total_seconds()
+        if not 0 < interval <= 86400:
+            raise HTTPException(status_code=422,
+                                detail="paired captures require a positive interval of at most one day")
+    observed_iso = body.observed_at.astimezone(timezone.utc).isoformat()
+    previous_iso = (body.previous_observed_at.astimezone(timezone.utc).isoformat()
+                    if body.previous_observed_at else None)
+    try:
+        digest = payload_sha256(body.payload)
+        previous_digest = payload_sha256(body.previous) if body.previous is not None else None
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422,
+                            detail="capture contains non-JSON or non-finite source values") from exc
+    production = get_settings().is_production
+    trusted = (os.environ.get("PERFORMANCE_CAPTURE_PUBLIC_KEY_FILE") or "").strip()
+    if production and not trusted:
+        raise HTTPException(status_code=503,
+                            detail="bank capture signing trust anchor is not configured")
+    signer = None
+    if body.attestation is not None:
+        if not trusted:
+            raise HTTPException(status_code=422,
+                                detail="capture attestation cannot be verified without a bank trust anchor")
+        try:
+            signer = verify_capture_attestation(
+                attestation=body.attestation, public_key_path=Path(trusted),
+                tenant_id=body.tenant_id, asset_ref=body.asset_ref,
+                source_id=body.source_id, source_type=body.source_type,
+                observed_at=observed_iso,
+                previous_observed_at=previous_iso,
+                authorization_ref=body.authorization_ref,
+                payload_digest=digest, previous_digest=previous_digest)
+        except (OSError, ValueError, TypeError) as exc:
+            raise HTTPException(status_code=422,
+                                detail="bank capture attestation is invalid or does not bind this snapshot") from exc
+    elif production:
+        raise HTTPException(status_code=422,
+                            detail="production capture requires a bank-signed attestation")
+    binding = capture_binding(
+        tenant_id=body.tenant_id, asset_ref=body.asset_ref,
+        source_id=body.source_id, source_type=body.source_type,
+        observed_at=observed_iso,
+        previous_observed_at=previous_iso,
+        authorization_ref=body.authorization_ref,
+        payload_digest=digest, previous_digest=previous_digest,
+        key_id=signer["key_id"] if signer else None,
+        issuer=signer["issuer"] if signer else None)
+    capture_id = capture_receipt_id(binding)
+    arguments = {"asset_id": body.asset_ref, "tenant_id": body.tenant_id,
+                 "source_id": body.source_id, "observed_at": body.observed_at,
+                 "interval_seconds": interval}
+    if body.source_type == "node_exporter":
+        result = translate_node_exporter(body.payload, previous=body.previous, **arguments)
+    elif body.source_type == "postgres_exporter":
+        result = translate_postgres_exporter(body.payload, previous=body.previous,
+                                             **arguments)
+    else:
+        if body.previous is not None:
+            raise HTTPException(status_code=422,
+                                detail="OTLP snapshots do not use paired counter translation")
+        result = translate_otlp(body.payload, **arguments)
+    accepted = duplicate = rejected = 0
+    identifiers: List[str] = []
+    repo = _repo(db)
+    existing = repo.get_capture_receipt(body.tenant_id, capture_id)
+    if existing is not None:
+        duplicate = len(result.metrics)
+    else:
+        try:
+            for metric in result.metrics:
+                prefix = "signed" if signer else "unverified"
+                metric = metric.model_copy(update={
+                    "evidence_id": f"{prefix}-capture:{capture_id}"})
+                stored = repo.insert_metric(metric, commit=False)
+                if stored["outcome"] == INSERTED:
+                    accepted += 1
+                    identifiers.append(metric.metric_id)
+                elif stored["outcome"] == DUPLICATE:
+                    duplicate += 1
+                else:
+                    rejected += 1
+            repo.add_capture_receipt(
+                tenant_id=body.tenant_id, receipt_id=capture_id,
+                asset_ref=body.asset_ref, source_id=body.source_id,
+                source_type=body.source_type, observed_at=body.observed_at,
+                previous_observed_at=body.previous_observed_at,
+                payload_sha256=digest, previous_sha256=previous_digest,
+                authorization_ref=body.authorization_ref,
+                provenance_state=("SIGNED_SOURCE_ASSERTION" if signer else
+                                  "UNVERIFIED_CAPTURE_ORIGIN"),
+                key_id=signer["key_id"] if signer else None,
+                issuer=signer["issuer"] if signer else None,
+                signature=(str(body.attestation["signature"])
+                           if body.attestation else None),
+                accepted_count=accepted, duplicate_count=duplicate,
+                rejected_count=rejected + result.refused_count)
+            db.commit()  # receipt and accepted metrics stand or fall together
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(status_code=409,
+                                detail="capture conflicts with a concurrently stored metric or receipt") from exc
+        except Exception:
+            db.rollback()
+            raise
+    refused = [
+        {"raw_family": (str(item.get("raw_family") or "")[:80]
+                        if re.fullmatch(r"[A-Za-z0-9_.:@-]{1,80}",
+                                        str(item.get("raw_family") or ""))
+                        else "UNSAFE_FAMILY"),
+         "reason": str(item.get("reason") or "refused")[:200]}
+        for item in result.refused[:50]
+    ]
+    return CaptureImportOut(
+        receipt_id=capture_id,
+        outcome=("ALREADY_RECORDED" if existing else
+                 "RECORDED" if accepted else "NO_METRICS_ACCEPTED"),
+        source_type=body.source_type, payload_sha256=digest,
+        provenance_state=("SIGNED_SOURCE_ASSERTION" if signer else
+                          "UNVERIFIED_CAPTURE_ORIGIN"),
+        signer=signer,
+        accepted=accepted, duplicate=duplicate,
+        rejected=rejected + result.refused_count,
+        metric_ids=identifiers[:50], metric_ids_truncated=len(identifiers) > 50,
+        refused=refused, refusals_truncated=result.refused_count > 50,
+        note=("bank-side read-only capture recorded (accepted counts above); the signed source assertion "
+              "binds these bytes under the bank-supplied public key, but does not "
+              "prove the exporter measured the bank or that coverage is complete"
+              if signer else
+              "development-only unsigned capture: caller-declared source and "
+              "digest do not authenticate the exporter or prove bank coverage")
+             + "; no network probe was run by the API; retain the original under bank custody")
+
+
+class CaptureReceiptOut(BaseModel):
+    receipt_id: str
+    tenant_id: str
+    asset_ref: str
+    source_id: str
+    source_type: str
+    observed_at: datetime
+    previous_observed_at: Optional[datetime] = None
+    payload_sha256: str
+    previous_sha256: Optional[str] = None
+    authorization_ref: str
+    provenance_state: str
+    key_id: Optional[str] = None
+    issuer: Optional[str] = None
+    signature: Optional[str] = None
+    accepted_count: int
+    duplicate_count: int
+    rejected_count: int
+    note: str
+
+
+@router.get("/captures/{receipt_id}", response_model=CaptureReceiptOut)
+def capture_receipt(receipt_id: str, tenant_id: str = Query(...),
+                    db: Session = Depends(get_db_session),
+                    user: str = Depends(get_current_user)) -> CaptureReceiptOut:
+    """Public signed receipt metadata; the raw bank capture remains at source."""
+    _require_metric_tenant(tenant_id)
+    row = _repo(db).get_capture_receipt(tenant_id, receipt_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="capture receipt not found in selected tenant")
+    return CaptureReceiptOut(
+        receipt_id=row.receipt_id, tenant_id=tenant_id,
+        asset_ref=row.asset_ref, source_id=row.source_id,
+        source_type=row.source_type, observed_at=row.observed_at,
+        previous_observed_at=row.previous_observed_at,
+        payload_sha256=row.payload_sha256, previous_sha256=row.previous_sha256,
+        authorization_ref=row.authorization_ref,
+        provenance_state=row.provenance_state,
+        key_id=row.key_id, issuer=row.issuer, signature=row.signature,
+        accepted_count=row.accepted_count, duplicate_count=row.duplicate_count,
+        rejected_count=row.rejected_count,
+        note="signature authenticates a source assertion under the bank's trust anchor; "
+             "the original raw capture remains under bank custody and is not stored here")
 
 
 @router.get("/health", response_model=HealthReport)
@@ -765,6 +1050,213 @@ def capacity(tenant_id: str = Query(...),
     return out
 
 
+class SimulationWindowOut(BaseModel):
+    received: int
+    valid: int
+    signed_capture_samples: int
+    partial_quality: int
+    missing_or_stale: int
+    p95: Optional[float] = None
+    metric_ids: List[str]
+    metric_ids_truncated: bool
+    evidence_refs_unverified: List[str]
+
+
+class SimulationChangeOut(BaseModel):
+    event_id: str
+    observed_at: str
+    event_type: str
+    evidence_refs_unverified: List[str]
+    provenance_note: str
+
+
+class SimulationPerformanceContextOut(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    schema_name: str = Field(alias="schema")
+    tenant_id: str
+    purpose: str
+    status: str
+    input_state: str
+    asset_ref: str
+    metric_name: str
+    unit: str
+    source_id: str
+    change_event_id: str
+    change: SimulationChangeOut
+    windows: Dict[str, str]
+    before: SimulationWindowOut
+    after: SimulationWindowOut
+    delta_p95: Optional[float] = None
+    delta_percent: Optional[float] = None
+    causation: str
+    benchmark: Dict[str, Any]
+    not_proven: List[str]
+
+
+@router.get("/simulation-context", response_model=SimulationPerformanceContextOut)
+def performance_simulation_context(
+        tenant_id: str = Query(...),
+        asset_ref: str = Query(..., min_length=1, max_length=120),
+        metric_name: str = Query(..., min_length=3, max_length=120),
+        source_id: str = Query(..., min_length=1, max_length=120),
+        change_event_id: str = Query(..., min_length=1, max_length=80),
+        before_start: datetime = Query(...), before_end: datetime = Query(...),
+        after_start: datetime = Query(...), after_end: datetime = Query(...),
+        baseline_benchmark_run_id: Optional[str] = Query(None),
+        candidate_benchmark_run_id: Optional[str] = Query(None),
+        db: Session = Depends(get_db_session),
+        user: str = Depends(get_current_user)) -> SimulationPerformanceContextOut:
+    """Read-only measured context to attach to a hypothetical Twin run.
+
+    One stored change, canonical asset, source and two windows are compared.
+    This does not select a migration plan, forecast future performance, probe
+    a bank endpoint, alter the estate or execute a remediation.
+    """
+    from api.routers.asset_detail import _resolve
+    from db.repositories.cryptolog_repository import CryptoLogRepository, row_to_event
+    from shared_models.cryptolog_events import event_hash, validate_event
+
+    _require_metric_tenant(tenant_id)
+    _resolve(db, asset_ref)  # a plausible prefix is never proof of an asset
+    try:
+        definition = definition_for(metric_name)
+    except KeyError as exc:
+        raise HTTPException(status_code=422,
+                            detail="metric is not registered in the performance taxonomy") from exc
+    if any(stamp.tzinfo is None for stamp in (
+            before_start, before_end, after_start, after_end)):
+        raise HTTPException(status_code=422, detail="measurement windows require timezone-aware timestamps")
+    try:
+        window_check(before_start, before_end)
+        window_check(after_start, after_end)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if before_end > after_start:
+        raise HTTPException(status_code=422, detail="before and after windows must not overlap")
+
+    stored = CryptoLogRepository(db).get_event(tenant_id, change_event_id)
+    if stored is None or stored.asset_id != asset_ref:
+        raise HTTPException(status_code=404, detail="recorded change not found for this asset and tenant")
+    event = row_to_event(stored)
+    try:
+        if event_hash(validate_event(event)) != stored.event_hash:
+            raise ValueError("stored event hash differs from the ledger")
+        observed = datetime.fromisoformat(str(
+            (event.get("observation") or {}).get("observed_at") or "").replace("Z", "+00:00"))
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=409,
+                            detail="recorded change identity or timestamp is unverifiable") from exc
+    if (stored.logging_kind != "CHANGE" or observed.tzinfo is None
+            or not before_end <= observed <= after_start):
+        raise HTTPException(status_code=422,
+                            detail="change must be a recorded CHANGE between the two windows")
+
+    repo = _repo(db)
+    before = repo.query_metrics(
+        tenant_id, asset_id=asset_ref, metric_name=metric_name,
+        source_id=source_id, window_start=before_start,
+        window_end=before_end, limit=1001)
+    after = repo.query_metrics(
+        tenant_id, asset_id=asset_ref, metric_name=metric_name,
+        source_id=source_id, window_start=after_start,
+        window_end=after_end, limit=1001)
+    if len(before) > 1000 or len(after) > 1000:
+        raise HTTPException(status_code=409,
+                            detail="measurement window exceeds 1000 samples; narrow the window")
+    if any(row.unit != definition.unit or row.metric_name != metric_name
+           for row in [*before, *after]):
+        raise HTTPException(status_code=409,
+                            detail="stored metric units disagree with the registered taxonomy")
+    receipts: Dict[str, Any] = {}
+    for row in [*before, *after]:
+        ref = row.evidence_id or ""
+        if not ref.startswith("signed-capture:"):
+            continue
+        receipt_id = ref.removeprefix("signed-capture:")
+        if not re.fullmatch(r"[0-9a-f]{64}", receipt_id):
+            raise HTTPException(status_code=409,
+                                detail="signed capture reference is malformed")
+        if receipt_id not in receipts:
+            candidate = repo.get_capture_receipt(tenant_id, receipt_id)
+            if candidate is None:
+                raise HTTPException(status_code=409,
+                                    detail="signed metric has no tenant-owned capture receipt")
+            captured = candidate.observed_at
+            previous = candidate.previous_observed_at
+            if captured.tzinfo is None:
+                captured = captured.replace(tzinfo=timezone.utc)
+            if previous is not None and previous.tzinfo is None:
+                previous = previous.replace(tzinfo=timezone.utc)
+            fields = {"tenant_id": tenant_id, "asset_ref": candidate.asset_ref,
+                      "source_id": candidate.source_id, "source_type": candidate.source_type,
+                      "observed_at": captured.astimezone(timezone.utc).isoformat(),
+                      "previous_observed_at": (previous.astimezone(timezone.utc).isoformat()
+                                               if previous else None),
+                      "authorization_ref": candidate.authorization_ref,
+                      "payload_digest": candidate.payload_sha256,
+                      "previous_digest": candidate.previous_sha256,
+                      "key_id": candidate.key_id, "issuer": candidate.issuer}
+            if capture_receipt_id(capture_binding(**fields)) != receipt_id:
+                raise HTTPException(status_code=409,
+                                    detail="capture receipt metadata differs from its committed identity")
+            trust_file = (os.environ.get("PERFORMANCE_CAPTURE_PUBLIC_KEY_FILE") or "").strip()
+            if not trust_file:
+                raise HTTPException(status_code=409,
+                                    detail="bank capture trust anchor unavailable for verification")
+            try:
+                verify_capture_attestation(
+                    attestation={"schema": CAPTURE_SCHEMA, "algorithm": "Ed25519",
+                                 "key_id": candidate.key_id, "issuer": candidate.issuer,
+                                 "signature": candidate.signature},
+                    public_key_path=Path(trust_file),
+                    **{k: v for k, v in fields.items()
+                       if k not in {"key_id", "issuer"}})
+            except (OSError, TypeError, ValueError) as exc:
+                raise HTTPException(status_code=409,
+                                    detail="capture receipt signature could not be verified") from exc
+            receipts[receipt_id] = candidate
+        receipt = receipts[receipt_id]
+        stamp = receipt.observed_at if receipt else None
+        if stamp is not None and stamp.tzinfo is None:
+            stamp = stamp.replace(tzinfo=timezone.utc)
+        if (receipt is None or receipt.provenance_state != "SIGNED_SOURCE_ASSERTION"
+                or not receipt.signature or receipt.asset_ref != asset_ref
+                or receipt.source_id != source_id or stamp != row.observed_at):
+            raise HTTPException(status_code=409,
+                                detail="signed metric has no matching tenant-owned capture receipt")
+    if get_settings().is_production and any(
+            not (row.evidence_id or "").startswith("signed-capture:")
+            for row in [*before, *after]):
+        raise HTTPException(status_code=409,
+                            detail="production simulation context requires bank-signed capture samples")
+    if bool(baseline_benchmark_run_id) != bool(candidate_benchmark_run_id):
+        raise HTTPException(status_code=422,
+                            detail="controlled benchmark runs must be supplied as a pair")
+    old_run = new_run = None
+    if baseline_benchmark_run_id:
+        old_run = repo.get_benchmark_run(tenant_id, baseline_benchmark_run_id)
+        new_run = repo.get_benchmark_run(tenant_id, candidate_benchmark_run_id)
+        if old_run is None or new_run is None:
+            raise HTTPException(status_code=404,
+                                detail="controlled benchmark run not found in selected tenant")
+    windows = {"before_start": before_start.isoformat(), "before_end": before_end.isoformat(),
+               "after_start": after_start.isoformat(), "after_end": after_end.isoformat()}
+    result = compare_bank_windows(
+        before, after, asset_ref=asset_ref, metric_name=metric_name,
+        unit=definition.unit, source_id=source_id, change_event_id=change_event_id,
+        windows=windows)
+    return SimulationPerformanceContextOut(**{
+        **result, "tenant_id": tenant_id,
+        "change": {"event_id": change_event_id,
+                   "observed_at": observed.isoformat(),
+                   "event_type": event["event_type"],
+                   "evidence_refs_unverified": list((event.get("evidence") or {}).get("evidence_ids") or [])[:20],
+                   "provenance_note": "stored event hash verified; producer authenticity and cited evidence remain unverified"},
+        "benchmark": compare_controlled_benchmarks(old_run, new_run),
+    })
+
+
 @router.get("/reports", response_model=InvestigationOut)
 def reports(tenant_id: str = Query(...),
             metric_name: str = Query(...),
@@ -883,7 +1375,16 @@ def infrastructure_workspace(
     links: Dict[str, Optional[str]] = {}
     for asset_id in sorted(asset_ids):
         if asset_id.split(":", 1)[0] in ("app", "crypto", "hw", "net", "vendor") and ":" in asset_id:
-            links[asset_id] = asset_id  # already a canonical ref
+            from api.routers.asset_detail import _resolve
+
+            try:
+                _resolve(db, asset_id)
+            except HTTPException as exc:
+                if exc.status_code != 404:
+                    raise
+                links[asset_id] = None
+            else:
+                links[asset_id] = asset_id
             continue
         hw = db.execute(
             select(HardwareAsset).where(HardwareAsset.asset_id == asset_id)

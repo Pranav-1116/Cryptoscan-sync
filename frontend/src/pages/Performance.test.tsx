@@ -126,6 +126,26 @@ describe("ZELNX Performance Intelligence (§7)", () => {
     expect(screen.getByText(/forecast, not fact/)).toBeInTheDocument();
   });
 
+  it("does not draw forecast present when the backend lacks a capacity ceiling", async () => {
+    const fetchSpy = mockFetch({
+      "/api/v1/performance/capacity": [{
+        metric_name: "storage.used_bytes", status: "no-capacity",
+        method: "none", sample_count: 5,
+        estimated_seconds_to_exhaustion: null,
+        disclaimer: "capacity ceiling not supplied", note: "no capacity value",
+      }],
+    });
+    renderPage();
+    setTenant();
+    selectView("capacity");
+    expect(await screen.findByText("storage.used_bytes (no-capacity)")).toBeInTheDocument();
+    expect(screen.getAllByText("not derivable").length).toBeGreaterThan(0);
+    expect(screen.queryByText("forecast present")).not.toBeInTheDocument();
+    const requests = fetchSpy.mock.calls.map(([url]) => String(url)).filter((url) => url.includes("/performance/capacity"));
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests.every((url) => !url.includes("capacity_value"))).toBe(true);
+  });
+
   it("records benchmarks as controlled benchmark performance, never production", async () => {
     const fetchSpy = mockFetch({
       "/api/v1/performance/overview": {

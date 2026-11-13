@@ -172,7 +172,7 @@ def test_corrections_supersede_but_never_rewrite_the_original(api):
                                processing={"deduplication_key":
                                            "nbom:gateway:tls"}),
                            "reason": "severity understated after triage",
-                           "actor": "analyst-7",
+                           "actor": "auditor",
                            "evidence_ids": ["ev-triage"]})
     assert fixed.status_code == 201, fixed.text
     correction = fixed.json()["correction"]
@@ -184,11 +184,11 @@ def test_corrections_supersede_but_never_rewrite_the_original(api):
 
     listing = api.get(f"/api/v1/cryptolog/events/{event_id}/corrections").json()
     assert listing["returned"] == 1
-    assert listing["corrections"][0]["actor"] == "analyst-7"
+    assert listing["corrections"][0]["actor"] == "auditor"
 
     no_reason = api.post(f"/api/v1/cryptolog/events/{event_id}/corrections",
                          json={"corrected_event": _event_dict(),
-                               "reason": "", "actor": "x",
+                               "reason": "", "actor": "auditor",
                                "evidence_ids": ["e"]})
     assert no_reason.status_code == 422
 
@@ -222,20 +222,22 @@ def test_alert_evaluation_is_deterministic_and_never_confirms(api):
     alerts = res.json()["alerts"]
     assert [a["rule_id"] for a in alerts] == ["CL-002"]
     alert = alerts[0]
-    assert alert["severity"] == "CRITICAL"
+    assert alert["severity"] == "HIGH", "unverified caller factors cannot raise the rule severity"
+    assert alert["severity_basis"]["unapplied_operator_assessments"] is True
+    assert "did not change the rule severity" in alert["what_is_not_proven"]
     assert alert["lifecycle"]["status"] == "OPEN"
     assert "never automatically becomes a confirmed compromise" \
         in alert["what_is_not_proven"]
 
     refused = api.post("/api/v1/cryptolog/alerts/transition", json={
-        "alert": alert, "action": "RESOLVE", "actor": "ciso-1",
+        "alert": alert, "action": "RESOLVE", "actor": "auditor",
         "at": AS_OF, "note": "it is a compromise",
         "resolution": "CONFIRMED_INCIDENT"})
     assert refused.status_code == 422
     assert "never declares a compromise" in refused.json()["detail"]
 
     confirmed = api.post("/api/v1/cryptolog/alerts/transition", json={
-        "alert": alert, "action": "RESOLVE", "actor": "ciso-1",
+        "alert": alert, "action": "RESOLVE", "actor": "auditor",
         "at": AS_OF, "note": "bank SOC opened incident inc-77",
         "resolution": "CONFIRMED_INCIDENT",
         "evidence_ids": ["ev-rc4", "inc-77"]})

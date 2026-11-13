@@ -46,7 +46,7 @@ jobs:
       - id: suites
         name: Discover all non-scanner service and shared suites
         run: |
-          matrix="$(python scripts/ci_suites.py --non-scanners)"
+          matrix="$(python scripts/ci_suites.py --non-scanners --exclude-api)"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   backend:
@@ -81,14 +81,8 @@ jobs:
             requirements.lock.txt
       - run: python -m pip install -r requirements.txt -c requirements.lock.txt
       - name: Build PYTHONPATH from every service and shared package
-        env:
-          TEST_SUITE: ${{ matrix.suite }}
         run: |
           packages="$(find services shared -mindepth 1 -maxdepth 1 -type d | tr '\n' ':')"
-          # API tests import sibling fixtures and operator scripts as modules.
-          if [ "$TEST_SUITE" = "services/api/tests" ]; then
-            packages="${packages}${PWD}/services/api/tests/unit:${PWD}/scripts"
-          fi
           printf 'PYTHONPATH=%s\n' "$packages" >> "$GITHUB_ENV"
       - name: Run ${{ matrix.suite }} with JUnit
         run: |
@@ -103,6 +97,163 @@ jobs:
         with:
           name: backend-${{ strategy.job-index }}
           path: test-results/backend.xml
+          if-no-files-found: error
+          retention-days: 14
+
+  api-tests:
+    name: API / shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    env:
+      ENVIRONMENT: test
+      GITHUB_WEBHOOK_SECRET: test-webhook-secret-abc123
+      SECRET_KEY: test-secret-key-for-sessions-min-32-chars
+      CRYPTOSCAN_CVE_LIVE: "0"
+      CRYPTOSCAN_TLS_LIVE: "0"
+      CRYPTOSCAN_CLOUD_LIVE: "0"
+      CRYPTOSCAN_CLOUD_SUBMIT: "0"
+      CRYPTOSCAN_CBOM_SIGN: "0"
+      CRYPTOSCAN_HOME: /tmp/cryptoscan-home
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements.lock.txt
+      - run: python -m pip install -r requirements.txt -c requirements.lock.txt
+      - name: Import every service plus API test helpers
+        run: |
+          packages="$(find "$PWD/services" "$PWD/shared" -mindepth 1 -maxdepth 1 -type d | tr '\n' ':')"
+          printf 'PYTHONPATH=%s\n' "${packages}${PWD}/services/api/tests/unit:${PWD}/scripts" >> "$GITHUB_ENV"
+      - name: Run every API module in this shard with JUnit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test-results
+          python -I scripts/ci_suites.py --api-shard '${{ matrix.shard }}' --api-shards 8 > test-results/api-files.txt
+          mapfile -t files < test-results/api-files.txt
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo 'Empty API test shard is not proof' >&2
+            exit 1
+          fi
+          python -m pytest -q -p no:xdist -m 'not live' \
+            --disable-socket --allow-hosts=127.0.0.1,::1,localhost --allow-unix-socket \
+            --junitxml=test-results/api.xml "${files[@]}"
+          python scripts/check_junit.py --allow-skips test-results/api.xml
+      - name: Retain API shard manifest and JUnit
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: api-shard-${{ matrix.shard }}
+          path: |
+            test-results/api-files.txt
+            test-results/api.xml
+          if-no-files-found: error
+          retention-days: 14
+
+  tenant-security-contract:
+    name: tenant and authorization contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ENVIRONMENT: test
+      GITHUB_WEBHOOK_SECRET: test-webhook-secret-abc123
+      SECRET_KEY: test-secret-key-for-sessions-min-32-chars
+      CRYPTOSCAN_HOME: /tmp/cryptoscan-home
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements.lock.txt
+      - run: python -m pip install -r requirements.txt -c requirements.lock.txt
+      - name: Build PYTHONPATH for authenticated API tests
+        run: |
+          packages="$(find "$PWD/services" "$PWD/shared" -mindepth 1 -maxdepth 1 -type d | tr '\n' ':')"
+          printf 'PYTHONPATH=%s\n' "${packages}${PWD}/services/api/tests/unit:${PWD}/scripts" >> "$GITHUB_ENV"
+      - name: Authenticated tenant isolation and authorization
+        run: |
+          mkdir -p test-results
+          python -m pytest -q -p no:xdist -m 'not live' \
+            --disable-socket --allow-hosts=127.0.0.1,::1,localhost --allow-unix-socket \
+            --junitxml=test-results/tenant-security.xml \
+            services/api/tests/security/test_tenant_resolution_rules.py \
+            services/api/tests/security/test_cross_tenant_adversarial.py \
+            services/api/tests/unit/test_tenant_isolation_os_intelligence.py \
+            services/database/tests/unit/test_tenant_isolation.py
+          python scripts/check_junit.py test-results/tenant-security.xml
+      - name: Retain authenticated tenant contract
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: tenant-security-contract
+          path: test-results/tenant-security.xml
+          if-no-files-found: error
+          retention-days: 14
+
+  performance-contract:
+    name: signed capture and Twin simulation context
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ENVIRONMENT: test
+      GITHUB_WEBHOOK_SECRET: test-webhook-secret-abc123
+      SECRET_KEY: test-secret-key-for-sessions-min-32-chars
+      CRYPTOSCAN_HOME: /tmp/cryptoscan-home
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements.lock.txt
+      - run: python -m pip install -r requirements.txt -c requirements.lock.txt
+      - name: Build PYTHONPATH for Performance tests
+        run: |
+          packages="$(find "$PWD/services" "$PWD/shared" -mindepth 1 -maxdepth 1 -type d | tr '\n' ':')"
+          printf 'PYTHONPATH=%s\n' "${packages}${PWD}/services/api/tests/unit:${PWD}/scripts" >> "$GITHUB_ENV"
+      - name: Signed capture, metric integrity, and simulation input
+        run: |
+          mkdir -p test-results
+          python -m pytest -q -p no:xdist -m 'not live' \
+            --disable-socket --allow-hosts=127.0.0.1,::1,localhost --allow-unix-socket \
+            --junitxml=test-results/performance.xml \
+            shared/shared_models/tests/test_performance_adapters.py \
+            shared/shared_models/tests/test_performance_engine.py \
+            shared/shared_models/tests/test_performance_simulation.py \
+            services/api/tests/test_performance_api.py \
+            services/api/tests/test_performance_engine_api.py \
+            services/api/tests/test_performance_registries_api.py \
+            services/api/tests/test_performance_simulation_api.py \
+            services/api/tests/integration/test_performance_capture_to_simulation.py \
+            services/api/tests/unit/test_performance_ui.py \
+            services/api/tests/unit/test_estate_simulation_workspace.py
+          python scripts/check_junit.py test-results/performance.xml
+      - name: Retain Performance contract
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: performance-contract
+          path: test-results/performance.xml
           if-no-files-found: error
           retention-days: 14
 
@@ -202,7 +353,7 @@ jobs:
   ci-required:
     name: ci-required
     if: always()
-    needs: [lint, discover, backend, scanner-offline, db-migration, images-build-only, frontend, prod-config-guard]
+    needs: [lint, discover, backend, api-tests, tenant-security-contract, performance-contract, scanner-offline, db-migration, images-build-only, frontend, prod-config-guard]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

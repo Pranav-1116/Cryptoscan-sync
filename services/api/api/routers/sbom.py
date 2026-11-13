@@ -14,6 +14,7 @@ a durable monitor observation naming the same algorithm).
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from hashlib import sha256
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -26,10 +27,10 @@ from api.software_inventory import latest_scan_software
 from db.models.binary_scan import BinaryScanRecord
 from db.models.container_scan import ContainerScan
 from db.models.crypto_live import CryptoLiveState
+from db.models.scan import Scan
 from db.models.software_supply_chain import ReleaseSbomBinding
 from db.models.technology_bom_snapshot import TechnologyBomSnapshot
 from db.models.vulnerability import Vulnerability
-from db.tenancy import current_tenant
 
 router = APIRouter(prefix="/sbom", tags=["sbom"])
 
@@ -43,11 +44,21 @@ SECTION_NAMES = (
 # ─────────────────────────────────────────────────────────── helpers ──
 
 def _inventory(db: Session) -> dict[str, Any]:
-    return latest_scan_software(db)
+    inventory = latest_scan_software(db)
+    scan_id = inventory.get("scan_id")
+    if scan_id:
+        scan = db.execute(select(Scan).where(Scan.id == scan_id)).scalars().first()
+        inventory["tenant_id"] = scan.tenant_id if scan else None
+    return inventory
 
 
 def _rows(inventory: dict[str, Any]) -> list[dict[str, Any]]:
     return [r for r in (inventory.get("components") or []) if isinstance(r, dict)]
+
+
+def _canonical_ref(scan_id: str, coordinate: str) -> str:
+    """Route-safe, scan-qualified identity for a stored SBOM component."""
+    return f"sbom:{scan_id}:{sha256(coordinate.encode('utf-8')).hexdigest()}"
 
 
 def _purl(row: dict[str, Any]) -> Optional[str]:
@@ -82,28 +93,35 @@ def _vuln_index(db: Session) -> dict[str, list[dict[str, Any]]]:
     return index
 
 
-def _runtime_algorithms(db: Session) -> dict[str, list[str]]:
-    """Algorithm → twin assets whose durable monitor observation named it.
+def _runtime_algorithms(db: Session) -> dict[tuple[str | None, str], set[str]]:
+    """Directly attributed component observations; algorithm alone is not a link.
 
-    Only monitor-observed state counts as runtime evidence; declarations never
-    promote themselves here.
+    A monitor's algorithm-only state cannot establish operation on every SBOM
+    package with the same name. A collector must cite the exact scan component
+    using the scan-qualified ``sbom:<scan_id>:<coordinate-digest>`` reference
+    in the same tenant.
     """
-    out: dict[str, list[str]] = defaultdict(list)
+    out: dict[tuple[str | None, str], set[str]] = defaultdict(set)
     for state in db.execute(select(CryptoLiveState)).scalars().all():
-        names = state.algorithms if isinstance(state.algorithms, list) else []
-        for name in names:
+        ref = str(state.asset_id or "")
+        if not ref.startswith("sbom:") or state.last_event != "MONITOR_OBSERVED":
+            continue
+        for name in state.algorithms if isinstance(state.algorithms, list) else []:
             key = str(name).strip().lower()
             if key:
-                out[key].append(str(state.asset_id))
+                out[(state.tenant_id, ref)].add(key)
     return out
 
 
-def _usage_state(row: dict[str, Any], runtime: dict[str, list[str]]) -> list[dict[str, Any]]:
+def _usage_state(row: dict[str, Any], runtime: dict[tuple[str | None, str], set[str]],
+                 *, scan_id: str, tenant_id: str | None) -> list[dict[str, Any]]:
     origin = str(row.get("origin") or "")
     out = []
+    ref = _canonical_ref(scan_id, str(row.get("coordinate") or ""))
+    linked = runtime.get((tenant_id, ref), set())
     for algo in row.get("algorithms") or []:
         key = str(algo).strip().lower()
-        observed_by = runtime.get(key) or []
+        observed_by = [ref] if key in linked else []
         if observed_by:
             state, evidence = "operation_observed", observed_by
         elif origin == "MANIFEST_DECLARED":
@@ -117,7 +135,7 @@ def _usage_state(row: dict[str, Any], runtime: dict[str, list[str]]) -> list[dic
 
 
 def _inventory_row(row: dict[str, Any], vulns: dict[str, list[dict[str, Any]]],
-                   runtime: dict[str, list[str]], scan_at: Any) -> dict[str, Any]:
+                   scan_at: Any, scan_id: str) -> dict[str, Any]:
     matched = vulns.get(str(row.get("name") or "").lower()) or []
     severity = None
     if matched:
@@ -125,6 +143,7 @@ def _inventory_row(row: dict[str, Any], vulns: dict[str, list[dict[str, Any]]],
         severity = min(matched, key=lambda v: order.get(str(v["severity"]).upper(), 9))["severity"]
     return {
         "coordinate": row.get("coordinate"),
+        "asset_ref": _canonical_ref(scan_id, str(row.get("coordinate") or "")),
         "component_type": row.get("component_type"),
         "name": row.get("name"),
         "version": row.get("version"),
@@ -174,6 +193,7 @@ class RowEvidence(BaseModel):
 
 class SbomRow(BaseModel):
     coordinate: str
+    asset_ref: str
     component_type: Optional[str] = None
     name: str
     version: Optional[str] = None
@@ -411,10 +431,10 @@ def sbom_components(
     inventory = _inventory(db)
     rows = _rows(inventory)
     vulns = _vuln_index(db)
-    runtime = _runtime_algorithms(db)
     raw = inventory.get("completed_at")
     scan_at = raw.isoformat() if hasattr(raw, "isoformat") else raw
-    out = [_inventory_row(r, vulns, runtime, scan_at) for r in rows]
+    out = [_inventory_row(r, vulns, scan_at,
+                          str(inventory.get("scan_id") or "")) for r in rows]
     if q:
         needle = q.lower()
         out = [r for r in out if needle in str(r["name"]).lower()
@@ -460,8 +480,11 @@ def sbom_component_detail(
     children = {e.get("target") for e in direct}
     transitive = [e for e in edges if e.get("source") in children]
     return {
-        "component": _inventory_row(match, vulns, runtime, scan_at),
-        "usage_states": _usage_state(match, runtime),
+        "component": _inventory_row(match, vulns, scan_at,
+                                    str(inventory.get("scan_id") or "")),
+        "usage_states": _usage_state(match, runtime,
+                                      scan_id=str(inventory.get("scan_id") or ""),
+                                      tenant_id=inventory.get("tenant_id")),
         "supplier": match.get("supplier"),  # None where scanners did not collect it
         "dependencies": {
             "direct": direct,

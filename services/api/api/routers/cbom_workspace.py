@@ -98,6 +98,24 @@ def _usage_state(algorithm: str, runtime_algos: set[str], *, from_code: bool,
     return {"usage_state": "capability_detected", "basis": "capability record only"}
 
 
+def _runtime_by_asset(db: Session) -> dict[tuple[str | None, str], set[str]]:
+    """Only an exact canonical asset reference can establish usage on it.
+
+    Algorithm-only monitor states are useful global observations, but say
+    nothing about which code location or component performed the operation.
+    """
+    out: dict[tuple[str | None, str], set[str]] = defaultdict(set)
+    for state in db.execute(select(CryptoLiveState)).scalars().all():
+        ref = str(state.asset_id or "")
+        if not ref.startswith(("crypto:", "fact:")) or state.last_event != "MONITOR_OBSERVED":
+            continue
+        for algorithm in state.algorithms if isinstance(state.algorithms, list) else []:
+            key = str(algorithm).strip().upper()
+            if key:
+                out[(state.tenant_id, ref)].add(key)
+    return out
+
+
 def _runtime_algorithms(db: Session) -> set[str]:
     """Algorithms named by durable monitor observations (uppercased).
 
@@ -123,8 +141,11 @@ def _conflict_locations(db: Session) -> set[str]:
     return {loc for loc, algos in by_loc.items() if len({a.split("-")[0] for a in algos if a}) > 1}
 
 
-def _asset_row(row: CryptoAsset, runtime_algos: set[str], conflicts: set[str]) -> dict[str, Any]:
+def _asset_row(row: CryptoAsset,
+               runtime_by_asset: dict[tuple[str | None, str], set[str]],
+               conflicts: set[str]) -> dict[str, Any]:
     libraries = [str(x) for x in (row.libraries or []) if x]
+    runtime_algos = runtime_by_asset.get((row.tenant_id, f"crypto:{row.id}"), set())
     usage = _usage_state(str(row.algorithm or ""), runtime_algos,
                          from_code=True, from_manifest=False)
     evidence_status, evidence_basis = _evidence_status(
@@ -405,6 +426,7 @@ def cbom_workspace_overview(user: str = Depends(get_current_user), db: Session =
     facts = db.execute(select(CryptographicFact)).scalars().all()
     certs = db.execute(select(Certificate)).scalars().all()
     runtime = _runtime_algorithms(db)
+    runtime_by_asset = _runtime_by_asset(db)
     protocols = db.execute(select(RuntimeFinding)).scalars().all()
     waves = db.execute(select(PqcMigrationWave)).scalars().all()
     conflicts = _conflict_locations(db)
@@ -414,11 +436,7 @@ def cbom_workspace_overview(user: str = Depends(get_current_user), db: Session =
     pqc = Counter(_pqc_family(str(a.algorithm or "")) for a in assets)
     evidence = Counter()
     for a in assets:
-        status, _ = _evidence_status(
-            runtime_seen=str(a.algorithm or "").upper() in runtime,
-            scanner_bounded=bool(a.scanner_ids),
-            conflicts=str(a.file_path) in conflicts,
-            observation_count=1 if str(a.algorithm or "").upper() in runtime else 0)
+        status = _asset_row(a, runtime_by_asset, conflicts)["evidence_status"]
         evidence[status] += 1
     proto = Counter("TLS" if (r.tls_version or "").startswith("TLS") else
                     "SSH" if "ssh" in str(r.extra or {}).lower() or "SSH" in str(r.algorithm or "") else
@@ -461,7 +479,7 @@ def cbom_workspace_assets(
     user: str = Depends(get_current_user), db: Session = Depends(get_db_session),
 ):
     assets = db.execute(select(CryptoAsset)).scalars().all()
-    runtime = _runtime_algorithms(db)
+    runtime = _runtime_by_asset(db)
     conflicts = _conflict_locations(db)
     out = [_asset_row(a, runtime, conflicts) for a in assets]
     if q:
@@ -489,7 +507,7 @@ def cbom_workspace_asset_detail(
     asset = db.execute(select(CryptoAsset).where(CryptoAsset.id == asset_id)).scalars().first()
     if asset is None:
         raise HTTPException(status_code=404, detail="crypto asset not in the stored inventory")
-    runtime = _runtime_algorithms(db)
+    runtime = _runtime_by_asset(db)
     conflicts = _conflict_locations(db)
     row = _asset_row(asset, runtime, conflicts)
     evidence_rows = db.execute(select(CryptoAssetEvidence).where(
@@ -525,7 +543,7 @@ def cbom_workspace_asset_detail(
 @router.get("/algorithms", response_model=AlgorithmIntelligence)
 def cbom_workspace_algorithms(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     assets = db.execute(select(CryptoAsset)).scalars().all()
-    runtime = _runtime_algorithms(db)
+    runtime = _runtime_by_asset(db)
     conflicts = _conflict_locations(db)
     by_algo: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for a in assets:
@@ -548,7 +566,6 @@ def cbom_workspace_algorithms(user: str = Depends(get_current_user), db: Session
 @router.get("/libraries", response_model=LibraryInventory)
 def cbom_workspace_libraries(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     assets = db.execute(select(CryptoAsset)).scalars().all()
-    runtime = _runtime_algorithms(db)
     seen: dict[str, dict[str, Any]] = {}
     for a in assets:
         for lib in (a.libraries or []):
@@ -560,8 +577,6 @@ def cbom_workspace_libraries(user: str = Depends(get_current_user), db: Session 
     rows = []
     for name in sorted(seen):
         entry = seen[name]
-        usage = _usage_state(sorted(entry["algorithms"])[0] if entry["algorithms"] else "",
-                             runtime, from_code=True, from_manifest=False)
         # a LIBRARY capability is at most capability_detected; the asset rows carry
         # the code-level configuration state, the library row never upgrades it
         rows.append({
@@ -620,11 +635,12 @@ def cbom_workspace_keys(user: str = Depends(get_current_user), db: Session = Dep
 def cbom_workspace_operations(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     assets = db.execute(select(CryptoAsset)).scalars().all()
     facts = db.execute(select(CryptographicFact)).scalars().all()
-    runtime = _runtime_algorithms(db)
+    runtime = _runtime_by_asset(db)
     static_ops = Counter(str(a.purpose or "UNKNOWN") for a in assets)
     observed = Counter()
     for f in facts:
-        if str(f.algorithm or "").upper() in runtime:
+        linked = runtime.get((f.tenant_id, f"fact:{f.id}"), set())
+        if str(f.algorithm or "").upper() in linked:
             observed[str(f.purpose or "UNKNOWN")] += int(f.observation_count or 0)
     rows = []
     for op in sorted(set(static_ops) | set(observed)):
@@ -632,8 +648,8 @@ def cbom_workspace_operations(user: str = Depends(get_current_user), db: Session
             state, basis = ("operation_observed",
                             "runtime observations recorded operations naming this purpose")
         elif static_ops.get(op):
-            state, basis = _usage_state(op, runtime, from_code=True, from_manifest=False)["usage_state"], \
-                "code references this purpose; no operation observed"
+            state, basis = "configuration_observed", \
+                "code references this purpose; no operation attributed to it"
         else:
             state, basis = "unknown", "records do not say"
         rows.append({"operation": op, "static_references": static_ops.get(op, 0),
@@ -711,12 +727,13 @@ def cbom_workspace_dependencies(user: str = Depends(get_current_user), db: Sessi
 @router.get("/evidence", response_model=EvidenceInventory)
 def cbom_workspace_evidence(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     facts = db.execute(select(CryptographicFact)).scalars().all()
-    runtime = _runtime_algorithms(db)
+    runtime = _runtime_by_asset(db)
     rows = []
     for f in facts:
         scanners = [str(s) for s in (f.scanners or []) if s]
+        linked = runtime.get((f.tenant_id, f"fact:{f.id}"), set())
         status, basis = _evidence_status(
-            runtime_seen=str(f.algorithm or "").upper() in runtime,
+            runtime_seen=str(f.algorithm or "").upper() in linked,
             scanner_bounded=bool(scanners),
             conflicts=False,
             observation_count=int(f.observation_count or 0),

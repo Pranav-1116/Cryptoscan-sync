@@ -117,8 +117,6 @@ def _lifecycle(asset: HardwareAsset, firmware: Dict[str, Any]) -> tuple[str, str
 
 def _asset_row(asset: HardwareAsset) -> dict[str, Any]:
     firmware = _project(asset.firmware, _SAFE_FIRMWARE)
-    tpm = _project(asset.tpm, _SAFE_TPM)
-    hsm = _project(asset.hsm, _SAFE_HSM)
     caps = _project(asset.capabilities, _SAFE_CAPS)
     crypto = _project(asset.crypto_capabilities, _SAFE_CAPS | {"key_size", "key_sizes", "curves", "modes"})
     life, life_basis = _lifecycle(asset, firmware)

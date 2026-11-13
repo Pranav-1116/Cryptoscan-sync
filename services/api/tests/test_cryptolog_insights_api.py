@@ -116,6 +116,21 @@ def test_timeline_window_filter_is_honest_about_the_window(api):
     assert empty["event_count"] == 2, "the unwindowed timeline counts everything recorded"
 
 
+def test_asset_timeline_does_not_include_other_assets(api):
+    for ident, asset in (("event-a", "pay-api"), ("event-b", "clearing-api")):
+        assert api.post("/api/v1/cryptolog/events", json=_event_dict(
+            event_id=ident, asset_id=asset)).status_code == 201
+    all_assets = api.get("/api/v1/cryptolog/timeline").json()
+    scoped = api.get("/api/v1/cryptolog/timeline?asset_id=pay-api").json()
+    assert all_assets["event_count"] == 2
+    assert scoped["event_count"] == 1
+    assert scoped["window"]["asset_id"] == "pay-api"
+    assert "this asset" in scoped["note"]
+    absent = api.get("/api/v1/cryptolog/timeline?asset_id=not-recorded").json()
+    assert absent["event_count"] == 0
+    assert absent["buckets"] == []
+
+
 def test_overview_counts_only_recorded_events_and_names_them(api):
     api.post("/api/v1/cryptolog/events", json=_event_dict(event_id="event_001"))
     api.post("/api/v1/cryptolog/events", json=_event_dict(

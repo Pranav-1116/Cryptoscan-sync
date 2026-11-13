@@ -337,8 +337,10 @@ Rules that govern the presentation:
   does not prove that the TLS change caused the latency increase. Other
   possible causes still need investigation.
 
-This also supports PQC migration planning: benchmark approved
-implementations and compare their performance in a controlled
+This supports PQC migration **as measured context inside the Digital Twin
+simulation**. The Performance Engine never selects a migration wave or
+predicts the future candidate's production latency from historical data.
+Benchmark approved implementations and compare their performance in a controlled
 environment — RSA versus ML-DSA signing and verification; ECDH versus
 ML-KEM key establishment; classical versus supported hybrid TLS
 negotiation; different HSM providers and firmware versions; different

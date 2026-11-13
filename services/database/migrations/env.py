@@ -45,7 +45,7 @@ from db.models.performance import (  # noqa: F401
     PerformanceAggregate, PerformanceAlert, PerformanceAsset,
     PerformanceBaseline, PerformanceBenchmarkRun,
     PerformanceCapacityForecast, PerformanceCollectorHealth,
-    PerformanceIncident, PerformanceMetric,
+    PerformanceCaptureReceipt, PerformanceIncident, PerformanceMetric,
     PerformanceMetricDefinition, PerformanceSloPolicy,
 )
 

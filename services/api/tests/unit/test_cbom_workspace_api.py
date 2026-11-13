@@ -152,14 +152,30 @@ def test_the_three_usage_states_are_never_equated(client, session):
     # the code reference is configured, not observed
     assert states["RSA"] == "configuration_observed"
     assert states["ML-KEM"] == "configuration_observed"
-    # with runtime evidence naming the algorithm, and only then, operation
+    # An algorithm-only observation does not identify the RSA code location.
     session.add(CryptoLiveState(
         asset_id="twin:crypto:payments-1", algorithms=["RSA-2048-SIGN", "RSA"]))
     session.commit()
     assets = client.get("/api/v1/cbom/workspace/assets").json()["rows"]
-    states = {r["algorithm"]: r["usage"]["usage_state"] for r in assets}
-    assert states["RSA"] == "operation_observed"
-    assert states["ML-KEM"] == "configuration_observed"
+    assert next(r for r in assets if r["algorithm"] == "RSA")["usage"]["usage_state"] == \
+        "configuration_observed"
+
+    rsa = session.query(CryptoAsset).filter_by(file_path="svc/payments/signer.py").one()
+    session.add(CryptoAsset(algorithm="RSA", purpose="sign",
+                            file_path="svc/other/signer.py", line_number=1,
+                            scanner_ids=["tree-sitter"]))
+    session.add(CryptoLiveState(
+        asset_id=f"crypto:{rsa.id}", algorithms=["RSA"],
+        last_event="MONITOR_OBSERVED"))
+    session.commit()
+    assets = client.get("/api/v1/cbom/workspace/assets").json()["rows"]
+    by_location = {r["file_path"]: r for r in assets}
+    assert by_location["svc/payments/signer.py"]["usage"]["usage_state"] == \
+        "operation_observed"
+    assert by_location["svc/other/signer.py"]["usage"]["usage_state"] == \
+        "configuration_observed"
+    assert next(r for r in assets if r["algorithm"] == "ML-KEM")["usage"]["usage_state"] == \
+        "configuration_observed"
 
 
 def test_evidence_vocabulary_is_one_set_and_conflicts_are_kept(client, session):

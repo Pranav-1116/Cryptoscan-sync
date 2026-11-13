@@ -43,9 +43,18 @@ export const CAPACITY_FEATURES: Array<{ key: string; label: string; probes: stri
 export function featureState(rows: CapacityForecastRow[], feature: { probes: string[] }): {
   state: string; metrics: string[];
 } {
-  const metrics = rows.filter((r) =>
-    feature.probes.some((probe) => r.metric_name.startsWith(probe))).map((r) => r.metric_name);
-  return { state: metrics.length ? "forecast present" : "not derivable", metrics };
+  const matched = rows.filter((r) =>
+    feature.probes.some((probe) => r.metric_name.startsWith(probe)));
+  const forecast = matched.some((r) => r.status === "forecast"
+    && r.estimated_seconds_to_exhaustion != null
+    && Number.isFinite(r.estimated_seconds_to_exhaustion));
+  return {
+    state: forecast ? "forecast present" : "not derivable",
+    metrics: matched.map((r) => r.status === "forecast"
+      && r.estimated_seconds_to_exhaustion != null
+      && Number.isFinite(r.estimated_seconds_to_exhaustion)
+      ? r.metric_name : `${r.metric_name} (${r.status})`),
+  };
 }
 
 /** The brief's five questions, answered from the forecast rows only. */

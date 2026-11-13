@@ -425,6 +425,7 @@ class CryptoLogAlertRepository:
     def events_in_range(self, *, tenant_id: Optional[str] = None,
                         start_occurred: Optional[str] = None,
                         end_occurred: Optional[str] = None,
+                        asset_id: Optional[str] = None,
                         max_events: Optional[int] = None) -> list[dict[str, Any]]:
         """Stored events in ledger order; refuse an oversized auditor window.
 
@@ -435,6 +436,8 @@ class CryptoLogAlertRepository:
         query = self.db.query(CryptoLogEvent)
         if tenant_id:
             query = query.filter(CryptoLogEvent.tenant_id == tenant_id)
+        if asset_id:
+            query = query.filter(CryptoLogEvent.asset_id == asset_id)
         if max_events is not None and max_events <= 0:
             raise ValueError("max_events must be positive")
         events: list[dict[str, Any]] = []

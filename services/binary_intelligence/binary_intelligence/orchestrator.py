@@ -1,4 +1,8 @@
-"""Production scan orchestration (§12 async jobs, §13 resources).
+"""Development-only process-local scan orchestration (§12, §13).
+
+This queue is intentionally NOT durable: restarting its API process loses
+pending artifacts and another replica cannot claim them. The production API
+refuses its async endpoints until a durable, protected artifact handoff exists.
 
 A bounded job queue with backpressure — under load the offer is refused
 and COUNTED, never silently dropped (§9/§14). A worker processes one
@@ -170,6 +174,9 @@ class ScanJobQueue:
                 "max_seconds_per_job": self.limits.max_seconds_per_job,
                 "max_queue_depth": self.limits.max_queue_depth,
             },
-            "note": "bounded queue with backpressure — refusals are "
-                    "counted and reported, never silently dropped (§14)",
+            "backend": "process_local_development_only",
+            "durable": False,
+            "note": "development-only bounded queue with backpressure — "
+                    "refusals are counted and never silently dropped, but "
+                    "pending jobs do not survive restart or cross replicas (§14)",
         }

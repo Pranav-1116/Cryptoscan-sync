@@ -3,7 +3,7 @@
    works by — never copy shown to the operator. The stream counts what the
    store returned: never an invented total, never events invented from
    silence. */
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { mockFetch } from "../test/setup";
@@ -65,6 +65,18 @@ describe("Crypto Event Stream", () => {
     const rows = screen.getAllByTestId("stream-row-time");
     expect(rows[0]).toHaveTextContent("2026-11-12T11:30:00Z");
     expect(rows[1]).toHaveTextContent("2026-11-12T10:00:00Z");
+  });
+
+  it("holds a pending read apart from a genuinely empty stream", async () => {
+    let release!: (value: unknown) => void;
+    mockFetch({
+      "/api/v1/cryptolog/events": () => new Promise((resolve) => { release = resolve; }),
+    });
+    renderStream();
+    expect(screen.getByTestId("stream-loading")).toHaveTextContent(/no absence can be claimed/);
+    expect(screen.queryByTestId("stream-empty")).not.toBeInTheDocument();
+    await act(async () => release({ events: [], returned: 0, next_cursor: null }));
+    expect(await screen.findByTestId("stream-empty")).toBeInTheDocument();
   });
 
   it("an empty stream is absence of recorded events — never a quiet estate", async () => {

@@ -99,12 +99,41 @@ def test_missing_telemetry_is_never_drawn_as_zero(api):
 def test_ingestion_is_idempotent(api):
     first = api.post("/api/v1/performance/ingest", json=_metric())
     assert first.status_code == 201
-    again = api.post("/api/v1/performance/ingest", json=_metric(metric_value=99.0))
+    again = api.post("/api/v1/performance/ingest", json=_metric())
     assert again.status_code == 200
     body = again.json()
     assert body["outcome"] == "duplicate"
-    assert body["accepted_id"] == first.json()["accepted_id"], \
-        "a duplicate reports the accepted identity, never a second row"
+    assert body["accepted_id"] == first.json()["accepted_id"]
+    conflicting = api.post("/api/v1/performance/ingest",
+                           json=_metric(metric_value=99.0))
+    assert conflicting.status_code == 409
+    assert "not overwritten" in conflicting.json()["detail"]
+
+
+def test_two_banks_can_record_same_collector_local_metric_id(api):
+    first = api.post("/api/v1/performance/ingest", json=_metric(
+        metric_id="exporter-sample-1", tenant_id="tenant_001"))
+    second = api.post("/api/v1/performance/ingest", json=_metric(
+        metric_id="exporter-sample-1", tenant_id="tenant_002",
+        metric_value=99.0))
+    assert first.status_code == second.status_code == 201
+    a = api.get("/api/v1/performance/samples",
+                params={"tenant_id": "tenant_001"}).json()["samples"]
+    b = api.get("/api/v1/performance/samples",
+                params={"tenant_id": "tenant_002"}).json()["samples"]
+    assert len(a) == len(b) == 1
+    assert a[0]["metric_value"] == 42.0 and b[0]["metric_value"] == 99.0
+
+
+def test_direct_metric_cannot_forge_signed_capture_origin(api):
+    forged = api.post("/api/v1/performance/ingest", json=_metric(
+        evidence_id="signed-capture-sha256:" + "a" * 64))
+    assert forged.status_code == 422
+    assert "reserved" in forged.json()["detail"]
+    batch = api.post("/api/v1/performance/ingest/batch", json={"metrics": [
+        _metric(metric_id="forged-batch", evidence_id="signed-capture-sha256:" + "a" * 64)]})
+    assert batch.status_code == 200
+    assert batch.json()["items"][0]["status"] == "REJECTED"
 
 
 def test_labels_are_bounded_and_never_carry_secrets(api):
@@ -136,6 +165,20 @@ def test_batch_reports_partial_success_with_reasons(api):
     dup = api.post("/api/v1/performance/ingest/batch", json={"metrics": [good]})
     assert dup.json()["items"][0]["status"] == "SKIPPED"
     assert dup.json()["totals"]["skipped"] == 1
+
+
+def test_production_refuses_unsigned_direct_metric_intake(api, monkeypatch):
+    from types import SimpleNamespace
+    from api.routers import performance
+
+    monkeypatch.setattr(performance, "get_settings",
+                        lambda: SimpleNamespace(is_production=True))
+    direct = api.post("/api/v1/performance/ingest", json=_metric())
+    batch = api.post("/api/v1/performance/ingest/batch",
+                     json={"metrics": [_metric()]})
+    for response in (direct, batch):
+        assert response.status_code == 503
+        assert "bank-signed capture" in response.json()["detail"]
 
 
 def test_tenant_isolation_on_every_read(api):

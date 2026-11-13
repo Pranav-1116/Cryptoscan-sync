@@ -68,6 +68,7 @@ export default function CryptoLog() {
   const [loadedCount, setLoadedCount] = useState(0);
   const [source, setSource] = useState<string>("");
   const [failure, setFailure] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<CryptologEventRow | null>(null);
@@ -84,6 +85,10 @@ export default function CryptoLog() {
   useEffect(() => {
     let alive = true;
     setFailure(null);
+    setLoading(true);
+    setEvents([]);
+    setNextCursor(null);
+    setLoadedCount(0);
     apiCryptologEvents({
       category: query.category || undefined,
       severity: query.severity || undefined,
@@ -91,6 +96,7 @@ export default function CryptoLog() {
       limit: PAGE_SIZE,
     }).then((result) => {
       if (!alive) return;
+      setLoading(false);
       setSource(result.source);
       if (!result.data) {
         setEvents([]);
@@ -154,7 +160,7 @@ export default function CryptoLog() {
         crumb="estate / cryptolog"
         title="CryptoLog"
         sub="Cryptographic event intelligence: recorded events, their evidence and their provenance — recorded observations, never verdicts"
-        right={<Badge tone="violet">{loadedCount} event{loadedCount === 1 ? "" : "s"} loaded</Badge>}
+        right={<Badge tone="violet">{loading ? "Reading events…" : `${loadedCount} event${loadedCount === 1 ? "" : "s"} loaded`}</Badge>}
       />
 
       <div className="row" data-testid="cryptolog-views" style={{ gap: 8, marginBottom: 16 }}>
@@ -191,7 +197,11 @@ export default function CryptoLog() {
           }}>Reset</button>
         </div>
 
-        {failure ? (
+        {loading ? (
+          <div className="dim" data-testid="cryptolog-loading" role="status" style={{ marginTop: 12 }}>
+            Reading recorded events… no absence can be claimed until the read completes.
+          </div>
+        ) : failure ? (
           <div className="dim" data-testid="cryptolog-failure" style={{ marginTop: 12 }}>
             {failure} A source that could not be read is not a source with no events.
           </div>

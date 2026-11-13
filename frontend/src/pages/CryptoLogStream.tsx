@@ -20,16 +20,21 @@ export default function CryptoLogStream() {
   const [events, setEvents] = useState<CryptologEventRow[]>([]);
   const [failure, setFailure] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let alive = true;
     apiCryptologEvents({ limit: 25 }).then((result: ApiResult<{ events: CryptologEventRow[]; returned: number }>) => {
+      if (!alive) return;
       if (!result.data) {
         setFailure(result.error ?? "the event stream did not load");
-        return;
+      } else {
+        setEvents(result.data.events);
+        setLoaded(result.data.returned);
       }
-      setEvents(result.data.events);
-      setLoaded(result.data.returned);
+      setLoading(false);
     });
+    return () => { alive = false; };
   }, []);
 
   const sorted = [...events].sort((a, b) =>
@@ -38,7 +43,11 @@ export default function CryptoLogStream() {
   return (
     <div data-testid="cryptolog-stream">
       <Panel title="Crypto Event Stream" sub="recorded cryptographic events across authorized bank assets — certificate changes, TLS configuration changes, HSM status changes, algorithm and crypto-provider changes">
-        {failure ? (
+        {loading ? (
+          <div className="dim" data-testid="stream-loading" role="status">
+            Reading recorded events… no absence can be claimed until the read completes.
+          </div>
+        ) : failure ? (
           <div className="dim" data-testid="stream-failure">
             {failure} A source that could not be read is not a source with no events.
           </div>

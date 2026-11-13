@@ -24,6 +24,7 @@ from api.security.passwords import hash_password
 from api.security.session_manager import SessionManager
 from db.connection.session import Base, SessionLocal, configure_session
 from db.models.crypto_asset import CryptoAsset
+from db.models.crypto_live import CryptoLiveState
 from db.models.crypto_asset_evidence import CryptoAssetEvidence
 from db.models.runtime_finding import RuntimeFinding
 from db.models.evidence_record import EvidenceRecord
@@ -152,10 +153,19 @@ def test_nine_tabs_exist_and_stay_honest(client, session):
         assert body["tab"] == tab
         assert "rows" in body and "note" in body
 
-    # cryptography: linked crypto renders capability vs operation apart
+    # A hostname/algorithm-only observation cannot promote this crypto asset.
     r = client.get("/api/v1/asset-detail/app:sys-pay/cryptography")
     rows = r.json()["rows"]
-    assert rows[0]["usage_state"] == "operation_observed"  # runtime observation named it
+    assert rows[0]["usage_state"] == "capability_detected"
+    assert client.get("/api/v1/asset-detail/crypto:cr-linked").json()["evidence"]["state"] \
+        == "INFERRED"
+    session.add(CryptoLiveState(asset_id="crypto:cr-linked", algorithms=["AES"],
+                                last_event="MONITOR_OBSERVED"))
+    session.commit()
+    linked = client.get("/api/v1/asset-detail/app:sys-pay/cryptography").json()["rows"]
+    assert linked[0]["usage_state"] == "operation_observed"
+    assert client.get("/api/v1/asset-detail/crypto:cr-linked").json()["evidence"]["state"] \
+        == "MEASURED"
     assert "capability is never operation" in r.json()["note"] or "never equated" in r.json()["note"]
 
     # hardware for a software asset: not established, never invented

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState, useMemo } from "react";
 import BomCrossNav from "../components/BomCrossNav";
+import { CanonicalDetailLink } from "../components/AssetDetail";
 import { Link, useSearchParams } from "react-router-dom";
 import { Panel, Badge, Bar, Ring, Drawer } from "../components/ui";
 import { useApi } from "../lib/apiUi.jsx";
@@ -556,6 +557,7 @@ function NbomEndpoints() {
       </Panel>
       {selected && (
         <Drawer title={selected.endpoint} sub={`${selected.protocol || "—"} · port ${String(selected.port ?? "—")}`} onClose={() => setSelected(null)}>
+          <CanonicalDetailLink assetRef={`net:${selected.endpoint}`} />
           {!detail.data ? <p className="faint" style={{ fontSize: 12 }}>{detail.running ? "Reading the endpoint…" : "The endpoint detail did not return."}</p> : (
             (() => {
               const d = detail.data as Record<string, any>;

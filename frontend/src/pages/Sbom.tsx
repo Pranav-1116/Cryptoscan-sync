@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import BomCrossNav from "../components/BomCrossNav";
+import { CanonicalDetailLink } from "../components/AssetDetail";
 import { Link } from "react-router-dom";
 import { Panel, Badge, Bar, Ring, Drawer } from "../components/ui";
 import { usePollingApi, useApi } from "../lib/apiUi.jsx";
@@ -379,6 +380,7 @@ function SbomInventory({ explorer = false }: { explorer?: boolean }) {
       </Panel>
       {selected && (
         <Drawer title={selected.name} sub={selected.coordinate} onClose={() => setSelected(null)}>
+          <CanonicalDetailLink assetRef={selected.asset_ref} />
           {!detail.data ? <p className="faint" style={{ fontSize: 12 }}>{detail.running ? "Reading the component…" : "The component detail did not return."}</p> : (
             (() => {
               const d = detail.data as SbomComponentDetail;

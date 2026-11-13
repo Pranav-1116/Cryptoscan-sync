@@ -12,6 +12,7 @@ The typed contract every measurement obeys. The success criteria from
 
 from __future__ import annotations
 
+import math
 import re
 from datetime import datetime, timezone
 from enum import Enum
@@ -108,6 +109,13 @@ class PerformanceMetric(BaseModel):
             raise ValueError(
                 "metric_name must be a dotted, lowercase metric name "
                 "(e.g. network.rtt_ms)")
+        return value
+
+    @field_validator("metric_value")
+    @classmethod
+    def _finite_value(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and not math.isfinite(value):
+            raise ValueError("metric_value must be finite — NaN/Infinity cannot be measured")
         return value
 
     @field_validator("unit")

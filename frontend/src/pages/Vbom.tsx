@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import BomCrossNav from "../components/BomCrossNav";
+import { CanonicalDetailLink } from "../components/AssetDetail";
 import { Link, useSearchParams } from "react-router-dom";
 import { Panel, Badge, Bar, Ring, Drawer } from "../components/ui";
 import { usePollingApi } from "../lib/apiUi.jsx";
@@ -378,6 +379,7 @@ function VbomVendors() {
       </Panel>
       {selected && (
         <Drawer title={selected.vendor} sub={`${selected.product || "vendor"} · ${selected.category}`} onClose={() => setSelected(null)}>
+          <CanonicalDetailLink assetRef={`vendor:${selected.vendor_id}`} />
           {!detail.data ? <p className="faint" style={{ fontSize: 12 }}>{detail.running ? "Reading the vendor…" : "The vendor detail did not return."}</p> : (
             (() => {
               const d = detail.data as Record<string, any>;

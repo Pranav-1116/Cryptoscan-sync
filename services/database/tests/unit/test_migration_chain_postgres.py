@@ -297,6 +297,78 @@ def test_new_tables_have_forced_rls_and_tenants_cannot_write_platform_rows(migra
             transaction.rollback()
 
 
+def test_performance_metric_identity_is_tenant_local_and_downgrade_refuses_collision(migrated):
+    indexes = {row["name"]: row for row in sa.inspect(migrated).get_indexes("performance_metrics")}
+    assert indexes["uq_performance_metrics_tenant_metric_id"]["unique"]
+    assert indexes["uq_performance_metrics_platform_metric_id"]["unique"]
+    insert = sa.text("""INSERT INTO performance_metrics
+        (id, tenant_id, metric_id, asset_id, metric_name, metric_type,
+         metric_value, unit, source_id, observed_at, quality_status,
+         created_at, updated_at)
+        VALUES (:id, :tenant, 'shared-source-id', 'app:pay',
+                'crypto.tls_handshake_ms', 'gauge', 20, 'ms', 'bank-exporter',
+                now(), 'valid', now(), now())""")
+    try:
+        with migrated.begin() as conn:
+            for ident, tenant in (("metric-scope-a", "bank-a"),
+                                  ("metric-scope-b", "bank-b"),
+                                  ("metric-scope-platform", None)):
+                conn.execute(insert, {"id": ident, "tenant": tenant})
+            for ident, tenant in (("metric-scope-duplicate-a", "bank-a"),
+                                  ("metric-scope-duplicate-platform", None)):
+                with pytest.raises(sa.exc.IntegrityError), conn.begin_nested():
+                    conn.execute(insert, {"id": ident, "tenant": tenant})
+        down = _alembic("downgrade", "0148")
+        assert down.returncode != 0 and "downgrade blocked" in down.stderr
+        with migrated.connect() as conn:
+            from alembic.config import Config
+            from alembic.script import ScriptDirectory
+            head = ScriptDirectory.from_config(
+                Config(str(DB_DIR / "migrations/alembic.ini"))).get_current_head()
+            assert conn.scalar(sa.text("SELECT version_num FROM alembic_version")) == head
+            assert conn.scalar(sa.text(
+                "SELECT count(*) FROM performance_metrics "
+                "WHERE metric_id='shared-source-id'")) == 3
+    finally:
+        with migrated.begin() as conn:
+            conn.execute(sa.text(
+                "DELETE FROM performance_metrics WHERE id LIKE 'metric-scope-%'"))
+
+
+def test_capture_receipts_are_tenant_scoped_and_protected_from_downgrade(migrated):
+    table = "performance_capture_receipts"
+    indexes = {row["name"]: row for row in sa.inspect(migrated).get_indexes(table)}
+    assert indexes["uq_performance_capture_tenant_receipt"]["unique"]
+    assert indexes["uq_performance_capture_platform_receipt"]["unique"]
+    insert = sa.text(f"""INSERT INTO {table}
+        (id, tenant_id, receipt_id, asset_ref, source_id, source_type,
+         observed_at, payload_sha256, authorization_ref, provenance_state,
+         accepted_count, duplicate_count, rejected_count, created_at, updated_at)
+        VALUES (:id, :tenant, :receipt, 'app:pay', 'node-1', 'node_exporter',
+                now(), :digest, 'fixture-change', 'UNVERIFIED_CAPTURE_ORIGIN',
+                1, 0, 0, now(), now())""")
+    try:
+        with migrated.begin() as conn:
+            for ident, tenant in (("receipt-a", "bank-a"),
+                                  ("receipt-b", "bank-b"),
+                                  ("receipt-platform", None)):
+                conn.execute(insert, {"id": ident, "tenant": tenant,
+                                      "receipt": "a" * 64, "digest": "b" * 64})
+            for ident, tenant in (("receipt-duplicate-a", "bank-a"),
+                                  ("receipt-duplicate-platform", None)):
+                with pytest.raises(sa.exc.IntegrityError), conn.begin_nested():
+                    conn.execute(insert, {"id": ident, "tenant": tenant,
+                                          "receipt": "a" * 64, "digest": "b" * 64})
+        down = _alembic("downgrade", "0149")
+        assert down.returncode != 0 and "downgrade blocked" in down.stderr
+        with migrated.connect() as conn:
+            assert conn.scalar(sa.text("SELECT version_num FROM alembic_version")) == "0150"
+            assert conn.scalar(sa.text(f"SELECT count(*) FROM {table}")) == 3
+    finally:
+        with migrated.begin() as conn:
+            conn.execute(sa.text(f"DELETE FROM {table} WHERE id LIKE 'receipt-%'"))
+
+
 def test_system_names_are_estate_local_including_platform_null(migrated):
     statement = sa.text("""INSERT INTO systems (id, name, tenant_id, created_at, updated_at)
         VALUES (:id, 'Shared business name', :tenant, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)""")

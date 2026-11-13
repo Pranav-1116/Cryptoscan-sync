@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from api.config.settings import get_settings
 from api.dependencies import (get_current_user, get_db_session,
                               require_intelligence_writer,
                               require_query_tenant_scope)
@@ -34,17 +35,38 @@ from binary_intelligence.pipeline import run_scan
 router = APIRouter(prefix="/binary", tags=["binary-intelligence"],
                    dependencies=[Depends(require_query_tenant_scope)])
 
-#: the process-local bounded job queue (§12 async / §13 resources). A
-#: deployment runs worker processes that call POST /binary/scan/
-#: jobs/{job_id}/process — or imports this queue directly.
+#: Development-only process-local queue. It cannot survive restart or be
+#: shared by API replicas; production async endpoints refuse it until a
+#: durable, tenant-isolated artifact handoff and worker claim path exist.
 WORKER_QUEUE = ScanJobQueue()
+# Inline upload is deliberately below the ingress's 10 MiB body limit. Larger
+# artifacts require a bank-approved durable, encrypted handoff; decoding a
+# 256 MiB base64 request in the API would exhaust its 1 GiB pod budget first.
+MAX_INLINE_BASE64_CHARS = 8 * 1024 * 1024  # at most 6 MiB decoded
+
+
+def _require_durable_async_backend() -> None:
+    """Never acknowledge an undurable Binary job in production.
+
+    Redis alone is not an artifact handoff: raw bytes would still be held
+    only in the accepting API process. A real backend needs bounded encrypted
+    artifact retention, cross-replica claims, retries and cleanup first.
+    """
+    if get_settings().is_production:
+        raise HTTPException(
+            status_code=503,
+            detail="Binary async jobs unavailable: the process-local queue "
+                   "is development-only; no durable artifact-backed worker "
+                   "handoff is configured")
 
 
 class ScanRequest(BaseModel):
     """An authorized scan submission. artifact_base64 carries the
     artifact bytes; the request never executes anything."""
     tenant_id: str
-    artifact_base64: str = Field(..., description="base64 artifact bytes")
+    artifact_base64: str = Field(
+        ..., max_length=MAX_INLINE_BASE64_CHARS,
+        description="bounded inline base64 bytes; larger artifacts need approved storage")
     original_filename: str = "artifact.bin"
     source_type: str = "upload"
     source_location: Optional[str] = None
@@ -366,7 +388,7 @@ class ComparisonOut(BaseModel):
 
 class RescanRequest(BaseModel):
     tenant_id: str
-    artifact_base64: str
+    artifact_base64: str = Field(..., max_length=MAX_INLINE_BASE64_CHARS)
     scan_profile: str = "standard"
 
 
@@ -473,7 +495,8 @@ def rescan_artifact(artifact_id: str, body: RescanRequest,
 @router.get("/worker/status", response_model=WorkerStatusOut)
 def worker_status(db: Session = Depends(get_db_session),
                   user: str = Depends(get_current_user)) -> WorkerStatusOut:
-    """Bounded-queue and worker-limit introspection (§13)."""
+    """Development queue introspection; no fake production worker health."""
+    _require_durable_async_backend()
     return WorkerStatusOut(
         queue=WORKER_QUEUE.as_dict(),
         note="measure queue depth, refusals and failure rate — production "
@@ -489,8 +512,10 @@ def submit_scan_async(body: ScanRequest,
     """Submit for ASYNC processing (§12): the job enters the bounded
     worker queue; a worker executes it via POST /binary/scan/
     jobs/{job_id}/process. Backpressure refuses and counts — never
-    silently drops."""
+    silently drops. This queue is development-only; production refuses it
+    rather than falsely acknowledging a job that cannot survive restart."""
     _require_tenant_scope(body.tenant_id)
+    _require_durable_async_backend()
     import uuid as _uuid
     try:
         data = base64.b64decode(body.artifact_base64, validate=True)
@@ -524,6 +549,7 @@ def process_job(job_id: str, response: Response,
     """Execute one queued scan job (§12 asynchronous jobs) and persist
     through the same write path as synchronous scans. Runs under the
     worker's declared limits; the artifact is never executed."""
+    _require_durable_async_backend()
     captured: dict = {}
 
     def _on_result(result) -> None:
@@ -722,6 +748,11 @@ def firmware_scan(body: ScanRequest,
     missing tool reports the analysis as NOT COMPLETED, never as a
     clean result."""
     _require_tenant_scope(body.tenant_id)
+    if get_settings().is_production:
+        raise HTTPException(
+            status_code=503,
+            detail="Firmware analysis unavailable in the production API process; "
+                   "a bank-approved isolated parser worker is required")
     from adapters.firmware import analyze_firmware
     try:
         data = base64.b64decode(body.artifact_base64, validate=True)

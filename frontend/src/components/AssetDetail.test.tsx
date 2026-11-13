@@ -6,7 +6,7 @@
 // failed read draws the not-read state, never an empty inventory.
 import { describe, expect, it } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import AssetDetail from "./AssetDetail";
+import AssetDetail, { CanonicalDetailLink } from "./AssetDetail";
 import { mockFetch } from "../test/setup";
 
 const HEADER = {
@@ -28,6 +28,27 @@ const HEADER = {
 };
 
 describe("shared asset detail", () => {
+  it("opens the common detail only when selected and never invents a missing reference", async () => {
+    mockFetch({
+      "/api/v1/asset-detail/app:sys-pay": HEADER,
+      "/api/v1/asset-detail/app:sys-pay/overview": {
+        asset_ref: "app:sys-pay", tab: "overview", rows: [], note: "n",
+      },
+    });
+    render(<CanonicalDetailLink assetRef="app:sys-pay" />);
+    expect(screen.queryByText("payments")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open shared asset detail" }));
+    await waitFor(() => expect(screen.getByText("payments")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Close shared asset detail" }));
+    expect(screen.queryByText("payments")).toBeNull();
+  });
+
+  it("shows an unlinked state instead of an invented canonical record", () => {
+    render(<CanonicalDetailLink assetRef={null} />);
+    expect(screen.getByText(/No canonical asset reference was recorded/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open shared asset detail" })).toBeNull();
+  });
+
   it("pins the header record, the asset information fields and the cross-BOM panel states", async () => {
     mockFetch({
       "/api/v1/asset-detail/app:sys-pay": HEADER,

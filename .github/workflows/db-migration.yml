@@ -94,6 +94,13 @@ jobs:
           python -m pytest -q -m live tests/unit/test_migration_chain_postgres.py \
             --junitxml="$RUNNER_TEMP/db-migration-pg${{ matrix.postgres }}.xml"
           python ../../scripts/check_junit.py "$RUNNER_TEMP/db-migration-pg${{ matrix.postgres }}.xml"
+      - name: Signed Performance capture through migrated PostgreSQL and Twin simulation
+        run: |
+          python -m pytest -q -m live -p no:xdist \
+            --disable-socket --allow-hosts=127.0.0.1,::1,localhost --allow-unix-socket \
+            --junitxml="$RUNNER_TEMP/performance-pg${{ matrix.postgres }}.xml" \
+            services/api/tests/integration/test_performance_capture_to_simulation.py
+          python scripts/check_junit.py "$RUNNER_TEMP/performance-pg${{ matrix.postgres }}.xml"
       - name: Prove non-superuser runtime RLS on disposable PostgreSQL
         env:
           CRYPTOSCAN_CI_DISPOSABLE_DB: "1"
@@ -105,6 +112,7 @@ jobs:
           name: db-migration-pg${{ matrix.postgres }}-proof
           path: |
             ${{ runner.temp }}/db-migration-pg${{ matrix.postgres }}.xml
+            ${{ runner.temp }}/performance-pg${{ matrix.postgres }}.xml
             ${{ runner.temp }}/rls-runtime-pg${{ matrix.postgres }}.json
           if-no-files-found: error
           retention-days: 7

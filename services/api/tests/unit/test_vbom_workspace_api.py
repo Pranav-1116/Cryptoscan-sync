@@ -120,7 +120,7 @@ def test_empty_estate_reports_honest_empty_state(client):
 
 
 def test_association_states_are_never_collapsed(client, session):
-    sys_id = _seed_estate(session)
+    _seed_estate(session)
     rows = client.get("/api/v1/vbom/workspace/vendors").json()["rows"]
     by_vendor = {}
     for r in rows:

@@ -13,6 +13,9 @@ write here. These tests pin the rows that matter:
 
 from __future__ import annotations
 
+import hashlib
+from datetime import datetime, timezone
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -31,13 +34,19 @@ def session(tmp_path):
         PqcMigrationWave,
         PqcProgressRecord,
     )
+    from db.models.scan import Scan
+    from db.models.evidence_record import EvidenceRecord
 
+    from db.tenancy import install_tenant_guard
+
+    install_tenant_guard()
     engine = create_engine(f"sqlite:///{tmp_path / 'pqc.db'}")
     Base.metadata.create_all(engine, tables=[
         PqcMigrationWave.__table__,
         PqcMigrationBlocker.__table__,
         PqcInteropNote.__table__,
         PqcProgressRecord.__table__,
+        Scan.__table__, EvidenceRecord.__table__,
     ])
     factory = sessionmaker(bind=engine)
     db = factory()
@@ -72,6 +81,30 @@ def anonymous(session):
     app.include_router(pqc_migration.router, prefix="/api")
     app.dependency_overrides[dependencies.get_db_session] = lambda: session
     return TestClient(app, raise_server_exceptions=False)
+
+
+def seed_committed_evidence(session, *ids, tenant_id=None):
+    """Actual content/chain/manifest commitments, not stand-in ID strings."""
+    from db.models.evidence_record import EvidenceRecord
+    from db.models.scan import Scan
+    from evidence.hashing.chain_hasher import ChainHasher
+    from evidence.hashing.content_hasher import ContentHasher
+
+    for evidence_id in ids:
+        scan_id = f"scan-{evidence_id}"
+        finding = {"algorithm": "AES", "file_path": "fixture", "line_number": 1}
+        content = ContentHasher.compute_hash(finding)
+        session.add(Scan(id=scan_id, tenant_id=tenant_id,
+                         scan_start=datetime.now(timezone.utc), status="COMPLETED",
+                         target_location="synthetic-test-fixture",
+                         manifest_hash=hashlib.sha256(evidence_id.encode()).hexdigest()))
+        session.add(EvidenceRecord(
+            id=evidence_id, tenant_id=tenant_id, scan_id=scan_id,
+            content_hash=content, chain_hash=ChainHasher.compute_chain_hash(
+                content, scan_session_id=scan_id), chain_position=0,
+            previous_hash=None, finding_data=finding, algorithm="AES",
+            confidence="HIGH", file_path="fixture", line_number=1))
+    session.commit()
 
 
 def make_wave(api, key="wave-1", title="Consolidate TLS terminators"):
@@ -127,7 +160,8 @@ class TestWaveLifecycle:
         assert r.status_code == 409
         assert "not verified" in r.json()["detail"]
 
-    def test_a_wave_verifies_when_every_claim_is_verified(self, api):
+    def test_a_wave_verifies_when_every_claim_is_verified(self, api, session):
+        seed_committed_evidence(session, "ev-9")
         make_wave(api)
         api.post("/api/pqc-migration/waves/wave-1/transition", json={"to": "active"})
         p = api.post("/api/pqc-migration/waves/wave-1/progress",
@@ -138,7 +172,8 @@ class TestWaveLifecycle:
         assert r.status_code == 200
         assert r.json()["status"] == "verified"
 
-    def test_an_unverified_claim_blocks_the_wave_even_when_others_verify(self, api):
+    def test_an_unverified_claim_blocks_the_wave_even_when_others_verify(self, api, session):
+        seed_committed_evidence(session, "ev-1")
         make_wave(api)
         api.post("/api/pqc-migration/waves/wave-1/transition", json={"to": "active"})
         p1 = api.post("/api/pqc-migration/waves/wave-1/progress",
@@ -150,6 +185,24 @@ class TestWaveLifecycle:
         r = api.post("/api/pqc-migration/waves/wave-1/transition", json={"to": "verified"})
         assert r.status_code == 409
         assert "1 of 2 claims are not verified" in r.json()["detail"]
+
+    def test_wave_rechecks_withdrawn_evidence_before_verification(self, api, session):
+        from db.models.evidence_record import EvidenceRecord
+
+        seed_committed_evidence(session, "ev-wave")
+        make_wave(api)
+        api.post("/api/pqc-migration/waves/wave-1/transition", json={"to": "active"})
+        p = api.post("/api/pqc-migration/waves/wave-1/progress",
+                     json={"claim": "done", "evidence_ids": ["ev-wave"]}).json()
+        assert api.post(f"/api/pqc-migration/progress/{p['id']}/transition",
+                        json={"to": "verified"}).status_code == 200
+        session.query(EvidenceRecord).filter_by(id="ev-wave").one().deleted_at = \
+            datetime.now(timezone.utc)
+        session.commit()
+        refused = api.post("/api/pqc-migration/waves/wave-1/transition",
+                           json={"to": "verified"})
+        assert refused.status_code == 409
+        assert "withdrawn" in refused.json()["detail"]
 
     def test_a_blocked_wave_resumes(self, api):
         make_wave(api)
@@ -178,7 +231,8 @@ class TestProgressVerdicts:
         assert r.status_code == 422
         assert "verdict without evidence is refused" in r.json()["detail"]
 
-    def test_verified_with_evidence_records_the_verifier(self, api):
+    def test_verified_with_evidence_records_the_verifier(self, api, session):
+        seed_committed_evidence(session, "ev-1", "ev-2")
         make_wave(api)
         p = api.post("/api/pqc-migration/waves/wave-1/progress",
                      json={"claim": "pilot complete", "evidence_ids": ["ev-1"]}).json()
@@ -190,6 +244,37 @@ class TestProgressVerdicts:
         assert out["verified_by"] == "auditor"
         assert set(out["evidence_ids"]) == {"ev-1", "ev-2"}
 
+    def test_nonexistent_tampered_or_foreign_evidence_cannot_verify(self, api, session):
+        from db.models.evidence_record import EvidenceRecord
+        from db.tenancy import tenant_scope
+
+        make_wave(api)
+        p = api.post("/api/pqc-migration/waves/wave-1/progress",
+                     json={"claim": "pilot complete", "evidence_ids": ["not-recorded"]}).json()
+        missing = api.post(f"/api/pqc-migration/progress/{p['id']}/transition",
+                           json={"to": "verified"})
+        assert missing.status_code == 409
+        assert "missing" in missing.json()["detail"]
+
+        seed_committed_evidence(session, "ev-tampered", tenant_id="tenant-alpha")
+        row = session.query(EvidenceRecord).filter_by(id="ev-tampered").one()
+        row.finding_data = {"algorithm": "DES", "file_path": "fixture", "line_number": 1}
+        session.commit()
+        p2 = api.post("/api/pqc-migration/waves/wave-1/progress",
+                      json={"claim": "other", "evidence_ids": ["ev-tampered"]}).json()
+        tampered = api.post(f"/api/pqc-migration/progress/{p2['id']}/transition",
+                            json={"to": "verified"})
+        assert tampered.status_code == 409
+        assert "integrity" in tampered.json()["detail"]
+
+        seed_committed_evidence(session, "ev-foreign", tenant_id="tenant-beta")
+        p3 = api.post("/api/pqc-migration/waves/wave-1/progress",
+                      json={"claim": "scoped", "evidence_ids": ["ev-foreign"]}).json()
+        with tenant_scope("tenant-alpha"):
+            foreign = api.post(f"/api/pqc-migration/progress/{p3['id']}/transition",
+                               json={"to": "verified"})
+        assert foreign.status_code == 409
+
     def test_refuted_is_a_failure_of_the_claim_counted(self, api):
         make_wave(api)
         p = api.post("/api/pqc-migration/waves/wave-1/progress",
@@ -199,7 +284,8 @@ class TestProgressVerdicts:
         assert r.status_code == 200
         assert r.json()["verification_status"] == "refuted"
 
-    def test_a_withdrawn_verdict_goes_stale_and_can_be_reverified(self, api):
+    def test_a_withdrawn_verdict_goes_stale_and_can_be_reverified(self, api, session):
+        seed_committed_evidence(session, "ev-1", "ev-7")
         make_wave(api)
         p = api.post("/api/pqc-migration/waves/wave-1/progress",
                      json={"claim": "pilot complete", "evidence_ids": ["ev-1"]}).json()

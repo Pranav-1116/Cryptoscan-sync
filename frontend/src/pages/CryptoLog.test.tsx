@@ -3,7 +3,7 @@
    not be read is not a source with no events, and this screen never invents
    events, evidence or totals. */
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { mockFetch } from "../test/setup";
@@ -78,6 +78,18 @@ describe("CryptoLog workspace (§9, Phase 6)", () => {
     expect(failure).toHaveTextContent(/not a source with no events/);
     expect(screen.queryByTestId("cryptolog-rows")).not.toBeInTheDocument();
     expect(screen.getByText(/0 events loaded/)).toBeInTheDocument();
+  });
+
+  it("does not turn a pending explorer read into empty-estate evidence", async () => {
+    let release!: (value: unknown) => void;
+    mockFetch({
+      "/api/v1/cryptolog/events": () => new Promise((resolve) => { release = resolve; }),
+    });
+    renderPage();
+    expect(screen.getByTestId("cryptolog-loading")).toHaveTextContent(/no absence can be claimed/);
+    expect(screen.queryByTestId("cryptolog-empty")).not.toBeInTheDocument();
+    await act(async () => release({ events: [], next_cursor: null, returned: 0 }));
+    expect(await screen.findByTestId("cryptolog-empty")).toBeInTheDocument();
   });
 
   it("an empty store says so plainly and invents no events", async () => {

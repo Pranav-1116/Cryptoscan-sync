@@ -375,6 +375,63 @@ describe("simulation workspace", () => {
     expect(screen.getByText(/an empty list is not evidence that the change is safe/)).toBeInTheDocument();
   });
 
+  it("attaches Performance measurements only inside the Twin simulation", async () => {
+    const measured = {
+      schema: "cryptoscan.performance-simulation-context/1", purpose: "SIMULATION_INPUT",
+      status: "MEASURED_COMPARISON", asset_ref: "app:pay",
+      metric_name: "crypto.tls_handshake_ms", unit: "ms", source_id: "bank-exporter",
+      change_event_id: "change-1", change: { event_id: "change-1", observed_at: "2026-11-12T12:00:00Z",
+        event_type: "CRYPTO_CONFIGURATION_CHANGED", evidence_refs_unverified: [], provenance_note: "recorded" },
+      windows: {}, before: { received: 5, valid: 5, signed_capture_samples: 5,
+        partial_quality: 0, missing_or_stale: 0, p95: 20, metric_ids: [], metric_ids_truncated: false },
+      after: { received: 5, valid: 5, signed_capture_samples: 5,
+        partial_quality: 0, missing_or_stale: 0, p95: 30, metric_ids: [], metric_ids_truncated: false },
+      delta_p95: 10, delta_percent: 50, causation: "UNPROVEN",
+      benchmark: { status: "NOT_SUPPLIED", note: "no paired lab runs" },
+      input_state: "measured context only", not_proven: [],
+      link: { state: "AFFECTED_EXACT_IDENTITY", twin_asset_id: "application:abc",
+        reason: "stored identity matches" },
+      role: "MEASURED_CONTEXT_ONLY", note: "does not predict future performance or select a wave",
+    };
+    const fetchSpy = mockFetch({
+      [`${BASE}/catalog`]: catalog, [`${BASE}/plan`]: preview(),
+      [`${BASE}/run`]: run({ performance_context: measured }),
+      [`${BASE}/runs`]: emptyHistory,
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+    fireEvent.change(screen.getByLabelText(FROM), { target: { value: "AES" } });
+    fireEvent.change(screen.getByLabelText(TO), { target: { value: "ML-KEM" } });
+    const input = { tenant_id: "bank-a", asset_ref: "app:pay",
+      metric_name: "crypto.tls_handshake_ms", source_id: "bank-exporter",
+      change_event_id: "change-1", before_start: "2026-11-12T10:00:00Z",
+      before_end: "2026-11-12T11:00:00Z", after_start: "2026-11-12T13:00:00Z",
+      after_end: "2026-11-12T14:00:00Z" };
+    fireEvent.change(screen.getByLabelText("Recorded performance context (optional JSON)"),
+      { target: { value: JSON.stringify(input) } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview match" }));
+    const runButton = await screen.findByRole("button", { name: "Run simulation" });
+    await waitFor(() => expect(runButton).toBeEnabled());
+    fireEvent.click(runButton);
+    expect(await screen.findByText(/Identity link: AFFECTED_EXACT_IDENTITY/)).toBeInTheDocument();
+    expect(screen.getByText(/Causation UNPROVEN/)).toBeInTheDocument();
+    expect(screen.getByText(/does not predict future performance or select a wave/)).toBeInTheDocument();
+    const request = fetchSpy.mock.calls.find(([url]) => String(url).endsWith("/simulation/run"));
+    expect(JSON.parse(String(request?.[1]?.body)).performance_context).toEqual(input);
+  });
+
+  it("refuses malformed Performance input before running a scenario", async () => {
+    mockFetch({ [`${BASE}/catalog`]: catalog, [`${BASE}/runs`]: emptyHistory });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+    fireEvent.change(screen.getByLabelText(FROM), { target: { value: "AES" } });
+    fireEvent.change(screen.getByLabelText(TO), { target: { value: "ML-KEM" } });
+    fireEvent.change(screen.getByLabelText("Recorded performance context (optional JSON)"),
+      { target: { value: "{not-json" } });
+    expect(screen.getByRole("button", { name: "Preview match" })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/valid JSON/);
+  });
+
   it("does not present a run that matched nothing as a finding", async () => {
     mockFetch({
       [`${BASE}/catalog`]: catalog,

@@ -35,8 +35,11 @@ def main() -> int:
         count = require_executed(args.report, allow_skips=args.allow_skips)
     except (OSError, ET.ParseError, ValueError) as exc:
         parser.exit(1, f"required qualification failed: {exc}\n")
+    # A permitted skip remains a visible gap, never silently counted as a pass.
+    skipped = sum(case.find("skipped") is not None
+                  for case in ET.parse(args.report).getroot().iter("testcase"))
     print(
-        f"Required qualification: {count} executed, "
+        f"Required qualification: {count} executed, {skipped} skipped, "
         f"{'optional skips allowed' if args.allow_skips else 'no skips'}, no failures"
     )
     return 0

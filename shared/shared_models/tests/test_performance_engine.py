@@ -47,6 +47,12 @@ def _m(i, name="crypto.tls_handshake_ms", value=30.0, quality="valid",
         quality_status=QualityStatus(quality))
 
 
+def test_nonfinite_samples_are_refused_before_storage():
+    for value in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError, match="must be finite"):
+            _m("bad", value=value)
+
+
 # -- collectors (Phases 2-4) ------------------------------------------------
 
 def test_translators_refuse_unknown_families_instead_of_inventing():
@@ -83,11 +89,13 @@ def test_rate_derived_utilization_needs_two_snapshots():
 
 def test_postgres_and_otlp_translators_keep_the_verified_maps():
     pg = translate_postgres_exporter(
-        {"metrics": {"pg_stat_activity_count": [{"value": 7, "labels": {}}],
+        {"metrics": {"pg_stat_activity_count": [
+                         {"value": 7, "labels": {"state": "active"}},
+                         {"value": 2, "labels": {}}],
                      "pg_customer_rows": [{"value": 1, "labels": {}}]}},
         asset_id="a", tenant_id="t", source_id="s", observed_at=NOW)
     assert [m.metric_name for m in pg.metrics] == ["db.connections_active"]
-    assert pg.refused_count == 1
+    assert pg.refused_count == 2  # unlabeled count is not provably active
     otlp = translate_otlp(
         {"metrics": {"http.server.active_requests": [{"value": 3, "labels": {}}],
                      "custom.thing": [{"value": 1, "labels": {}}]}},
@@ -122,6 +130,16 @@ def test_summaries_cover_delivered_values_and_name_their_unknowns():
     crypto = cryptography_view([_m(4, "crypto.tls_handshake_ms", 35.0)])
     assert crypto["measurement_kind"] == "observed-production"
     assert "never presented as production" in crypto["note"]
+
+
+def test_partial_quality_values_do_not_claim_complete_coverage():
+    rows = [_m(11, "crypto.tls_handshake_ms", 20.0),
+            _m(12, "crypto.tls_handshake_ms", 30.0, quality="partial")]
+    result = summarize_metric(rows)
+    assert result["value_count"] == 2
+    assert result["partial_count"] == 1
+    assert result["unknown_count"] == 0
+    assert result["coverage"].startswith("partial —")
 
 
 def test_query_windows_are_bounded():

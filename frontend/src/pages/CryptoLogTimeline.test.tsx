@@ -52,10 +52,12 @@ describe("CryptoLog timeline (§9)", () => {
     await screen.findByTestId("timeline-buckets");
     fireEvent.change(screen.getByLabelText("timeline bucket"), { target: { value: "hour" } });
     fireEvent.change(screen.getByLabelText("timeline start"), { target: { value: "2026-11-01" } });
+    fireEvent.change(screen.getByLabelText("timeline asset"), { target: { value: "pay-api" } });
     fireEvent.click(screen.getByTestId("apply-timeline"));
     await waitFor(() => {
       const urls = fetchSpy.mock.calls.map(([u]) => String(u));
-      expect(urls.some((u) => u.includes("bucket=hour") && u.includes("start_occurred=2026-11-01"))).toBe(true);
+      expect(urls.some((u) => u.includes("bucket=hour") && u.includes("start_occurred=2026-11-01") &&
+        u.includes("asset_id=pay-api"))).toBe(true);
     });
   });
 

@@ -19,7 +19,7 @@ from db.models.performance import (
     PerformanceAlert, PerformanceAsset,
     PerformanceBaseline, PerformanceBenchmarkRun,
     PerformanceCapacityForecast, PerformanceCollectorHealth,
-    PerformanceMetric as PerformanceMetricRow,
+    PerformanceCaptureReceipt, PerformanceMetric as PerformanceMetricRow,
     PerformanceMetricDefinition, PerformanceSloPolicy,
 )
 from shared_models.performance_metrics import (
@@ -28,6 +28,7 @@ from shared_models.performance_metrics import (
 
 INSERTED = "inserted"
 DUPLICATE = "duplicate"
+CONFLICT = "conflict"
 
 
 def _aware(value: Optional[datetime]) -> Optional[datetime]:
@@ -62,12 +63,18 @@ class PerformanceRepository:
         self.db = db
 
     # -- ingestion ------------------------------------------------------
-    def insert_metric(self, metric: PerformanceMetric) -> Dict[str, Any]:
+    def insert_metric(self, metric: PerformanceMetric, *,
+                      commit: bool = True) -> Dict[str, Any]:
         existing = self.db.execute(
             select(PerformanceMetricRow).where(
+                PerformanceMetricRow.tenant_id == metric.tenant_id,
                 PerformanceMetricRow.metric_id == metric.metric_id)
         ).scalar_one_or_none()
         if existing is not None:
+            if row_to_metric(existing).model_dump() != metric.model_dump():
+                return {"outcome": CONFLICT, "accepted_id": existing.metric_id,
+                        "note": "metric_id already belongs to a different observation; "
+                                "the original was not overwritten"}
             return {
                 "outcome": DUPLICATE,
                 "accepted_id": existing.metric_id,
@@ -89,12 +96,27 @@ class PerformanceRepository:
             quality_status=metric.quality_status.value,
         )
         self.db.add(row)
-        self.db.commit()
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()  # detect within-capture duplicates before the receipt commits
         return {
             "outcome": INSERTED,
             "accepted_id": metric.metric_id,
             "note": "ingested with its unit, source and observation timestamp",
         }
+
+    def get_capture_receipt(self, tenant_id: str,
+                            receipt_id: str) -> Optional[PerformanceCaptureReceipt]:
+        return self.db.scalar(select(PerformanceCaptureReceipt).where(
+            PerformanceCaptureReceipt.tenant_id == tenant_id,
+            PerformanceCaptureReceipt.receipt_id == receipt_id))
+
+    def add_capture_receipt(self, **fields: Any) -> PerformanceCaptureReceipt:
+        row = PerformanceCaptureReceipt(**fields)
+        self.db.add(row)
+        self.db.flush()
+        return row
 
     # -- reads ----------------------------------------------------------
     def get_metric(self, tenant_id: str,
@@ -110,6 +132,7 @@ class PerformanceRepository:
     def query_metrics(self, tenant_id: str, *,
                       metric_name: Optional[str] = None,
                       asset_id: Optional[str] = None,
+                      source_id: Optional[str] = None,
                       window_start: Optional[datetime] = None,
                       window_end: Optional[datetime] = None,
                       limit: int = 200) -> List[PerformanceMetric]:
@@ -119,6 +142,8 @@ class PerformanceRepository:
             stmt = stmt.where(PerformanceMetricRow.metric_name == metric_name)
         if asset_id is not None:
             stmt = stmt.where(PerformanceMetricRow.asset_id == asset_id)
+        if source_id is not None:
+            stmt = stmt.where(PerformanceMetricRow.source_id == source_id)
         if window_start is not None:
             stmt = stmt.where(PerformanceMetricRow.observed_at >= window_start)
         if window_end is not None:
@@ -236,6 +261,16 @@ class PerformanceRepository:
             }
             for r in rows
         ]
+
+    def get_benchmark_run(self, tenant_id: str, run_id: str) -> Optional[Dict[str, Any]]:
+        row = self.db.scalar(select(PerformanceBenchmarkRun).where(
+            PerformanceBenchmarkRun.tenant_id == tenant_id,
+            PerformanceBenchmarkRun.run_id == run_id))
+        if row is None:
+            return None
+        return {"run_id": row.run_id, "measurement_kind": row.measurement_kind,
+                "approved": bool(row.approved), "method": row.method or {},
+                "results": row.results or [], "executed_at": _aware(row.executed_at)}
 
     def insert_alert(self, tenant_id: str, alert: Dict[str, Any]
                      ) -> Dict[str, Any]:

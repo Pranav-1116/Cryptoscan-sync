@@ -3,7 +3,8 @@
 
 The main gate must cover services AND shared packages. Stop at each outermost
 ``tests`` directory, so a nested fixture cannot schedule the same tests twice.
-JSON is suitable for GitHub Actions' fromJSON matrix; no dependencies required.
+JSON is suitable for GitHub Actions' fromJSON matrix. API shards emit one
+module path per line; no dependencies required.
 """
 
 from __future__ import annotations
@@ -18,7 +19,8 @@ SCANNERS = frozenset({"scanner", "network_scanner", "cloud_scanner", "container_
 IGNORED = frozenset({"node_modules", "__pycache__", ".venv", "venv", "build", "dist"})
 
 
-def discover_suites(root: Path, *, scanners_only: bool = False, non_scanners_only: bool = False) -> list[str]:
+def discover_suites(root: Path, *, scanners_only: bool = False, non_scanners_only: bool = False,
+                    exclude_api: bool = False) -> list[str]:
     if scanners_only and non_scanners_only:
         raise ValueError("scanner and non-scanner filters are mutually exclusive")
     root = root.resolve()
@@ -40,6 +42,8 @@ def discover_suites(root: Path, *, scanners_only: bool = False, non_scanners_onl
             if (scanners_only and not is_scanner) or (non_scanners_only and is_scanner):
                 continue
             suite = relative.as_posix()
+            if exclude_api and suite == "services/api/tests":
+                continue
             # Matrix values become filesystem arguments. Refuse surprising names
             # instead of allowing shell metacharacters or ambiguous output lines.
             if not re.fullmatch(r"(?:[A-Za-z0-9_-]+/)+tests", suite):
@@ -56,15 +60,59 @@ def discover_suites(root: Path, *, scanners_only: bool = False, non_scanners_onl
     return sorted(suites)
 
 
+def discover_api_shards(root: Path, shard_count: int = 8) -> list[list[str]]:
+    """Partition every API test module once, balancing larger files first.
+
+    Whole-module assignments preserve module fixture ordering. The partition
+    uses only checked-in paths/bytes, so CI jobs independently agree without
+    relying on a mutable timing cache or deselecting arbitrary test cases.
+    """
+    if shard_count < 1 or shard_count > 32:
+        raise ValueError("API shard count must be between 1 and 32")
+    root = root.resolve()
+    base = root / "services/api/tests"
+    if not base.is_dir():
+        raise ValueError("missing API test root")
+    files: list[Path] = []
+    for path in base.rglob("test_*.py"):
+        if path.is_symlink() or not path.is_file():
+            continue
+        relative = path.relative_to(root).as_posix()
+        if not re.fullmatch(r"services/api/tests/(?:[A-Za-z0-9_-]+/)*test_[A-Za-z0-9_]+\.py", relative):
+            raise ValueError(f"unsafe API test path: {relative!r}")
+        files.append(path)
+    if len(files) < shard_count:
+        raise ValueError("fewer API test modules than required shards")
+    buckets: list[list[str]] = [[] for _ in range(shard_count)]
+    sizes = [0] * shard_count
+    for path in sorted(files, key=lambda p: (-p.stat().st_size, p.as_posix())):
+        index = min(range(shard_count), key=lambda i: (sizes[i], len(buckets[i]), i))
+        buckets[index].append(path.relative_to(root).as_posix())
+        sizes[index] += path.stat().st_size
+    return [sorted(bucket) for bucket in buckets]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     selector = parser.add_mutually_exclusive_group()
     selector.add_argument("--scanners-only", action="store_true")
     selector.add_argument("--non-scanners", action="store_true")
+    selector.add_argument("--api-shard", type=int, metavar="INDEX")
+    parser.add_argument("--api-shards", type=int, default=8)
+    parser.add_argument("--exclude-api", action="store_true")
     args = parser.parse_args()
+    if args.exclude_api and not args.non_scanners:
+        parser.error("--exclude-api requires --non-scanners")
     try:
-        suites = discover_suites(args.root, scanners_only=args.scanners_only, non_scanners_only=args.non_scanners)
+        if args.api_shard is not None:
+            shards = discover_api_shards(args.root, args.api_shards)
+            if not 0 <= args.api_shard < len(shards):
+                raise ValueError("API shard index outside the configured range")
+            print("\n".join(shards[args.api_shard]))
+            return 0
+        suites = discover_suites(args.root, scanners_only=args.scanners_only,
+                                 non_scanners_only=args.non_scanners, exclude_api=args.exclude_api)
     except ValueError as exc:
         parser.error(str(exc))
     print(json.dumps({"include": [{"suite": suite} for suite in suites]}, separators=(",", ":")))

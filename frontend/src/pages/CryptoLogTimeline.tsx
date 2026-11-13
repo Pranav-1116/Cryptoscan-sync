@@ -25,7 +25,8 @@ export default function CryptoLogTimeline() {
   const [bucket, setBucket] = useState<"day" | "hour">("day");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
-  const [query, setQuery] = useState({ bucket: "day" as "day" | "hour", start: "", end: "" });
+  const [assetId, setAssetId] = useState("");
+  const [query, setQuery] = useState({ bucket: "day" as "day" | "hour", start: "", end: "", assetId: "" });
   const [data, setData] = useState<CryptologTimeline | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -34,6 +35,7 @@ export default function CryptoLogTimeline() {
     setFailure(null);
     apiCryptologTimeline({
       bucket: query.bucket,
+      asset_id: query.assetId || undefined,
       start_occurred: query.start || undefined,
       end_occurred: query.end || undefined,
     }).then((result) => {
@@ -57,15 +59,17 @@ export default function CryptoLogTimeline() {
             <option value="day">Daily buckets</option>
             <option value="hour">Hourly buckets</option>
           </select>
+          <input aria-label="timeline asset" placeholder="Asset ID (blank: all recorded assets)" value={assetId}
+            onChange={(e) => setAssetId(e.target.value)} style={CONTROL_STYLE} />
           <input aria-label="timeline start" placeholder="Start (e.g. 2026-11-01)" value={start}
             onChange={(e) => setStart(e.target.value)} style={CONTROL_STYLE} />
           <input aria-label="timeline end" placeholder="End (e.g. 2026-11-08)" value={end}
             onChange={(e) => setEnd(e.target.value)} style={CONTROL_STYLE} />
           <button className="btn" data-testid="apply-timeline"
-            onClick={() => setQuery({ bucket, start, end })}>Apply</button>
+            onClick={() => setQuery({ bucket, start, end, assetId: assetId.trim() })}>Apply</button>
           <button className="btn" onClick={() => {
-            setBucket("day"); setStart(""); setEnd("");
-            setQuery({ bucket: "day", start: "", end: "" });
+            setBucket("day"); setStart(""); setEnd(""); setAssetId("");
+            setQuery({ bucket: "day", start: "", end: "", assetId: "" });
           }}>Reset</button>
         </div>
 
@@ -77,7 +81,7 @@ export default function CryptoLogTimeline() {
           <div className="dim" data-testid="timeline-loading" style={{ marginTop: 12 }}>Reading the recorded events…</div>
         ) : data.buckets.length === 0 ? (
           <div className="dim" data-testid="timeline-empty" style={{ marginTop: 12 }}>
-            No recorded events in this window. That is a gap in the record — this screen never invents events or quiet.
+            No recorded events {query.assetId ? `for asset ${query.assetId}` : "across the selected estate"} in this window. That is a gap in the record — this screen never invents events or quiet.
           </div>
         ) : (
           <div data-testid="timeline-buckets" style={{ marginTop: 12, display: "grid", gap: 6 }}>
@@ -102,6 +106,7 @@ export default function CryptoLogTimeline() {
             ))}
             <div className="dim" data-testid="timeline-count" style={{ fontSize: 11 }}>
               {data.event_count} recorded event{data.event_count === 1 ? "" : "s"} across {data.buckets.length} bucket{data.buckets.length === 1 ? "" : "s"}
+              {data.window.asset_id ? ` · asset ${data.window.asset_id}` : " · all recorded assets"}
               {data.window.start_occurred ? ` · window from ${data.window.start_occurred}` : ""}
               {data.window.end_occurred ? ` · window to ${data.window.end_occurred}` : ""}
             </div>

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import BomCrossNav from "../components/BomCrossNav";
+import { CanonicalDetailLink } from "../components/AssetDetail";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Badge, Bar, Panel, Ring, Drawer } from "../components/ui";
@@ -1066,6 +1067,7 @@ function CbomAssets() {
       </Panel>
       {selected && (
         <Drawer title={selected.algorithm || "crypto asset"} sub={selected.location || selected.asset_id} onClose={() => setSelected(null)}>
+          <CanonicalDetailLink assetRef={`crypto:${selected.asset_id}`} />
           {!detail.data ? <p className="faint" style={{ fontSize: 12 }}>{detail.running ? "Reading the asset…" : "The asset detail did not return."}</p> : (
             (() => {
               const d = detail.data as Record<string, any>;

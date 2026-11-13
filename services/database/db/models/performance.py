@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import JSON, DateTime, Float, Index, String, Text
+from sqlalchemy import JSON, DateTime, Float, Index, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -24,8 +24,7 @@ class PerformanceMetric(BaseModel, TenantScoped):
 
     __tablename__ = "performance_metrics"
 
-    metric_id: Mapped[str] = mapped_column(String(64), nullable=False,
-                                           unique=True, index=True)
+    metric_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     asset_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     metric_name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     metric_type: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -42,7 +41,46 @@ class PerformanceMetric(BaseModel, TenantScoped):
     __table_args__ = (
         Index("ix_performance_metrics_tenant_name_observed",
               "tenant_id", "metric_name", "observed_at"),
+        Index("uq_performance_metrics_tenant_metric_id", "tenant_id",
+              "metric_id", unique=True),
+        Index("uq_performance_metrics_platform_metric_id", "metric_id",
+              unique=True, postgresql_where=text("tenant_id IS NULL"),
+              sqlite_where=text("tenant_id IS NULL")),
     )
+
+
+class PerformanceCaptureReceipt(BaseModel, TenantScoped):
+    """Public signature metadata for a bank-retained exporter snapshot.
+
+    Raw exporter bytes and signing private keys are never stored here. The
+    digest and detached signature let an auditor match the bank's original.
+    """
+
+    __tablename__ = "performance_capture_receipts"
+    __table_args__ = (
+        Index("uq_performance_capture_tenant_receipt", "tenant_id", "receipt_id",
+              unique=True),
+        Index("uq_performance_capture_platform_receipt", "receipt_id", unique=True,
+              postgresql_where=text("tenant_id IS NULL"),
+              sqlite_where=text("tenant_id IS NULL")),
+    )
+
+    receipt_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    asset_ref: Mapped[str] = mapped_column(String(120), nullable=False)
+    source_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    previous_observed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    payload_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    previous_sha256: Mapped[Optional[str]] = mapped_column(String(64))
+    authorization_ref: Mapped[str] = mapped_column(String(120), nullable=False)
+    provenance_state: Mapped[str] = mapped_column(String(40), nullable=False)
+    key_id: Mapped[Optional[str]] = mapped_column(String(120))
+    issuer: Mapped[Optional[str]] = mapped_column(String(120))
+    signature: Mapped[Optional[str]] = mapped_column(String(128))
+    accepted_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    duplicate_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    rejected_count: Mapped[int] = mapped_column(nullable=False, default=0)
 
 
 class PerformanceMetricDefinition(BaseModel, TenantScoped):

@@ -24,7 +24,7 @@ from verify_release_attestation import verify_attestation
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = "kubernetes-external-services/local-source-v1"
-MIGRATION_HEAD = "0148"  # 0147 forced tenant RLS/write isolation, 0148 PQC migration intelligence
+MIGRATION_HEAD = "0150"  # 0149 tenant-local Performance metrics, 0150 signed capture receipts
 IMAGE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}$")
 EXAMPLE_NAMES = {"15-secret.example.yaml"}
 DOCS = ["docs/CURRENT-STATE.md", "docs/runbooks/launch-assurance-handoff.md",
@@ -36,7 +36,8 @@ DOCS = ["docs/CURRENT-STATE.md", "docs/runbooks/launch-assurance-handoff.md",
         "docs/templates/launch/operating-exercise.json", "docs/templates/launch/payments-pilot.json",
         "docs/templates/launch/review.json", "docs/templates/launch/finding-plan.json",
         "docs/templates/launch/finding-completion.json", "scripts/independent_report.py", "docs/runbooks/operator-install-upgrade-recover.md", "docs/runbooks/controlled-execution-upgrade.md",
-        "docs/runbooks/evidence-assurance-upgrade.md", "docs/dev/scanner-isolation.md"]
+        "docs/runbooks/evidence-assurance-upgrade.md", "docs/dev/scanner-isolation.md",
+        "docs/runbooks/readiness-attestation.md", "scripts/readiness_attestation.py"]
 
 
 def sha(path):
@@ -181,14 +182,28 @@ def source_binding():
         if path.is_symlink() or not path.is_file():
             raise ValueError("Tracked source input must be a regular available file")
         tracked[name] = sha(path)
+    # A local engineering package must bind the actual migration head even
+    # before it is committed. Disclose these inputs as untracked rather than
+    # claiming the HEAD tree contains them; an expected clean commit still
+    # rejects such a package during release qualification.
+    untracked_paths = git("ls-files", "--others", "--exclude-standard", "-z", "--",
+                          "services/database/migrations/versions/").decode().strip("\0").split("\0")
+    untracked_migrations = {}
+    for name in filter(None, untracked_paths):
+        path = ROOT / name
+        if path.is_symlink() or not path.is_file() or path.suffix != ".py":
+            raise ValueError("Untracked migration must be a regular Python file")
+        untracked_migrations[name] = sha(path)
     dirty = bool(git("status", "--porcelain", "--untracked-files=normal").strip())
-    required = sorted(set(DEPENDENCY_INPUTS) | {p for p in paths if p.startswith("services/database/migrations/")})
+    required = sorted(set(DEPENDENCY_INPUTS) | {p for p in paths if p.startswith("services/database/migrations/")}
+                      | set(untracked_migrations))
+    source_files = {**tracked, **untracked_migrations}
     return {"schema": PROVENANCE_SCHEMA, "git_commit": git("rev-parse", "HEAD").decode().strip(),
         "git_tree": git("rev-parse", "HEAD^{tree}").decode().strip(), "source_dirty": dirty,
-        "tracked_files_sha256": tracked,
+        "tracked_files_sha256": tracked, "untracked_migrations_sha256": untracked_migrations,
         "tracked_snapshot_sha256": hashlib.sha256(json.dumps(tracked, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
-        "migration_head": MIGRATION_HEAD, "files_sha256": {p: tracked[p] for p in required},
-        "limit": "Tracked worktree binding only; dirty/untracked inputs are not a clean revision. OCI contents, test execution, CI and independent review require external evidence."}
+        "migration_head": MIGRATION_HEAD, "files_sha256": {p: source_files[p] for p in required},
+        "limit": "Untracked migration inputs are bound by bytes but not by the Git tree. A clean source revision, OCI contents, test execution, CI and independent review require external evidence."}
 
 
 def verify_source_binding(root, contract, lock, expected_source_commit=None):
@@ -205,15 +220,25 @@ def verify_source_binding(root, contract, lock, expected_source_commit=None):
     if not isinstance(provenance.get("source_dirty"), bool):
         raise ValueError("Source provenance must disclose dirty state")
     tracked, files = provenance.get("tracked_files_sha256"), provenance.get("files_sha256")
-    if not isinstance(tracked, dict) or not isinstance(files, dict) or not set(DEPENDENCY_INPUTS) <= files.keys():
+    untracked = provenance.get("untracked_migrations_sha256", {})
+    if (not isinstance(tracked, dict) or not isinstance(files, dict)
+            or not isinstance(untracked, dict) or not set(DEPENDENCY_INPUTS) <= files.keys()):
         raise ValueError("Missing dependency/source provenance binding")
     if not any(Path(name).name.startswith(MIGRATION_HEAD) for name in files):
         raise ValueError("Missing schema migration source binding")
+    if untracked and provenance["source_dirty"] is not True:
+        raise ValueError("Untracked migration inputs require a dirty source disclosure")
+    if set(untracked) & set(tracked) or not set(untracked) <= set(files):
+        raise ValueError("Untracked migration provenance is inconsistent")
+    for name, digest in untracked.items():
+        if (not name.startswith("services/database/migrations/versions/")
+                or Path(name).suffix != ".py" or files[name] != digest):
+            raise ValueError("Untracked source input is not a bound migration")
     for name, digest in files.items():
         path = Path(name)
         if path.is_absolute() or ".." in path.parts or not re.fullmatch(r"[0-9a-f]{64}", str(digest)):
             raise ValueError("Invalid source provenance path/digest")
-        if tracked.get(name) != digest or sha(root / path) != digest:
+        if (tracked.get(name) if name in tracked else untracked.get(name)) != digest or sha(root / path) != digest:
             raise ValueError("Packaged dependency/schema disagrees with source provenance binding")
     snapshot = hashlib.sha256(json.dumps(tracked, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     if snapshot != provenance.get("tracked_snapshot_sha256"):

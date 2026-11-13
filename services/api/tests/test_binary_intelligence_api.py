@@ -267,6 +267,8 @@ def test_async_queue_process_and_backpressure(api):
     assert queued.status_code == 202, queued.text
     job_id = queued.json()["job_id"]
     assert queued.json()["status"] == "queued"
+    assert queued.json()["queue"]["durable"] is False
+    assert queued.json()["queue"]["backend"] == "process_local_development_only"
     assert "backpressure" in queued.json()["queue"]["note"] or \
         "never silently" in queued.json()["queue"]["note"]
 
@@ -290,6 +292,28 @@ def test_async_queue_process_and_backpressure(api):
     assert status.status_code == 200
     assert status.json()["queue"]["processed_total"] == processed_before + 1
     assert "refusals" in status.json()["note"] or "numbers" in status.json()["note"]
+
+
+def test_production_refuses_process_local_binary_async_even_with_redis(api, monkeypatch):
+    """Redis is not a durable artifact handoff; no false 202 or worker health."""
+    from types import SimpleNamespace
+    from api.routers import binary_intelligence as binary
+
+    monkeypatch.setattr(binary, "get_settings", lambda: SimpleNamespace(
+        is_production=True, REDIS_URL="rediss://test-only@redis.invalid/0"))
+    before = binary.WORKER_QUEUE.as_dict()
+    payload = {"tenant_id": "tenant_001",
+               "artifact_base64": base64.b64encode(elf_crypto_sample()).decode()}
+    accepted = api.post("/api/v1/binary/scan/async", json=payload)
+    assert accepted.status_code == 503, accepted.text
+    assert "no durable artifact-backed worker" in accepted.json()["detail"]
+    assert api.post("/api/v1/binary/scan/jobs/bjob-missing/process").status_code == 503
+    firmware = api.post("/api/v1/binary/firmware/scan", json=payload)
+    assert firmware.status_code == 503
+    assert "isolated parser worker" in firmware.json()["detail"]
+    status = api.get("/api/v1/binary/worker/status")
+    assert status.status_code == 503, status.text
+    assert binary.WORKER_QUEUE.as_dict() == before
 
 
 def test_foreign_job_id_is_not_consumed_or_executed(api):

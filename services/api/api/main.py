@@ -419,6 +419,16 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.add_middleware(ControlledSurfaceMiddleware, production=settings.is_production)
     from api.middleware.assurance_body_limit import AssuranceBodyLimit
     app.add_middleware(AssuranceBodyLimit, prefix="/api/v1/assurance/")
+    # Binary inline uploads are at most 6 MiB decoded. Enforce a 9 MiB JSON
+    # wire cap before FastAPI parses base64, even for chunked requests. Larger
+    # artifacts need a bank-approved durable/encrypted handoff, not API RAM.
+    app.add_middleware(AssuranceBodyLimit, prefix="/api/v1/binary/",
+                       label="Binary", max_bytes=9 * 1048576)
+    # Bank-side exporter captures are submitted, never fetched from arbitrary
+    # URLs by the API. Bound the raw JSON before translator/ORM admission.
+    app.add_middleware(AssuranceBodyLimit,
+                       prefix="/api/v1/performance/captures/",
+                       label="Performance capture", max_bytes=1048576)
 
     origins = settings.cors_origin_list
     app.add_middleware(

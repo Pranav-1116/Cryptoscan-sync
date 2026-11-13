@@ -35,6 +35,8 @@ REQUIRED_CATEGORIES = (
     "integrations",
     "compliance",
     "load_soak",
+    "browser_journey",
+    "binary_async_durability",
     "documentation",
     "operational_policy",
     "readiness_closure",
@@ -65,8 +67,10 @@ def git_metadata() -> dict[str, Any]:
 def artifact(path: Path | None, category: str) -> dict:
     if not path:
         return status_row(category, "SKIP", "no external artifact supplied; this is not evidence")
-    if not path.exists():
-        return status_row(category, "FAIL", f"artifact not found: {path}")
+    if not path.is_file() or path.is_symlink():
+        return status_row(category, "FAIL", f"artifact missing or not a regular file: {path}")
+    if path.stat().st_size > 16 * 1024 * 1024:
+        return status_row(category, "FAIL", "artifact exceeds the 16 MiB read budget")
     raw = path.read_text(encoding="utf-8", errors="replace")
     data: Any = None
     statuses = []
@@ -110,6 +114,70 @@ def artifact(path: Path | None, category: str) -> dict:
     else:
         verdict = "PASS" if all(value in {"PASS", "PASSED", "OK"} for value in statuses) else "SKIP"
     return status_row(category, verdict, f"artifact={path}; sha256={sha256(path)}", artifact=str(path), artifact_sha256=sha256(path), observed_statuses=sorted(set(statuses)))
+
+
+EXTERNALLY_ATTESTED = frozenset({
+    "postgresql_dr", "hsm", "integrations", "compliance", "load_soak",
+    "browser_journey", "external_attestations", "readiness_closure", "operational_policy",
+    "production_orchestrator",
+})
+
+
+def require_attestation(row: dict, path: Path | None, *, category: str,
+                        attestation_dir: Path | None,
+                        trusted_public_key: Path | None,
+                        site_id: str | None,
+                        repository_commit: str) -> dict:
+    """A PASS-shaped artifact is not an independently attributable PASS."""
+    if category not in EXTERNALLY_ATTESTED:
+        raise ValueError("attestation required only for external readiness categories")
+    if row["status"] != "PASS":
+        return row
+    if (path is None or attestation_dir is None or trusted_public_key is None
+            or not site_id):
+        return status_row(category, "FAIL",
+                          "external PASS-shaped artifact lacks site-bound signed attestation and trust anchor")
+    try:
+        import importlib.util
+
+        script = ROOT / "scripts" / "readiness_attestation.py"
+        spec = importlib.util.spec_from_file_location("readiness_attestation", script)
+        if spec is None or spec.loader is None:
+            raise ValueError("readiness attestation verifier unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        verified = module.verify_artifact(
+            path, attestation_dir / f"{category}.attestation.json", trusted_public_key,
+            category=category, repository_commit=repository_commit, site_id=site_id)
+    except (ValueError, OSError) as exc:
+        return status_row(category, "FAIL",
+                          f"external attestation refused: {type(exc).__name__}")
+    except Exception as exc:
+        return status_row(category, "FAIL",
+                          f"external attestation verifier failed: {type(exc).__name__}")
+    if category == "browser_journey":
+        try:
+            browser = json.loads(path.read_text(encoding="utf-8"))
+            required = {"login", "authorized_scan", "retained_evidence", "six_boms",
+                        "digital_twin", "simulation_unchanged", "remediation_rescan"}
+            checks = browser.get("checks") if isinstance(browser, dict) else None
+            by_id = {item.get("id"): item for item in checks if isinstance(item, dict)} \
+                if isinstance(checks, list) else {}
+            if (browser.get("schema") != "cryptoscan.browser-journey/1"
+                    or browser.get("site_id") != site_id
+                    or browser.get("repository_commit") != repository_commit
+                    or not isinstance(browser.get("browser"), dict)
+                    or not str(browser["browser"].get("version") or "").strip()
+                    or not required <= by_id.keys()
+                    or any(by_id[name].get("status") != "PASS" or not re.fullmatch(
+                        r"[0-9a-f]{64}", str(by_id[name].get("evidence_sha256") or ""))
+                        for name in required)):
+                raise ValueError("browser journey lacks required site-bound checked steps")
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError, ValueError):
+            return status_row(category, "FAIL",
+                              "signed browser report lacks required login-to-rescan proof and trace digests")
+    return {**row, "attestation": verified,
+            "detail": f"{row['detail']}; site-bound signature verified (origin under supplied trust anchor only)"}
 
 
 # Dependency trees and generated output contain their own documentation and
@@ -221,7 +289,7 @@ def docs_check() -> dict:
     )
 
 
-def operational_policy_check(path: Path = OPERATIONAL_POLICY) -> dict:
+def operational_policy_check(path: Path = OPERATIONAL_POLICY, *, strict: bool = False) -> dict:
     """Validate the policy shape without treating a draft as approved.
 
     The operational-policy gate owns the approval boundary. This readiness
@@ -239,7 +307,7 @@ def operational_policy_check(path: Path = OPERATIONAL_POLICY) -> dict:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         policy = module._load(path)
-        findings = module.validate(policy)
+        findings = module.validate(policy, strict=strict)
     except SystemExit as exc:
         return status_row("operational_policy", "FAIL", str(exc))
     except Exception as exc:  # validator/import faults must not become a false PASS
@@ -253,6 +321,23 @@ def operational_policy_check(path: Path = OPERATIONAL_POLICY) -> dict:
         findings=findings,
         approval_required="run operational_policy_gate.py --strict for release approval",
     )
+
+
+def binary_async_durability_check() -> dict:
+    """A process-local queue cannot be a production async capability."""
+    try:
+        from api.routers.binary_intelligence import WORKER_QUEUE
+
+        backend = WORKER_QUEUE.as_dict()
+    except Exception as exc:
+        return status_row("binary_async_durability", "FAIL",
+                          f"Binary job backend could not be inspected: {type(exc).__name__}")
+    if backend.get("durable") is not True:
+        return status_row("binary_async_durability", "FAIL",
+                          "Binary async is process-local or unavailable in production; "
+                          "a secure artifact handoff and cross-replica worker claims are required")
+    return status_row("binary_async_durability", "PASS",
+                      "durable backend declared; confirm restart/replica proof in the signed integrations artifact")
 
 
 def readiness_closure_check(path: Path | None = None) -> dict:
@@ -309,34 +394,62 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--integrations", type=Path, default=None)
     ap.add_argument("--compliance", type=Path, default=None)
     ap.add_argument("--load-soak", type=Path, default=None)
+    ap.add_argument("--browser-journey", type=Path, default=None,
+                    help="signed real-browser report from the bank-owned staging site")
     ap.add_argument("--operational-policy", type=Path, default=OPERATIONAL_POLICY)
     ap.add_argument("--readiness-closure", type=Path, default=None, help="P0/P1 closure manifest from a controlled evidence owner")
     ap.add_argument("--external-attestations", type=Path, default=None)
     ap.add_argument("--production-evidence", type=Path, default=None, help="optional signed/digest-only scripts/production_evidence.py report; retained as an additional orchestrator source")
     ap.add_argument("--run-engineering", action="store_true", help="run static engineering checks before collecting the report")
     ap.add_argument("--strict", action="store_true", help="fail on every required SKIP or FAIL")
+    ap.add_argument("--site-id", help="operator-approved bank installation identifier")
+    ap.add_argument("--trusted-public-key", type=Path,
+                    help="external Ed25519 verification key (never a private key)")
+    ap.add_argument("--attestation-dir", type=Path,
+                    help="detached <category>.attestation.json receipts from the approved signer")
     args = ap.parse_args(argv)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     source_state = git_metadata()
     engineering_path = args.engineering
-    if args.run_engineering or engineering_path is None:
-        _, engineering_path = run_engineering(args.out)
+    engineering_exit = None
+    if args.strict or args.run_engineering or engineering_path is None:
+        # A caller-supplied PASS-shaped engineering JSON is not a CI result.
+        # Strict release executes the local gate against this exact worktree.
+        engineering_exit, engineering_path = run_engineering(args.out)
 
+    def external(path: Path | None, category: str, row: dict | None = None) -> dict:
+        return require_attestation(
+            row if row is not None else artifact(path, category), path,
+            category=category, attestation_dir=args.attestation_dir,
+            trusted_public_key=args.trusted_public_key,
+            site_id=args.site_id, repository_commit=source_state["commit"])
+
+    engineering = artifact(engineering_path, "engineering")
+    if args.strict and engineering_exit != 0:
+        engineering = status_row("engineering", "FAIL",
+                                 "strict engineering gate did not complete successfully")
+    if args.strict and source_state["dirty"]:
+        engineering = status_row("engineering", "FAIL",
+                                 "strict release cannot bind uncommitted source changes")
     rows = [
-        artifact(engineering_path, "engineering"),
-        artifact(args.postgresql_dr, "postgresql_dr"),
-        artifact(args.hsm, "hsm"),
-        artifact(args.integrations or args.production_evidence, "integrations"),
-        artifact(args.compliance, "compliance"),
-        artifact(args.load_soak, "load_soak"),
+        engineering,
+        external(args.postgresql_dr, "postgresql_dr"),
+        external(args.hsm, "hsm"),
+        external(args.integrations or args.production_evidence, "integrations"),
+        external(args.compliance, "compliance"),
+        external(args.load_soak, "load_soak"),
+        external(args.browser_journey, "browser_journey"),
+        binary_async_durability_check(),
         docs_check(),
-        operational_policy_check(args.operational_policy),
-        readiness_closure_check(args.readiness_closure),
-        artifact(args.external_attestations, "external_attestations"),
+        external(args.operational_policy, "operational_policy",
+                 operational_policy_check(args.operational_policy, strict=args.strict)),
+        external(args.readiness_closure, "readiness_closure",
+                 readiness_closure_check(args.readiness_closure)),
+        external(args.external_attestations, "external_attestations"),
     ]
     if args.production_evidence:
-        rows.append(artifact(args.production_evidence, "production_orchestrator"))
+        rows.append(external(args.production_evidence, "production_orchestrator"))
     report = {
         "schema": "cryptoscan.bank-readiness/1",
         "captured_at": datetime.now(timezone.utc).isoformat(),
@@ -346,7 +459,7 @@ def main(argv: list[str] | None = None) -> int:
         "environment": {"environment": os.getenv("ENVIRONMENT", "unset"), "ci": bool(os.getenv("CI"))},
         "required_categories": list(REQUIRED_CATEGORIES),
         "categories": rows,
-        "external_evidence_boundary": "PASS means only that the supplied artifact contained no FAIL/SKIP statuses. Missing customer/provider evidence is never inferred from source code, mocks, documentation or local SoftHSM.",
+        "external_evidence_boundary": "PASS requires a site/revision/category-bound signature under the operator-supplied trusted key and no FAIL/SKIP artifact statuses. This authenticates the submitted record, not the truth of a bank exercise; independent review and bank approval remain required.",
     }
     statuses = {row["category"]: row["status"] for row in rows}
     report["verdict"] = "PASS" if all(statuses.get(category) == "PASS" for category in REQUIRED_CATEGORIES) else "FAIL"

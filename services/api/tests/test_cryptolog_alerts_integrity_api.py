@@ -140,6 +140,63 @@ def test_foreign_recorded_event_cannot_seed_tenant_alert(api):
     assert api.get("/api/v1/cryptolog/alerts").json()["total_count"] == 0
 
 
+def test_tls_downgrade_requires_same_asset_recorded_predecessor(api):
+    prior = _event_dict(
+        event_id="prior", observation={"observed_at": "2026-11-06T04:00:00Z"},
+        cryptographic_context={"protocol": "TLS", "protocol_version": "TLS1.3",
+                               "cipher_suite": "TLS_AES_256_GCM_SHA384",
+                               "evidence_level": "NETWORK_NEGOTIATED"},
+        evidence={"evidence_ids": ["prior-evidence"]})
+    current = _weak_alert_event("current")
+    for event in (prior, current):
+        assert api.post("/api/v1/cryptolog/events", json=event).status_code == 201
+
+    fabricated = {**prior, "event_id": "never-recorded"}
+    refused = api.post("/api/v1/cryptolog/alerts/evaluate", json={
+        "events": [current], "previous_by_asset": {"asset_gateway_001": fabricated}})
+    assert refused.status_code == 404
+    assert api.get("/api/v1/cryptolog/alerts").json()["total_count"] == 0
+
+    altered = {**prior, "cryptographic_context": {
+        **prior["cryptographic_context"], "protocol_version": "TLS1.2"}}
+    refused = api.post("/api/v1/cryptolog/alerts/evaluate", json={
+        "events": [current], "previous_by_asset": {"asset_gateway_001": altered}})
+    assert refused.status_code == 409
+
+    later = {**prior, "event_id": "later",
+             "observation": {"observed_at": "2026-11-08T04:00:00Z"}}
+    assert api.post("/api/v1/cryptolog/events", json=later).status_code == 201
+    out_of_order = api.post("/api/v1/cryptolog/alerts/evaluate", json={
+        "events": [current], "previous_by_asset": {"asset_gateway_001": later}})
+    assert out_of_order.status_code == 422
+
+    accepted = api.post("/api/v1/cryptolog/alerts/evaluate", json={
+        "events": [current], "previous_by_asset": {"asset_gateway_001": prior}})
+    assert accepted.status_code == 200, accepted.text
+    downgrade = next(a for a in accepted.json()["alerts"] if a["rule_id"] == "CL-001")
+    assert downgrade["supporting_event_ids"] == ["prior", "current"]
+    assert "prior-evidence" in downgrade["supporting_evidence_ids"]
+
+
+def test_correction_and_transition_actor_cannot_be_spoofed(api):
+    event = _weak_alert_event("actor-event")
+    assert api.post("/api/v1/cryptolog/events", json=event).status_code == 201
+    correction = api.post("/api/v1/cryptolog/events/actor-event/corrections",
+                          json={"corrected_event": event, "reason": "triage",
+                                "actor": "somebody-else", "evidence_ids": ["ev"]})
+    assert correction.status_code == 403
+    assert api.get("/api/v1/cryptolog/events/actor-event/corrections").json()["returned"] == 0
+
+    alert = api.post("/api/v1/cryptolog/alerts/evaluate",
+                     json={"events": [event]}).json()["alerts"][0]
+    denied = api.post(f"/api/v1/cryptolog/alerts/{alert['alert_id']}/transition",
+                      json={"action": "ACKNOWLEDGE", "actor": "somebody-else",
+                            "at": AS_OF, "note": "reviewing"})
+    assert denied.status_code == 403
+    stored = api.get(f"/api/v1/cryptolog/alerts/{alert['alert_id']}").json()
+    assert stored["transitions"] == []
+
+
 def test_alert_listing_is_honest_when_empty(api):
     res = api.get("/api/v1/cryptolog/alerts")
     assert res.status_code == 200
@@ -194,7 +251,7 @@ def _open_alert(api):
 def test_transition_is_append_only(api):
     alert_id = _open_alert(api)
     first = api.post(f"/api/v1/cryptolog/alerts/{alert_id}/transition",
-                     json={"action": "ACKNOWLEDGE", "actor": "analyst_lin",
+                     json={"action": "ACKNOWLEDGE", "actor": "auditor",
                            "at": AS_OF, "note": "reviewing"})
     assert first.status_code == 201, first.text
     row = first.json()
@@ -202,7 +259,7 @@ def test_transition_is_append_only(api):
     assert len(row["transitions"]) == 1
 
     second = api.post(f"/api/v1/cryptolog/alerts/{alert_id}/transition",
-                      json={"action": "REOPEN", "actor": "analyst_lin",
+                      json={"action": "REOPEN", "actor": "auditor",
                             "at": AS_OF, "note": "re-examining"})
     assert second.status_code == 201
     history = second.json()["transitions"]
@@ -214,7 +271,7 @@ def test_transition_is_append_only(api):
 def test_confirmed_incident_demands_named_actor_and_evidence(api):
     alert_id = _open_alert(api)
     refused = api.post(f"/api/v1/cryptolog/alerts/{alert_id}/transition",
-                       json={"action": "RESOLVE", "actor": "analyst_lin",
+                       json={"action": "RESOLVE", "actor": "auditor",
                              "at": AS_OF, "note": "confirmed",
                              "resolution": "CONFIRMED_INCIDENT"})
     assert refused.status_code == 422
@@ -222,7 +279,7 @@ def test_confirmed_incident_demands_named_actor_and_evidence(api):
         "the engine never declares a compromise without named evidence"
 
     accepted = api.post(f"/api/v1/cryptolog/alerts/{alert_id}/transition",
-                        json={"action": "RESOLVE", "actor": "analyst_lin",
+                        json={"action": "RESOLVE", "actor": "auditor",
                               "at": AS_OF, "note": "evidence reviewed",
                               "resolution": "CONFIRMED_INCIDENT",
                               "evidence_ids": ["evidence_042"]})
