@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.dependencies import (get_current_user, get_db_session,
@@ -38,6 +39,7 @@ from shared_models.performance_intelligence import (
 )
 from shared_models.performance_metrics import PerformanceMetric
 from shared_models.performance_views import (
+    infrastructure_workspace as infrastructure_workspace_view,
     hsm_view, workload_view,
     application_view, cryptography_view, database_view, domain_view,
     network_view, overview as view_overview, storage_view,
@@ -268,6 +270,39 @@ class SummaryStats(BaseModel):
 class DomainResponse(BaseModel):
     domain: str
     metrics: Dict[str, SummaryStats]
+    note: str
+
+
+class InfraCategoryOut(BaseModel):
+    state: str
+    metrics: Dict[str, Any]
+    basis: str
+
+
+class InfraServerRowOut(BaseModel):
+    asset_id: str
+    link: Optional[str] = None
+    link_state: str
+    cpu_pct: Optional[float] = None
+    memory_pct: Optional[float] = None
+    load: Optional[float] = None
+    disk_latency_ms: Optional[float] = None
+    families: List[str]
+    samples: int
+    last_observed: Optional[str] = None
+
+
+class HardwareHealthOut(BaseModel):
+    state: str
+    metrics: Dict[str, Any]
+    basis: str
+
+
+class InfrastructureWorkspaceOut(BaseModel):
+    categories: Dict[str, InfraCategoryOut]
+    inventory: List[InfraServerRowOut]
+    trends: Dict[str, Any]
+    hardware_health: HardwareHealthOut
     note: str
 
 
@@ -666,6 +701,41 @@ def infrastructure(tenant_id: str = Query(...),
     window_start, window_end = window
     rows = _tenant_rows(db, tenant_id, window_start, window_end)
     return DomainResponse(**domain_view(rows, "infrastructure"))
+
+
+@router.get("/infrastructure/workspace", response_model=InfrastructureWorkspaceOut)
+def infrastructure_workspace(
+        tenant_id: str = Query(...),
+        window: Tuple[datetime, datetime] = Depends(_window_params),
+        db: Session = Depends(get_db_session),
+        user: str = Depends(get_current_user)) -> InfrastructureWorkspaceOut:
+    """Infrastructure Performance workspace (docs/performance/03_UI_SPEC.md
+    §2): eight tabs over one projection. Server links are emitted only for
+    VERIFIED technology-spine identities (hw:/app: lookups) — an unverified
+    asset stays unlinked instead of guessing a canonical record."""
+    from db.models.hardware_live import HardwareAsset
+    from db.models.system import System
+
+    window_start, window_end = window
+    rows = _tenant_rows(db, tenant_id, window_start, window_end)
+
+    asset_ids = {r.asset_id for r in rows}
+    links: Dict[str, Optional[str]] = {}
+    for asset_id in sorted(asset_ids):
+        if asset_id.split(":", 1)[0] in ("app", "crypto", "hw", "net", "vendor") and ":" in asset_id:
+            links[asset_id] = asset_id  # already a canonical ref
+            continue
+        hw = db.execute(
+            select(HardwareAsset).where(HardwareAsset.asset_id == asset_id)
+        ).scalars().first()
+        if hw is not None:
+            links[asset_id] = f"hw:{asset_id}"
+            continue
+        sys_rec = db.get(System, asset_id)
+        links[asset_id] = f"app:{asset_id}" if sys_rec is not None else None
+
+    return InfrastructureWorkspaceOut(
+        **infrastructure_workspace_view(rows, link_by_asset=links))
 
 
 @router.get("/cloud", response_model=DomainResponse)

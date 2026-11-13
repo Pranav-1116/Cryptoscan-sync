@@ -8839,6 +8839,33 @@ export interface PerformanceOverview {
   note: string;
 }
 
+export interface InfraCategory {
+  state: string;
+  metrics: Record<string, PerformanceSummary>;
+  basis: string;
+}
+
+export interface InfraServerRow {
+  asset_id: string;
+  link?: string | null;
+  link_state: string;
+  cpu_pct?: number | null;
+  memory_pct?: number | null;
+  load?: number | null;
+  disk_latency_ms?: number | null;
+  families: string[];
+  samples: number;
+  last_observed?: string | null;
+}
+
+export interface PerformanceInfraWorkspace {
+  categories: Record<string, InfraCategory>;
+  inventory: InfraServerRow[];
+  trends: Record<string, PerformanceSummary>;
+  hardware_health: { state: string; metrics: Record<string, PerformanceSummary>; basis: string };
+  note: string;
+}
+
 export interface PerformanceHsm {
   devices: Array<{
     device: string;
@@ -8995,6 +9022,9 @@ const performanceQuery = (params: object): string => {
 
 export const apiPerformanceOverview = (p: PerformanceWindow): Promise<ApiResult<PerformanceOverview>> =>
   call<PerformanceOverview>(`/api/v1/performance/overview${performanceQuery(p)}`);
+
+export const apiPerformanceInfraWorkspace = (p: PerformanceWindow): Promise<ApiResult<PerformanceInfraWorkspace>> =>
+  call<PerformanceInfraWorkspace>(`/api/v1/performance/infrastructure/workspace${performanceQuery(p)}`);
 
 export const apiPerformanceHsm = (p: PerformanceWindow): Promise<ApiResult<PerformanceHsm>> =>
   call<PerformanceHsm>(`/api/v1/performance/hsm${performanceQuery(p)}`);

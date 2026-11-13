@@ -891,7 +891,7 @@ export default function LiveAssetIntelligence() {
         ))}
       </div>
       {wsAsset ? (
-        <AssetDetail assetRef={wsAsset} onBack={() => setWsParams({ tab: wsActive })} />
+        <AssetDetail assetRef={wsAsset} initialTab={wsParams.get("detail_tab")} onBack={() => setWsParams({ tab: wsActive })} />
       ) : wsActive === "overview" ? (<>
       {/* Visual Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>

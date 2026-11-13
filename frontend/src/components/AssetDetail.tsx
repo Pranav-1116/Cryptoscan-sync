@@ -44,8 +44,10 @@ function RelationBadge({ state }: { state: string }) {
   return <Badge tone={tone}>{label}</Badge>;
 }
 
-export default function AssetDetail({ assetRef, onBack }: { assetRef: string; onBack?: () => void }) {
-  const [tab, setTab] = useState("overview");
+const TAB_IDS = ["overview", "components", "cryptography", "hardware", "network", "vendors", "dependencies", "evidence", "history"];
+
+export default function AssetDetail({ assetRef, onBack, initialTab }: { assetRef: string; onBack?: () => void; initialTab?: string | null }) {
+  const [tab, setTab] = useState(initialTab && TAB_IDS.includes(initialTab) ? initialTab : "overview");
   const header = useApi(() => apiAssetDetailHeader(assetRef), [assetRef]);
   const detail = useApi(() => apiAssetDetailTab(assetRef, tab), [assetRef, tab]);
   const h = header.data as unknown as AssetDetailHeader | null;

@@ -2,12 +2,14 @@ import React, { useCallback, useEffect, useState } from "react";
 import {
   PerformanceServiceRow, activeTenantId, ensureActiveTenant } from "../lib/api";
 import { Badge, Panel, PageHead } from "../components/ui.jsx";
+import InfraWorkspace from "../components/InfraWorkspace";
 import {
   apiPerformanceAlerts, apiPerformanceApplications, apiPerformanceBaselines,
   apiPerformanceHsm, apiPerformanceWorkloads, apiPerformanceSamples,
+  apiPerformanceInfraWorkspace, PerformanceInfraWorkspace,
   apiPerformanceBenchmarks, apiPerformanceCapacity, apiPerformanceCloud,
   apiPerformanceCryptography, apiPerformanceDatabases, apiPerformanceHealth,
-  apiPerformanceInfrastructure, apiPerformanceInvestigation,
+ apiPerformanceInvestigation,
   apiPerformanceNetwork, apiPerformanceOverview, apiPerformanceRunBenchmark,
   apiPerformanceSlo, apiPerformanceStorage,
   type ApiResult, type PerformanceAlert, type PerformanceBaseline,
@@ -260,7 +262,7 @@ export default function Performance() {
   const applications = useAsync(() => apiPerformanceApplications(w), [reloadKey]);
   const databases = useAsync(() => apiPerformanceDatabases(w), [reloadKey]);
   const cryptography = useAsync(() => apiPerformanceCryptography(w), [reloadKey]);
-  const infrastructure = useAsync(() => apiPerformanceInfrastructure(w), [reloadKey]);
+  const infrastructure = useAsync(() => apiPerformanceInfraWorkspace(w), [reloadKey]);
   const cloud = useAsync(() => apiPerformanceCloud(w), [reloadKey]);
   const alerts = useAsync(() => apiPerformanceAlerts(w), [reloadKey]);
   const capacity = useAsync(() => apiPerformanceCapacity({ ...w, capacity_value: undefined }), [reloadKey]);
@@ -397,10 +399,7 @@ export default function Performance() {
 
       {view === "infrastructure" && (
         infrastructure.error ? <ErrorNote error={infrastructure.error} /> : (
-          <Panel title="Infrastructure Monitoring">
-            <SummaryTable metrics={infrastructure.data?.metrics ?? {}} />
-            <Note>{infrastructure.data?.note}</Note>
-          </Panel>
+          <InfraWorkspace data={infrastructure.data} />
         )
       )}
 

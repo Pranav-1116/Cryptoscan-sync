@@ -284,6 +284,103 @@ def overview(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
     }
 
 
+#: Infrastructure families (UI spec §2). The eight interface tabs read one
+#: workspace projection: categories, per-server inventory and honest gaps.
+_INFRA_FAMILIES = {
+    "cpu": ("cpu.utilization_pct", "system.load"),
+    "memory": ("ram.utilization_pct",),
+    "storage": ("storage.capacity_bytes", "storage.used_bytes",
+                "storage.available_bytes", "storage.utilization_pct",
+                "storage.growth_bytes"),
+    "disk": ("disk.utilization_pct", "disk.iops", "disk.throughput_mbps",
+             "disk.latency_ms"),
+    "processes": ("process.health",),
+    "containers": ("container.cpu_pct", "container.memory_bytes",
+                   "container.network_throughput_mbps"),
+    "kubernetes": ("k8s.pod_restarts", "k8s.resource_quota_pct"),
+}
+
+
+def infrastructure_workspace(
+        rows: Sequence[PerformanceMetric],
+        link_by_asset: Dict[str, Optional[str]] | None = None,
+) -> Dict[str, Any]:
+    """The Infrastructure Performance workspace (UI spec §2): the eight
+    interface tabs read this one projection.
+
+    ``link_by_asset`` carries VERIFIED canonical refs (tech-spine lookups
+    performed by the caller) — an asset without a verified link stays
+    unlinked; the engine never invents asset identities. Virtualization and
+    environmental hardware telemetry have no metric families in the
+    taxonomy, so those tabs report a named collection gap — never zeros."""
+    by_name = _rows_by_name(rows)
+    links = link_by_asset or {}
+
+    categories: Dict[str, Any] = {}
+    for category, names in _INFRA_FAMILIES.items():
+        metrics = {name: summarize_metric(by_name[name])
+                   for name in names if name in by_name}
+        categories[category] = {
+            "state": "measured" if metrics else "not_collected",
+            "metrics": metrics,
+            "basis": ("" if metrics else
+                      f"no {category} telemetry is stored in the window"),
+        }
+    categories["virtualization"] = {
+        "state": "not_collected",
+        "metrics": {},
+        "basis": ("virtualization telemetry (CPU ready, memory ballooning, "
+                  "host contention) has no authorized collector — a named "
+                  "gap, not a healthy host"),
+    }
+
+    per_asset: Dict[str, List[PerformanceMetric]] = {}
+    for row in rows:
+        per_asset.setdefault(row.asset_id, []).append(row)
+    inventory: List[Dict[str, Any]] = []
+    for asset_id, arows in sorted(per_asset.items()):
+        names: Dict[str, List[PerformanceMetric]] = {}
+        for row in arows:
+            names.setdefault(row.metric_name, []).append(row)
+        observed = [r.observed_at for r in arows]
+        inventory.append({
+            "asset_id": asset_id,
+            "link": links.get(asset_id),
+            "link_state": ("linked" if links.get(asset_id)
+                           else "not established"),
+            "cpu_pct": _latest(names.get("cpu.utilization_pct", [])),
+            "memory_pct": _latest(names.get("ram.utilization_pct", [])),
+            "load": _latest(names.get("system.load", [])),
+            "disk_latency_ms": _latest(names.get("disk.latency_ms", [])),
+            "families": sorted(names.keys()),
+            "samples": len(arows),
+            "last_observed": max(observed).isoformat() if observed else None,
+        })
+
+    trends = {name: summarize_metric(by_name[name])
+              for name in sorted(by_name)
+              if name in ("cpu.utilization_pct", "ram.utilization_pct",
+                          "system.load", "disk.iops", "disk.latency_ms",
+                          "disk.throughput_mbps")}
+
+    return {
+        "categories": categories,
+        "inventory": inventory,
+        "trends": trends,
+        "hardware_health": {
+            "state": "measured" if "process.health" in by_name else "not_collected",
+            "metrics": ({"process.health": summarize_metric(by_name["process.health"])}
+                        if "process.health" in by_name else {}),
+            "basis": ("environmental telemetry (temperature, fans, power "
+                      "supplies) has no authorized collector — reported as a "
+                      "gap, never as healthy readings"),
+        },
+        "note": "one workspace projection for the eight interface tabs — "
+                "delivered telemetry only; a gap is named, never filled with "
+                "zeros",
+    }
+
+
 #: HSM/KMS metric families (UI spec §7). Read-only projections of stored
 #: telemetry — the collector rule (vendor-supported, read-only, no key
 #: material, no interference) governs collection and is not narrated here.

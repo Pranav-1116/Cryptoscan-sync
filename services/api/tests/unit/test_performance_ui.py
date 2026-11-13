@@ -131,6 +131,57 @@ async def test_workloads_report_correlation_only_causation_unproven():
 
 
 @pytest.mark.asyncio
+async def test_infrastructure_workspace_links_only_verified_spine_identities():
+    from db.models.hardware_live import HardwareAsset
+    from db.models.system import System
+
+    app, session, engine = _make_app()
+    # srv-a exists as a hardware asset -> hw:srv-a; srv-sys is a System -> app:
+    session.add(HardwareAsset(asset_id="srv-a", tenant_id=TENANT))
+    session.add(System(id="srv-sys", name="Payments core", environment="PROD",
+                       tenant_id=TENANT))
+    _metric(session, "cpu.utilization_pct", 61.5, asset="srv-a")
+    _metric(session, "ram.utilization_pct", 72.0, asset="srv-a", minutes=12)
+    _metric(session, "cpu.utilization_pct", 33.0, asset="srv-sys", minutes=20)
+    _metric(session, "cpu.utilization_pct", 88.0, asset="srv-ghost", minutes=5)
+    _metric(session, "container.cpu_pct", 40.0, asset="pod-1", minutes=8)
+    session.flush()
+    res = await _get(app, "/api/v1/performance/infrastructure/workspace", _params())
+    assert res.status_code == 200
+    body = res.json()
+    rows = {r["asset_id"]: r for r in body["inventory"]}
+    assert rows["srv-a"]["link"] == "hw:srv-a"
+    assert rows["srv-sys"]["link"] == "app:srv-sys"
+    # an asset with no canonical spine record stays unlinked — never invented
+    assert rows["srv-ghost"]["link"] is None
+    assert rows["srv-ghost"]["link_state"] == "not established"
+    assert rows["srv-a"]["cpu_pct"] == 61.5
+    assert rows["srv-a"]["memory_pct"] == 72.0
+    # virtualization is a named gap — not zeros, not a healthy host
+    virt = body["categories"]["virtualization"]
+    assert virt["state"] == "not_collected"
+    assert "no authorized collector" in virt["basis"]
+    assert "not a healthy host" in virt["basis"]
+    # containers measured from delivered telemetry
+    assert body["categories"]["containers"]["state"] == "measured"
+    assert body["categories"]["cpu"]["state"] == "measured"
+
+
+@pytest.mark.asyncio
+async def test_infrastructure_workspace_without_telemetry_names_gaps():
+    app, session, engine = _make_app()
+    session.flush()
+    res = await _get(app, "/api/v1/performance/infrastructure/workspace", _params())
+    assert res.status_code == 200
+    body = res.json()
+    assert body["inventory"] == []
+    assert body["trends"] == {}
+    assert body["hardware_health"]["state"] == "not_collected"
+    assert "never as healthy readings" in body["hardware_health"]["basis"]
+    assert body["categories"]["cpu"]["state"] == "not_collected"
+
+
+@pytest.mark.asyncio
 async def test_hsm_without_telemetry_is_honest_not_a_healthy_device():
     app, session, engine = _make_app()
     session.flush()
