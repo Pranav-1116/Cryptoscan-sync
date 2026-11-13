@@ -8943,13 +8943,19 @@ export interface PerformanceHsm {
   devices: Array<{
     device: string;
     operation_latency_ms?: number | null;
+    p95_latency_ms?: number | null;
     queue_depth?: number | null;
     utilization_pct?: number | null;
     provider_errors?: number | null;
+    availability_pct?: number | null;
+    operations_per_sec?: number | null;
     samples: number;
     last_observed?: string | null;
+    trend?: Array<{ bucket: string; value: number | null; samples: number }>;
   }>;
   families: Record<string, PerformanceSummary>;
+  /** UI brief §7 the eleven measurements (docs/performance/03_UI_SPEC.md §7). */
+  measurements?: Record<string, { state: string; metrics: Record<string, PerformanceSummary>; basis: string }>;
   measurement_kind: string;
   note: string;
 }

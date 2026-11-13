@@ -323,6 +323,46 @@ async def test_infrastructure_workspace_without_telemetry_names_gaps():
 
 
 @pytest.mark.asyncio
+async def test_hsm_per_device_trend_p95_and_measurement_gaps():
+    app, session, engine = _make_app()
+    # three delivered op-latency points in two hour buckets + one stale row
+    _metric(session, "crypto.hsm_operation_latency_ms", 2.4, asset="hsm-1", minutes=100)
+    _metric(session, "crypto.hsm_operation_latency_ms", 2.8, asset="hsm-1", minutes=110)
+    _metric(session, "crypto.hsm_operation_latency_ms", 3.1, asset="hsm-1", minutes=20)
+    _metric(session, "crypto.hsm_operation_latency_ms", None, asset="hsm-1", minutes=30,
+            quality="stale")  # stale carries no value — never counted in the trend
+    _metric(session, "availability.uptime_pct", 99.98, asset="hsm-1", minutes=15)
+    session.flush()
+    res = await _get(app, "/api/v1/performance/hsm", _params())
+    assert res.status_code == 200
+    body = res.json()
+    device = body["devices"][0]
+    assert device["device"] == "hsm-1"
+    assert device["operation_latency_ms"] == 3.1
+    assert device["p95_latency_ms"] == 3.1  # nearest-rank p95 over delivered values
+    assert device["availability_pct"] == 99.98
+    assert device["operations_per_sec"] is None  # no counter family — never invented
+    # trend buckets: delivered values only, hour-bucketed, stale excluded
+    trend = {t["bucket"]: t for t in device["trend"]}
+    assert len(device["trend"]) == 2
+    for point in device["trend"]:
+        assert point["value"] is not None
+        assert point["samples"] >= 1
+    assert all(p["samples"] <= 2 for p in device["trend"])  # stale row excluded
+    # the eleven measurements: gaps named, never zeros
+    ms = body["measurements"]
+    assert ms["sign_latency"]["state"] == "not_collected"
+    assert "no dedicated collector family" in ms["encrypt_latency"]["basis"]
+    assert "session utilization has no collector family" in ms["session_utilization"]["basis"]
+    assert "failover status has no collector family" in ms["failover"]["basis"]
+    assert "KMS throttling has no collector family" in ms["kms_throttling"]["basis"]
+    assert ms["availability"]["state"] == "measured"
+    # the read-only collection rule
+    assert "key material is never collected" in body["note"]
+    assert "never interfered" in body["note"]
+
+
+@pytest.mark.asyncio
 async def test_hsm_without_telemetry_is_honest_not_a_healthy_device():
     app, session, engine = _make_app()
     session.flush()

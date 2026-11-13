@@ -308,16 +308,21 @@ class DatabaseWorkspaceOut(BaseModel):
 class HsmDeviceOut(BaseModel):
     device: str
     operation_latency_ms: Optional[float] = None
+    p95_latency_ms: Optional[float] = None
     queue_depth: Optional[float] = None
     utilization_pct: Optional[float] = None
     provider_errors: Optional[float] = None
+    availability_pct: Optional[float] = None
+    operations_per_sec: Optional[float] = None
     samples: int = 0
     last_observed: Optional[str] = None
+    trend: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class HsmResponse(BaseModel):
     devices: List[HsmDeviceOut]
     families: Dict[str, Any]
+    measurements: Dict[str, Any] = Field(default_factory=dict)
     measurement_kind: str
     note: str
 

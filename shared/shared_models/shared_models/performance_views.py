@@ -711,6 +711,20 @@ def hsm_view(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
     by_name = _rows_by_name(rows)
     families = {name: summarize_metric(by_name.get(name, []))
                 for name in _HSM_METRICS if name in by_name}
+    def _trend(metric_rows: Sequence[PerformanceMetric]) -> List[Dict[str, Any]]:
+        """Hour-bucketed trend over DELIVERED values only — a bucket with
+        no data is null, never a fabricated flat point."""
+        buckets: Dict[str, List[float]] = {}
+        for row in metric_rows:
+            if (row.quality_status in NO_VALUE_QUALITIES
+                    or row.metric_value is None):
+                continue
+            buckets.setdefault(row.observed_at.strftime("%Y-%m-%dT%H"),
+                               []).append(row.metric_value)
+        return [{"bucket": hour, "value": round(sum(vals) / len(vals), 3),
+                 "samples": len(vals)}
+                for hour, vals in sorted(buckets.items())]
+
     per_device: Dict[str, Dict[str, List[PerformanceMetric]]] = {}
     for row in rows:
         if row.metric_name not in _HSM_METRICS:
@@ -720,24 +734,82 @@ def hsm_view(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
     devices: List[Dict[str, Any]] = []
     for device_id, by_metric in sorted(per_device.items()):
         flat = [r for rs in by_metric.values() for r in rs]
+        op_rows = by_metric.get("crypto.hsm_operation_latency_ms", [])
+        avail_rows = [r for r in rows
+                      if r.asset_id == device_id
+                      and r.metric_name == "availability.uptime_pct"]
         devices.append({
             "device": device_id,
-            "operation_latency_ms": _latest(
-                by_metric.get("crypto.hsm_operation_latency_ms", [])),
+            "operation_latency_ms": _latest(op_rows),
+            "p95_latency_ms": _percentile(
+                [r.metric_value for r in op_rows
+                 if r.quality_status not in NO_VALUE_QUALITIES
+                 and r.metric_value is not None], 0.95),
             "queue_depth": _latest(by_metric.get("crypto.hsm_queue_depth", [])),
             "utilization_pct": _latest(
                 by_metric.get("crypto.hsm_utilization_pct", [])),
             "provider_errors": _latest(
                 by_metric.get("crypto.provider_errors", [])),
+            "availability_pct": _latest(avail_rows),
+            "operations_per_sec": None,
             "samples": len(flat),
             "last_observed": max((r.observed_at for r in flat), default=None),
+            "trend": _trend(op_rows),
         })
     for entry in devices:
         entry["last_observed"] = (entry["last_observed"].isoformat()
                                   if entry["last_observed"] else None)
+
+    def _measure(names, gap_basis):
+        found = {name: summarize_metric(by_name[name])
+                 for name in names if name in by_name}
+        return {"state": "measured" if found else "not_collected",
+                "metrics": found, "basis": "" if found else gap_basis}
+
+    measurements = {
+        "availability": _measure(("availability.uptime_pct",),
+                                 "no HSM availability telemetry is stored in the window"),
+        "throughput": {"state": "not_collected", "metrics": {},
+                       "basis": ("request throughput has no counter family "
+                                 "— unknown, never zero")},
+        "sign_latency": _measure(("crypto.sign_latency_ms",),
+                                 "no signing telemetry is stored in the window"),
+        "verify_latency": _measure(("crypto.verify_latency_ms",),
+                                   "no verification telemetry is stored in the window"),
+        "encrypt_latency": {"state": "not_collected", "metrics": {},
+                            "basis": ("encrypt latency has no dedicated "
+                                      "collector family — a named gap")},
+        "decrypt_latency": {"state": "not_collected", "metrics": {},
+                            "basis": ("decrypt latency has no dedicated "
+                                      "collector family — a named gap")},
+        "keygen_latency": _measure(("crypto.keygen_duration_ms",),
+                                   "no key-generation telemetry is stored in the window"),
+        "queue_saturation": _measure(("crypto.hsm_queue_depth",
+                                      "crypto.hsm_utilization_pct"),
+                                     "no queue or saturation telemetry is stored in the window"),
+        "session_utilization": {"state": "not_collected", "metrics": {},
+                                "basis": ("session utilization has no "
+                                          "collector family — a named gap")},
+        "provider_errors": _measure(("crypto.provider_errors",),
+                                    "no provider-error telemetry is stored in the window"),
+        "failover": {"state": "not_collected", "metrics": {},
+                     "basis": ("failover status has no collector family "
+                               "— a named gap")},
+        "firmware_changes": {"state": "not_collected", "metrics": {},
+                             "basis": ("firmware and configuration changes "
+                                       "are not performance telemetry here "
+                                       "— a named gap")},
+        "kms_latency": _measure(("crypto.kms_response_ms",
+                                 "cloud.kms_service_latency_ms"),
+                                "no KMS latency telemetry is stored in the window"),
+        "kms_throttling": {"state": "not_collected", "metrics": {},
+                           "basis": ("KMS throttling has no collector "
+                                     "family — a named gap")},
+    }
     return {
         "devices": devices,
         "families": families,
+        "measurements": measurements,
         "measurement_kind": "observed-production",
         "note": "vendor-supported read-only management and performance "
                 "interfaces only — key material is never collected and HSM "

@@ -7,6 +7,7 @@ import AppPerfWorkspace from "../components/AppPerfWorkspace";
 import DbPerfWorkspace from "../components/DbPerfWorkspace";
 import NetworkPerfWorkspace from "../components/NetworkPerfWorkspace";
 import CryptoWorkspace from "../components/CryptoWorkspace";
+import HsmWorkspace from "../components/HsmWorkspace";
 import { comparabilityGate, comparisonRows, metadataChecklist, type BenchmarkRunLike } from "../lib/benchmarkLab";
 import {
   apiPerformanceAlerts, apiPerformanceBaselines,
@@ -451,40 +452,7 @@ export default function Performance() {
 
       {view === "hsm" && (
         hsm.error ? <ErrorNote error={hsm.error} /> : (
-          <Panel title="HSM & KMS Performance" sub="vendor-supported read-only management and performance interfaces">
-            {(hsm.data?.devices ?? []).length === 0 ? (
-              <div style={{ fontSize: 12, opacity: 0.75 }}>
-                No HSM or KMS performance telemetry is stored in this window —
-                absence of telemetry is not a healthy device.
-              </div>
-            ) : (
-              <table style={{ width: "100%", fontSize: 12 }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: "left", padding: 6 }}>Device</th>
-                    <th style={{ textAlign: "left", padding: 6 }}>Operation latency</th>
-                    <th style={{ textAlign: "left", padding: 6 }}>Queue depth</th>
-                    <th style={{ textAlign: "left", padding: 6 }}>Utilization</th>
-                    <th style={{ textAlign: "left", padding: 6 }}>Provider errors</th>
-                    <th style={{ textAlign: "left", padding: 6 }}>Last observed</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(hsm.data?.devices ?? []).map((d) => (
-                    <tr key={d.device}>
-                      <td style={{ padding: 6 }}>{d.device}</td>
-                      <td style={{ padding: 6 }}>{d.operation_latency_ms ?? "—"}</td>
-                      <td style={{ padding: 6 }}>{d.queue_depth ?? "—"}</td>
-                      <td style={{ padding: 6 }}>{d.utilization_pct ?? "—"}</td>
-                      <td style={{ padding: 6 }}>{d.provider_errors ?? "—"}</td>
-                      <td style={{ padding: 6 }}>{d.last_observed ? String(d.last_observed).slice(0, 10) : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-            <Note>{hsm.data?.note ?? ""}</Note>
-          </Panel>
+          <HsmWorkspace data={hsm.data} />
         )
       )}
 
