@@ -40,14 +40,14 @@ def _make_app():
     return app, session, engine
 
 
-def _metric(session, name, value, asset="asset-1", minutes=10, quality="valid", unit=None):
+def _metric(session, name, value, asset="asset-1", minutes=10, quality="valid", unit=None, labels=None):
     unit = unit or ("percent" if name.endswith("_pct") else "ms" if name.endswith("_ms") else "count")
     session.add(PerformanceMetricRow(
         metric_id=f"m-{name}-{asset}-{minutes}", tenant_id=TENANT, asset_id=asset,
         metric_name=name, metric_type="gauge",
         metric_value=value, unit=unit, source_id="collector-1",
         observed_at=NOW - timedelta(minutes=minutes),
-        labels=None, quality_status=quality,
+        labels=labels, quality_status=quality,
     ))
 
 
@@ -128,6 +128,47 @@ async def test_workloads_report_correlation_only_causation_unproven():
     assert candidate["causation"] == "unproven"
     assert "timestamps and traces must correlate before causation" in candidate["basis"]
     assert "never proves causation" in candidate["basis"]
+
+
+@pytest.mark.asyncio
+async def test_applications_workspace_ten_metrics_and_honest_queue_depth():
+    app, session, engine = _make_app()
+    _metric(session, "api.requests_per_sec", 520, asset="svc-pay", unit="requests/sec")
+    _metric(session, "api.latency_p50_ms", 28, asset="svc-pay")
+    _metric(session, "api.latency_p95_ms", 210, asset="svc-pay", minutes=12)
+    _metric(session, "api.error_rate_pct", 0.6, asset="svc-pay", minutes=22)
+    _metric(session, "api.latency_p95_ms", 210, asset="svc-pay", minutes=5,
+            labels={"endpoint": "POST /v1/payments"})
+    _metric(session, "performance.regression_ms", 47, asset="svc-pay", minutes=15)
+    session.flush()
+    res = await _get(app, "/api/v1/performance/applications/workspace", _params())
+    assert res.status_code == 200
+    body = res.json()
+    m = body["metrics"]
+    assert m["requests_per_sec"]["value"] == 520
+    assert m["latency_p95_ms"]["value"] == 210
+    assert m["error_rate_pct"]["value"] == 0.6
+    # queue depth has no collector — unknown with a named basis, never zero
+    assert m["queue_depth"]["value"] is None
+    assert m["queue_depth"]["state"] == "unknown"
+    assert "no authorized collector" in m["queue_depth"]["note"]
+    assert m["availability_pct"]["value"] is None  # never delivered
+    # endpoint rows project controlled label keys only
+    assert body["endpoints"][0]["endpoint"] == "POST /v1/payments"
+    assert body["endpoints"][0]["service"] == "svc-pay"
+    svc = body["services"][0]
+    assert svc["service"] == "svc-pay"
+    assert svc["p50_latency_ms"] == 28
+    assert svc["timeout_rate_pct"] is None  # unread stays unknown
+    caps = body["capabilities"]
+    assert caps["service_level"]["state"] == "measured"
+    assert caps["api_endpoints"]["state"] == "measured"
+    assert caps["regression"]["state"] == "measured"
+    assert caps["distributed_tracing"]["state"] == "not_collected"
+    assert "payment credentials, authorization tokens and sensitive request payloads are never collected" in caps["distributed_tracing"]["basis"]
+    assert "a link is not a latency" in caps["dependency_latency"]["basis"]
+    assert "a slow transaction cannot be named" in caps["slow_transactions"]["basis"]
+    assert body["regression"]["p95"] == 47
 
 
 @pytest.mark.asyncio

@@ -11,7 +11,7 @@ import type { PerformanceInfraWorkspace } from "../lib/api";
 
 const summary = {
   sample_count: 8, value_count: 6, unknown_count: 2,
-  state: "partial — 6/8 delivered",
+  coverage: "partial — 6/8 delivered",
   average: 42, minimum: 30, maximum: 60, p50: 40, p95: 58, p99: 60,
 };
 

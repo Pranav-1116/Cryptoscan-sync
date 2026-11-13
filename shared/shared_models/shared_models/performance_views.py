@@ -381,6 +381,130 @@ def infrastructure_workspace(
     }
 
 
+#: Endpoint attribution keys accepted from delivered labels. Only these
+#: controlled attribute keys are projected — request payloads are never
+#: read, and redaction rules govern any trace collection.
+_ENDPOINT_KEYS = ("endpoint", "path", "url", "operation")
+
+
+def application_workspace(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
+    """Application Performance (UI spec §3): the ten headline metrics,
+    per-service and per-endpoint performance, and the eight capabilities
+    each as measured or as a named gap. Distributed traces and request
+    waterfalls have no authorized collector here — the gap is named and
+    the collection contract (controlled attributes and redaction; payment
+    credentials, authorization tokens and sensitive request payloads are
+    never collected) governs what could ever be collected."""
+    by_name = _rows_by_name(rows)
+
+    def tile_for(name: str, unit: str) -> Dict[str, Any]:
+        return _tile(_latest(by_name.get(name, [])), unit)
+
+    queue_tile = _tile(None, "count")
+    queue_tile["note"] = ("queue depth has no authorized collector — "
+                          "unknown, never zero")
+    metrics = {
+        "requests_per_sec": tile_for("api.requests_per_sec", "requests/sec"),
+        "throughput_bytes": tile_for("api.throughput_bytes", "bytes"),
+        "latency_p50_ms": tile_for("api.latency_p50_ms", "ms"),
+        "latency_p95_ms": tile_for("api.latency_p95_ms", "ms"),
+        "latency_p99_ms": tile_for("api.latency_p99_ms", "ms"),
+        "error_rate_pct": tile_for("api.error_rate_pct", "percent"),
+        "timeout_rate_pct": tile_for("api.timeout_rate_pct", "percent"),
+        "availability_pct": tile_for("availability.uptime_pct", "percent"),
+        "queue_depth": queue_tile,
+        "saturation": tile_for("saturation.indicator", "ratio"),
+    }
+
+    per_asset: Dict[str, List[PerformanceMetric]] = {}
+    for row in rows:
+        if (row.metric_name or "").startswith("api.") or row.metric_name == "availability.uptime_pct":
+            per_asset.setdefault(row.asset_id, []).append(row)
+    services: List[Dict[str, Any]] = []
+    for asset_id, arows in sorted(per_asset.items()):
+        names: Dict[str, List[PerformanceMetric]] = {}
+        for row in arows:
+            names.setdefault(row.metric_name, []).append(row)
+        observed = [r.observed_at for r in arows]
+        services.append({
+            "service": asset_id,
+            "p50_latency_ms": _latest(names.get("api.latency_p50_ms", [])),
+            "p95_latency_ms": _latest(names.get("api.latency_p95_ms", [])),
+            "p99_latency_ms": _latest(names.get("api.latency_p99_ms", [])),
+            "error_rate_pct": _latest(names.get("api.error_rate_pct", [])),
+            "timeout_rate_pct": _latest(names.get("api.timeout_rate_pct", [])),
+            "requests_per_sec": _latest(names.get("api.requests_per_sec", [])),
+            "samples": len(arows),
+            "last_observed": max(observed).isoformat() if observed else None,
+        })
+
+    endpoints: List[Dict[str, Any]] = []
+    for row in rows:
+        labels = row.labels or {}
+        endpoint = next((str(labels[k]) for k in _ENDPOINT_KEYS if labels.get(k)), None)
+        if endpoint is None:
+            continue
+        endpoints.append({
+            "service": row.asset_id,
+            "endpoint": endpoint,
+            "metric_name": row.metric_name,
+            "latest": row.metric_value,
+            "unit": row.unit,
+            "observed_at": row.observed_at.isoformat(),
+        })
+    endpoints.sort(key=lambda e: (e["service"], e["endpoint"], e["metric_name"]))
+
+    def capability(delivered: bool, gap_basis: str, ok_basis: str) -> Dict[str, str]:
+        return {"state": "measured" if delivered else "not_collected",
+                "basis": ok_basis if delivered else gap_basis}
+
+    capabilities = {
+        "service_level": capability(
+            bool(services), "no service telemetry is stored in the window",
+            "per-service percentiles computed from delivered samples"),
+        "api_endpoints": capability(
+            bool(endpoints),
+            "no endpoint-attributed telemetry is stored in the window",
+            "endpoint rows project controlled label keys only"),
+        "distributed_tracing": capability(
+            False, "distributed tracing has no authorized collector — trace "
+                   "collection is governed by controlled attributes and "
+                   "redaction; payment credentials, authorization tokens and "
+                   "sensitive request payloads are never collected",
+            ""),
+        "request_waterfall": capability(
+            False, "a request waterfall is drawn from traces — no traces are "
+                   "stored, so no waterfall is drawn", ""),
+        "slow_transactions": capability(
+            False, "transaction records have no authorized collector — a slow "
+                   "transaction cannot be named without stored transactions", ""),
+        "dependency_latency": capability(
+            False, "dependency links carry no latency measurements in this "
+                   "window — a link is not a latency", ""),
+        "regression": capability(
+            "performance.regression_ms" in by_name,
+            "no regression measurements are stored in the window",
+            "regression measurements compared against the recorded baseline"),
+        "slo": capability(
+            "slo.compliance_pct" in by_name,
+            "no SLO compliance measurements are stored in the window — "
+            "policies are tracked separately and a policy is not proof of "
+            "compliance",
+            "compliance measurements compared against the stated policies"),
+    }
+
+    return {
+        "metrics": metrics,
+        "services": services,
+        "endpoints": endpoints,
+        "capabilities": capabilities,
+        "regression": (summarize_metric(by_name["performance.regression_ms"])
+                       if "performance.regression_ms" in by_name else None),
+        "note": "percentiles are computed from delivered samples in the "
+                "window; missing telemetry is unknown, never zero",
+    }
+
+
 #: HSM/KMS metric families (UI spec §7). Read-only projections of stored
 #: telemetry — the collector rule (vendor-supported, read-only, no key
 #: material, no interference) governs collection and is not narrated here.

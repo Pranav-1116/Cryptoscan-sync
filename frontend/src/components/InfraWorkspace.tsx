@@ -34,7 +34,7 @@ function StateChip({ state }: { state: string }) {
   );
 }
 
-export function SummaryTable({ metrics }: { metrics: Record<string, { sample_count?: number; value_count?: number; unknown_count?: number; state?: string; average?: number | null; minimum?: number | null; maximum?: number | null; p50?: number | null; p95?: number | null; p99?: number | null }> }) {
+export function SummaryTable({ metrics }: { metrics: Record<string, { sample_count?: number; value_count?: number; unknown_count?: number; coverage?: string; average?: number | null; minimum?: number | null; maximum?: number | null; p50?: number | null; p95?: number | null; p99?: number | null }> }) {
   const names = Object.keys(metrics);
   if (!names.length) return null;
   return (
@@ -56,7 +56,7 @@ export function SummaryTable({ metrics }: { metrics: Record<string, { sample_cou
           return (
             <tr key={name}>
               <td style={{ padding: 6 }}>{name}</td>
-              <td style={{ padding: 6 }}>{m.state ?? "—"}</td>
+              <td style={{ padding: 6 }}>{m.coverage ?? "—"}</td>
               <td style={{ padding: 6 }}>{m.p50 ?? "—"}</td>
               <td style={{ padding: 6 }}>{m.p95 ?? "—"}</td>
               <td style={{ padding: 6 }}>{m.p99 ?? "—"}</td>

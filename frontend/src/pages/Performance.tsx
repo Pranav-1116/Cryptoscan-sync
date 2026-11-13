@@ -3,10 +3,12 @@ import {
   PerformanceServiceRow, activeTenantId, ensureActiveTenant } from "../lib/api";
 import { Badge, Panel, PageHead } from "../components/ui.jsx";
 import InfraWorkspace from "../components/InfraWorkspace";
+import AppPerfWorkspace from "../components/AppPerfWorkspace";
 import {
-  apiPerformanceAlerts, apiPerformanceApplications, apiPerformanceBaselines,
+  apiPerformanceAlerts, apiPerformanceBaselines,
   apiPerformanceHsm, apiPerformanceWorkloads, apiPerformanceSamples,
   apiPerformanceInfraWorkspace, PerformanceInfraWorkspace,
+  apiPerformanceAppWorkspace,
   apiPerformanceBenchmarks, apiPerformanceCapacity, apiPerformanceCloud,
   apiPerformanceCryptography, apiPerformanceDatabases, apiPerformanceHealth,
  apiPerformanceInvestigation,
@@ -15,7 +17,7 @@ import {
   type ApiResult, type PerformanceAlert, type PerformanceBaseline,
   type PerformanceBenchmarkRun, type PerformanceCapacity,
   type PerformanceDomain,
-  type PerformanceDatabases, type PerformanceApplications,
+  type PerformanceDatabases,
   type PerformanceHealth, type PerformanceInvestigation,
   type PerformanceNetwork, type PerformanceOverview, type PerformanceStorage,
   type PerformanceSummary, type PerformanceTile,
@@ -259,7 +261,7 @@ export default function Performance() {
   const overview = useAsync(() => apiPerformanceOverview(w), [reloadKey]);
   const network = useAsync(() => apiPerformanceNetwork(w), [reloadKey]);
   const storage = useAsync(() => apiPerformanceStorage(w), [reloadKey]);
-  const applications = useAsync(() => apiPerformanceApplications(w), [reloadKey]);
+  const applications = useAsync(() => apiPerformanceAppWorkspace(w), [reloadKey]);
   const databases = useAsync(() => apiPerformanceDatabases(w), [reloadKey]);
   const cryptography = useAsync(() => apiPerformanceCryptography(w), [reloadKey]);
   const infrastructure = useAsync(() => apiPerformanceInfraWorkspace(w), [reloadKey]);
@@ -433,17 +435,7 @@ export default function Performance() {
 
       {view === "applications" && (
         applications.error ? <ErrorNote error={applications.error} /> : (
-          <Panel title="Application Performance">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
-              <TileView tile={applications.data?.requests_per_sec} label="Requests/sec" />
-              <TileView tile={applications.data?.latency_p50_ms} label="p50 latency" />
-              <TileView tile={applications.data?.latency_p95_ms} label="p95 latency" />
-              <TileView tile={applications.data?.latency_p99_ms} label="p99 latency" />
-              <TileView tile={applications.data?.error_rate_pct} label="Error rate" />
-            </div>
-            <SummaryTable metrics={applications.data?.metrics ?? {}} />
-            <Note>{applications.data?.note}</Note>
-          </Panel>
+          <AppPerfWorkspace data={applications.data} />
         )
       )}
 

@@ -8858,6 +8858,41 @@ export interface InfraServerRow {
   last_observed?: string | null;
 }
 
+export interface AppServiceRow {
+  service: string;
+  p50_latency_ms?: number | null;
+  p95_latency_ms?: number | null;
+  p99_latency_ms?: number | null;
+  error_rate_pct?: number | null;
+  timeout_rate_pct?: number | null;
+  requests_per_sec?: number | null;
+  samples: number;
+  last_observed?: string | null;
+}
+
+export interface AppEndpointRow {
+  service: string;
+  endpoint: string;
+  metric_name: string;
+  latest?: number | null;
+  unit: string;
+  observed_at: string;
+}
+
+export interface AppCapability {
+  state: string;
+  basis: string;
+}
+
+export interface PerformanceAppWorkspace {
+  metrics: Record<string, PerformanceTile>;
+  services: AppServiceRow[];
+  endpoints: AppEndpointRow[];
+  capabilities: Record<string, AppCapability>;
+  regression?: PerformanceSummary | null;
+  note: string;
+}
+
 export interface PerformanceInfraWorkspace {
   categories: Record<string, InfraCategory>;
   inventory: InfraServerRow[];
@@ -9022,6 +9057,9 @@ const performanceQuery = (params: object): string => {
 
 export const apiPerformanceOverview = (p: PerformanceWindow): Promise<ApiResult<PerformanceOverview>> =>
   call<PerformanceOverview>(`/api/v1/performance/overview${performanceQuery(p)}`);
+
+export const apiPerformanceAppWorkspace = (p: PerformanceWindow): Promise<ApiResult<PerformanceAppWorkspace>> =>
+  call<PerformanceAppWorkspace>(`/api/v1/performance/applications/workspace${performanceQuery(p)}`);
 
 export const apiPerformanceInfraWorkspace = (p: PerformanceWindow): Promise<ApiResult<PerformanceInfraWorkspace>> =>
   call<PerformanceInfraWorkspace>(`/api/v1/performance/infrastructure/workspace${performanceQuery(p)}`);

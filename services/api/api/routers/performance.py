@@ -39,6 +39,7 @@ from shared_models.performance_intelligence import (
 )
 from shared_models.performance_metrics import PerformanceMetric
 from shared_models.performance_views import (
+    application_workspace as application_workspace_view,
     infrastructure_workspace as infrastructure_workspace_view,
     hsm_view, workload_view,
     application_view, cryptography_view, database_view, domain_view,
@@ -227,6 +228,41 @@ class OverviewResponse(BaseModel):
     app_p95_latency_ms: Optional[Tile] = None
     error_rate_pct: Optional[Tile] = None
     services: List[ServiceRowOut] = Field(default_factory=list)
+    note: str
+
+
+class AppServiceRowOut(BaseModel):
+    service: str
+    p50_latency_ms: Optional[float] = None
+    p95_latency_ms: Optional[float] = None
+    p99_latency_ms: Optional[float] = None
+    error_rate_pct: Optional[float] = None
+    timeout_rate_pct: Optional[float] = None
+    requests_per_sec: Optional[float] = None
+    samples: int
+    last_observed: Optional[str] = None
+
+
+class AppEndpointRowOut(BaseModel):
+    service: str
+    endpoint: str
+    metric_name: str
+    latest: Optional[float] = None
+    unit: str
+    observed_at: str
+
+
+class AppCapabilityOut(BaseModel):
+    state: str
+    basis: str
+
+
+class ApplicationWorkspaceOut(BaseModel):
+    metrics: Dict[str, Any]
+    services: List[AppServiceRowOut]
+    endpoints: List[AppEndpointRowOut]
+    capabilities: Dict[str, AppCapabilityOut]
+    regression: Optional[Dict[str, Any]] = None
     note: str
 
 
@@ -701,6 +737,21 @@ def infrastructure(tenant_id: str = Query(...),
     window_start, window_end = window
     rows = _tenant_rows(db, tenant_id, window_start, window_end)
     return DomainResponse(**domain_view(rows, "infrastructure"))
+
+
+@router.get("/applications/workspace", response_model=ApplicationWorkspaceOut)
+def applications_workspace(
+        tenant_id: str = Query(...),
+        window: Tuple[datetime, datetime] = Depends(_window_params),
+        db: Session = Depends(get_db_session),
+        user: str = Depends(get_current_user)) -> ApplicationWorkspaceOut:
+    """Application Performance (docs/performance/03_UI_SPEC.md §3): the ten
+    metrics, per-service and per-endpoint rows, and the eight capabilities
+    as measured or as named gaps. Trace collection stays governed by
+    controlled attributes and redaction."""
+    window_start, window_end = window
+    rows = _tenant_rows(db, tenant_id, window_start, window_end)
+    return ApplicationWorkspaceOut(**application_workspace_view(rows))
 
 
 @router.get("/infrastructure/workspace", response_model=InfrastructureWorkspaceOut)
