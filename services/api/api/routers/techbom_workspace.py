@@ -38,7 +38,7 @@ from db.models.vendor import SystemVendor, Vendor
 from db.models.vendor_profile import VendorProfileRevision
 from db.models.technology_bom_snapshot import TechnologyBomSnapshot
 
-router = APIRouter(prefix="/techbom/workspace")
+router = APIRouter(prefix="/techbom/workspace", tags=["techbom-workspace"])
 
 BOMS = ("SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "TechBOM")
 

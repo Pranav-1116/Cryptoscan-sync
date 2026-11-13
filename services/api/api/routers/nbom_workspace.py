@@ -31,7 +31,7 @@ from db.models.certificate import Certificate
 from db.models.network_scan_run import NetworkScanRun
 from db.models.runtime_finding import RuntimeFinding
 
-router = APIRouter(prefix="/nbom/workspace")
+router = APIRouter(prefix="/nbom/workspace", tags=["nbom-workspace"])
 
 UNKNOWN = "unknown"
 

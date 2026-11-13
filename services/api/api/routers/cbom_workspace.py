@@ -31,7 +31,7 @@ from db.models.cryptographic_fact import CryptographicFact
 from db.models.pqc_migration import PqcMigrationWave
 from db.models.runtime_finding import RuntimeFinding
 
-router = APIRouter(prefix="/cbom/workspace")
+router = APIRouter(prefix="/cbom/workspace", tags=["cbom-workspace"])
 
 
 # ── shared honesty helpers ────────────────────────────────────────────

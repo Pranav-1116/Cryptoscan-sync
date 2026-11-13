@@ -43,7 +43,7 @@ from db.tenancy import filtered_get
 from db.models.vendor_crypto import VendorCryptoInventory
 from db.models.vendor_profile import VendorProfileRevision
 
-router = APIRouter(prefix="/asset-detail")
+router = APIRouter(prefix="/asset-detail", tags=["asset-detail"])
 
 BOMS = ("TechBOM", "SBOM", "CBOM", "HBOM", "NBOM", "VBOM")
 

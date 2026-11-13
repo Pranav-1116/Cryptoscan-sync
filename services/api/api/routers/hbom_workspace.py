@@ -28,7 +28,7 @@ from api.dependencies import get_current_user, get_db_session
 from db.models.hardware_live import HardwareAsset, HardwareAgentRow, HardwareEventRow
 from db.models.hbom_snapshot import HbomSnapshot
 
-router = APIRouter(prefix="/hbom/workspace")
+router = APIRouter(prefix="/hbom/workspace", tags=["hbom-workspace"])
 
 #: Anything named like this is dropped from every projection, whatever its
 #: value. Key material and device credentials never enter a response.

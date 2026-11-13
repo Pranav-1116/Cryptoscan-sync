@@ -32,7 +32,7 @@ from db.models.vendor import SystemVendor, Vendor
 from db.models.vendor_crypto import VendorCryptoInventory
 from db.models.vendor_profile import VendorProfileRevision
 
-router = APIRouter(prefix="/vbom/workspace")
+router = APIRouter(prefix="/vbom/workspace", tags=["vbom-workspace"])
 
 
 def _iso(value: Any) -> Optional[str]:
