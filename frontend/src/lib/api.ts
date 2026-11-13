@@ -9008,6 +9008,8 @@ export interface PerformanceCryptography {
   tls_handshake_ms: PerformanceSummary | null;
   hsm_operation_latency_ms: PerformanceSummary | null;
   metrics: Record<string, PerformanceSummary>;
+  /** UI brief §6 ten categories (docs/performance/03_UI_SPEC.md §6). */
+  categories?: Record<string, { state: string; metrics: Record<string, PerformanceSummary>; basis: string }>;
   measurement_kind: string;
   note: string;
 }

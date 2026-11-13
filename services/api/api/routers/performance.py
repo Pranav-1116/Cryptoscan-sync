@@ -428,6 +428,8 @@ class CryptographyResponse(BaseModel):
     tls_handshake_ms: Optional[SummaryStats] = None
     hsm_operation_latency_ms: Optional[SummaryStats] = None
     metrics: Dict[str, SummaryStats]
+    # UI brief §6 ten categories — measured or named gaps
+    categories: Dict[str, Any] = Field(default_factory=dict)
     measurement_kind: str
     note: str
 

@@ -237,6 +237,73 @@ def cryptography_view(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
     summary = {name: summarize_metric(values)
                for name, values in sorted(by_name.items())
                if domain_of(name) == "cryptography"}
+    # the ten categories (docs/performance/03_UI_SPEC.md §6) — measured
+    # families where delivered, named gaps where no collector exists, and
+    # PQC kept benchmark-only (no production PQC telemetry is collected)
+    def _cat(names, gap_basis=""):
+        metrics = {name: summarize_metric(by_name[name])
+                   for name in names if name in by_name}
+        return {"state": "measured" if metrics else "not_collected",
+                "metrics": metrics,
+                "basis": "" if metrics else gap_basis}
+
+    by_label: Dict[str, Dict[str, List[PerformanceMetric]]] = {}
+    for row in rows:
+        labels = row.labels or {}
+        for key, bucket in (("algorithm", "algorithms"),
+                            ("provider", "libraries"), ("library", "libraries")):
+            label_value = labels.get(key)
+            if label_value:
+                by_label.setdefault(bucket, {}).setdefault(
+                    str(label_value), []).append(row)
+    labelled = {
+        bucket: {name: summarize_metric(vals)
+                 for name, vals in sorted(items.items())}
+        for bucket, items in by_label.items()
+    }
+    categories = {
+        "tls": _cat(("crypto.tls_handshake_ms",
+                     "crypto.tls_negotiation_failures"),
+                    "no TLS telemetry is stored in the window"),
+        "encryption": {
+            "state": "not_collected", "metrics": {},
+            "basis": ("encryption throughput and operation latency have no "
+                      "dedicated collector family — a named gap, never zeros"),
+        },
+        "decryption": {
+            "state": "not_collected", "metrics": {},
+            "basis": ("decryption throughput and operation latency have no "
+                      "dedicated collector family — a named gap, never zeros"),
+        },
+        "signatures": _cat(("crypto.sign_latency_ms", "crypto.verify_latency_ms"),
+                           "no signing or verification telemetry is stored in the window"),
+        "keygen": _cat(("crypto.keygen_duration_ms",),
+                       "no key-generation telemetry is stored in the window"),
+        "algorithms": {
+            "state": "measured" if labelled.get("algorithms") else "not_collected",
+            "metrics": labelled.get("algorithms", {}),
+            "basis": ("" if labelled.get("algorithms") else
+                      "no algorithm-attributed telemetry is stored in the window"),
+        },
+        "libraries": {
+            "state": "measured" if labelled.get("libraries") else "not_collected",
+            "metrics": labelled.get("libraries", {}),
+            "basis": ("" if labelled.get("libraries") else
+                      "no provider-attributed telemetry is stored in the window"),
+        },
+        "pqc": {
+            "state": "benchmark-only", "metrics": {},
+            "basis": ("ML-KEM and ML-DSA performance is benchmark-only here "
+                      "— no production PQC telemetry is collected"),
+        },
+        "errors": _cat(("crypto.provider_errors",),
+                       "no provider-error telemetry is stored in the window"),
+        "resources": {
+            "state": "not_collected", "metrics": {},
+            "basis": ("CPU consumption and memory overhead of cryptographic "
+                      "operations have no collector family — a named gap"),
+        },
+    }
     return {
         "tls_handshake_ms": summarize_metric(
             by_name.get("crypto.tls_handshake_ms", []))
@@ -245,6 +312,7 @@ def cryptography_view(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
             by_name.get("crypto.hsm_operation_latency_ms", []))
         if "crypto.hsm_operation_latency_ms" in by_name else None,
         "metrics": summary,
+        "categories": categories,
         "measurement_kind": "observed-production",
         "note": "observed production performance only — a controlled "
                 "benchmark result is never presented as production traffic "

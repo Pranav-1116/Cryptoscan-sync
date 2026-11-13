@@ -6,6 +6,8 @@ import InfraWorkspace from "../components/InfraWorkspace";
 import AppPerfWorkspace from "../components/AppPerfWorkspace";
 import DbPerfWorkspace from "../components/DbPerfWorkspace";
 import NetworkPerfWorkspace from "../components/NetworkPerfWorkspace";
+import CryptoWorkspace from "../components/CryptoWorkspace";
+import { comparabilityGate, comparisonRows, metadataChecklist, type BenchmarkRunLike } from "../lib/benchmarkLab";
 import {
   apiPerformanceAlerts, apiPerformanceBaselines,
   apiPerformanceHsm, apiPerformanceWorkloads, apiPerformanceSamples,
@@ -443,11 +445,7 @@ export default function Performance() {
 
       {view === "cryptography" && (
         cryptography.error ? <ErrorNote error={cryptography.error} /> : (
-          <Panel title="Cryptographic Performance">
-            <Badge tone="gray">{cryptography.data?.measurement_kind ?? "observed-production"}</Badge>
-            <SummaryTable metrics={cryptography.data?.metrics ?? {}} />
-            <Note>{cryptography.data?.note}</Note>
-          </Panel>
+          <CryptoWorkspace data={cryptography.data} />
         )
       )}
 
@@ -700,7 +698,7 @@ export function BenchmarkLab({ tenant, runs, note, onRun }: {
       .then(() => setBusy(false));
   };
   return (
-    <Panel title="Benchmark Lab">
+    <Panel title="Cryptographic Benchmark Laboratory" sub="controlled benchmark results with their full reproducibility record">
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
         <select aria-label="Algorithm" style={CONTROL_STYLE} value={algorithm}
           onChange={(e) => setAlgorithm(e.target.value)}>
@@ -733,6 +731,76 @@ export function BenchmarkLab({ tenant, runs, note, onRun }: {
           ))}
         </tbody>
       </table>
+
+      {(() => {
+        const asLabRuns = runs as unknown as BenchmarkRunLike[];
+        const gate = comparabilityGate(asLabRuns);
+        const rows = comparisonRows(asLabRuns);
+        return (
+          <>
+            <div style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Algorithm comparison — mean latency</div>
+              {!rows.length ? (
+                <div style={{ fontSize: 12, opacity: 0.75 }}>
+                  No benchmark results are recorded — an absent benchmark is a
+                  gap, not a fast algorithm.
+                </div>
+              ) : (
+                <>
+                  <table style={{ width: "100%", fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left", padding: 6 }}>Algorithm</th>
+                        <th style={{ textAlign: "left", padding: 6 }}>Operation</th>
+                        <th style={{ textAlign: "left", padding: 6 }}>Mean latency</th>
+                        <th style={{ textAlign: "left", padding: 6 }}>Comparison</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => (
+                        <tr key={`${r.run_id}-${r.algorithm}-${r.operation}`}>
+                          <td style={{ padding: 6 }}>{r.algorithm}</td>
+                          <td style={{ padding: 6 }}>{r.operation}</td>
+                          <td style={{ padding: 6 }}>{r.mean_ms} ms · {r.samples} samples</td>
+                          <td style={{ padding: 6 }}>
+                            {gate.comparable ? (
+                              <span style={{ display: "inline-block", height: 8, borderRadius: 4, background: "var(--accent)", width: Math.max(8, Math.min(180, r.mean_ms * 8)) }} />
+                            ) : (
+                              <span style={{ opacity: 0.65 }}>comparison withheld</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!gate.comparable && (
+                    <div style={{ fontSize: 11.5, opacity: 0.75, marginTop: 6 }}>{gate.basis}</div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {asLabRuns.map((runRow) => (
+              <div key={`meta-${runRow.run_id}`} style={{ marginTop: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
+                  Benchmark metadata — {runRow.run_id}
+                </div>
+                <table style={{ width: "100%", fontSize: 12 }}>
+                  <tbody>
+                    {metadataChecklist(runRow).map((field) => (
+                      <tr key={field.key}>
+                        <td style={{ padding: 6, width: 220, opacity: 0.75 }}>{field.label}</td>
+                        <td style={{ padding: 6 }}>{field.value ?? "not recorded"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </>
+        );
+      })()}
+
       <Note>
         {note ?? "Every run is controlled benchmark performance — never production traffic performance."}
       </Note>

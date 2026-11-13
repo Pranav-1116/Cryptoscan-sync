@@ -131,6 +131,37 @@ async def test_workloads_report_correlation_only_causation_unproven():
 
 
 @pytest.mark.asyncio
+async def test_cryptography_ten_categories_gaps_and_pqc_benchmark_only():
+    app, session, engine = _make_app()
+    _metric(session, "crypto.tls_handshake_ms", 41, asset="gw-1")
+    _metric(session, "crypto.sign_latency_ms", 0.9, asset="gw-1", minutes=8,
+            labels={"algorithm": "Ed25519"})
+    _metric(session, "crypto.verify_latency_ms", 1.4, asset="gw-1", minutes=9,
+            labels={"algorithm": "Ed25519"})
+    _metric(session, "crypto.provider_errors", 2, asset="gw-1", minutes=12)
+    session.flush()
+    res = await _get(app, "/api/v1/performance/cryptography", _params())
+    assert res.status_code == 200
+    body = res.json()
+    cats = body["categories"]
+    assert cats["tls"]["state"] == "measured"
+    assert cats["signatures"]["state"] == "measured"
+    assert cats["algorithms"]["metrics"]["Ed25519"]["value_count"] == 2
+    assert cats["errors"]["state"] == "measured"
+    # gaps are named, never zeros
+    assert cats["encryption"]["state"] == "not_collected"
+    assert "no dedicated collector family" in cats["encryption"]["basis"]
+    assert cats["decryption"]["state"] == "not_collected"
+    assert cats["resources"]["state"] == "not_collected"
+    # PQC stays benchmark-only — production PQC telemetry is never claimed
+    assert cats["pqc"]["state"] == "benchmark-only"
+    assert "no production PQC telemetry is collected" in cats["pqc"]["basis"]
+    # production/benchmark separation survives
+    assert body["measurement_kind"] == "observed-production"
+    assert "never presented as production traffic performance" in body["note"]
+
+
+@pytest.mark.asyncio
 async def test_network_twelve_metrics_capacity_apart_and_cipher_honesty():
     app, session, engine = _make_app()
     _metric(session, "network.bandwidth_mbps", 10000, asset="gw-1", unit="Mbps")
