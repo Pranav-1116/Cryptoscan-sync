@@ -845,8 +845,93 @@ def workload_view(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
                       "timestamps and traces must correlate before causation "
                       "is suggested"),
         })
+    # business workload categories (docs/performance/03_UI_SPEC.md §8) —
+    # attributed from delivered labels only; unlabelled traffic is never
+    # claimed as a business workload
+    workload_keys = ("workload", "transaction_type", "business_unit")
+
+    def _matches(row, pattern):
+        labels = row.labels or {}
+        return any(pattern in str(labels.get(k, "")).lower()
+                   for k in workload_keys)
+
+    categories: Dict[str, Any] = {}
+    for category, pattern in (("payments", "payment"), ("authentication", "auth"),
+                              ("card", "card"), ("batch", "batch")):
+        cat_rows = [r for r in rows if _matches(r, pattern)]
+        metrics = {}
+        for row in cat_rows:
+            metrics.setdefault(row.metric_name, []).append(row)
+        categories[category] = {
+            "state": "measured" if cat_rows else "not_collected",
+            "metrics": {name: summarize_metric(vals)
+                        for name, vals in sorted(metrics.items())},
+            "basis": ("" if cat_rows else
+                      f"no {category} workload telemetry is labelled in the "
+                      "window — workload performance is not inferred from "
+                      "infrastructure metrics"),
+        }
+
+    def _measured(names, gap_basis):
+        found = {name: summarize_metric(by_name[name])
+                 for name in names if name in by_name}
+        return {"state": "measured" if found else "not_collected",
+                "metrics": found, "basis": "" if found else gap_basis}
+
+    measurements = {
+        "payment_throughput": categories["payments"],
+        "authentication_performance": categories["authentication"],
+        "card_authorization_latency": categories["card"],
+        "batch_duration": categories["batch"],
+        "database_transaction_time": _measured(
+            ("db.transactions_per_sec", "db.query_time_ms"),
+            "no database transaction telemetry is stored in the window"),
+        "crypto_overhead_per_transaction": {
+            "state": "not_collected", "metrics": {},
+            "basis": ("cryptographic overhead per transaction has no "
+                      "collector family — it is never inferred from crypto "
+                      "latency alone, a named gap"),
+        },
+        "queue_backlogs": {
+            "state": "not_collected", "metrics": {},
+            "basis": "queue depth has no collector family — a named gap",
+        },
+    }
+
+    # peak vs off-peak from delivered request series — labelled derived,
+    # computed from real samples only
+    peak_offpeak: Dict[str, Any] = {"state": "not_collected", "basis": (
+        "no request series is labelled in the window — peak and off-peak "
+        "cannot be compared without delivered samples")}
+    req_rows = [r for r in by_name.get("api.requests_per_sec", [])
+                if r.quality_status not in NO_VALUE_QUALITIES
+                and r.metric_value is not None]
+    if req_rows:
+        buckets: Dict[str, List[float]] = {}
+        for row in req_rows:
+            buckets.setdefault(row.observed_at.strftime("%Y-%m-%dT%H"),
+                               []).append(row.metric_value)
+        means = {hour: sum(vals) / len(vals) for hour, vals in buckets.items()}
+        if len(means) >= 2:
+            peak_hour = max(means, key=lambda h: means[h])
+            offpeak = {h: v for h, v in means.items() if h != peak_hour}
+            offpeak_mean = sum(offpeak.values()) / len(offpeak)
+            peak_offpeak = {
+                "state": "derived",
+                "peak_bucket": peak_hour,
+                "peak_value": round(means[peak_hour], 3),
+                "offpeak_mean": round(offpeak_mean, 3),
+                "buckets": [{"bucket": h, "value": round(v, 3)}
+                            for h, v in sorted(means.items())],
+                "basis": ("derived from the window's delivered request "
+                          "samples — derived figures are labelled derived"),
+            }
+
     return {
         "workload_metrics": workload,
+        "categories": categories,
+        "measurements": measurements,
+        "peak_offpeak": peak_offpeak,
         "correlation_candidates": candidates,
         "causation": "unproven",
         "note": "workload performance meets business workloads here; the "

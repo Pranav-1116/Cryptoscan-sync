@@ -8962,6 +8962,10 @@ export interface PerformanceHsm {
 
 export interface PerformanceWorkloads {
   workload_metrics: Record<string, PerformanceSummary>;
+  /** UI brief §8 (docs/performance/03_UI_SPEC.md §8). */
+  categories?: Record<string, { state: string; metrics: Record<string, PerformanceSummary>; basis: string }>;
+  measurements?: Record<string, { state: string; metrics: Record<string, PerformanceSummary>; basis: string }>;
+  peak_offpeak?: Record<string, unknown>;
   correlation_candidates: Array<Record<string, unknown>>;
   causation: string;
   note: string;
@@ -9066,6 +9070,11 @@ export interface PerformanceCapacity {
   estimated_seconds_to_exhaustion: number | null;
   disclaimer: string;
   note: string;
+  /** UI brief §9 forecast metadata (docs/performance/03_UI_SPEC.md §9). */
+  observation_period?: string | null;
+  coverage?: string | null;
+  assumptions?: string | null;
+  uncertainty?: string | null;
 }
 
 export interface PerformanceInvestigation {

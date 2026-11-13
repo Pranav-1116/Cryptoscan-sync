@@ -8,7 +8,9 @@ import DbPerfWorkspace from "../components/DbPerfWorkspace";
 import NetworkPerfWorkspace from "../components/NetworkPerfWorkspace";
 import CryptoWorkspace from "../components/CryptoWorkspace";
 import HsmWorkspace from "../components/HsmWorkspace";
+import WorkloadWorkspace from "../components/WorkloadWorkspace";
 import { comparabilityGate, comparisonRows, metadataChecklist, type BenchmarkRunLike } from "../lib/benchmarkLab";
+import { CAPACITY_FEATURES, capacityQuestions, featureState, type CapacityForecastRow } from "../lib/capacityBrief";
 import {
   apiPerformanceAlerts, apiPerformanceBaselines,
   apiPerformanceHsm, apiPerformanceWorkloads, apiPerformanceSamples,
@@ -458,27 +460,7 @@ export default function Performance() {
 
       {view === "workloads" && (
         workloads.error ? <ErrorNote error={workloads.error} /> : (
-          <Panel title="Workload & Transaction Intelligence" sub="where infrastructure and application performance meet business workloads">
-            {Object.keys(workloads.data?.workload_metrics ?? {}).length === 0 ? (
-              <div style={{ fontSize: 12, opacity: 0.75 }}>
-                No workload telemetry is stored in this window — workload
-                performance is not inferred from infrastructure metrics.
-              </div>
-            ) : (
-              <SummaryTable metrics={workloads.data?.workload_metrics ?? {}} />
-            )}
-            {(workloads.data?.correlation_candidates ?? []).map((c, i) => (
-              <div key={i} style={{ marginTop: 10, fontSize: 12, border: "1px solid var(--rule)", borderRadius: 8, padding: "8px 10px" }}>
-                <div style={{ fontWeight: 600 }}>{String(c.question ?? "")}</div>
-                <div style={{ opacity: 0.8, marginTop: 4 }}>
-                  TLS handshake {String(c.tls_handshake_ms ?? "—")} · application p95 {String(c.app_p95_latency_ms ?? "—")}
-                </div>
-                <div style={{ marginTop: 4, color: "var(--amber, #f59e0b)" }}>Causation: {String(c.causation ?? "unproven")}</div>
-                <div style={{ opacity: 0.7 }}>{String(c.basis ?? "")}</div>
-              </div>
-            ))}
-            <Note>{workloads.data?.note ?? ""}</Note>
-          </Panel>
+          <WorkloadWorkspace data={workloads.data} />
         )
       )}
 
@@ -497,7 +479,37 @@ export default function Performance() {
 
       {view === "capacity" && (
         capacity.error ? <ErrorNote error={capacity.error} /> : (
-          <Panel title="Capacity Planning">
+          <Panel title="Capacity & Forecasting" sub="planning features and the brief's questions answered from real forecast rows only">
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 10, marginBottom: 12 }}>
+            {CAPACITY_FEATURES.map((feature) => {
+              const state = featureState((capacity.data ?? []) as CapacityForecastRow[], feature);
+              const present = state.state === "forecast present";
+              return (
+                <div key={feature.key} style={{ border: "1px solid var(--rule)", borderRadius: 8, padding: "8px 10px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>{feature.label}</span>
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999, whiteSpace: "nowrap",
+                      border: `1px solid ${present ? "var(--green, #3ecf8e)" : "var(--slate, #64748b)"}`,
+                      color: present ? "var(--green, #3ecf8e)" : "var(--slate, #64748b)",
+                    }}>{present ? "forecast present" : "not derivable"}</span>
+                  </div>
+                  <div style={{ fontSize: 10.5, opacity: 0.65, marginTop: 4 }}>
+                    {state.metrics.length ? state.metrics.join(", ") : "no forecast row in this window"}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
+            {capacityQuestions((capacity.data ?? []) as CapacityForecastRow[]).map((qa) => (
+              <div key={qa.question} style={{ border: "1px solid var(--rule)", borderRadius: 8, padding: "8px 10px", fontSize: 12 }}>
+                <div style={{ fontWeight: 600 }}>{qa.question}</div>
+                <div style={{ marginTop: 3 }}>{qa.answer}</div>
+                <div style={{ opacity: 0.7, marginTop: 2, fontSize: 11 }}>{qa.basis}</div>
+              </div>
+            ))}
+          </div>
             <BaselinesTable baselines={baselines.data ?? []} />
             <CapacityTable rows={capacity.data ?? []} />
           </Panel>
@@ -630,6 +642,12 @@ export function CapacityTable({ rows }: { rows: PerformanceCapacity[] }) {
             {row.status === "forecast"
               ? `Estimated exhaustion in ${Math.round(row.estimated_seconds_to_exhaustion ?? 0)} s (${row.method})`
               : `${row.status} — ${row.note}`}
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 2 }}>
+            observation {row.observation_period ?? "not recorded"} · coverage {row.coverage ?? "not recorded"}
+          </div>
+          <div style={{ fontSize: 11, opacity: 0.75 }}>
+            assumptions: {row.assumptions ?? "not recorded"} · uncertainty: {row.uncertainty ?? "not recorded"}
           </div>
           <Note>{row.disclaimer}</Note>
         </div>

@@ -329,6 +329,9 @@ class HsmResponse(BaseModel):
 
 class WorkloadResponse(BaseModel):
     workload_metrics: Dict[str, Any]
+    categories: Dict[str, Any] = Field(default_factory=dict)
+    measurements: Dict[str, Any] = Field(default_factory=dict)
+    peak_offpeak: Dict[str, Any] = Field(default_factory=dict)
     correlation_candidates: List[Dict[str, Any]]
     causation: str
     note: str
@@ -479,6 +482,12 @@ class CapacityOut(BaseModel):
     estimated_seconds_to_exhaustion: Optional[float] = None
     disclaimer: str
     note: str
+    # UI brief §9: every forecast displays its observation period, data
+    # coverage, assumptions and uncertainty (docs/performance/03_UI_SPEC.md §9)
+    observation_period: Optional[str] = None
+    coverage: Optional[str] = None
+    assumptions: Optional[str] = None
+    uncertainty: Optional[str] = None
 
 
 class InvestigationOut(BaseModel):
@@ -729,6 +738,10 @@ def capacity(tenant_id: str = Query(...),
                                      window_end=window_end,
                                      capacity_value=capacity_value)
         forecast["metric_name"] = name
+        delivered = sum(1 for r in base_rows
+                        if r.quality_status not in ("stale", "missing")
+                        and r.metric_value is not None)
+        unknown = len(base_rows) - delivered
         out.append(CapacityOut(
             metric_name=name, status=forecast["status"],
             method=forecast["method"],
@@ -738,7 +751,16 @@ def capacity(tenant_id: str = Query(...),
                 "estimated_seconds_to_exhaustion"),
             disclaimer=forecast.get("disclaimer")
             or "forecast, not fact — never a promise about the future",
-            note=forecast.get("note") or "computed from the window's delivered samples"))
+            note=forecast.get("note") or "computed from the window's delivered samples",
+            observation_period=f"{window_start.isoformat()} to {window_end.isoformat()}",
+            coverage=f"{delivered} delivered, {unknown} unknown of {len(base_rows)} samples in window",
+            assumptions=(f"{forecast['method']} over the observation period"
+                         + (f" at {forecast.get('growth_per_second')} units/sec"
+                            if forecast.get("growth_per_second") is not None else "")),
+            uncertainty=("a forecast is not a guaranteed future result — "
+                         "it is an extrapolation of the observation period's "
+                         "delivered samples and its assumptions hold only "
+                         "while the observed trend holds")))
     return out
 
 

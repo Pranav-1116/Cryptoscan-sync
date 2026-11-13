@@ -131,6 +131,63 @@ async def test_workloads_report_correlation_only_causation_unproven():
 
 
 @pytest.mark.asyncio
+async def test_workloads_labels_peak_offpeak_and_crypto_overhead_gap():
+    app, session, engine = _make_app()
+    _metric(session, "api.requests_per_sec", 520, asset="svc-pay", minutes=110,
+            unit="requests/sec", labels={"workload": "payment"})
+    _metric(session, "api.latency_p95_ms", 210, asset="svc-pay", minutes=110,
+            labels={"transaction_type": "payment"})
+    _metric(session, "api.requests_per_sec", 300, asset="svc-auth", minutes=100,
+            unit="requests/sec", labels={"workload": "authentication"})
+    # distinct hour buckets of request traffic -> derived peak/off-peak
+    _metric(session, "api.requests_per_sec", 100, asset="svc-x", minutes=50,
+            unit="requests/sec")
+    _metric(session, "api.requests_per_sec", 200, asset="svc-x", minutes=-10,
+            unit="requests/sec")
+    session.flush()
+    res = await _get(app, "/api/v1/performance/workloads", _params())
+    assert res.status_code == 200
+    body = res.json()
+    cats = body["categories"]
+    assert cats["payments"]["state"] == "measured"
+    assert cats["authentication"]["state"] == "measured"
+    assert cats["card"]["state"] == "not_collected"
+    assert "not inferred from infrastructure metrics" in cats["batch"]["basis"]
+    # crypto overhead per transaction stays a named gap
+    overhead = body["measurements"]["crypto_overhead_per_transaction"]
+    assert overhead["state"] == "not_collected"
+    assert "never inferred from crypto latency alone" in overhead["basis"]
+    # peak/off-peak derived from delivered samples and labelled derived
+    peak = body["peak_offpeak"]
+    assert peak["state"] == "derived"
+    # buckets: 10 -> (520+300)/2 = 410, 11 -> 100, 12 -> 200
+    assert peak["peak_value"] == 410
+    assert peak["offpeak_mean"] == 150
+    assert "derived figures are labelled derived" in peak["basis"]
+    # causation never upgrades
+    assert body["causation"] == "unproven"
+
+
+@pytest.mark.asyncio
+async def test_capacity_forecasts_carry_observation_coverage_assumptions_uncertainty():
+    app, session, engine = _make_app()
+    # three delivered growth points for storage.used_bytes -> a forecast
+    _metric(session, "storage.used_bytes", 1000, asset="store-1", minutes=90, unit="bytes")
+    _metric(session, "storage.used_bytes", 2000, asset="store-1", minutes=50, unit="bytes")
+    _metric(session, "storage.used_bytes", 3000, asset="store-1", minutes=10, unit="bytes")
+    session.flush()
+    res = await _get(app, "/api/v1/performance/capacity", _params())
+    assert res.status_code == 200
+    rows = {r["metric_name"]: r for r in res.json()}
+    row = rows["storage.used_bytes"]
+    assert row["observation_period"] is not None
+    assert "delivered" in row["coverage"]
+    assert row["assumptions"] is not None
+    assert "a forecast is not a guaranteed future result" in row["uncertainty"]
+    assert "forecast, not fact" in row["disclaimer"]
+
+
+@pytest.mark.asyncio
 async def test_cryptography_ten_categories_gaps_and_pqc_benchmark_only():
     app, session, engine = _make_app()
     _metric(session, "crypto.tls_handshake_ms", 41, asset="gw-1")
