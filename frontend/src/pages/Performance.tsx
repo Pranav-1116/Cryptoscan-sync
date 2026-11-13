@@ -4,20 +4,22 @@ import {
 import { Badge, Panel, PageHead } from "../components/ui.jsx";
 import InfraWorkspace from "../components/InfraWorkspace";
 import AppPerfWorkspace from "../components/AppPerfWorkspace";
+import DbPerfWorkspace from "../components/DbPerfWorkspace";
 import {
   apiPerformanceAlerts, apiPerformanceBaselines,
   apiPerformanceHsm, apiPerformanceWorkloads, apiPerformanceSamples,
   apiPerformanceInfraWorkspace, PerformanceInfraWorkspace,
   apiPerformanceAppWorkspace,
+  apiPerformanceDbWorkspace,
   apiPerformanceBenchmarks, apiPerformanceCapacity, apiPerformanceCloud,
-  apiPerformanceCryptography, apiPerformanceDatabases, apiPerformanceHealth,
+  apiPerformanceCryptography, apiPerformanceHealth,
  apiPerformanceInvestigation,
   apiPerformanceNetwork, apiPerformanceOverview, apiPerformanceRunBenchmark,
   apiPerformanceSlo, apiPerformanceStorage,
   type ApiResult, type PerformanceAlert, type PerformanceBaseline,
   type PerformanceBenchmarkRun, type PerformanceCapacity,
   type PerformanceDomain,
-  type PerformanceDatabases,
+
   type PerformanceHealth, type PerformanceInvestigation,
   type PerformanceNetwork, type PerformanceOverview, type PerformanceStorage,
   type PerformanceSummary, type PerformanceTile,
@@ -262,7 +264,7 @@ export default function Performance() {
   const network = useAsync(() => apiPerformanceNetwork(w), [reloadKey]);
   const storage = useAsync(() => apiPerformanceStorage(w), [reloadKey]);
   const applications = useAsync(() => apiPerformanceAppWorkspace(w), [reloadKey]);
-  const databases = useAsync(() => apiPerformanceDatabases(w), [reloadKey]);
+  const databases = useAsync(() => apiPerformanceDbWorkspace(w), [reloadKey]);
   const cryptography = useAsync(() => apiPerformanceCryptography(w), [reloadKey]);
   const infrastructure = useAsync(() => apiPerformanceInfraWorkspace(w), [reloadKey]);
   const cloud = useAsync(() => apiPerformanceCloud(w), [reloadKey]);
@@ -441,13 +443,7 @@ export default function Performance() {
 
       {view === "databases" && (
         databases.error ? <ErrorNote error={databases.error} /> : (
-          <Panel title="Database Performance">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-              <TileView tile={databases.data?.connections_active} label="Active connections" />
-            </div>
-            <SummaryTable metrics={databases.data?.metrics ?? {}} />
-            <Note>{databases.data?.note}</Note>
-          </Panel>
+          <DbPerfWorkspace data={databases.data} />
         )
       )}
 

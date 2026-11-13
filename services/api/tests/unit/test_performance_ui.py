@@ -131,6 +131,47 @@ async def test_workloads_report_correlation_only_causation_unproven():
 
 
 @pytest.mark.asyncio
+async def test_databases_workspace_areas_adapters_and_fingerprint_contract():
+    from db.models.performance import PerformanceCollectorHealth
+
+    app, session, engine = _make_app()
+    _metric(session, "db.connections_active", 42, asset="paydb",
+            labels={"platform": "PostgreSQL"})
+    _metric(session, "db.query_time_ms", 28.4, asset="paydb", minutes=12,
+            labels={"platform": "PostgreSQL"})
+    _metric(session, "db.size_bytes", 1024, asset="ledgerdb", minutes=20,
+            unit="bytes")
+    session.add(PerformanceCollectorHealth(
+        collector_id="db-collector-1", tenant_id=TENANT,
+        status="stale", last_report_at=NOW - timedelta(days=3),
+        detail="last report is older than the freshness window"))
+    session.flush()
+    res = await _get(app, "/api/v1/performance/databases/workspace", _params())
+    assert res.status_code == 200
+    body = res.json()
+    # nine areas; un-collected measurements are named gaps
+    assert len(body["areas"]) == 9
+    assert body["areas"]["connections"]["state"] == "measured"
+    assert "waiting connections" in body["areas"]["connections"]["missing"]
+    assert body["areas"]["locks"]["state"] == "not_collected"
+    assert body["areas"]["backup"]["missing"] == ["backup status", "backup age"]
+    # platform from delivered labels only — ledgerdb never invents one
+    rows = {d["database"]: d for d in body["databases"]}
+    assert rows["paydb"]["platform"] == "PostgreSQL"
+    assert rows["ledgerdb"]["platform"] == "not recorded"
+    # adapters are capability, never use
+    adapters = {a["platform"]: a for a in body["adapters"]}
+    assert adapters["PostgreSQL"]["adapter"] == "postgres_exporter"
+    assert adapters["Oracle"]["adapter"] is None
+    assert "no dedicated adapter" in adapters["MySQL"]["state"]
+    # collector health is read, staleness named
+    assert body["collectors"][0]["status"] == "stale"
+    # the collection contract
+    assert "query fingerprints and normalized statistics" in body["note"]
+    assert "SQL statements containing customer data are never collected" in body["note"]
+
+
+@pytest.mark.asyncio
 async def test_applications_workspace_ten_metrics_and_honest_queue_depth():
     app, session, engine = _make_app()
     _metric(session, "api.requests_per_sec", 520, asset="svc-pay", unit="requests/sec")

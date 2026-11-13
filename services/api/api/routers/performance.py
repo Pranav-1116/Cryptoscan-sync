@@ -39,6 +39,7 @@ from shared_models.performance_intelligence import (
 )
 from shared_models.performance_metrics import PerformanceMetric
 from shared_models.performance_views import (
+    database_workspace as database_workspace_view,
     application_workspace as application_workspace_view,
     infrastructure_workspace as infrastructure_workspace_view,
     hsm_view, workload_view,
@@ -263,6 +264,44 @@ class ApplicationWorkspaceOut(BaseModel):
     endpoints: List[AppEndpointRowOut]
     capabilities: Dict[str, AppCapabilityOut]
     regression: Optional[Dict[str, Any]] = None
+    note: str
+
+
+class DbAreaOut(BaseModel):
+    state: str
+    metrics: Dict[str, Any]
+    missing: List[str]
+
+
+class DbRowOut(BaseModel):
+    database: str
+    platform: str
+    connections_active: Optional[float] = None
+    query_time_ms: Optional[float] = None
+    size_bytes: Optional[float] = None
+    replication_lag_seconds: Optional[float] = None
+    samples: int
+    last_observed: Optional[str] = None
+
+
+class DbAdapterOut(BaseModel):
+    platform: str
+    adapter: Optional[str] = None
+    state: str
+
+
+class DbCollectorOut(BaseModel):
+    collector_id: str
+    status: str
+    last_report_at: Optional[str] = None
+    detail: Optional[str] = None
+
+
+class DatabaseWorkspaceOut(BaseModel):
+    areas: Dict[str, DbAreaOut]
+    databases: List[DbRowOut]
+    adapters: List[DbAdapterOut]
+    collectors: List[DbCollectorOut]
     note: str
 
 
@@ -737,6 +776,34 @@ def infrastructure(tenant_id: str = Query(...),
     window_start, window_end = window
     rows = _tenant_rows(db, tenant_id, window_start, window_end)
     return DomainResponse(**domain_view(rows, "infrastructure"))
+
+
+@router.get("/databases/workspace", response_model=DatabaseWorkspaceOut)
+def databases_workspace(
+        tenant_id: str = Query(...),
+        window: Tuple[datetime, datetime] = Depends(_window_params),
+        db: Session = Depends(get_db_session),
+        user: str = Depends(get_current_user)) -> DatabaseWorkspaceOut:
+    """Database Performance (docs/performance/03_UI_SPEC.md §4): the nine
+    areas, per-database rows and adapter states. Query fingerprints and
+    normalized statistics only — SQL statements containing customer data
+    are never collected."""
+    from db.models.performance import PerformanceCollectorHealth
+
+    window_start, window_end = window
+    rows = _tenant_rows(db, tenant_id, window_start, window_end)
+    health = db.execute(
+        select(PerformanceCollectorHealth).where(
+            PerformanceCollectorHealth.tenant_id == tenant_id)
+    ).scalars().all()
+    collectors = [{
+        "collector_id": h.collector_id,
+        "status": h.status,
+        "last_report_at": h.last_report_at.isoformat() if h.last_report_at else None,
+        "detail": h.detail,
+    } for h in health]
+    return DatabaseWorkspaceOut(
+        **database_workspace_view(rows, collectors=collectors))
 
 
 @router.get("/applications/workspace", response_model=ApplicationWorkspaceOut)

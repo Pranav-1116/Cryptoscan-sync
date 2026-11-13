@@ -8884,6 +8884,44 @@ export interface AppCapability {
   basis: string;
 }
 
+export interface DbArea {
+  state: string;
+  metrics: Record<string, PerformanceSummary>;
+  missing: string[];
+}
+
+export interface DbRow {
+  database: string;
+  platform: string;
+  connections_active?: number | null;
+  query_time_ms?: number | null;
+  size_bytes?: number | null;
+  replication_lag_seconds?: number | null;
+  samples: number;
+  last_observed?: string | null;
+}
+
+export interface DbAdapter {
+  platform: string;
+  adapter?: string | null;
+  state: string;
+}
+
+export interface DbCollector {
+  collector_id: string;
+  status: string;
+  last_report_at?: string | null;
+  detail?: string | null;
+}
+
+export interface PerformanceDbWorkspace {
+  areas: Record<string, DbArea>;
+  databases: DbRow[];
+  adapters: DbAdapter[];
+  collectors: DbCollector[];
+  note: string;
+}
+
 export interface PerformanceAppWorkspace {
   metrics: Record<string, PerformanceTile>;
   services: AppServiceRow[];
@@ -9057,6 +9095,9 @@ const performanceQuery = (params: object): string => {
 
 export const apiPerformanceOverview = (p: PerformanceWindow): Promise<ApiResult<PerformanceOverview>> =>
   call<PerformanceOverview>(`/api/v1/performance/overview${performanceQuery(p)}`);
+
+export const apiPerformanceDbWorkspace = (p: PerformanceWindow): Promise<ApiResult<PerformanceDbWorkspace>> =>
+  call<PerformanceDbWorkspace>(`/api/v1/performance/databases/workspace${performanceQuery(p)}`);
 
 export const apiPerformanceAppWorkspace = (p: PerformanceWindow): Promise<ApiResult<PerformanceAppWorkspace>> =>
   call<PerformanceAppWorkspace>(`/api/v1/performance/applications/workspace${performanceQuery(p)}`);

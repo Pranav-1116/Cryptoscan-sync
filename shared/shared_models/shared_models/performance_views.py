@@ -505,6 +505,100 @@ def application_workspace(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
     }
 
 
+#: Database metric areas (UI spec §4): measured families per area and the
+#: measurements with NO collector — named as gaps, never zeros.
+_DB_AREAS = {
+    "connections": (("db.connections_active", "db.connections_idle",
+                     "db.pool_utilization_pct"),
+                    ("waiting connections", "connection exhaustion")),
+    "queries": (("db.query_time_ms", "db.query_throughput"),
+                ("slow query count",)),
+    "locks": (("db.lock_waits", "db.deadlocks"), ("blocking",)),
+    "cache": (("db.cache_hit_ratio",), ("buffer utilization",)),
+    "storage": (("db.size_bytes",), ("database growth", "database IOPS")),
+    "replication": (("db.replication_lag_seconds",), ("replication status",)),
+    "transactions": (("db.transactions_per_sec",),
+                     ("commit rate", "rollback rate")),
+    "backup": (("db.backup_duration_seconds",),
+               ("backup status", "backup age")),
+    "availability": (("availability.uptime_pct",), ("connection failures",)),
+}
+
+#: Database adapter platforms (UI spec §4). The engine ships a dedicated
+#: postgres_exporter translator and a generic OTLP ingest path — other
+#: platforms are named scope with no dedicated adapter, never claimed.
+_DB_ADAPTERS = (
+    {"platform": "PostgreSQL", "adapter": "postgres_exporter",
+     "state": "adapter available"},
+    {"platform": "MySQL", "adapter": None,
+     "state": "no dedicated adapter — generic OTLP ingest only"},
+    {"platform": "Microsoft SQL Server", "adapter": None,
+     "state": "no dedicated adapter — generic OTLP ingest only"},
+    {"platform": "Oracle", "adapter": None,
+     "state": "no dedicated adapter — generic OTLP ingest only"},
+)
+
+
+def database_workspace(
+        rows: Sequence[PerformanceMetric],
+        collectors: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
+    """Database Performance (UI spec §4): the nine areas over delivered
+    db.* telemetry, per-database rows and the adapter panel. The
+    collection contract is statistics only: query fingerprints and
+    normalized statistics, never SQL statements containing customer data
+    (docs/performance/03_UI_SPEC.md §4)."""
+    by_name = _rows_by_name(rows)
+
+    areas: Dict[str, Any] = {}
+    for area, (names, missing) in _DB_AREAS.items():
+        metrics = {name: summarize_metric(by_name[name])
+                   for name in names if name in by_name}
+        areas[area] = {
+            "state": "measured" if metrics else "not_collected",
+            "metrics": metrics,
+            "missing": list(missing),
+        }
+
+    per_asset: Dict[str, List[PerformanceMetric]] = {}
+    for row in rows:
+        if (row.metric_name or "").startswith("db.") or row.metric_name == "availability.uptime_pct":
+            per_asset.setdefault(row.asset_id, []).append(row)
+    databases: List[Dict[str, Any]] = []
+    for asset_id, arows in sorted(per_asset.items()):
+        names: Dict[str, List[PerformanceMetric]] = {}
+        platform = None
+        for row in arows:
+            names.setdefault(row.metric_name, []).append(row)
+            labels = row.labels or {}
+            if platform is None:
+                platform = (labels.get("platform") or labels.get("engine")
+                            or labels.get("database"))
+        observed = [r.observed_at for r in arows]
+        databases.append({
+            "database": asset_id,
+            "platform": platform or "not recorded",
+            "connections_active": _latest(names.get("db.connections_active", [])),
+            "query_time_ms": _latest(names.get("db.query_time_ms", [])),
+            "size_bytes": _latest(names.get("db.size_bytes", [])),
+            "replication_lag_seconds": _latest(
+                names.get("db.replication_lag_seconds", [])),
+            "samples": len(arows),
+            "last_observed": max(observed).isoformat() if observed else None,
+        })
+
+    return {
+        "areas": areas,
+        "databases": databases,
+        "adapters": list(_DB_ADAPTERS),
+        "collectors": collectors or [],
+        "note": "statistics only — the collection contract is query "
+                "fingerprints and normalized statistics; query parameters "
+                "and customer records are never collected, and SQL "
+                "statements containing customer data are never collected",
+    }
+
+
 #: HSM/KMS metric families (UI spec §7). Read-only projections of stored
 #: telemetry — the collector rule (vendor-supported, read-only, no key
 #: material, no interference) governs collection and is not narrated here.
