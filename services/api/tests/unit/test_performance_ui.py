@@ -131,6 +131,34 @@ async def test_workloads_report_correlation_only_causation_unproven():
 
 
 @pytest.mark.asyncio
+async def test_network_twelve_metrics_capacity_apart_and_cipher_honesty():
+    app, session, engine = _make_app()
+    _metric(session, "network.bandwidth_mbps", 10000, asset="gw-1", unit="Mbps")
+    _metric(session, "network.throughput_mbps", 840, asset="gw-1", minutes=5, unit="Mbps")
+    _metric(session, "network.rtt_ms", 42, asset="gw-1", minutes=8)
+    _metric(session, "crypto.tls_handshake_ms", 41, asset="gw-1", minutes=12)
+    session.flush()
+    res = await _get(app, "/api/v1/performance/network", _params())
+    assert res.status_code == 200
+    body = res.json()
+    # capacity and observed throughput are different measurements
+    assert body["bandwidth_capacity_mbps"]["value"] == 10000
+    assert body["observed_throughput_mbps"]["value"] == 840
+    assert "different" in body["note"]
+    assert "capacity is never presented as observed throughput" in body["note"]
+    # the twelve measurements: delivered carry values, undelivered are unknown
+    assert body["tls_handshake_ms"]["value"] == 41
+    assert body["rtt_ms"]["p95"] == 42
+    assert body["jitter_ms"]["value"] is None
+    assert body["jitter_ms"]["state"] == "unknown"
+    assert body["load_balancer_response_ms"]["value"] is None
+    # network telemetry never claims the negotiated cipher suite
+    note = body["cipher_suite_note"]
+    assert "does not automatically reveal the negotiated TLS cipher suite" in note
+    assert "authorized endpoint or protocol observation" in note
+
+
+@pytest.mark.asyncio
 async def test_databases_workspace_areas_adapters_and_fingerprint_contract():
     from db.models.performance import PerformanceCollectorHealth
 

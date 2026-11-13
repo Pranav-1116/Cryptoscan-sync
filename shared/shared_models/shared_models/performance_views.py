@@ -158,7 +158,32 @@ def network_view(rows: Sequence[PerformanceMetric]) -> Dict[str, Any]:
             _latest(by_name.get("network.throughput_mbps", [])), "Mbps"),
         "rtt_ms": summarize_metric(by_name.get("network.rtt_ms", []))
         if "network.rtt_ms" in by_name else None,
+        # the UI brief's twelve measurements (docs/performance/03_UI_SPEC.md
+        # §5) — undelivered families are unknown tiles, never zero fillers
+        "jitter_ms": _tile(_latest(by_name.get("network.jitter_ms", [])), "ms"),
+        "packet_loss_pct": _tile(
+            _latest(by_name.get("network.packet_loss_pct", [])), "percent"),
+        "retransmissions": _tile(
+            _latest(by_name.get("network.tcp_retransmissions", [])), "count"),
+        "dns_resolution_ms": _tile(
+            _latest(by_name.get("network.dns_resolution_ms", [])), "ms"),
+        "connection_establish_ms": _tile(
+            _latest(by_name.get("network.connection_establish_ms", [])), "ms"),
+        "tcp_connections": _tile(
+            _latest(by_name.get("network.connections", [])), "count"),
+        "interface_errors": _tile(
+            _latest(by_name.get("network.interface_errors", [])), "count"),
+        "tunnel_health": _tile(
+            _latest(by_name.get("network.tunnel_health", [])), "state"),
+        "tls_handshake_ms": _tile(
+            _latest(by_name.get("crypto.tls_handshake_ms", [])), "ms"),
+        "load_balancer_response_ms": _tile(None, "ms"),
         "metrics": summary,
+        "cipher_suite_note": (
+            "network telemetry can establish that a connection exists or "
+            "measure its performance — it does not automatically reveal the "
+            "negotiated TLS cipher suite; that requires an appropriate "
+            "authorized endpoint or protocol observation"),
         "note": "bandwidth capacity and actual throughput are different: "
                 "capacity is never presented as observed throughput",
     }

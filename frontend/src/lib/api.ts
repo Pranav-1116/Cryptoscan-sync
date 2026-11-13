@@ -8965,7 +8965,19 @@ export interface PerformanceNetwork {
   bandwidth_capacity_mbps: PerformanceTile;
   observed_throughput_mbps: PerformanceTile;
   rtt_ms: PerformanceSummary | null;
+  /** UI brief §5 twelve measurements (docs/performance/03_UI_SPEC.md §5). */
+  jitter_ms?: PerformanceTile;
+  packet_loss_pct?: PerformanceTile;
+  retransmissions?: PerformanceTile;
+  dns_resolution_ms?: PerformanceTile;
+  connection_establish_ms?: PerformanceTile;
+  tcp_connections?: PerformanceTile;
+  interface_errors?: PerformanceTile;
+  tunnel_health?: PerformanceTile;
+  tls_handshake_ms?: PerformanceTile;
+  load_balancer_response_ms?: PerformanceTile;
   metrics: Record<string, PerformanceSummary>;
+  cipher_suite_note?: string;
   note: string;
 }
 

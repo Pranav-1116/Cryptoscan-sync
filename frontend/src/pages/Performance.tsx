@@ -5,6 +5,7 @@ import { Badge, Panel, PageHead } from "../components/ui.jsx";
 import InfraWorkspace from "../components/InfraWorkspace";
 import AppPerfWorkspace from "../components/AppPerfWorkspace";
 import DbPerfWorkspace from "../components/DbPerfWorkspace";
+import NetworkPerfWorkspace from "../components/NetworkPerfWorkspace";
 import {
   apiPerformanceAlerts, apiPerformanceBaselines,
   apiPerformanceHsm, apiPerformanceWorkloads, apiPerformanceSamples,
@@ -424,14 +425,7 @@ export default function Performance() {
 
       {view === "network" && (
         network.error ? <ErrorNote error={network.error} /> : (
-          <Panel title="Network Intelligence">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-              <TileView tile={network.data?.bandwidth_capacity_mbps} label="Bandwidth capacity" />
-              <TileView tile={network.data?.observed_throughput_mbps} label="Observed throughput" />
-            </div>
-            <SummaryTable metrics={network.data?.metrics ?? {}} />
-            <Note>{network.data?.note}</Note>
-          </Panel>
+          <NetworkPerfWorkspace data={network.data} />
         )
       )}
 

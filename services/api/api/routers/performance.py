@@ -385,7 +385,19 @@ class NetworkResponse(BaseModel):
     bandwidth_capacity_mbps: Tile
     observed_throughput_mbps: Tile
     rtt_ms: Optional[SummaryStats] = None
+    # UI brief §5 twelve measurements — unknown tiles where undelivered
+    jitter_ms: Optional[Tile] = None
+    packet_loss_pct: Optional[Tile] = None
+    retransmissions: Optional[Tile] = None
+    dns_resolution_ms: Optional[Tile] = None
+    connection_establish_ms: Optional[Tile] = None
+    tcp_connections: Optional[Tile] = None
+    interface_errors: Optional[Tile] = None
+    tunnel_health: Optional[Tile] = None
+    tls_handshake_ms: Optional[Tile] = None
+    load_balancer_response_ms: Optional[Tile] = None
     metrics: Dict[str, SummaryStats]
+    cipher_suite_note: Optional[str] = None
     note: str
 
 
