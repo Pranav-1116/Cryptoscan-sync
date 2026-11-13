@@ -20,6 +20,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from db.models.base import BaseModel
 
 
+# platform-scope: collector qualification plane — the qualification
+# state of one collector for one target family (platform quality
+# telemetry about discovery, not tenant inventory).
 class DiscoveryQualification(BaseModel):
     __tablename__ = "discovery_qualifications"
     __table_args__ = (
@@ -35,6 +38,9 @@ class DiscoveryQualification(BaseModel):
     reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
 
+# platform-scope: external-evidence plane — filings of acts performed
+# OUTSIDE the platform (DR drills, pen tests, real HSM runs); the
+# platform never marks these done itself, not tenant inventory.
 class ExternalValidation(BaseModel):
     __tablename__ = "external_validations"
     __table_args__ = (

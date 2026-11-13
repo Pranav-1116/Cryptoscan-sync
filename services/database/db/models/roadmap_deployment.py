@@ -23,6 +23,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from db.models.base import BaseModel
 
 
+# platform-scope: product deployment-control evidence plane — one
+# drill/attestation of one control with its evidence ids (a failed drill
+# files FAILED and stays visible), not tenant inventory.
 class DeploymentAttestation(BaseModel):
     __tablename__ = "deployment_attestations"
     __table_args__ = (
@@ -38,6 +41,9 @@ class DeploymentAttestation(BaseModel):
     note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
 
+# platform-scope: product deployment-control evidence plane — the
+# data-custody map (which custody class lives where, who controls it);
+# deployment-level rows, not tenant inventory.
 class DeploymentCustodyEntry(BaseModel):
     __tablename__ = "deployment_custody_entries"
 

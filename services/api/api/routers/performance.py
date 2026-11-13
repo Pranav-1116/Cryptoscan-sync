@@ -26,6 +26,7 @@ from api.dependencies import (get_current_user, get_db_session,
                               require_intelligence_manager,
                               require_intelligence_writer,
                               require_query_tenant_scope)
+from db.tenancy import filtered_get
 from db.repositories.performance_repository import (
     DUPLICATE, INSERTED, PerformanceRepository,
 )
@@ -890,7 +891,7 @@ def infrastructure_workspace(
         if hw is not None:
             links[asset_id] = f"hw:{asset_id}"
             continue
-        sys_rec = db.get(System, asset_id)
+        sys_rec = filtered_get(db, System, asset_id)
         links[asset_id] = f"app:{asset_id}" if sys_rec is not None else None
 
     return InfrastructureWorkspaceOut(

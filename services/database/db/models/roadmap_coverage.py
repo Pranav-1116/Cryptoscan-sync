@@ -19,6 +19,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from db.models.base import BaseModel
 
 
+# platform-scope: product coverage-evidence plane — filed collection-run
+# outcomes for the coverage programme (a gap is never clean; a failed
+# read never reports zero), not tenant inventory.
 class CoverageReport(BaseModel):
     __tablename__ = "coverage_reports"
     __table_args__ = (

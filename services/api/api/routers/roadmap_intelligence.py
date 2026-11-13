@@ -32,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
 from db.models.certificate import Certificate
+from db.tenancy import filtered_get
 from db.models.crypto_asset import CryptoAsset
 from db.models.crypto_asset_evidence import CryptoAssetEvidence
 from db.models.crypto_live import CryptoLiveState
@@ -191,7 +192,7 @@ def intelligence_risk(
     standing) are returned as UNKNOWN with a named reason — never as zero.
     """
     now = _now()
-    row = db.get(CryptoAsset, asset_id)
+    row = filtered_get(db, CryptoAsset, asset_id)
     live = db.execute(
         select(CryptoLiveState).where(CryptoLiveState.asset_id == asset_id)
     ).scalars().first()

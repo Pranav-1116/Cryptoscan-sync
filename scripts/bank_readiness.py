@@ -121,11 +121,22 @@ DOCUMENTATION_IGNORED_PARTS = frozenset({
     "__pycache__", ".pytest_cache", ".mypy_cache", ".next", ".nuxt", "out",
 })
 
+#: Run artifacts, not product documentation. ``docs/readiness-evidence/`` is
+#: deliberately untracked working state (returned to untracked twice by
+#: committed chore) and the gate writes its own reports there, so scanning it
+#: or validating links into it makes the readiness result depend on which
+#: runs happen to be retained on the machine — the same non-reproducibility
+#: the ignored-parts rule above exists to prevent. Product documents refer to
+#: those artifacts by path (an evidence reference), never as in-tree links.
+RUN_ARTIFACT_PARTS = ("docs", "readiness-evidence")
+
 
 def _ignored_path(path: Path, root: Path) -> bool:
     try:
         parts = path.resolve().relative_to(root.resolve()).parts
     except ValueError:
+        return True
+    if parts[: len(RUN_ARTIFACT_PARTS)] == RUN_ARTIFACT_PARTS:
         return True
     return bool(DOCUMENTATION_IGNORED_PARTS.intersection(parts))
 
@@ -150,8 +161,17 @@ def _link_target(root: Path, source: Path, link: str) -> Path | None:
         return None
     # `/foo` is site-root-relative in Markdown, not the host filesystem root.
     if target.startswith("/"):
-        return (root / target.lstrip("/")).resolve()
-    return (source.parent / target).resolve()
+        resolved = (root / target.lstrip("/")).resolve()
+    else:
+        resolved = (source.parent / target).resolve()
+    # Links into the run-artifact tree are evidence references to retained
+    # run outputs (see RUN_ARTIFACT_PARTS), not product-document links.
+    try:
+        if resolved.relative_to(root.resolve()).parts[: len(RUN_ARTIFACT_PARTS)] == RUN_ARTIFACT_PARTS:
+            return None
+    except ValueError:
+        return resolved
+    return resolved
 
 
 def documentation_link_findings(root: Path = ROOT) -> tuple[list[str], int]:

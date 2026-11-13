@@ -17,6 +17,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from db.models.base import BaseModel
 
 
+# platform-scope: product acceptance-gate register — filed evidence
+# against the twelve product acceptance gates (external gates are never
+# passed by the platform itself), not tenant inventory.
 class GateFiling(BaseModel):
     __tablename__ = "gate_filings"
     __table_args__ = (

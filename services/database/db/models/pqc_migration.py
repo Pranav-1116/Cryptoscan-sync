@@ -38,6 +38,9 @@ PROGRESS_VERIFICATION_STATES: tuple[str, ...] = (
 )
 
 
+# platform-scope: the deployment's shared PQC migration plan register —
+# admin-written plan objects (waves), never tenant inventory; the estate
+# state the plan addresses is projected from live reads elsewhere.
 class PqcMigrationWave(BaseModel):
     """One migration wave of the PQC plan."""
 
@@ -54,6 +57,9 @@ class PqcMigrationWave(BaseModel):
     status_note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
 
+# platform-scope: shared PQC migration plan register — blockers are
+# governance decisions on the plan (an accepted blocker is recorded,
+# never a silent close), written by admins, not tenant inventory.
 class PqcMigrationBlocker(BaseModel):
     """Something blocking a wave: raised explicitly, resolved explicitly."""
 
@@ -79,6 +85,8 @@ class PqcMigrationBlocker(BaseModel):
     resolution_note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
 
+# platform-scope: shared PQC migration plan register — peer
+# interoperability observations filed against the plan, not tenant rows.
 class PqcInteropNote(BaseModel):
     """An interoperability observation against a peer system for one wave."""
 
@@ -97,6 +105,9 @@ class PqcInteropNote(BaseModel):
     recorded_by: Mapped[str] = mapped_column(String(200), nullable=False)
 
 
+# platform-scope: shared PQC migration plan register — progress claims
+# and their verification verdicts (evidence-referenced) about the plan,
+# written through the verification endpoint, not tenant inventory.
 class PqcProgressRecord(BaseModel):
     """A progress claim on a wave, and (optionally) its verification verdict."""
 

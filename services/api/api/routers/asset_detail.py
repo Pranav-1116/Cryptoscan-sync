@@ -39,6 +39,7 @@ from db.models.system import System
 from db.models.system_asset import SystemAsset
 from db.models.system_dependency import SystemDependency
 from db.models.vendor import SystemVendor, Vendor
+from db.tenancy import filtered_get
 from db.models.vendor_crypto import VendorCryptoInventory
 from db.models.vendor_profile import VendorProfileRevision
 
@@ -98,7 +99,7 @@ def _resolve(db: Session, asset_ref: str) -> Dict[str, Any]:
     """One canonical asset -> its stored record. 404 when not stored."""
     kind, _, ident = asset_ref.partition(":")
     if kind == "app":
-        rec = db.get(System, ident)
+        rec = filtered_get(db, System, ident)
         if rec is None:
             raise HTTPException(status_code=404, detail="asset not found in the canonical registry")
         return {"kind": kind, "ident": ident, "record": rec, "name": rec.name,
@@ -107,7 +108,7 @@ def _resolve(db: Session, asset_ref: str) -> Dict[str, Any]:
                 "source": "System registry",
                 "last_observed": _iso(getattr(rec, "updated_at", None))}
     if kind == "crypto":
-        rec = db.get(CryptoAsset, ident)
+        rec = filtered_get(db, CryptoAsset, ident)
         if rec is None:
             raise HTTPException(status_code=404, detail="asset not found in the canonical registry")
         return {"kind": kind, "ident": ident, "record": rec,
@@ -135,7 +136,7 @@ def _resolve(db: Session, asset_ref: str) -> Dict[str, Any]:
                 "source": "Network scan observation",
                 "last_observed": row.get("observed_at")}
     if kind == "vendor":
-        rec = db.get(Vendor, ident)
+        rec = filtered_get(db, Vendor, ident)
         if rec is None:
             raise HTTPException(status_code=404, detail="asset not found in the canonical registry")
         return {"kind": kind, "ident": ident, "record": rec, "name": rec.name,
@@ -347,7 +348,7 @@ def tab_components(asset_ref: str, user: str = Depends(get_current_user), db: Se
     rows: List[Dict[str, Any]] = []
     if kind == "app":
         for link in db.execute(select(SystemAsset).where(SystemAsset.system_id == ident)).scalars().all():
-            c = db.get(CryptoAsset, link.asset_id)
+            c = filtered_get(db, CryptoAsset, link.asset_id)
             if c is not None:
                 rows.append({"component_ref": f"crypto:{c.id}", "name": c.algorithm or c.id,
                              "type": "crypto", "version": c.key_size or "", "evidence": "stored system_assets link"})
@@ -370,7 +371,7 @@ def tab_cryptography(asset_ref: str, user: str = Depends(get_current_user), db: 
     runtime = _runtime_algorithms(db)
     if kind == "app":
         for link in db.execute(select(SystemAsset).where(SystemAsset.system_id == ident)).scalars().all():
-            c = db.get(CryptoAsset, link.asset_id)
+            c = filtered_get(db, CryptoAsset, link.asset_id)
             if c is None:
                 continue
             observed = str(c.algorithm or "").upper() in runtime
@@ -484,7 +485,7 @@ def tab_vendors(asset_ref: str, user: str = Depends(get_current_user), db: Sessi
     rows: List[Dict[str, Any]] = []
     if kind == "app":
         for link in db.execute(select(SystemVendor).where(SystemVendor.system_id == ident)).scalars().all():
-            v = db.get(Vendor, link.vendor_id)
+            v = filtered_get(db, Vendor, link.vendor_id)
             if v is not None:
                 rows.append({"vendor_ref": f"vendor:{v.id}", "name": v.name,
                              "vendor_type": getattr(v, "vendor_type", "") or "",
@@ -494,7 +495,7 @@ def tab_vendors(asset_ref: str, user: str = Depends(get_current_user), db: Sessi
     elif kind == "vendor":
         rec = ctx["record"]
         for link in db.execute(select(SystemVendor).where(SystemVendor.vendor_id == ident)).scalars().all():
-            s = db.get(System, link.system_id)
+            s = filtered_get(db, System, link.system_id)
             if s is not None:
                 rows.append({"vendor_ref": asset_ref, "name": rec.name,
                              "supplies_system": f"app:{s.id}", "system_name": s.name,
@@ -540,7 +541,7 @@ def tab_evidence(asset_ref: str, user: str = Depends(get_current_user), db: Sess
     rows: List[Dict[str, Any]] = []
     if kind == "crypto":
         for link in db.execute(select(CryptoAssetEvidence).where(CryptoAssetEvidence.asset_id == ident)).scalars().all():
-            ev = db.get(EvidenceRecord, link.evidence_id)
+            ev = filtered_get(db, EvidenceRecord, link.evidence_id)
             if ev is not None:
                 rows.append({"evidence_id": ev.id, "algorithm": ev.algorithm or "",
                              "confidence": ev.confidence or "", "content_hash": ev.content_hash or "",

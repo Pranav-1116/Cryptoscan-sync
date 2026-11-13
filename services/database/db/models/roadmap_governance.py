@@ -21,6 +21,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from db.models.base import BaseModel
 
 
+# platform-scope: product governance plane — workflow tickets with
+# hash-chained audit documents written only through their own
+# transitions, not tenant inventory.
 class GovernanceTicket(BaseModel):
     __tablename__ = "governance_tickets"
     __table_args__ = (
