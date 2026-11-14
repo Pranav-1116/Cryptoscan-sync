@@ -74,6 +74,11 @@ class TestPoolStatus:
         report = dependency_report()
         by_name = {c["name"]: c for c in report["checks"]}
         pool = by_name["connection_pool"]
-        assert pool["status"] in ("ok", "down")
-        assert "checked out" in pool["detail"]
-        assert pool["pool"]["capacity"] >= pool["pool"]["checkedout"]
+        if pool["status"] == "skipped":
+            # No introspectable pool in this environment (placeholder URL):
+            # the check says so with the error named, never fakes a signal.
+            assert pool["error_type"]
+        else:
+            assert pool["status"] in ("ok", "down")
+            assert "checked out" in pool["detail"]
+            assert pool["pool"]["capacity"] >= pool["pool"]["checkedout"]

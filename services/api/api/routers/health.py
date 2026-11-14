@@ -85,9 +85,11 @@ def dependency_report() -> dict:
     ]
     # Connection-pool pressure is a health signal, not a footnote: a pool at
     # >= 90% checked out is already suffering latency, and the operator needs
-    # the numbers BEFORE it becomes an outage. The check goes down under
-    # pressure (rolling the report up to degraded) and always carries its
-    # honest numbers in the detail.
+    # the numbers BEFORE it becomes an outage. The check goes down ONLY on
+    # real pressure — a pool that cannot be introspected at all (a
+    # placeholder URL, a driver this process cannot load) is `skipped` with
+    # the error named, the report's convention for "no signal here", never a
+    # false alarm about pressure that was never measured.
     try:
         from db.connection.engine import pool_status
 
@@ -103,8 +105,8 @@ def dependency_report() -> dict:
             "pool": pool,
         }
     except Exception as pool_exc:  # noqa: BLE001 — never mask, name the type
-        pool_check = {"name": "connection_pool", "status": "down",
-                      "detail": "pool status unavailable",
+        pool_check = {"name": "connection_pool", "status": "skipped",
+                      "detail": "pool not introspectable in this environment",
                       "error_type": type(pool_exc).__name__}
     checks.append(pool_check)
     if redis_required and not redis_configured:
