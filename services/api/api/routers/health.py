@@ -150,7 +150,20 @@ def readyz():
     Liveness (/healthz) stays 200 through a DB outage — the process is fine
     and keeps retrying; readiness tells nginx/kubernetes to stop routing to
     this replica until the failover completes.
+
+    A draining process (begin_drain at shutdown) answers 503 immediately:
+    the load balancer stops routing while in-flight requests finish, so a
+    rolling restart is a drain, never a reset.
     """
+    from api import drain
+
+    if drain.is_draining():
+        return JSONResponse(status_code=503, content={
+            "status": "draining",
+            "detail": ("this replica is draining: in-flight requests are "
+                       "finishing and no new traffic should be routed here"),
+            **drain.as_dict(),
+        })
     import concurrent.futures
 
     from db.connection.engine import get_engine

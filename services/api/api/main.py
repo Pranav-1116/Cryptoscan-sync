@@ -264,6 +264,13 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         gap = production_gap(settings)
         if gap:
             logger.warning("password_breach_corpus_missing", extra={"detail": gap})
+        # A starting app instance is not draining. Production starts one
+        # instance per process (before any shutdown could drain it); tests
+        # start many in one process, and each new instance supersedes the
+        # previous instance's retirement.
+        from api.drain import reset as reset_drain
+
+        reset_drain()
         # Binary async jobs: install the durable database handoff when the
         # deployment declares it (BINARY_ASYNC_BACKEND=database). Production
         # refuses the process-local queue — this is what makes async real:
@@ -387,6 +394,12 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         except Exception:  # noqa: BLE001
             logger.debug("live_scan_snapshot_restore_skipped", exc_info=True)
         yield
+        # The very first shutdown act: tell the load balancer to stop
+        # routing here while in-flight requests finish (api.drain). A
+        # rolling restart must be a drain, never a reset.
+        from api.drain import begin_drain
+
+        begin_drain("process_shutdown")
         if tailer_task is not None:
             tailer_task.cancel()
         if telemetry_task is not None:
