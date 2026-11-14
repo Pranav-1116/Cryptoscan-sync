@@ -164,7 +164,10 @@ def audit_models(facts: dict[str, Any]) -> tuple[list[str], list[str]]:
                 continue
             bases = {b.id for b in node.bases if isinstance(b, ast.Name)}
             bases |= {b.attr for b in node.bases if isinstance(b, ast.Attribute)}
-            if "TenantScoped" in bases:
+            # TenantOwned extends TenantScoped with a NOT NULL tenant — a
+            # strictly scoped table. The AST pass must see what the registry
+            # already does, or every honest TenantOwned model reads as a gap.
+            if "TenantScoped" in bases or "TenantOwned" in bases:
                 continue
             # Justified platform scope? Marker above the class or inside it.
             span = set(range(node.lineno, node.end_lineno + 1)) | set(range(max(1, node.lineno - 3), node.lineno))

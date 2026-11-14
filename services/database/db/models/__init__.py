@@ -3,6 +3,7 @@ from db.models.asset_system_link import AssetSystemLink
 from db.models.base import BaseModel
 from db.models.baseline import Baseline
 from db.models.binary_scan import BinaryScanObservation, BinaryScanRecord
+from db.models.binary_scan_job import BinaryScanJob
 from db.models.business_owner import BusinessOwner
 from db.models.business_process import BusinessProcess
 from db.models.cascade_extensions import (
@@ -84,6 +85,7 @@ __all__ = [
     "AssetSystemLink",
     "BaseModel",
     "Baseline",
+    "BinaryScanJob",
     "BinaryScanObservation",
     "BinaryScanRecord",
     "BusinessOwner",

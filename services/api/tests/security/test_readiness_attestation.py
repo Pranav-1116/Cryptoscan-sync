@@ -93,7 +93,12 @@ def test_readiness_report_refuses_an_unsigned_external_pass(tmp_path):
     assert "signed attestation" in rows["hsm"]["detail"]
     assert rows["browser_journey"]["status"] == "SKIP"
     assert "browser_journey" in bank_readiness.REQUIRED_CATEGORIES
-    assert rows["binary_async_durability"]["status"] == "FAIL"
+    # The durable binary job backend is now real and declared (binary_scan_jobs
+    # leased handoff + BINARY_ASYNC_BACKEND=database in the deploy configs), so
+    # this code-level check passes; its remaining restart/replica proof must be
+    # NAMED as deferred to the signed integrations artifact, never assumed.
+    assert rows["binary_async_durability"]["status"] == "PASS"
+    assert "signed integrations artifact" in rows["binary_async_durability"]["detail"]
     assert "binary_async_durability" in bank_readiness.REQUIRED_CATEGORIES
 
 

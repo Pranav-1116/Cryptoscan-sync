@@ -41,6 +41,10 @@ class APISettings(BaseSettings):
     API_PORT: int = 8010
     ENVIRONMENT: str = "development"
     CRYPTOSCAN_DEPLOYMENT_PROFILE: str = ""
+    #: Binary async job backend: "process_local" (development-only bounded
+    #: queue; production refuses it) or "database" (durable leased-job
+    #: handoff in binary_scan_jobs — restart-safe, cross-replica claims).
+    BINARY_ASYNC_BACKEND: str = "process_local"
     LOG_LEVEL: str = "INFO"
     API_VERSION: str = "1.0.0"
     DOCS_ENABLED: bool | None = None

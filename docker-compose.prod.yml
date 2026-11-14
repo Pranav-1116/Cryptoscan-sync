@@ -75,6 +75,10 @@ services:
     environment:
       ENVIRONMENT: production
       LOG_LEVEL: INFO
+      # Async Binary jobs use the durable database handoff (binary_scan_jobs
+      # leased claims) — the process-local queue is development-only and the
+      # API refuses it in production.
+      BINARY_ASYNC_BACKEND: database
       # §4.8 round 70: the nginx edge is the ONE trusted proxy hop — the
       # API honors X-Forwarded-For only as the outermost trusted entry
       # (never the first, client-controlled one). The API service exposes

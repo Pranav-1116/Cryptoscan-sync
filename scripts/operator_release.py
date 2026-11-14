@@ -24,7 +24,7 @@ from verify_release_attestation import verify_attestation
 
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE = "kubernetes-external-services/local-source-v1"
-MIGRATION_HEAD = "0151"  # 0149 tenant-local Performance metrics, 0150 signed capture receipts, 0151 schema_version
+MIGRATION_HEAD = "0152"  # 0149 tenant-local Performance metrics, 0150 signed capture receipts, 0151 schema_version, 0152 binary_scan_jobs
 IMAGE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}$")
 EXAMPLE_NAMES = {"15-secret.example.yaml"}
 DOCS = ["docs/CURRENT-STATE.md", "docs/runbooks/launch-assurance-handoff.md",

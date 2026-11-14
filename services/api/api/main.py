@@ -264,6 +264,18 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         gap = production_gap(settings)
         if gap:
             logger.warning("password_breach_corpus_missing", extra={"detail": gap})
+        # Binary async jobs: install the durable database handoff when the
+        # deployment declares it (BINARY_ASYNC_BACKEND=database). Production
+        # refuses the process-local queue — this is what makes async real:
+        # restart-safe artifact handoff with cross-replica lease claims.
+        if settings.BINARY_ASYNC_BACKEND == "database":
+            from api.routers.binary_intelligence import configure_durable_queue
+
+            configure_durable_queue()
+            logger.info("binary_async_backend", extra={"backend": "database"})
+        elif settings.is_production:
+            logger.warning("binary_async_backend_unavailable_in_production",
+                           extra={"declared": settings.BINARY_ASYNC_BACKEND})
         logger.info("cryptoscan_api_started", extra={"env": settings.ENVIRONMENT})
         tailer_task = None
         telemetry_task = None

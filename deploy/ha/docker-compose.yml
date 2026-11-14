@@ -44,6 +44,9 @@ services:
       DATABASE_URL: postgresql+psycopg2://cryptoscan:${POSTGRES_PASSWORD}@postgres:5432/cryptoscan
       REDIS_URL: redis://redis:6379/0
       ENVIRONMENT: production
+      # Durable database handoff for async Binary jobs (leased claims in
+      # binary_scan_jobs) — shared by every app service on this estate.
+      BINARY_ASYNC_BACKEND: database
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"

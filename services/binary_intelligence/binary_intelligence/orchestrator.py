@@ -84,8 +84,10 @@ class ScanJobQueue:
     def failed_count(self) -> int:
         return self._failed
 
-    def submit(self, job: ScanJob) -> Tuple[bool, str]:
-        """Offer one job. False + reason under backpressure."""
+    def submit(self, job: ScanJob, db: Any = None) -> Tuple[bool, str]:
+        """Offer one job. False + reason under backpressure. The optional
+        ``db`` keeps the call signature identical to the durable queue; a
+        process-local queue has nowhere to put it and ignores it."""
         if len(job.data) > self.limits.max_artifact_bytes:
             self._refused += 1
             return False, (
@@ -104,6 +106,7 @@ class ScanJobQueue:
     def process_job(self, job_id: str,
                     on_result: Optional[Callable[[ScanResult], Any]] = None,
                     tenant_id: Optional[str] = None,
+                    db: Any = None,
                     ) -> Optional[Dict[str, Any]]:
         """Pop only a visible job; a foreign id is indistinguishable from
         a missing one and is never consumed or run. None is reserved for
@@ -116,7 +119,7 @@ class ScanJobQueue:
         return None
 
     def process_one(self, on_result: Optional[Callable[[ScanResult], Any]]
-                    = None) -> Optional[Dict[str, Any]]:
+                    = None, db: Any = None) -> Optional[Dict[str, Any]]:
         """Pop and run one job under the wall-clock limit. Returns the
         run summary, or None when the queue is empty. A job that exceeds
         the time budget is reported as a FAILURE with its reason — never
@@ -162,7 +165,7 @@ class ScanJobQueue:
             "timings": result.timings,
         }
 
-    def as_dict(self) -> Dict[str, Any]:
+    def as_dict(self, db: Any = None) -> Dict[str, Any]:
         return {
             "pending": self.pending,
             "accepted_total": self.accepted_count,

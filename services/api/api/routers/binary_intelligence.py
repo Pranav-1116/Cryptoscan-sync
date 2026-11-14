@@ -28,7 +28,7 @@ from binary_intelligence.drift import (
     build_drift_series, build_estate, build_history,
 )
 from binary_intelligence.orchestrator import (
-    ScanJob, ScanJobQueue,
+    ScanJob, ScanJobQueue, WorkerLimits,
 )
 from binary_intelligence.pipeline import run_scan
 
@@ -49,15 +49,40 @@ def _require_durable_async_backend() -> None:
     """Never acknowledge an undurable Binary job in production.
 
     Redis alone is not an artifact handoff: raw bytes would still be held
-    only in the accepting API process. A real backend needs bounded encrypted
-    artifact retention, cross-replica claims, retries and cleanup first.
+    only in the accepting API process. A real backend needs bounded artifact
+    retention, cross-replica claims, retries and cleanup first — which is
+    what ``binary_intelligence.durable_queue.DurableScanJobQueue`` provides
+    once configured (``configure_durable_queue``). Production refuses the
+    process-local queue; development keeps it for local runs and tests.
     """
-    if get_settings().is_production:
+    if get_settings().is_production and not WORKER_QUEUE.as_dict().get("durable"):
         raise HTTPException(
             status_code=503,
             detail="Binary async jobs unavailable: the process-local queue "
                    "is development-only; no durable artifact-backed worker "
                    "handoff is configured")
+
+
+def configure_durable_queue(*, limits: Optional[WorkerLimits] = None,
+                            lease_seconds: Optional[float] = None,
+                            max_attempts: Optional[int] = None) -> None:
+    """Install the database-backed job handoff as the module queue.
+
+    Called at app startup when ``BINARY_ASYNC_BACKEND=database``. The durable
+    queue runs on the caller's request session (the router passes ``db``
+    through), so it tracks the same database as every other write — and a
+    worker claiming from another replica shares the table, not a process.
+    """
+    global WORKER_QUEUE
+    from binary_intelligence.durable_queue import DurableScanJobQueue
+    kwargs: dict = {}
+    if limits is not None:
+        kwargs["limits"] = limits
+    if lease_seconds is not None:
+        kwargs["lease_seconds"] = lease_seconds
+    if max_attempts is not None:
+        kwargs["max_attempts"] = max_attempts
+    WORKER_QUEUE = DurableScanJobQueue(**kwargs)
 
 
 class ScanRequest(BaseModel):
@@ -498,7 +523,7 @@ def worker_status(db: Session = Depends(get_db_session),
     """Development queue introspection; no fake production worker health."""
     _require_durable_async_backend()
     return WorkerStatusOut(
-        queue=WORKER_QUEUE.as_dict(),
+        queue=WORKER_QUEUE.as_dict(db),
         note="measure queue depth, refusals and failure rate — production "
              "operations need the numbers, not vibes (§13)")
 
@@ -530,12 +555,12 @@ def submit_scan_async(body: ScanRequest,
         original_filename=body.original_filename,
         source_type=body.source_type, uploaded_by=user,
         source_location=body.source_location,
-        profile=body.scan_profile))
+        profile=body.scan_profile), db=db)
     if not accepted:
         raise HTTPException(status_code=429, detail=reason)
     return QueuedJobOut(
         job_id=job_id, status="queued",
-        queue=WORKER_QUEUE.as_dict(),
+        queue=WORKER_QUEUE.as_dict(db),
         note="accepted into the bounded worker queue; a worker executes "
              "it via POST /binary/scan/jobs/{job_id}/process (§12)")
 
@@ -558,7 +583,7 @@ def process_job(job_id: str, response: Response,
     from db.tenancy import current_tenant
 
     summary = WORKER_QUEUE.process_job(
-        job_id, on_result=_on_result, tenant_id=current_tenant())
+        job_id, on_result=_on_result, tenant_id=current_tenant(), db=db)
     if summary is None:
         raise HTTPException(status_code=404, detail="no such queued job")
     if summary["status"] == "failed":

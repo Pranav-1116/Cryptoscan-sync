@@ -332,12 +332,38 @@ def binary_async_durability_check() -> dict:
     except Exception as exc:
         return status_row("binary_async_durability", "FAIL",
                           f"Binary job backend could not be inspected: {type(exc).__name__}")
-    if backend.get("durable") is not True:
+    if backend.get("durable") is True:
+        return status_row("binary_async_durability", "PASS",
+                          "durable backend declared; confirm restart/replica proof in the signed integrations artifact")
+    # The module default is the development queue. Production durability is a
+    # DECLARATION: a durable backend must exist AND be named by the deploy
+    # configs — anything less stays FAIL.
+    try:
+        from binary_intelligence.durable_queue import DurableScanJobQueue
+
+        durable = DurableScanJobQueue().as_dict().get("durable") is True
+    except Exception as exc:
+        return status_row("binary_async_durability", "FAIL",
+                          f"Durable binary job backend unavailable: {type(exc).__name__}")
+    if not durable:
         return status_row("binary_async_durability", "FAIL",
                           "Binary async is process-local or unavailable in production; "
                           "a secure artifact handoff and cross-replica worker claims are required")
+    root = Path(__file__).resolve().parent.parent
+    deploy_files = [root / "docker-compose.prod.yml",
+                    root / "deploy/ha/docker-compose.yml"]
+    missing = [str(p.relative_to(root)) for p in deploy_files
+               if not (p.exists() and re.search(
+                   r"BINARY_ASYNC_BACKEND[=:]\s*[\"']?database", p.read_text()))]
+    if missing:
+        return status_row("binary_async_durability", "FAIL",
+                          "a durable binary job backend exists (binary_scan_jobs "
+                          "leased handoff) but the production deploy configs do "
+                          f"not declare BINARY_ASYNC_BACKEND=database: {missing}")
     return status_row("binary_async_durability", "PASS",
-                      "durable backend declared; confirm restart/replica proof in the signed integrations artifact")
+                      "durable backend declared in deploy configs "
+                      "(docker-compose.prod.yml, deploy/ha/docker-compose.yml); "
+                      "confirm restart/replica proof in the signed integrations artifact")
 
 
 def readiness_closure_check(path: Path | None = None) -> dict:
