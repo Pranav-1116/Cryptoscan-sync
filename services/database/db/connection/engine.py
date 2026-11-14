@@ -115,6 +115,19 @@ def create_db_engine(
         "application_name": application_name,
         "options": "-c statement_timeout=30000",
     }
+    # Encryption in transit is not negotiable in production: a plaintext
+    # database hop carries evidence. Development keeps libpq's default
+    # (prefer) because local SQLite/PG sockets are not the deployment.
+    if os.environ.get("ENVIRONMENT", "").strip().lower() == "production":
+        from urllib.parse import parse_qs, urlparse
+
+        mode = (parse_qs(urlparse(database_url).query).get("sslmode")
+                or ["prefer"])[0]
+        if mode not in ("require", "verify-ca", "verify-full"):
+            raise ValueError(
+                "production database connections must be encrypted in "
+                f"transit: sslmode={mode!r} is refused — set "
+                "sslmode=require (or verify-ca/verify-full) in DATABASE_URL")
     pool = _pool_settings()
     engine = create_engine(
         database_url,

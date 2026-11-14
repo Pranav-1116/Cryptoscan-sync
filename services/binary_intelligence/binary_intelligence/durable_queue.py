@@ -46,6 +46,7 @@ from sqlalchemy.orm import Session
 
 from binary_intelligence.orchestrator import ScanJob, WorkerLimits
 from binary_intelligence.pipeline import ScanResult, run_scan
+from db.encryption import encryption_status, protect, unprotect
 from db.models.base import utcnow
 from db.models.binary_scan_job import BinaryScanJob
 
@@ -109,9 +110,15 @@ class DurableScanJobQueue:
                 "backpressure refuses and counts, it never silently "
                 "drops a job")
         now = utcnow()
+        # The row is the handoff and the handoff is ciphertext: the tenant
+        # id is bound into the AEAD, so a row copied to another tenant
+        # fails to decrypt instead of failing to be noticed. The sha256
+        # stays over the PLAINTEXT — identity is the artifact's hash, not
+        # the envelope's.
+        stored = protect(job.data, tenant_id=job.tenant_id)
         db.add(BinaryScanJob(
             tenant_id=job.tenant_id, job_id=job.job_id,
-            status="QUEUED", artifact_bytes=job.data,
+            status="QUEUED", artifact_bytes=stored,
             artifact_sha256=hashlib.sha256(job.data).hexdigest(),
             original_filename=job.original_filename,
             source_type=job.source_type,
@@ -257,6 +264,7 @@ class DurableScanJobQueue:
             },
             "lease_seconds": self.lease_seconds,
             "max_attempts": self.max_attempts,
+            "encryption": encryption_status(),
             "backend": "database_leased_jobs",
             "durable": True,
             "note": ("durable database handoff — job rows hold the bounded "
@@ -325,8 +333,9 @@ class DurableScanJobQueue:
                  ) -> Dict[str, Any]:
         started = time.perf_counter()
         try:
+            data = unprotect(bytes(row.artifact_bytes), tenant_id=row.tenant_id)
             result = run_scan(
-                tenant_id=row.tenant_id, data=bytes(row.artifact_bytes),
+                tenant_id=row.tenant_id, data=data,
                 original_filename=row.original_filename,
                 source_type=row.source_type, uploaded_by=row.uploaded_by,
                 source_location=row.source_location, profile=row.profile)
