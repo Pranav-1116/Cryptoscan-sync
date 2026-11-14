@@ -56,6 +56,10 @@ something invented.
 | `doctor` | `/healthz/dependencies`, `/healthz/schema`, `/health/worker-fleet`, `/health/connectors`, `/control/health`, `/graph/health`, `/automation/health/platform` | see §4 |
 | `login` | `POST /auth/login`, `/auth/login/mfa` | password from private TTY or `--password-stdin`, never `--password` in process arguments; MFA honoured |
 | `logout` | `POST /auth/logout` | revokes, then clears the stored token |
+| `service-key issue` | `POST /api-keys` | short-lived machine identity, 30-day lifetime by default; `--no-expiry` names the permanent exception and says so out loud; the raw key is shown exactly once |
+| `service-key list / report` | `GET /api-keys`, `/api-keys/rotation/report` | every key with its expiry and rotation state; an empty list prints that identities are created explicitly, never assumed |
+| `service-key rotate <id>` | `GET /api-keys`, `POST /api-keys` | mints a replacement copying the old policy first; `--retire` revokes the old key after the replacement exists |
+| `service-key revoke <id>` | `DELETE /api-keys/{id}` | fails closed immediately |
 | `target list / show` | `GET /collection/targets`, `/{id}` | |
 | `target register` | `POST /collection/targets` | no defaults invented (§3) |
 | `target update <id>` | `PUT /collection/targets/{id}` | sends only the fields you named; with none it refuses rather than PUTting an empty revision |
@@ -103,6 +107,9 @@ something invented.
 | `scan --target <id>` | `POST /collection/jobs` | requires `--target-revision`; watch with `--collection` |
 | `scan` (no target) | *(refused)* | a generic estate projection is not a collection job |
 | `scan --manifest <file>` | *(refused)* | no silent dropping of target, policy or collector fields (§5) |
+| `capture submit` | `POST /performance/captures/import` | submits the body **exactly as signed** — this CLI holds no signing key; the control plane verifies the signature and refuses unsigned or tampered envelopes |
+| `capture receipt` | `GET /performance/captures/{receipt_id}` | the signed server receipt for one exact submission |
+| `capture trust-anchor` | `GET /performance/captures/trust-anchor` | which key signed the receipts, and whether the capture-signing key is configured yet |
 | `verify-installation` | *(local)* | hashes files against a release manifest and checks its Ed25519 signature (`--public-key`), §6 |
 | `collect` (no `--submit`) | *(refused in installed CLI)* | network collection belongs in bank-hosted collectors, not the operator terminal |
 

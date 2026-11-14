@@ -1318,6 +1318,103 @@ THREAT_PATTERNS = "/api/v1/estate/evidence/threat/patterns"
 LIVE_COMPACT = "/api/v1/ingestion/live/compact"
 
 
+def _cmd_service_key(args: argparse.Namespace, _session: Any = None) -> int:
+    """Mint, list, rotate and retire machine identities — short-lived by default.
+
+    A service key is a non-interactive principal (CI pipelines, SIEM pulls). The
+    platform principle is that a permanent API key must not be the primary
+    mechanism, so `issue` defaults to a 30-day lifetime and a permanent key
+    requires --no-expiry, which says so out loud. The raw key is shown ONCE.
+    """
+    client = _client(args)
+    action = args.service_key_command
+    try:
+        if action == "issue" or action == "rotate":
+            from datetime import datetime, timedelta, timezone
+
+            body: dict[str, Any] = {}
+            if action == "rotate":
+                existing = _items(client.get("/api/v1/api-keys"))
+                source = next((r for r in existing
+                               if r.get("id") == args.key_id or r.get("key_prefix") == args.key_id), None)
+                if source is None:
+                    raise Refused(
+                        f"no service key named {args.key_id}",
+                        detail="run `cryptoscan service-key list` — rotate copies the policy "
+                               "of an existing key, so the key must be readable here")
+                body = {"name": args.name or source.get("name"),
+                        "roles": source.get("roles") or ["viewer"],
+                        "scopes": source.get("scopes") or [],
+                        "allowed_methods": source.get("allowed_methods") or ["GET"],
+                        "rate_per_minute": source.get("rate_per_minute") or 0,
+                        "allowed_ips": source.get("allowed_ips") or [],
+                        "rotate_after_days": source.get("rotate_after_days")}
+            else:
+                body = {"name": args.name, "roles": list(args.role or ["viewer"]),
+                        "scopes": list(args.scope or []),
+                        "allowed_methods": list(args.method or ["GET"]),
+                        "rate_per_minute": int(args.rate or 0),
+                        "allowed_ips": list(args.ip or []),
+                        "rotate_after_days": args.rotate_after_days}
+            if args.no_expiry:
+                body["expires_at"] = None
+                print("warning: --no-expiry mints a PERMANENT machine credential — the platform "
+                      "principle is that short-lived service identities are the mechanism, and a "
+                      "permanent key is the exception an operator must name.", file=sys.stderr)
+            else:
+                days = args.expires_in_days if args.expires_in_days is not None else 30
+                body["expires_at"] = (datetime.now(timezone.utc)
+                                      + timedelta(days=days)).isoformat()
+            payload = client.post("/api/v1/api-keys", body)
+            raw = payload.get("raw_key")
+            retired = None
+            if action == "rotate" and args.retire:
+                retire_path = f"/api/v1/api-keys/{urllib.parse.quote(args.key_id)}"
+                retired = client.request("DELETE", retire_path).json()
+
+            def render_created() -> None:
+                print(f"key id         {_field(payload, 'id', default='—')}")
+                print(f"key prefix     {_short(_field(payload, 'key_prefix', default='—'), 24)}")
+                print(f"roles          {','.join(payload.get('roles') or []) or '—'}")
+                print(f"expires        {_short(_field(payload, 'expires_at', default='never (permanent)'), 30)}")
+                if raw:
+                    print(f"\nraw key (SHOWN ONCE — store it in the pipeline's secret manager now):\n  {raw}")
+                    print("the raw key cannot be recovered after this output.")
+                if retired is not None:
+                    print(f"\nold key {args.key_id} retired — the replacement is the only live identity now")
+            source_label = "POST /api/v1/api-keys"
+            return _emit(args, payload, source=client.source("POST", source_label), render=render_created)
+
+        if action == "list":
+            payload = client.get("/api/v1/api-keys")
+
+            def render_list() -> None:
+                rows = _items(payload)
+                if not rows:
+                    print("no service keys — a machine identity is created explicitly, never assumed")
+                    return
+                _table([[r.get("id", "—"), r.get("name", "—"), r.get("key_prefix", "—"),
+                         ",".join(r.get("roles") or []), r.get("expires_at") or "never",
+                         r.get("rotation_state") or "—"] for r in rows],
+                       ["id", "name", "prefix", "roles", "expires", "rotation"])
+            return _emit(args, payload, source=client.source("GET", "/api/v1/api-keys"),
+                         render=render_list)
+
+        if action == "revoke":
+            path = f"/api/v1/api-keys/{urllib.parse.quote(args.key_id)}"
+            payload = client.request("DELETE", path).json()
+            print(f"service key {args.key_id} revoked — in-flight requests fail closed immediately")
+            return _emit(args, payload, source=client.source("DELETE", path))
+
+        if action == "report":
+            payload = client.get("/api/v1/api-keys/rotation/report")
+            return _emit(args, payload,
+                         source=client.source("GET", "/api/v1/api-keys/rotation/report"))
+    except (Refused, ApiError) as exc:
+        return _fail(f"service-key {action}", exc)
+    return EXIT_ERROR
+
+
 def _cmd_capture(args: argparse.Namespace, _session: Any = None) -> int:
     """Submit signed bank captures and read their receipts. No key material.
 
@@ -3271,6 +3368,45 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     evidence_verify.add_argument("evidence_id")
     _add_common(evidence_verify)
 
+    service_key = sub.add_parser(
+        "service-key", help="mint, list, rotate and retire machine identities (short-lived by default)")
+    service_key_sub = service_key.add_subparsers(dest="service_key_command", required=True)
+    sk_issue = service_key_sub.add_parser(
+        "issue", help="mint a machine key — 30-day lifetime unless --no-expiry names the exception")
+    sk_issue.add_argument("--name", required=True)
+    sk_issue.add_argument("--role", action="append", default=None,
+                          help="role for the key (repeatable; default viewer)")
+    sk_issue.add_argument("--expires-in-days", type=int, default=None,
+                          help="lifetime in days (default 30)")
+    sk_issue.add_argument("--no-expiry", action="store_true",
+                          help="mint a permanent key — the warning is deliberate")
+    sk_issue.add_argument("--scope", action="append", default=None,
+                          help="allowed API path prefix (repeatable; default all)")
+    sk_issue.add_argument("--method", action="append", default=None,
+                          help="allowed HTTP method (repeatable; default GET)")
+    sk_issue.add_argument("--rate", type=int, default=0, help="requests-per-minute cap (0 = none)")
+    sk_issue.add_argument("--ip", action="append", default=None,
+                          help="allowed client IP or CIDR (repeatable; default any)")
+    sk_issue.add_argument("--rotate-after-days", type=int, default=None,
+                          help="rotation reminder age in days")
+    _add_common(sk_issue)
+    sk_list = service_key_sub.add_parser("list", help="every machine key with its expiry and rotation state")
+    _add_common(sk_list)
+    sk_revoke = service_key_sub.add_parser("revoke", help="retire a machine key (fails closed immediately)")
+    sk_revoke.add_argument("key_id")
+    _add_common(sk_revoke)
+    sk_report = service_key_sub.add_parser("report", help="the rotation report: which keys owe a rotation")
+    _add_common(sk_report)
+    sk_rotate = service_key_sub.add_parser(
+        "rotate", help="mint a replacement copying the old key's policy; --retire revokes the old one")
+    sk_rotate.add_argument("key_id")
+    sk_rotate.add_argument("--name", default=None, help="name for the replacement (default: same)")
+    sk_rotate.add_argument("--expires-in-days", type=int, default=None)
+    sk_rotate.add_argument("--no-expiry", action="store_true")
+    sk_rotate.add_argument("--retire", action="store_true",
+                           help="revoke the old key once the replacement is minted")
+    _add_common(sk_rotate)
+
     capture = sub.add_parser(
         "capture", help="submit signed bank captures and read their receipts (no key material)")
     capture_sub = capture.add_subparsers(dest="capture_command", required=True)
@@ -3497,6 +3633,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, Any], int]] = {
         ("assurance", _cmd_assurance),
         ("evidence", _cmd_evidence),
         ("capture", _cmd_capture),
+        ("service-key", _cmd_service_key),
         ("bom", _cmd_bom),
         ("live", _cmd_live),
         ("observe", _cmd_observe),
