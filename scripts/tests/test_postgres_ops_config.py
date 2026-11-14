@@ -82,6 +82,17 @@ class TestVacuumAutovacuum:
             "matter shows up in the log with its duration")
 
 
+class TestDatabaseAuditing:
+
+    def test_the_server_logs_privileged_statements(self):
+        settings = _settings()
+        assert settings["log_statement"] == "ddl", (
+            "every schema change is logged whatever client issued it — the "
+            "audit trail does not depend on the application's cooperation")
+        assert "%u" in settings["log_line_prefix"], (
+            "the log names the ROLE that ran the statement")
+
+
 class TestAutomatedBackups:
 
     def test_the_backup_script_retains(self):
