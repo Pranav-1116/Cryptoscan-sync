@@ -85,6 +85,9 @@ something invented.
 | `tick` | `POST /estate/evidence/tick` | requests an exact-estate projection; incomplete run exits 2 |
 | `coverage` / `boms` | `GET /estate/evidence/coverage`, `/boms` | reads the retained bank graph; no terminal database |
 | `scope show` | `GET /platform/scope` | |
+| `scope snapshot [--label]` | `POST /scope/snapshots` | captures the resolved scope as a named revision; a revision never captured cannot be diffed later |
+| `scope snapshots` | `GET /scope/snapshots` | newest first; an empty list means none were captured, not that the scope never changed |
+| `scope diff --from --to` | `GET /scope/diff?from=&to=` | verdicts computed by the control plane and rendered here (`+ added`, `- removed`, `~ changed`, `! blocked` — a blocked row is declared but disabled or excluded, never a widening of authority); `current` is the live envelope; an empty diff is not proof the scope was enforced, only that it did not change |
 | `assurance records --kind` | `GET /assurance/records` | every retained revision, with `has_more`/`next_offset`; an empty kind is printed as an empty table, not a clean estate |
 | `assurance history <kind> <id>` | `GET /assurance/records/{kind}/{id}` | the chain for one exact subject |
 | `assurance coverage <register>` | `GET /assurance/registers/{id}/coverage` | counts plus the denominator and completeness basis; **no percentage**, because the denominator is the register |
@@ -119,7 +122,6 @@ A refusal exits `3` and names the closest endpoints that *do* exist:
 
 | command | why it refuses |
 | --- | --- |
-| `scope diff` | no scope-to-scope diff route exists; snapshot compare and coverage are the closest |
 | `target register` without the authorisation fields | `not_before`, `allowed_operations`, owner and environment have no safe default; a target registered with "everything, already valid" is an authorisation nobody granted |
 | `scan --target` without `--target-revision` | the control plane refuses a job whose target changed since the operator read it |
 | `pqc blockers` when the payload has no `blockers` | the per-layer exposure is printed instead, and the exit code is 2 |

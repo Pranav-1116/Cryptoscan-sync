@@ -5,10 +5,11 @@ Four properties are under test, and they are the product's, not the code's:
 * **the CLI never collects.** ``scan --dry-run`` fetches the platform's plan and issues no
   other request; ``scan --target`` refuses before submitting when it cannot state the
   target revision; every submission is a POST to a named endpoint, and the output says so;
-* **a missing capability is a refusal, not an invention.** ``evidence show``, ``evidence
-  verify``, ``scope diff`` and ``explain finding`` name the closest endpoints that exist
-  and exit 3, because inventing a route or an answer is the failure this product exists to
-  avoid;
+* **a missing capability is a refusal, not an invention.** An unknown ``explain``
+  subject or ``ci`` action — and every unmigrated bank-server twin command — names the
+  closest endpoints that exist and exits 3, because inventing a route or an answer is
+  the failure this product exists to avoid. (``scope diff`` used to be one of these;
+  it now calls the control plane's scope-revision diff and renders its verdicts.)
 * **failure is not success.** A 401 exits 1 with the login hint, a 5xx exits 2 (incomplete)
   and says not to read it as an empty estate;
 * **a probe with no verdict is NOT_OBSERVED.** ``doctor`` must not turn a 200 with no
@@ -450,17 +451,19 @@ def test_installed_scan_never_opens_a_database_or_collects_without_a_target(monk
 # --- evidence / bom / pqc / scope / explain --------------------------------------------
 
 
-@pytest.mark.parametrize("argv,reason", [
-    (("scope", "diff"), "no scope-diff endpoint"),
-])
 def test_capabilities_that_do_not_exist_are_refused_with_the_closest_route(
-        capsys, monkeypatch, env, argv, reason):
-    transport = FakeControlPlane()
-    assert run(monkeypatch, transport, *argv) == 3
+        capsys, monkeypatch, env):
+    # `collector show` on an id the catalog does not declare: the command asks
+    # the catalog (a read), then refuses and names the route that does exist.
+    # A refusal never acts — no submission, no mutation, no invented answer.
+    transport = FakeControlPlane(
+        {("GET", "/api/v1/collection/collectors"): (200, [])})
+    assert run(monkeypatch, transport, "collector", "show", "windows-hsm") == 3
     err = capsys.readouterr().err
-    assert reason in err
+    assert "no collector 'windows-hsm' in the catalog" in err
     assert "closest existing endpoint" in err
-    assert transport.calls == [], "a refused command still called the control plane"
+    assert [c[0] for c in transport.calls] == ["GET"], \
+        "a refused command asks; it never acts"
 
 
 def test_bom_rejects_an_unknown_projection_before_asking(monkeypatch, env):

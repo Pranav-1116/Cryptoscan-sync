@@ -2159,13 +2159,103 @@ def _pqc_impact(args: argparse.Namespace) -> int:
 
 def _cmd_scope(args: argparse.Namespace, _session: Any = None) -> int:
     client = _client(args)
-    if args.scope_command == "diff":
-        return _refuse("scope diff", Refused(
-            "no scope-diff endpoint exists",
-            detail="authorised scope is compared implicitly by the twin snapshot compare and by "
-                   "the collection coverage endpoints; there is no scope-to-scope diff route",
-            closest=(f"GET {TWIN}/compare", "GET /api/v1/collection/jobs/{id}/coverage"),
-        ))
+    action = args.scope_command
+    if action == "diff":
+        # The verdicts come from the control plane. A terminal that could
+        # compute this diff locally could also invent it, so nothing here
+        # re-derives +/−/~/! — it renders what GET /scope/diff returned.
+        from_ref = args.before or "current"
+        to_ref = args.after or "current"
+        try:
+            payload = client.request(
+                "GET", "/api/v1/scope/diff",
+                query={"from": from_ref, "to": to_ref}).json()
+        except (Refused, ApiError) as exc:
+            return _fail("scope diff", exc)
+
+        def render_diff() -> None:
+            f = _field(payload, "from", default={}) or {}
+            t = _field(payload, "to", default={}) or {}
+            print(f"from   {f.get('label') or f.get('ref', '—')} "
+                  f"({_short(f.get('snapshot_id') or 'current', 40)})")
+            print(f"to     {t.get('label') or t.get('ref', '—')} "
+                  f"({_short(t.get('snapshot_id') or 'current', 40)})")
+            print()
+            for row in payload.get("added") or []:
+                print(f"+  added      {row.get('kind', '—'):12} {row.get('target', '—')}")
+            for row in payload.get("removed") or []:
+                state = "was effective" if row.get("was_effective") else "was not effective"
+                print(f"-  removed    {row.get('kind', '—'):12} {row.get('target', '—')}   {state}")
+            for row in payload.get("changed") or []:
+                print(f"~  changed    {row.get('kind', '—'):12} {row.get('target', '—')}")
+                print(f"      before   {_short(row.get('before'), 70)}")
+                print(f"      after    {_short(row.get('after'), 70)}")
+            for row in payload.get("blocked") or []:
+                reason = row.get("reason", "blocked")
+                if row.get("excluded_by"):
+                    reason = f"excluded by {row['excluded_by']}"
+                print(f"!  blocked    {row.get('kind', '—'):12} {row.get('target', '—')}   {reason}")
+            for field, change in sorted((payload.get("envelope_changed") or {}).items()):
+                print(f"~  envelope.{field}")
+                print(f"      before   {_short(change.get('before'), 70)}")
+                print(f"      after    {_short(change.get('after'), 70)}")
+            s = payload.get("summary") or {}
+            print(f"\nadded {s.get('added', 0)} · removed {s.get('removed', 0)} · "
+                  f"changed {s.get('changed', 0)} · blocked {s.get('blocked', 0)} · "
+                  f"envelope fields {s.get('envelope_fields_changed', 0)}")
+            if not any(payload.get(k) for k in
+                       ("added", "removed", "changed", "blocked")) \
+                    and not payload.get("envelope_changed"):
+                print("no differences — that is not proof the scope was enforced, "
+                      "only that it did not change between these two captures")
+
+        return _emit(args, payload,
+                     source=client.source("GET", "/api/v1/scope/diff",
+                                          **{"from": from_ref, "to": to_ref}),
+                     render=render_diff)
+
+    if action == "snapshot":
+        try:
+            query = {"label": args.label} if args.label else None
+            payload = client.request("POST", "/api/v1/scope/snapshots",
+                                     query=query).json()
+        except (Refused, ApiError) as exc:
+            return _fail("scope snapshot", exc)
+
+        def render_snapshot() -> None:
+            print(f"snapshot id    {_field(payload, 'id', default='—')}")
+            print(f"label          {_field(payload, 'label', default='—')}")
+            print(f"content hash   {_short(_field(payload, 'content_hash', default='—'), 64)}")
+            print(f"entries        {_field(payload, 'entries', default=0)}")
+            print(f"captured       {_short(_field(payload, 'created_at', default='—'), 30)}")
+            print("a snapshot names one revision; it is not proof the scope was enforced")
+
+        return _emit(args, payload,
+                     source=client.source("POST", "/api/v1/scope/snapshots"),
+                     render=render_snapshot)
+
+    if action == "snapshots":
+        try:
+            payload = client.get("/api/v1/scope/snapshots",
+                                 limit=getattr(args, "limit", 20) or 20)
+        except (Refused, ApiError) as exc:
+            return _fail("scope snapshots", exc)
+
+        def render_snapshots() -> None:
+            rows = _items(payload)
+            if not rows:
+                print("no scope snapshots — none were captured; that is not proof "
+                      "the scope never changed")
+                return
+            _table([[r.get("id", "—"), r.get("label") or "—",
+                     r.get("created_at") or "—", r.get("entries", 0),
+                     _short(r.get("content_hash"), 12)] for r in rows],
+                   ["id", "label", "captured", "entries", "hash"])
+
+        return _emit(args, payload,
+                     source=client.source("GET", "/api/v1/scope/snapshots"),
+                     render=render_snapshots)
+
     try:
         payload = client.get(SCOPES[0])
     except ApiError as exc:
@@ -3493,9 +3583,20 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     scope_sub = scope.add_subparsers(dest="scope_command", required=True)
     scope_show = scope_sub.add_parser("show", help="authorised scope")
     _add_common(scope_show)
-    scope_diff = scope_sub.add_parser("diff", help="diff two scopes (refuses: no such route)")
-    scope_diff.add_argument("--from", dest="before", default=None)
-    scope_diff.add_argument("--to", dest="after", default=None)
+    scope_snapshot = scope_sub.add_parser(
+        "snapshot", help="capture the current scope as a named revision")
+    scope_snapshot.add_argument("--label", default=None, help="what this revision is for")
+    _add_common(scope_snapshot)
+    scope_snapshots = scope_sub.add_parser(
+        "snapshots", help="captured scope revisions (empty means none captured, not nothing changed)")
+    scope_snapshots.add_argument("--limit", type=int, default=20)
+    _add_common(scope_snapshots)
+    scope_diff = scope_sub.add_parser(
+        "diff", help="diff two scope revisions — computed by the control plane, rendered here")
+    scope_diff.add_argument("--from", dest="before", default="current",
+                            help="snapshot id or 'current' (default)")
+    scope_diff.add_argument("--to", dest="after", default="current",
+                            help="snapshot id or 'current' (default)")
     _add_common(scope_diff)
 
     explain = sub.add_parser("explain", help="why the platform said that — asset, system or graph node")
