@@ -255,6 +255,19 @@ def _ssl_context(config: Config) -> ssl.SSLContext | None:
     return context
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A 3xx is a response to report, not a journey to follow.
+
+    The only redirecting endpoint is the OIDC authorize flow, whose Location
+    is the *IdP's* address. Following it would send the operator's terminal
+    to an external host with a half-built login; the CLI reports the status
+    and the Location header instead and lets a human decide.
+    """
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
 def _urllib_transport(
     method: str,
     url: str,
@@ -263,10 +276,15 @@ def _urllib_transport(
     context: ssl.SSLContext | None,
     timeout: float,
 ) -> Response:
-    """The only place a socket is opened. Everything else is testable without one."""
+    """The only place a socket is opened. Everything else is testable without one.
+
+    Redirects are NOT followed: a 3xx comes back as a Response with its
+    Location header intact (see _NoRedirect).
+    """
     request = urllib.request.Request(url, data=body, method=method, headers=dict(headers))
     opener = urllib.request.build_opener(
-        urllib.request.HTTPSHandler(context=context) if context else urllib.request.HTTPSHandler()
+        *((urllib.request.HTTPSHandler(context=context) if context
+           else urllib.request.HTTPSHandler()), _NoRedirect)
     )
     try:
         with opener.open(request, timeout=timeout) as response:
@@ -507,12 +525,185 @@ def _reason(exc: Exception) -> str:
     return str(exc)
 
 
+def _login_client_config(args: argparse.Namespace, config: Any, server: str) -> Any:
+    client_config = replace(config, server=server, token=None, api_key=None,
+                            ca=args.ca or config.ca,
+                            client_cert=args.client_cert or config.client_cert,
+                            client_key=args.client_key or config.client_key)
+    if bool(client_config.client_cert) != bool(client_config.client_key):
+        raise Refused("mTLS needs both client certificate and key paths")
+    _validate_bank_origin(client_config)
+    return client_config
+
+
+def _login_store(client_config: Any, payload: Any, *, note: str) -> int:
+    """Store a minted session the same way password login does (0600)."""
+    session = _field(payload, "token")
+    if not session:
+        return _fail("login", Refused("the control plane returned no session token"))
+    saved = save_config(replace(client_config, token=session))
+    print(f"logged in as {_field(payload, 'username', default='—')} "
+          f"roles={','.join(_field(payload, 'roles', default=[]) or [])}")
+    print(f"session expires: {_field(payload, 'session_expires_at', default='unknown')}")
+    print(f"credential stored: {saved} ({config_permissions(saved).lower()})")
+    print(note)
+    return EXIT_OK
+
+
+def _login_sso_relay(args: argparse.Namespace, config: Any, server: str) -> int:
+    """POST /auth/oidc with an IdP-issued id_token; the control plane verifies it.
+
+    This CLI never verifies id_tokens and never accepts one in process
+    arguments: --sso-token-file names a file ('-' = stdin), so the secret
+    stays out of `ps` and the shell history.
+    """
+    source = args.sso_token_file
+    try:
+        token = (sys.stdin.readline() if source == "-"
+                 else Path(source).read_text(encoding="utf-8")).strip()
+    except OSError as exc:
+        return _refuse("login", Refused(
+            f"cannot read the id_token source: {exc}",
+            detail="pass a readable file path, or '-' to read the token from stdin"))
+    if not token:
+        return _refuse("login", Refused(
+            "no id_token supplied", detail="the file (or stdin) carried no token"))
+    try:
+        client_config = _login_client_config(args, config, server)
+        payload = Client(client_config).post("/api/v1/auth/oidc", {"token": token})
+    except (Refused, ApiError) as exc:
+        return _fail("login", exc)
+    return _login_store(client_config, payload, note=(
+        "note: the control plane verified this id_token — the CLI did not and cannot; "
+        "the session it minted is short-lived and `cryptoscan logout` removes it"))
+
+
+def _login_sso_browser(args: argparse.Namespace, config: Any, server: str) -> int:
+    """Drive the server's browser SSO flow and name the handoff honestly.
+
+    OIDC: the authorize URL opens the IdP, and the callback creates a
+    BROWSER session — this CLI cannot receive that cookie, and does not
+    pretend otherwise. The CLI session comes from relaying an IdP-issued
+    id_token, which the control plane verifies. SAML: the completed
+    browser login displays the session token the assertion consumer
+    minted; pasting it here stores it only after /auth/me confirms it.
+    """
+    try:
+        client_config = _login_client_config(args, config, server)
+        client = Client(client_config)
+        status = client.get("/api/v1/auth/sso/status")
+    except (Refused, ApiError) as exc:
+        return _fail("login", exc)
+
+    oidc_on = bool((_field(status, "oidc", default={}) or {}).get("enabled"))
+    saml_on = bool(_field(status, "saml_enabled", default=False))
+    provider = args.sso_provider
+    if provider == "oidc" and not oidc_on:
+        return _refuse("login", Refused(
+            "OIDC is not configured on this server",
+            closest=("GET /api/v1/auth/sso/status",)))
+    if provider == "saml" and not saml_on:
+        return _refuse("login", Refused(
+            "SAML is not configured on this server",
+            closest=("GET /api/v1/auth/sso/status",)))
+    if provider is None:
+        provider = "oidc" if oidc_on else ("saml" if saml_on else None)
+    if provider is None:
+        return _refuse("login", Refused(
+            "no SSO provider is configured on this server",
+            detail="the server's status reports OIDC, SAML and LDAP all disabled; "
+                   "password login (--username) and machine keys "
+                   "(`cryptoscan service-key issue`) remain available",
+            closest=("GET /api/v1/auth/sso/status",)))
+
+    try:
+        if provider == "oidc":
+            response = client.request("GET", "/api/v1/auth/oidc/authorize")
+            if not 300 <= response.status < 400:
+                return _fail("login", Refused(
+                    f"the control plane answered HTTP {response.status} instead of "
+                    "redirecting to the identity provider"))
+            url = (response.headers.get("Location")
+                   or response.headers.get("location") or "").strip()
+            if not url:
+                return _fail("login", Refused(
+                    "the redirect carried no Location header — cannot name the identity provider"))
+        else:
+            started = client.get("/api/v1/auth/saml/login")
+            url = (_field(started, "redirect_to") or _field(started, "idp_sso_url") or "").strip()
+            if not url:
+                return _fail("login", Refused(
+                    "the SAML login start returned no identity-provider URL"))
+    except (Refused, ApiError) as exc:
+        return _fail("login", exc)
+
+    print(f"provider       {provider}")
+    print("open this URL in your browser to sign in:")
+    print(f"  {url}")
+    if args.no_browser:
+        print("browser launch suppressed (--no-browser)")
+    else:
+        opened = False
+        try:
+            import webbrowser
+            opened = bool(webbrowser.open(url))
+        except Exception:  # noqa: BLE001 — a browser is a convenience, never a dependency
+            opened = False
+        print("browser opened" if opened else
+              "browser launch attempted — a headless terminal may show nothing; copy the URL above")
+
+    if provider == "oidc":
+        print("\nthe session that flow creates belongs to the browser.")
+        print("for a CLI session, paste an IdP-issued id_token here — it is verified "
+              "by the control plane, not by this CLI.")
+    else:
+        print("\nthe completed browser login displays a JSON response with a token field "
+              "(the assertion consumer minted it). Paste that token here.")
+    try:
+        pasted = getpass.getpass("token: ").strip()
+    except (EOFError, OSError):
+        return _refuse("login", Refused(
+            "no terminal to read the pasted token",
+            detail="run this on a terminal; for OIDC the non-interactive path is "
+                   "--sso-token-file <path>"))
+    if not pasted:
+        return _refuse("login", Refused("no token pasted", detail="nothing was stored"))
+
+    try:
+        if provider == "oidc":
+            payload = client.post("/api/v1/auth/oidc", {"token": pasted})
+            return _login_store(client_config, payload, note=(
+                "note: the control plane verified this id_token — the CLI did not and cannot; "
+                "the session it minted is short-lived and `cryptoscan logout` removes it"))
+        verified = Client(replace(client_config, token=pasted)).get("/api/v1/auth/me")
+    except (Refused, ApiError) as exc:
+        return _fail("login", exc)
+    # SAML: the pasted value is already a session token; /auth/me just
+    # confirmed it is live before anything touches the config file.
+    saved = save_config(replace(client_config, token=pasted))
+    print(f"logged in as {_field(verified, 'username', default='—')} "
+          f"roles={','.join(_field(verified, 'roles', default=[]) or [])}")
+    print(f"credential stored: {saved} ({config_permissions(saved).lower()})")
+    print("note: the token was confirmed live by /auth/me before it was stored; "
+          "it is a short-lived session and `cryptoscan logout` removes it")
+    return EXIT_OK
+
+
 def _cmd_login(args: argparse.Namespace, _session: Any = None) -> int:
     """Obtain a session token; honour MFA instead of pretending it succeeded."""
     config = load_config().with_env()
     server = args.server or config.server
     if not server:
         return _refuse("login", Refused("no server given", detail="pass --server https://<control-plane>"))
+    if getattr(args, "sso_token_file", None):
+        return _login_sso_relay(args, config, server)
+    if getattr(args, "sso", False):
+        return _login_sso_browser(args, config, server)
+    if not args.username:
+        return _refuse("login", Refused(
+            "no username given",
+            detail="password login needs --username; browser SSO is --sso, "
+                   "a machine identity is `cryptoscan service-key issue`"))
     if getattr(args, "password_stdin", False):
         password = sys.stdin.readline().rstrip("\n")
     elif sys.stdin.isatty():
@@ -3296,9 +3487,19 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
 
     login = sub.add_parser("login", help="obtain a short-lived session from the control plane")
     login.add_argument("--server", default=None)
-    login.add_argument("--username", required=True)
+    login.add_argument("--username", default=None,
+                       help="password login identity; not needed for --sso (the IdP names you)")
     login.add_argument("--password-stdin", dest="password_stdin", action="store_true",
                        help="read the password from standard input; a TTY prompts privately by default")
+    login.add_argument("--sso", action="store_true",
+                       help="browser SSO flow (OIDC or SAML) driven against the server's routes")
+    login.add_argument("--sso-provider", dest="sso_provider", choices=("oidc", "saml"),
+                       default=None, help="force a provider (default: OIDC if configured, else SAML)")
+    login.add_argument("--sso-token-file", dest="sso_token_file", default=None,
+                       help="path to an IdP-issued id_token ('-' = stdin) for the OIDC relay; "
+                            "never pass the token itself in process arguments")
+    login.add_argument("--no-browser", dest="no_browser", action="store_true",
+                       help="print the sign-in URL without attempting to launch a browser")
     login.add_argument("--ca", default=None, help="trusted bank CA bundle")
     login.add_argument("--client-cert", dest="client_cert", default=None, help="mTLS client certificate")
     login.add_argument("--client-key", dest="client_key", default=None, help="mTLS client key")

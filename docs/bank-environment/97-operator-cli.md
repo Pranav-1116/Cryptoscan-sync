@@ -54,7 +54,7 @@ something invented.
 | `version` | `GET /health` | falls back to the local build string and says so |
 | `status` | `GET /healthz`, `/readiness/summary`, `/auth/me` | three probes; failures are counted, not averaged away |
 | `doctor` | `/healthz/dependencies`, `/healthz/schema`, `/health/worker-fleet`, `/health/connectors`, `/control/health`, `/graph/health`, `/automation/health/platform` | see §4 |
-| `login` | `POST /auth/login`, `/auth/login/mfa` | password from private TTY or `--password-stdin`, never `--password` in process arguments; MFA honoured |
+| `login` | `POST /auth/login`, `/auth/login/mfa` | password from private TTY or `--password-stdin`, never `--password` in process arguments; MFA honoured; `--sso` drives the OIDC/SAML browser flow and `--sso-token-file` (`-` = stdin) relays an IdP id_token — the server verifies it, the CLI cannot |
 | `logout` | `POST /auth/logout` | revokes, then clears the stored token |
 | `service-key issue` | `POST /api-keys` | short-lived machine identity, 30-day lifetime by default; `--no-expiry` names the permanent exception and says so out loud; the raw key is shown exactly once |
 | `service-key list / report` | `GET /api-keys`, `/api-keys/rotation/report` | every key with its expiry and rotation state; an empty list prints that identities are created explicitly, never assumed |
@@ -183,6 +183,7 @@ checked.
 | --- | --- | --- |
 | session token | `cryptoscan login` → `POST /auth/login` → stored `0600` at `~/.config/cryptoscan/config.json` (or `$CRYPTOSCAN_CONFIG`) | human operator, preferred |
 | MFA | `--mfa-code`, or a refusal that asks for one | accounts with a second factor |
+| SSO (browser) | `login --sso` → `GET /auth/sso/status`, then `GET /auth/oidc/authorize` or `GET /auth/saml/login` | the sign-in URL is printed (browser launch attempted, never assumed). The session that flow creates belongs to the **browser**; a CLI session comes from pasting an IdP-issued id_token (OIDC → `POST /auth/oidc`, verified by the control plane, not by the CLI) or the token the completed SAML response shows (confirmed live via `/auth/me` before anything is stored). `--sso-token-file <path>` (`-` = stdin) is the non-interactive relay; a token is never accepted in process arguments |
 | API key | `--api-key` / `CRYPTOSCAN_API_KEY` → `x-api-key` | machine/CI use, because the platform supports it |
 | mTLS | `--client-cert`, `--client-key`, `--ca` | bank TLS termination; enforced at the transport |
 
