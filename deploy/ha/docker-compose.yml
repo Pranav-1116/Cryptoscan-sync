@@ -12,17 +12,42 @@
 services:
   postgres:
     image: postgres:16-alpine
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
     environment:
       POSTGRES_USER: cryptoscan
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: cryptoscan
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - pgbackup:/pgbackup
+      - ./pg-primary/postgresql.conf:/etc/postgresql/postgresql.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U cryptoscan -d cryptoscan"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
+
+  # Automated base backups + retention (pg-backup/pgbackup.sh). Runs on a
+  # daily loop; the backup volume also holds the WAL archive the primary
+  # writes (postgresql.conf's archive_command), so base+WAL = PITR chain.
+  pgbackup:
+    image: postgres:16-alpine
+    entrypoint: ["/bin/sh", "-c",
+      "while true; do /pgbackup-scripts/pgbackup.sh; sleep 86400; done"]
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      PGHOST: postgres
+      PGUSER: cryptoscan
+      BASE_BACKUP_KEEP_DAYS: ${BASE_BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - pgbackup:/pgbackup
+      - ./pg-backup:/pgbackup-scripts:ro
+    depends_on:
+      postgres: { condition: service_healthy }
     restart: unless-stopped
 
   redis:
@@ -111,4 +136,5 @@ services:
 
 volumes:
   pgdata:
+  pgbackup:
   redisdata:
