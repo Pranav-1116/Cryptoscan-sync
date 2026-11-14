@@ -1,0 +1,60 @@
+{
+  "schema": "cryptoscan.cdn-cache-policy/1",
+  "principles": [
+    "hashed bundles are immutable: cache them at the edge",
+    "the SPA shell names the bundles: never cache it",
+    "authenticated API traffic and live streams pass through untouched: a shared cache must never hold a tenant's bytes"
+  ],
+  "rules": [
+    {
+      "path": "/assets/",
+      "match": "prefix",
+      "cache": "immutable",
+      "cache_control": "public, max-age=2592000, immutable",
+      "edge_ttl_seconds": 2592000,
+      "origin": "frontend",
+      "note": "Vite content-hashes every bundle name: a changed byte is a new URL, so a year of edge caching is safe \u2014 the origin serves 30d/immutable and the edge must not shorten it below the origin's max-age"
+    },
+    {
+      "path": "/index.html",
+      "match": "exact",
+      "cache": "never",
+      "cache_control": "no-store, no-cache, must-revalidate",
+      "edge_ttl_seconds": 0,
+      "origin": "frontend",
+      "note": "the shell is the only unhashed file and it names the hashed ones \u2014 a cached shell points at bundles that no longer exist"
+    },
+    {
+      "path": "/",
+      "match": "prefix",
+      "cache": "never",
+      "edge_ttl_seconds": 0,
+      "origin": "frontend",
+      "note": "SPA fallback and static pages follow the shell rule: no shared-cache copies of anything unhashed"
+    },
+    {
+      "path": "/api/",
+      "match": "prefix",
+      "cache": "bypass",
+      "edge_ttl_seconds": 0,
+      "origin": "api",
+      "note": "authenticated, tenant-scoped bytes: the API's own conditional-get layer (ETag/304, private/no-cache) is the only cache these responses may ever meet"
+    },
+    {
+      "path": "/ws",
+      "match": "prefix",
+      "cache": "bypass",
+      "origin": "api",
+      "note": "websocket upgrade traffic",
+      "edge_ttl_seconds": 0
+    },
+    {
+      "path": "/events",
+      "match": "prefix",
+      "cache": "bypass",
+      "origin": "api",
+      "note": "SSE streams never end: buffering one deadlocks the client",
+      "edge_ttl_seconds": 0
+    }
+  ]
+}
