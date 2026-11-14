@@ -47,8 +47,10 @@ _BOUND = re.compile(r"(?:FROM|TO) \('([^']+)'\)")
 
 
 def is_postgres(db: Any) -> bool:
-    """True when ``db`` is bound to a PostgreSQL server."""
-    return db.get_bind().dialect.name == "postgresql"
+    """True when ``db`` is bound to a PostgreSQL server. Accepts a Session
+    or a Connection — the maintenance paths use both."""
+    bind = db.get_bind() if hasattr(db, "get_bind") else db
+    return bind.dialect.name == "postgresql"
 
 
 def month_start(moment: datetime) -> datetime:
@@ -68,11 +70,11 @@ def month_bounds(moment: datetime) -> tuple[datetime, datetime]:
     return lower, _add_months(lower, 1)
 
 
-def name_for(moment: datetime) -> str:
-    return f"{PARENT}_y{moment.year:04d}m{moment.month:02d}"
+def name_for(moment: datetime, table: str = PARENT) -> str:
+    return f"{table}_y{moment.year:04d}m{moment.month:02d}"
 
 
-def partitioned(db: Any) -> bool:
+def partitioned(db: Any, table: str = PARENT) -> bool:
     """True when the parent is a partitioned table on this server."""
     if not is_postgres(db):
         return False
@@ -80,13 +82,13 @@ def partitioned(db: Any) -> bool:
 
     value = db.execute(text(
         "SELECT relkind FROM pg_class WHERE oid = to_regclass(:name)"
-    ), {"name": PARENT}).scalar()
+    ), {"name": table}).scalar()
     return str(value or "") == "p"
 
 
-def partitions(db: Any) -> list[dict[str, Any]]:
+def partitions(db: Any, table: str = PARENT) -> list[dict[str, Any]]:
     """Every attached partition, with its bounds parsed out of the catalogue."""
-    if not partitioned(db):
+    if not partitioned(db, table):
         return []
     from sqlalchemy import text
 
@@ -94,7 +96,7 @@ def partitions(db: Any) -> list[dict[str, Any]]:
         "SELECT child.relname, pg_get_expr(child.relpartbound, child.oid) "
         "FROM pg_inherits i JOIN pg_class child ON child.oid = i.inhrelid "
         "WHERE i.inhparent = to_regclass(:parent) ORDER BY child.relname"
-    ), {"parent": PARENT}).all()
+    ), {"parent": table}).all()
     found: list[dict[str, Any]] = []
     for name, bound in rows:
         moments = _BOUND.findall(str(bound))
@@ -109,27 +111,27 @@ def partitions(db: Any) -> list[dict[str, Any]]:
 
 
 def ensure(db: Any, *, now: datetime | None = None, ahead: int = 6,
-           behind: int = 1) -> list[str]:
+           behind: int = 1, table: str = PARENT) -> list[str]:
     """Create the monthly partitions that should exist, and only those.
 
     Idempotent by construction (``CREATE TABLE IF NOT EXISTS … PARTITION OF``),
     so it is safe to call from the retention sweep and from a nightly job.
     """
-    if not partitioned(db):
+    if not partitioned(db, table):
         return []
     from sqlalchemy import text
 
     moment = month_start(now or datetime.now(timezone.utc))
-    existing = {row["name"] for row in partitions(db)}
+    existing = {row["name"] for row in partitions(db, table)}
     created: list[str] = []
     for offset in range(-behind, ahead + 1):
         lower = _add_months(moment, offset)
         upper = _add_months(lower, 1)
-        name = name_for(lower)
+        name = name_for(lower, table)
         if name in existing:
             continue
         db.execute(text(
-            f"CREATE TABLE IF NOT EXISTS {name} PARTITION OF {PARENT} "
+            f"CREATE TABLE IF NOT EXISTS {name} PARTITION OF {table} "
             "FOR VALUES FROM (:lower) TO (:upper)"
         ), {"lower": lower, "upper": upper})
         created.append(name)

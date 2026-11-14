@@ -20,7 +20,13 @@ from db.tenancy import TenantScoped
 class CryptoLogEvent(BaseModel, TenantScoped):
     __tablename__ = "cryptolog_events"
 
-    event_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    #: Uniqueness is (event_id, created_at): partitioning (0156) requires the
+    #: partition key in every unique index, so the DB enforces per-month
+    #: uniqueness and the ingest's deduplication_key lookup carries the
+    #: cross-month idempotent identity ("a duplicate names the same stored
+    #: event id"). The composite is declared so create_all and migrated
+    #: stores agree (0107's rule).
+    event_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     partition_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
     event_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     deduplication_key: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
@@ -46,6 +52,8 @@ class CryptoLogEvent(BaseModel, TenantScoped):
 
     __table_args__ = (
         Index("ix_cryptolog_events_tenant_created", "tenant_id", "created_at"),
+        Index("uq_cryptolog_events_event_created", "event_id", "created_at",
+              unique=True),
     )
 
 
