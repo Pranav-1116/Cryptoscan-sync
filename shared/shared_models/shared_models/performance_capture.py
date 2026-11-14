@@ -42,6 +42,58 @@ def receipt_id(binding: Mapping[str, Any]) -> str:
         ensure_ascii=False, allow_nan=False).encode("utf-8")).hexdigest()
 
 
+def _load_trusted_key(public_key_path: Path, key_id: str):
+    """One Ed25519 public key from the trust anchor.
+
+    The anchor is either a single PEM public key (any key_id selects it) or a
+    JSON keyset ``{"keys": [{"key_id": ..., "public_key_pem": ...}, ...]}`` —
+    the keyset form is how an operator retires a bank signing key without
+    breaking captures already signed under a still-trusted key_id. A keyset
+    entry is selected only by exact key_id; an unlisted key_id is refused,
+    never silently mapped to another key.
+    """
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    raw = public_key_path.read_bytes()
+    document = None
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        document = None
+    if isinstance(document, dict) and "keys" in document:
+        entries = document["keys"]
+        if not isinstance(entries, list) or not 1 <= len(entries) <= 32:
+            raise ValueError("bank capture trust anchor keyset is malformed")
+        seen = set()
+        pem = None
+        for entry in entries:
+            if not isinstance(entry, dict) \
+                    or not isinstance(entry.get("key_id"), str) \
+                    or not entry["key_id"].strip() \
+                    or not isinstance(entry.get("public_key_pem"), str):
+                raise ValueError("bank capture trust anchor keyset is malformed")
+            if entry["key_id"] in seen:
+                raise ValueError("bank capture trust anchor keyset repeats a key_id")
+            seen.add(entry["key_id"])
+            if entry["key_id"] == key_id:
+                pem = entry["public_key_pem"].encode("utf-8")
+        if pem is None:
+            raise ValueError("capture key_id is not trusted by the bank trust anchor")
+        try:
+            key = serialization.load_pem_public_key(pem)
+        except (ValueError, TypeError) as exc:
+            raise ValueError("capture signature or bank public key invalid") from exc
+    else:
+        try:
+            key = serialization.load_pem_public_key(raw)
+        except (ValueError, TypeError) as exc:
+            raise ValueError("capture signature or bank public key invalid") from exc
+    if not isinstance(key, Ed25519PublicKey):
+        raise ValueError("bank capture public key must be Ed25519")
+    return key
+
+
 def verify_capture_attestation(
     *, attestation: Mapping[str, Any], public_key_path: Path,
     tenant_id: str, asset_ref: str, source_id: str, source_type: str,
@@ -50,8 +102,6 @@ def verify_capture_attestation(
     previous_digest: str | None,
 ) -> dict[str, str]:
     from cryptography.exceptions import InvalidSignature
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
     if not public_key_path.is_absolute() or public_key_path.is_symlink() \
             or not public_key_path.is_file() or public_key_path.stat().st_size > 8192:
@@ -77,11 +127,14 @@ def verify_capture_attestation(
         signature = base64.b64decode(attestation["signature"], validate=True)
         if len(signature) != 64:
             raise ValueError("capture signature length invalid")
-        key = serialization.load_pem_public_key(public_key_path.read_bytes())
     except (OSError, ValueError, TypeError, UnicodeEncodeError, binascii.Error) as exc:
         raise ValueError("capture signature or bank public key invalid") from exc
-    if not isinstance(key, Ed25519PublicKey):
-        raise ValueError("bank capture public key must be Ed25519")
+    try:
+        key = _load_trusted_key(public_key_path, key_id)
+    except (OSError, ValueError, TypeError, UnicodeEncodeError) as exc:
+        if isinstance(exc, ValueError) and str(exc).startswith(("bank capture", "capture ")):
+            raise
+        raise ValueError("capture signature or bank public key invalid") from exc
     message = json.dumps(signed, sort_keys=True, separators=(",", ":"),
                          ensure_ascii=False, allow_nan=False).encode("utf-8")
     try:
