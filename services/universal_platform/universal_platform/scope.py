@@ -153,6 +153,115 @@ def _refresh_clean(cfg: dict[str, Any]) -> dict[str, Any]:
     return {k.lower(): v for k, v in (cfg or {}).items()}
 
 
+# --- scope revision diff -----------------------------------------------------
+# Computed by the control plane only. A terminal that could compute this
+# locally could also invent it, so the CLI only ever renders what this
+# function returned.
+
+def _entry_key(e: dict[str, Any]) -> str:
+    return f"{e.get('kind', 'application')}:{e.get('target', '')}"
+
+
+def _entry_payload(e: dict[str, Any]) -> dict[str, Any]:
+    return {"enabled": bool(e.get("enabled", True)),
+            "detail": e.get("detail") or {}}
+
+
+def _excluded(target: str, exclusions: list[str] | tuple[str, ...]) -> str | None:
+    """The first exclusion pattern covering this target, or None.
+
+    Same matching rule as authorization (exact, prefix, CIDR) — a diff that
+    disagreed with the authorize endpoint would be a second, kinder truth.
+    """
+    for x in exclusions:
+        if x and _in_scope(target, x):
+            return x
+    return None
+
+
+def diff_scope_revisions(
+    from_entries: list[dict[str, Any]],
+    from_envelope: dict[str, Any],
+    to_entries: list[dict[str, Any]],
+    to_envelope: dict[str, Any],
+) -> dict[str, Any]:
+    """Classify every declared scope unit between two revisions.
+
+    Four verdicts, and none of them is a grant:
+
+    * ``added``   — declared in the newer revision and effective (enabled,
+      not excluded). The ``+`` rows.
+    * ``removed`` — declared in the older revision and gone now. The ``−``
+      rows. Whether it was effective before is named in the row.
+    * ``changed`` — declared in both, with a different payload (enabled
+      flag, detail, environment). The ``~`` rows carry before/after.
+    * ``blocked`` — declared in the newer revision but NOT effective:
+      disabled, or covered by an exclusion. The ``!`` rows. A blocked
+      addition must never be read as a widening of authority.
+
+    Envelope-level fields (allowed_methods, read_only, rate limit,
+    maintenance window, exclusions) are reported separately in
+    ``envelope_changed`` — same before/after shape, never silently dropped.
+    """
+    from_map = {_entry_key(e): e for e in from_entries}
+    to_map = {_entry_key(e): e for e in to_entries}
+    to_excl = [str(x) for x in (to_envelope.get("exclusions") or [])]
+    from_excl = [str(x) for x in (from_envelope.get("exclusions") or [])]
+
+    added: list[dict[str, Any]] = []
+    blocked: list[dict[str, Any]] = []
+    removed: list[dict[str, Any]] = []
+    changed: list[dict[str, Any]] = []
+
+    for key, e in to_map.items():
+        target = str(e.get("target", ""))
+        if key not in from_map:
+            if not e.get("enabled", True):
+                blocked.append({"kind": e.get("kind"), "target": target,
+                                "reason": "disabled"})
+                continue
+            hit = _excluded(target, to_excl)
+            if hit is not None:
+                blocked.append({"kind": e.get("kind"), "target": target,
+                                "reason": "excluded", "excluded_by": hit})
+                continue
+            added.append({"kind": e.get("kind"), "target": target,
+                          **_entry_payload(e)})
+            continue
+        before = _entry_payload(from_map[key])
+        after = _entry_payload(e)
+        if before != after:
+            changed.append({"kind": e.get("kind"), "target": target,
+                            "before": before, "after": after})
+
+    for key, e in from_map.items():
+        if key not in to_map:
+            was_effective = (bool(e.get("enabled", True))
+                             and _excluded(str(e.get("target", "")), from_excl) is None)
+            removed.append({"kind": e.get("kind"), "target": e.get("target"),
+                            "was_effective": was_effective})
+
+    # envelope fields — allowed_targets is derived from entries, skip it
+    envelope_changed: dict[str, Any] = {}
+    for field in ("allowed_methods", "read_only", "exclusions", "rate_limit",
+                  "scanner", "maintenance_window_open"):
+        before = from_envelope.get(field)
+        after = to_envelope.get(field)
+        if before != after:
+            envelope_changed[field] = {"before": before, "after": after}
+
+    return {
+        "added": added,
+        "removed": removed,
+        "changed": changed,
+        "blocked": blocked,
+        "envelope_changed": envelope_changed,
+        "summary": {"added": len(added), "removed": len(removed),
+                    "changed": len(changed), "blocked": len(blocked),
+                    "envelope_fields_changed": len(envelope_changed)},
+    }
+
+
 def authorize_scope(scope: ScopeAuthorization, target: str,
                     kind: str | None = None, method: str | None = None,
                     mutating: bool = False) -> dict[str, Any]:

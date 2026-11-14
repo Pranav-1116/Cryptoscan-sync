@@ -100,6 +100,26 @@ class ScopeEntry(BaseModel, TenantScoped):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
+class ScopeSnapshot(BaseModel, TenantScoped):
+    """One named revision of the authorized scope — the unit `scope diff` compares.
+
+    The diff itself is computed by the control plane only: a terminal that could
+    compute it locally could also invent it. ``content_hash`` covers the entries
+    and the resolved envelope, so two revisions with the same hash are visibly
+    the same authorization — and a change of hash is not, by itself, proof that
+    anything was enforced.
+    """
+
+    __tablename__ = "scope_snapshots"
+
+    org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    entries: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    envelope: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+
 class Connector(BaseModel, TenantScoped):
     """A registered infrastructure connection (Connections Center)."""
 

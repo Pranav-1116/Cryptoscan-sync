@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 1066 |
+| session | 1069 |
 | role | 367 |
 | permission | 74 |
 | tenant-role | 17 |
 
-**1524** operations; **342** of them change state with nothing but the session gate — the exact list, with the policy
+**1527** operations; **343** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -79,6 +79,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `repos` | 1 |
 | `saas` | 1 |
 | `scans` | 1 |
+| `scope` | 1 |
 | `security-controls` | 1 |
 | `stream` | 1 |
 
@@ -376,6 +377,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/saas/invites/accept` | `api.routers.saas.accept_invite` |
 | POST | `/api/v1/saas/signup` | `api.routers.saas.signup` |
 | POST | `/api/v1/scans/runtime-findings` | `api.routers.runtime.ingest_runtime_findings` |
+| POST | `/api/v1/scope/snapshots` | `api.routers.scope.create_scope_snapshot` |
 | POST | `/api/v1/sectors/compliance-map` | `api.routers.sectors.compliance_map` |
 | POST | `/api/v1/sectors/context` | `api.routers.sectors.sector_context` |
 | POST | `/api/v1/sectors/criticality` | `api.routers.sectors.score_criticality` |
