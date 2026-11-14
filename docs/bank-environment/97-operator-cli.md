@@ -3,16 +3,16 @@
 Status: partial. Installed `scan`, `collect --submit`, `schedule`, `tick`, `coverage`
 and `boms` commands now use the **bank-owned on-prem control plane** rather than the
 administrator's local database. Collectors and job workers run inside that bank
-boundary. Ten twin commands are migrated: from an operator terminal `graph-load`,
-`graph-verify`, `placement`, `asset`, `search`, `why`, `graph-traversal`,
-`simulate`, `simulations` and `changes` call the control plane's twin routes
-(`POST /twin/graph/load`, `/twin/graph/verify`, `/twin/impact`, `/twin/simulate`
-and the GET twin reads) — the control plane owns the graph-store connection and
-the CLI still never touches one; the in-process bank-server CLI keeps its local
-handlers. `serve` remains the bank-server daemon entry point; the remaining older
-twin commands (catalog, algorithms, conflicts, lifecycle, intel, trust-paths,
-history, evidence, detect, ack) still use direct database access and require
-migration before the entire operator CLI is API-only.
+boundary. The twin migration is COMPLETE: every twin subcommand — `graph-load`,
+`graph-verify`, `placement`, `assets`, `asset`, `search`, `why`, `graph-traversal`,
+`simulate`, `simulations`, `changes`, `algorithms`, `conflicts`, `lifecycle`,
+`intel`, `algorithm`, `trust-paths`, `history`, `evidence`, `detect` and `ack` —
+calls the control plane's twin, catalog, history, evidence and changes routes
+from an operator terminal; the control plane owns the graph-store connection and
+the CLI still never touches one. The honest notes and exit semantics travel with
+the migration: an unobserved estate is INCOMPLETE, never an empty answer. The
+in-process bank-server CLI keeps its local handlers for the daemon, and `serve`
+remains the bank-server daemon entry point.
 
 The long-form architecture and command reference — the eight components, what is implemented
 versus refused versus roadmap, and why — is
@@ -212,8 +212,8 @@ progress on these endpoints, and a fabricated bar is worse than none.
   now use the bank API. In-process collection handlers remain reachable only to
   injected test/service callers. `serve` is the bank-server daemon, not an
   administrator-workstation command; without explicit PostgreSQL it refuses.
-  Some older twin subcommands still require that server-side database contract
-  and need API-backed operator equivalents.
+  The twin subcommands all have API-backed operator equivalents — the migration
+  is complete, and the in-process twin handlers remain only for that daemon.
 - `cryptoscan status` reports health and identity, not estate coverage. `coverage`
   reads the retained matrix from the bank API and exits incomplete when it is unknown.
 - No interactive TUI, no `--format table|json|yaml` matrix; `--json` covers automation.

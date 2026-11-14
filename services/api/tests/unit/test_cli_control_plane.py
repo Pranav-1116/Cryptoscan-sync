@@ -421,20 +421,26 @@ def test_scan_manifest_cannot_silently_drop_target_or_policy_fields(capsys, monk
     assert "manifest execution is not wired" in capsys.readouterr().err
 
 
-def test_server_only_daemon_and_legacy_twin_refuse_a_terminal_sqlite_fallback(monkeypatch, env, capsys):
+def test_server_only_daemon_refuses_a_terminal_sqlite_fallback(monkeypatch, env, capsys):
     from api import cli
 
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setattr(cli, "_session", lambda *_args: (_ for _ in ()).throw(AssertionError("opened local database")))
     assert cli.main(["serve", "--once"]) == 3
-    assert cli.main(["twin", "algorithms"]) == 3  # unmigrated legacy still refuses a terminal DB
     assert "bank-server service operation" in capsys.readouterr().err
-    # a migrated twin command uses the control plane and never opens the local database
-    transport = FakeControlPlane(
-        {("GET", "/api/v1/estate/evidence/twin/placement"): (200, {"placement": []})})
+    # the twin migration is complete: every twin command uses the control
+    # plane and none opens the terminal's local database
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/estate/evidence/twin/placement"): (200, {"placement": []}),
+        ("GET", "/api/v1/estate/evidence/catalog/crypto"): (200, {"algorithms": []}),
+    })
     monkeypatch.setattr(cli_remote, "TRANSPORT", transport)
     assert cli.main(["twin", "placement"]) == 0
-    assert [c[1] for c in transport.calls] == ["/api/v1/estate/evidence/twin/placement"]
+    assert cli.main(["twin", "algorithms"]) == 0
+    assert [c[1].split("?")[0] for c in transport.calls] == [
+        "/api/v1/estate/evidence/twin/placement",
+        "/api/v1/estate/evidence/catalog/crypto",
+    ]
 
 
 def test_installed_scan_never_opens_a_database_or_collects_without_a_target(monkeypatch, env, capsys):

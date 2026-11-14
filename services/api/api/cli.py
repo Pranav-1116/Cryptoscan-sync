@@ -1631,8 +1631,10 @@ REMOTE_TWIN_COMMANDS = frozenset({"status", "snapshot", "diff", "remediation", "
 #: /twin/graph/verify, /twin/impact, /twin/simulate and the GET twin reads), and
 #: the in-process bank-server CLI (session_factory) keeps its local handlers.
 MIGRATED_TWIN_COMMANDS = frozenset({
-    "graph-load", "graph-verify", "placement", "asset", "search", "why",
+    "graph-load", "graph-verify", "placement", "assets", "asset", "search", "why",
     "graph-traversal", "simulate", "simulations", "changes",
+    "algorithms", "conflicts", "lifecycle", "intel", "algorithm",
+    "trust-paths", "history", "evidence", "detect", "ack",
 })
 
 

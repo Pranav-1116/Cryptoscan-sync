@@ -1996,6 +1996,7 @@ def _cmd_observe(args: argparse.Namespace, _session: Any = None) -> int:
 
 TWIN = "/api/v1/estate/evidence/twin"
 CHANGES = "/api/v1/estate/evidence/changes"
+ESTATE = "/api/v1/estate/evidence"
 
 
 def twin_remote(args: argparse.Namespace, _session: Any = None) -> int:
@@ -2173,6 +2174,275 @@ def twin_remote(args: argparse.Namespace, _session: Any = None) -> int:
                 elif isinstance(changes, list):
                     print(f"changes    {len(changes)}")
             return _emit(args, payload, source=client.source("GET", f"{TWIN}/compare"), render=render)
+        # --- the remaining migrated twin reads. The control plane owns the
+        # graph-store connection for these too; this CLI renders what the
+        # routes return and keeps the local handlers' honest notes and exit
+        # semantics (an unobserved estate is INCOMPLETE, never empty). ---
+        if action == "assets":
+            payload = client.get(f"{ESTATE}/catalog/assets",
+                                 asset_type=args.asset_type, environment=args.environment,
+                                 owner=args.owner, lifecycle=args.lifecycle,
+                                 q=args.q, limit=args.limit)
+
+            def render_assets() -> None:
+                rows = payload.get("assets") or []
+                if not rows:
+                    print("no catalogue records match — that is not 'the bank has no assets'.")
+                    print("  the catalogue holds what has been observed; "
+                          "run `cryptoscan scan` first")
+                    return
+                for row in rows:
+                    print(f"  {row.get('asset_type', '—'):<16} {row.get('name', '—'):<32} "
+                          f"{row.get('lifecycle_state', '—'):<6} "
+                          f"seen {row.get('observation_count', 0)}×  {row.get('environment') or ''}")
+                    print(f"    {row.get('asset_id')}  ev={row.get('evidence_count', 0)}  "
+                          f"owner={row.get('owner') or '—'}")
+            return _emit(args, payload,
+                         source=client.source("GET", f"{ESTATE}/catalog/assets"),
+                         render=render_assets)
+
+        if action == "algorithms":
+            payload = client.get(f"{ESTATE}/catalog/crypto",
+                                 q=args.q, asset_type=args.asset_type)
+
+            def render_algorithms() -> None:
+                entries = payload.get("algorithms") or []
+                if not entries:
+                    print("no cryptographic artefacts recorded yet — nothing has been observed")
+                    return
+                for entry in entries[:30]:
+                    states = ", ".join(
+                        f"{state} {count}"
+                        for state, count in sorted((entry.get("usage_states") or {}).items()))
+                    print(f"  {entry.get('algorithm', '—'):<18} "
+                          f"{entry.get('asset_count', 0):>3} asset(s)  [{states}]")
+                    for item in (entry.get("assets") or [])[:4]:
+                        print(f"      {item.get('asset_type', '—'):<14} "
+                              f"{item.get('asset_name')}  ({item.get('usage_state')})")
+                if payload.get("meaning"):
+                    print(f"\n{payload['meaning']}")
+            return _emit(args, payload,
+                         source=client.source("GET", f"{ESTATE}/catalog/crypto"),
+                         render=render_algorithms)
+
+        if action == "conflicts":
+            payload = client.get(f"{TWIN}/conflicts")
+
+            def render_conflicts() -> None:
+                if not payload.get("count"):
+                    print("no conflict in what has been observed — which is not a statement "
+                          "that the bank's sources agree")
+                    return
+                by_class = payload.get("by_classification") or {}
+                print(f"{payload['count']} conflict(s): {payload.get('real_count', 0)} real, "
+                      f"{payload.get('explained_count', 0)} explained, "
+                      f"{by_class.get('UNKNOWN', 0)} unclassified")
+                for item in (payload.get("conflicts") or [])[:20]:
+                    name = item.get("asset_name") or item.get("asset_id")
+                    print(f"  {'!' if item.get('classification') == 'REAL' else ' '} "
+                          f"{name} · {item.get('field')} · {item.get('classification')}")
+                    for value in (item.get("values") or [])[:4]:
+                        print(f"      {value.get('value')!r} from {value.get('source')} "
+                              f"({value.get('evidence_type')}, {value.get('layer')})")
+                    if item.get("reason"):
+                        print(f"      {item['reason']}")
+            return _emit(args, payload,
+                         source=client.source("GET", f"{TWIN}/conflicts"),
+                         render=render_conflicts)
+
+        if action == "lifecycle":
+            payload = client.get(f"{TWIN}/lifecycle")
+
+            def render_lifecycle() -> None:
+                for phase in payload.get("phases") or []:
+                    print(f"  {phase.get('phase', '—'):<12} {phase.get('status', '—'):<14} "
+                          f"{phase.get('question', '')}")
+                    if phase.get("status") != "CONNECTED" and phase.get("detail"):
+                        print(f"      {phase['detail']}")
+                print()
+                if payload.get("loop_closed"):
+                    print(payload.get("meaning", ""))
+                else:
+                    print(f"the loop does not close: it breaks first at "
+                          f"{payload.get('first_break')}. {payload.get('meaning', '')}")
+            return _emit(args, payload,
+                         source=client.source("GET", f"{TWIN}/lifecycle"),
+                         render=render_lifecycle)
+
+        if action == "intel":
+            payload = client.get(f"{TWIN}/intel", limit=args.limit)
+            if payload.get("status") == "NOT_OBSERVED":
+                print("no stored estate discovery — the twin is NOT_OBSERVED, so there is "
+                      "no cryptography to read. That is not a clean answer.", file=sys.stderr)
+                return EXIT_INCOMPLETE
+
+            def render_intel() -> None:
+                weak = payload.get("weak") or {}
+                unknown = payload.get("unknown") or {}
+                pqc = payload.get("pqc") or {}
+                print(f"{payload.get('artifacts_examined', 0)} crypto artefact(s) examined")
+                print(f"  weak      {weak.get('count', 0)} ({weak.get('in_use_count', 0)} in use, "
+                      f"{weak.get('capability_only_count', 0)} capability only)")
+                for item in (weak.get("entries") or [])[:10]:
+                    mark = "!" if item.get("in_use") else " "
+                    name = item.get("asset_name") or item.get("asset_id")
+                    print(f"  {mark} {name} · {item.get('algorithm')} · {item.get('status')} · "
+                          f"{item.get('usage_state')} · {item.get('layer')}")
+                print(f"  unknown   {unknown.get('count', 0)} "
+                      f"({unknown.get('unrecognised_count', 0)} unrecognised, "
+                      f"{unknown.get('mislabelled_count', 0)} version strings in an algorithm fact)")
+                print(f"  post-quantum {pqc.get('vulnerable_artifacts', 0)} artefact(s) on "
+                      f"Shor-broken algorithms, {pqc.get('pending_migration_count', 0)} in use, "
+                      f"{pqc.get('vendor_bound_blocker_count', 0)} vendor-bound blocker(s)")
+                if payload.get("next_action"):
+                    print()
+                    print(payload["next_action"])
+            return _emit(args, payload,
+                         source=client.source("GET", f"{TWIN}/intel"),
+                         render=render_intel)
+
+        if action == "algorithm":
+            path = f"{TWIN}/algorithm/{urllib.parse.quote(args.name)}"
+            payload = client.get(path, limit=args.limit)
+            if payload.get("status") == "NOT_OBSERVED":
+                print("no stored estate discovery — nothing can be said about this "
+                      "algorithm, which is not the same as 'nothing uses it'.", file=sys.stderr)
+                return EXIT_INCOMPLETE
+
+            def render_algorithm() -> None:
+                if not payload.get("found"):
+                    print(f"no observation asserts {payload.get('query')!r} — not a statement "
+                          "that the estate does not use it")
+                else:
+                    print(f"{payload.get('algorithm')} · {payload.get('status')} · "
+                          f"{payload.get('artifacts', 0)} artefact(s): "
+                          f"{payload.get('in_use', 0)} in use, "
+                          f"{payload.get('capability_only', 0)} capability only")
+                    for asset_type, count in (payload.get("by_asset_type") or {}).items():
+                        print(f"  {asset_type:<18} {count}")
+                    for asset in (payload.get("assets") or [])[:10]:
+                        print(f"    {asset.get('asset_name') or asset.get('asset_id')}: "
+                              f"{', '.join(asset.get('algorithms') or [])}")
+                if payload.get("next_action"):
+                    print()
+                    print(payload["next_action"])
+            return _emit(args, payload, source=client.source("GET", path),
+                         render=render_algorithm)
+
+        if action == "trust-paths":
+            payload = client.get(f"{TWIN}/trust-paths", limit=args.limit)
+            if payload.get("status") == "NOT_OBSERVED":
+                print("no stored estate discovery — no chain can be walked, which is not "
+                      "an estate with no certificates.", file=sys.stderr)
+                return EXIT_INCOMPLETE
+
+            def render_trust() -> None:
+                print(f"{payload.get('count', 0)} certificate chain(s), "
+                      f"longest {payload.get('longest_chain', 0)} link(s)")
+                for status, count in (payload.get("by_status") or {}).items():
+                    print(f"  {status:<14} {count}")
+                for entry in (payload.get("chains") or [])[:10]:
+                    name = entry.get("asset_name") or entry.get("asset_id")
+                    path_str = " -> ".join(
+                        (step.get("asset_name") or step.get("asset_id") or "?")
+                        + ("" if step.get("present") else " (not collected)")
+                        for step in (entry.get("chain") or []))
+                    print(f"  {name}: {entry.get('status')} · {path_str}")
+                if payload.get("broken_count") or payload.get("unjudged_count"):
+                    print()
+                    print("a broken chain usually means the authority was not collected — "
+                          "it is not proof the certificate is untrusted")
+            return _emit(args, payload,
+                         source=client.source("GET", f"{TWIN}/trust-paths"),
+                         render=render_trust)
+
+        if action == "history":
+            path = f"{ESTATE}/history/assets/{urllib.parse.quote(args.identifier)}"
+            payload = client.get(path)
+            if not payload.get("fact_count"):
+                print(f"no recorded fact for {args.identifier!r} — not observed, or "
+                      "catalogued before per-fact history existed", file=sys.stderr)
+                return EXIT_INCOMPLETE
+
+            def render_history() -> None:
+                print(f"{args.identifier} · {payload['fact_count']} fact(s)")
+                marks = {"CURRENT": " ", "HISTORICAL": "-", "CONFLICT": "!"}
+                for fact in payload.get("facts") or []:
+                    mark = marks.get(fact.get("state"), " ")
+                    current = ", ".join(fact.get("current_values") or []) or "(no longer observed)"
+                    print(f" {mark} {fact.get('fact_type', '—'):<34} {current}")
+                    for window in (fact.get("timeline") or []):
+                        if window.get("state") == "CURRENT":
+                            continue
+                        print(f"     was {window.get('value')!r} until "
+                              f"{window.get('last_seen_at') or 'unknown'} "
+                              f"(seen {window.get('observation_count', 0)}x)")
+                if payload.get("conflicted_facts"):
+                    print(f" disputes  {', '.join(payload['conflicted_facts'])} — "
+                          "both values still asserted, nothing chosen")
+            return _emit(args, payload, source=client.source("GET", path),
+                         render=render_history)
+
+        if action == "evidence":
+            payload = client.get(f"{ESTATE}/evidence/records",
+                                 target=args.target, evidence_type=args.evidence_type,
+                                 limit=args.limit)
+            if not payload.get("count"):
+                print("no stored evidence — nothing has been observed and recorded yet",
+                      file=sys.stderr)
+                return EXIT_INCOMPLETE
+
+            def render_evidence() -> None:
+                print(f"{payload['count']} evidence record(s)")
+                for record in payload.get("records") or []:
+                    print(f"  {record.get('evidence_type', '—'):<20} "
+                          f"{record.get('collector') or '-':<22} "
+                          f"{record.get('observation_count', 0):>3}x  {record.get('evidence_id')}")
+            return _emit(args, payload,
+                         source=client.source("GET", f"{ESTATE}/evidence/records"),
+                         render=render_evidence)
+
+        if action == "detect":
+            payload = client.post(f"{CHANGES}/detect")
+
+            def render_detect() -> None:
+                print(f"severity   {_field(payload, 'severity', default='—')}")
+                print(f"verdict    {_field(payload, 'verdict', default='—')}")
+                print(f"headline   {_field(payload, 'headline', default='—')}")
+                for change in (payload.get("changes") or [])[:12]:
+                    print(f"  {change.get('kind', '—'):<24} {change.get('detail', '')}")
+                if payload.get("next_action"):
+                    print(f"  next: {payload['next_action']}")
+                recorded = payload.get("recorded") or {}
+                if recorded.get("created"):
+                    print(f"  recorded {recorded.get('event_id')}")
+                elif recorded.get("event_id"):
+                    print(f"  already recorded as {recorded['event_id']}")
+                else:
+                    print(f"  not recorded: {recorded.get('note') or recorded.get('error')}")
+                if payload.get("baseline_error"):
+                    print(f"  baseline unknown: {payload['baseline_error']}")
+            return _emit(args, payload,
+                         source=client.source("POST", f"{CHANGES}/detect"),
+                         render=render_detect)
+
+        if action == "ack":
+            path = f"{CHANGES}/{urllib.parse.quote(args.identifier)}/acknowledge"
+            try:
+                payload = client.post(path, {"note": args.note})
+            except ApiError as exc:
+                if exc.status == 404:
+                    print(f"no change event {args.identifier!r} for this tenant",
+                          file=sys.stderr)
+                    return EXIT_INCOMPLETE
+                raise
+
+            def render_ack() -> None:
+                print(f"acknowledged {_field(payload, 'event_id', default=args.identifier)} "
+                      f"by {_field(payload, 'acknowledged_by', default='—')} "
+                      f"at {_field(payload, 'acknowledged_at', default='—')} — findings unchanged")
+            return _emit(args, payload, source=client.source("POST", path),
+                         render=render_ack)
     except (Refused, ApiError) as exc:
         return _fail(f"twin {action}", exc)
     return EXIT_ERROR
