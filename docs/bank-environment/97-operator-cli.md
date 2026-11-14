@@ -3,9 +3,12 @@
 Status: partial. Installed `scan`, `collect --submit`, `schedule`, `tick`, `coverage`
 and `boms` commands now use the **bank-owned on-prem control plane** rather than the
 administrator's local database. Collectors and job workers run inside that bank
-boundary. `serve` remains the bank-server daemon entry point; some older twin
-commands still use direct database access and require migration before the entire
-operator CLI is API-only.
+boundary. `twin graph-load` and `twin graph-verify` are migrated too: from an operator
+terminal they call `POST /twin/graph/load` and `/twin/graph/verify` and the control
+plane owns the graph-store connection; the in-process bank-server CLI keeps its local
+handlers. `serve` remains the bank-server daemon entry point; the remaining older twin
+commands (catalog, search, history, traversal, simulate and friends) still use direct
+database access and require migration before the entire operator CLI is API-only.
 
 The long-form architecture and command reference — the eight components, what is implemented
 versus refused versus roadmap, and why — is

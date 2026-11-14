@@ -862,7 +862,9 @@ def _cmd_serve(args: argparse.Namespace, session_factory: Callable[[], Any] | No
 
 def _cmd_twin(args: argparse.Namespace, session_factory: Callable[[], Any] | None) -> int:
     """Graph-store load, simulation and simulation history (spec 94 §17, §20)."""
-    if getattr(args, "twin_command", None) in REMOTE_TWIN_COMMANDS:
+    if (getattr(args, "twin_command", None) in REMOTE_TWIN_COMMANDS
+            or (session_factory is None
+                and getattr(args, "twin_command", None) in MIGRATED_TWIN_COMMANDS)):
         from api import cli_remote
 
         return cli_remote.twin_remote(args, session_factory)
@@ -1624,6 +1626,11 @@ COMMANDS.update(_cli_remote.COMMANDS)
 REMOTE_TWIN_COMMANDS = frozenset({"status", "snapshot", "diff", "remediation", "remediate",
                                   "reconcile"})
 
+#: Migrated off the local database handler for bare terminals: the control plane
+#: owns the graph-store connection (POST /twin/graph/load, /twin/graph/verify), and
+#: the in-process bank-server CLI (session_factory) keeps its local handlers.
+MIGRATED_TWIN_COMMANDS = frozenset({"graph-load", "graph-verify"})
+
 
 def main(argv: Sequence[str] | None = None, session_factory: Callable[[], Any] | None = None) -> int:
     """Operator scan/collect commands use the in-bank API, never this terminal's collectors."""
@@ -1651,7 +1658,8 @@ def main(argv: Sequence[str] | None = None, session_factory: Callable[[], Any] |
             print(f"cryptoscan {args.command} failed: {type(exc).__name__}: {exc}", file=sys.stderr)
             return EXIT_ERROR
     local_service = args.command == "serve" or (
-        args.command == "twin" and args.twin_command not in REMOTE_TWIN_COMMANDS)
+        args.command == "twin" and args.twin_command not in REMOTE_TWIN_COMMANDS
+        and args.twin_command not in MIGRATED_TWIN_COMMANDS)
     if session_factory is None and local_service and not os.getenv("DATABASE_URL", "").startswith(
         ("postgresql://", "postgresql+psycopg2://", "postgresql+psycopg://")
     ):

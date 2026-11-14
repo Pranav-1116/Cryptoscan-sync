@@ -1716,6 +1716,45 @@ def twin_remote(args: argparse.Namespace, _session: Any = None) -> int:
     try:
         if action in {"remediation", "remediate", "reconcile"}:
             return _twin_remediation(args, client, action)
+        if action == "graph-load":
+            # Graph-store load migrated off the local database handler: the
+            # control plane owns the store connection; this CLI still never
+            # touches one. Defaults to the dry-run plan exactly as the route.
+            body = {"dry_run": not bool(getattr(args, "apply", False)),
+                    "database": getattr(args, "database", None),
+                    "batch_size": int(getattr(args, "batch_size", 500) or 500),
+                    "prune_missing": bool(getattr(args, "prune_missing", False))}
+            payload = client.post(f"{TWIN}/graph/load", body)
+
+            def render_load() -> None:
+                mode = "APPLY" if not body["dry_run"] else "dry-run plan"
+                print(f"mode           {mode}")
+                print(f"statements     {_short(_field(payload, 'statements', default='—'), 70)}")
+                print(f"nodes          {_short(_field(payload, 'nodes', default='—'), 70)}")
+                print(f"relationships  {_short(_field(payload, 'relationships', default='—'), 70)}")
+                if body["dry_run"]:
+                    print("\nnothing was written — re-run with --apply to load the store.")
+                else:
+                    print("\nthe loader reads its own counts back; a mismatch is reported"
+                          "\nas a failure, never as loaded.")
+            return _emit(args, payload,
+                         source=client.source("POST", f"{TWIN}/graph/load"),
+                         render=render_load)
+        if action == "graph-verify":
+            body = {"database": getattr(args, "database", None)}
+            payload = client.post(f"{TWIN}/graph/verify", body)
+
+            def render_verify() -> None:
+                verdict = _field(payload, "verdict") or _field(payload, "state") or "—"
+                print(f"verdict        {verdict}")
+                print(f"detail         {_short(_field(payload, 'detail', default='—'), 90)}")
+                if str(verdict).upper() == "NOT_CONNECTED":
+                    print("\nNOT_CONNECTED is not parity — the store was not compared.")
+                elif str(verdict).upper() == "STALE_ONLY":
+                    print("\nthe store holds a superseded estate — reload it.")
+            return _emit(args, payload,
+                         source=client.source("POST", f"{TWIN}/graph/verify"),
+                         render=render_verify)
         if action == "status":
             payload = client.get(TWIN)
             return _emit(args, payload, source=client.source("GET", TWIN))
