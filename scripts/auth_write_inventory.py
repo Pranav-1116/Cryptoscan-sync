@@ -82,6 +82,11 @@ POLICY: dict[str, str] = {
     "/api/v1/execution-controls": "operator surface: execution control records",
     "/api/v1/hardware": "operator surface: live hardware telemetry ingestion",
     "/api/v1/platform": "operator surface: platform-mode switch, superadmin in the handler",
+    # The one write under /scope is POST /scope/snapshots: it stores a named
+    # copy of the caller's own tenant scope so a later diff has something to
+    # compare. It widens nothing — the snapshot is a record, not an authority.
+    "/api/v1/scope": "operator surface: scope revision capture and authorization reads; "
+                     "the write stores a copy of the caller's own scope, never a change to it",
     "/api/v1/runtime": "operator surface: runtime depth inspection",
     "/api/v1/automation": "operator surface: automation rules and runners",
     "/api/v1/host-evidence": "operator surface: explicit approval -> imported snapshot",

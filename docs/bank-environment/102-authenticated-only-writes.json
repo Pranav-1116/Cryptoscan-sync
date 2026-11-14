@@ -1510,6 +1510,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/scope/snapshots",
+      "reason": "operator surface: scope revision capture and authorization reads; the write stores a copy of the caller's own scope, never a change to it"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/sectors/compliance-map",
       "reason": "operator surface: sector reference data"
     },

@@ -57,7 +57,8 @@ def scan_metrics(*, tenant_id: str, scan_id: str, artifact_id: str,
             tenant_id=tenant_id,
             source_id=SOURCE_ID,
             observed_at=observed,
-            metric_id=_metric_id(SOURCE_ID, family, labels, observed),
+            metric_id=_metric_id(SOURCE_ID, family, labels, observed,
+                                tenant_id=tenant_id, asset_id=artifact_id),
             labels=labels)
         row.evidence_id = scan_id    # provenance on every row
         rows.append(row)

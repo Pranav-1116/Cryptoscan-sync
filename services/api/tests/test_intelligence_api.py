@@ -19,7 +19,12 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-NOW = datetime(2026, 11, 7, 12, 0, 0, tzinfo=timezone.utc)
+# Relative, not absolute. This was datetime(2026, 11, 7, 12, 0, 0): a date
+# inside every freshness window when the tests were written, and it started
+# failing on 2026-11-14 when the 7-day NETWORK_ACTIVE_OBSERVED window rolled
+# past it and RUNTIME_OBSERVED became CLAIMED_STALE. Evidence stamped "now"
+# must stay fresh relative to the run, not to the day someone typed it.
+NOW = datetime.now(timezone.utc)
 
 
 @pytest.fixture()

@@ -173,8 +173,13 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # the performance writes, and the two os-intelligence intakes).
     # Session-only writes may only shrink; this regeneration records
     # the shrink ("Harden tenant APIs and persistent local startup").
-    assert len(rows) <= 342, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 342. "
+    # 342 -> 343 (up, deliberate): the scope revision capture
+    # (POST /api/v1/scope/snapshots) stores a named copy of the caller's
+    # own tenant scope so GET /scope/diff has something to compare. It
+    # widens nothing — a snapshot is a record, not an authority — and it
+    # carries its POLICY decision under the /api/v1/scope family.
+    assert len(rows) <= 343, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 343. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

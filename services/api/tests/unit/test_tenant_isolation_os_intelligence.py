@@ -318,6 +318,7 @@ def test_every_new_intelligence_mutation_declares_a_write_role():
             "/cryptolog/integrity/checkpoint"}),
         (performance.router, {
             "/performance/ingest", "/performance/ingest/batch",
+            "/performance/captures/import",
             "/performance/benchmarks", "/performance/definitions"}),
         (os_intelligence.router, {
             "/os-intelligence/collections",

@@ -83,7 +83,13 @@ def test_the_inventory_does_not_claim_routes_that_are_now_typed(untyped, recorde
 #: publish an application/json contract for an archive, which is worse than an honest gap —
 #: recorded deliberately, like the export family above. The typed
 #: POST /api/v1/cryptolog/reports/verify carries the examiner verdict as JSON.
-MAX_UNTYPED_OPERATIONS = 1159
+#: 1160-1162: the scope revision family (POST /api/v1/scope/snapshots,
+#: GET /api/v1/scope/snapshots, GET /api/v1/scope/diff). The diff response is
+#: the server's honest classification of two revisions — four verdict lists and
+#: the envelope differences — built by the domain resolver, not by a response
+#: model; clients (the CLI) render what it returned and invent nothing. Recorded
+#: like the question-surface family above.
+MAX_UNTYPED_OPERATIONS = 1162
 
 
 def test_the_untyped_surface_does_not_grow(untyped, recorded):
