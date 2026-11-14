@@ -29,10 +29,12 @@ from starlette.testclient import TestClient
 @pytest.fixture()
 def db(tmp_path):
     from db.models.base import Base
+    from db.models.binary_artifact_blob import BinaryArtifactBlob
     from db.models.binary_scan_job import BinaryScanJob
 
     engine = create_engine(f"sqlite:///{tmp_path / 'jobs.db'}")
-    Base.metadata.create_all(engine, tables=[BinaryScanJob.__table__])
+    Base.metadata.create_all(engine, tables=[BinaryScanJob.__table__,
+                                            BinaryArtifactBlob.__table__])
     factory = sessionmaker(bind=engine)
     session = factory()
     try:
@@ -68,15 +70,68 @@ def _row(db, job_id):
 
 class TestHandoff:
 
-    def test_submit_persists_the_artifact_handoff(self, db):
+    def test_submit_persists_the_artifact_handoff(self, db, monkeypatch):
+        import base64
+
+        from sqlalchemy import select
+
+        from db import encryption
+        from db.models.binary_artifact_blob import BinaryArtifactBlob
+
+        monkeypatch.setenv("EVIDENCE_ENCRYPTION_KEYS",
+                           "test:" + base64.b64encode(bytes(range(32))).decode())
+        encryption.reset_ring()
         queue = _queue()
         accepted, reason = queue.submit(_job(data=b"artifact-bytes"), db=db)
         assert accepted and reason == "queued"
         row = _row(db, "bjob-1")
         assert row is not None and row.status == "QUEUED"
-        assert bytes(row.artifact_bytes) == b"artifact-bytes"
         assert row.artifact_sha256 == hashlib.sha256(b"artifact-bytes").hexdigest()
         assert row.tenant_id == "tenant_001"
+        # The handoff is the blob store: bytes live ONCE per (tenant, sha256),
+        # encrypted; the job row references the content and stores no copy.
+        blob = db.scalar(select(BinaryArtifactBlob).where(
+            BinaryArtifactBlob.tenant_id == "tenant_001",
+            BinaryArtifactBlob.sha256 == row.artifact_sha256))
+        assert blob is not None and blob.bytes_size == len(b"artifact-bytes")
+        assert bytes(blob.ciphertext) != b"artifact-bytes", (
+            "with keys configured the blob is ciphertext at rest")
+        monkeypatch.delenv("EVIDENCE_ENCRYPTION_KEYS")
+        encryption.reset_ring()
+
+    def test_identical_content_is_stored_once_and_referenced_twice(self, db):
+        from sqlalchemy import func, select
+
+        from db.models.binary_artifact_blob import BinaryArtifactBlob
+
+        queue = _queue()
+        for job_id in ("bjob-1", "bjob-2"):
+            accepted, _ = queue.submit(
+                _job(job_id=job_id, data=b"same-bytes"), db=db)
+            assert accepted
+        blob = db.scalar(select(BinaryArtifactBlob).where(
+            BinaryArtifactBlob.tenant_id == "tenant_001"))
+        assert blob.ref_count == 2, "resubmission references, never copies"
+        assert db.scalar(select(func.count()).select_from(
+            BinaryArtifactBlob)) == 1
+        # Both jobs still execute against the shared content.
+        summary = queue.process_job("bjob-2", tenant_id="tenant_001", db=db)
+        assert summary is not None and summary["status"] == "completed"
+
+    def test_dedup_is_never_a_cross_tenant_side_channel(self, db):
+        from sqlalchemy import func, select
+
+        from db.models.binary_artifact_blob import BinaryArtifactBlob
+
+        queue = _queue()
+        queue.submit(_job(job_id="bjob-1", tenant="tenant_001",
+                          data=b"same-bytes"), db=db)
+        queue.submit(_job(job_id="bjob-2", tenant="tenant_002",
+                          data=b"same-bytes"), db=db)
+        assert db.scalar(select(func.count()).select_from(
+            BinaryArtifactBlob)) == 2, (
+            "two tenants uploading the same file store two blobs: "
+            "'which other bank has this file?' must be unanswerable")
 
     def test_a_job_survives_restart(self, db):
         queue_a = _queue()
@@ -216,6 +271,7 @@ class TestRouterIntegration:
     def api(self):
         from db.models.base import Base
         from db.models.binary_scan_job import BinaryScanJob
+        from db.models.binary_artifact_blob import BinaryArtifactBlob
         from db.models.binary_scan import BinaryScanObservation, BinaryScanRecord
         from db.models.binary_intelligence import (
             BinaryAnalysisCoverage, BinaryArtifact, BinaryCryptoFinding,
@@ -231,7 +287,8 @@ class TestRouterIntegration:
             BinaryArtifact.__table__, BinaryScanRun.__table__,
             BinaryCryptoFinding.__table__, BinaryEvidence.__table__,
             BinaryAnalysisCoverage.__table__, BinaryTwinEdge.__table__,
-            BinaryScanJob.__table__, BinaryScanRecord.__table__,
+            BinaryScanJob.__table__, BinaryArtifactBlob.__table__,
+            BinaryScanRecord.__table__,
             BinaryScanObservation.__table__,
             PerformanceMetric.__table__, CryptoLogEvent.__table__])
         session = sessionmaker(bind=engine)()

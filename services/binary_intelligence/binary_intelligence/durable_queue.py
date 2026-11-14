@@ -48,6 +48,7 @@ from binary_intelligence.orchestrator import ScanJob, WorkerLimits
 from binary_intelligence.pipeline import ScanResult, run_scan
 from db.encryption import encryption_status, protect, unprotect
 from db.models.base import utcnow
+from db.models.binary_artifact_blob import BinaryArtifactBlob
 from db.models.binary_scan_job import BinaryScanJob
 
 DEFAULT_LEASE_SECONDS = 300.0
@@ -110,16 +111,19 @@ class DurableScanJobQueue:
                 "backpressure refuses and counts, it never silently "
                 "drops a job")
         now = utcnow()
-        # The row is the handoff and the handoff is ciphertext: the tenant
-        # id is bound into the AEAD, so a row copied to another tenant
-        # fails to decrypt instead of failing to be noticed. The sha256
-        # stays over the PLAINTEXT — identity is the artifact's hash, not
-        # the envelope's.
-        stored = protect(job.data, tenant_id=job.tenant_id)
+        # Deduplication: the bytes live ONCE per (tenant, sha256) in the
+        # content-addressed blob store — envelope-encrypted, tenant-bound
+        # ciphertext. The job row references the content by its plaintext
+        # hash and stores no copy; resubmitting an artifact grows
+        # ref_count, never storage. Two tenants uploading the same file
+        # store two blobs: dedup never becomes a cross-tenant side channel.
+        sha256 = hashlib.sha256(job.data).hexdigest()
+        self._refer_blob(db, tenant_id=job.tenant_id, sha256=sha256,
+                         data=job.data, now=now)
         db.add(BinaryScanJob(
             tenant_id=job.tenant_id, job_id=job.job_id,
-            status="QUEUED", artifact_bytes=stored,
-            artifact_sha256=hashlib.sha256(job.data).hexdigest(),
+            status="QUEUED", artifact_bytes=b"",
+            artifact_sha256=sha256,
             original_filename=job.original_filename,
             source_type=job.source_type,
             source_location=job.source_location,
@@ -233,6 +237,38 @@ class DurableScanJobQueue:
         return recovered
 
     # -- introspection ---------------------------------------------------
+    def _refer_blob(self, db: Session, *, tenant_id: str, sha256: str,
+                    data: bytes, now) -> None:
+        from sqlalchemy import select as _select
+
+        blob = db.scalar(
+            _select(BinaryArtifactBlob)
+            .where(BinaryArtifactBlob.tenant_id == tenant_id,
+                   BinaryArtifactBlob.sha256 == sha256))
+        if blob is None:
+            db.add(BinaryArtifactBlob(
+                tenant_id=tenant_id, sha256=sha256,
+                ciphertext=protect(data, tenant_id=tenant_id),
+                bytes_size=len(data), ref_count=1))
+        else:
+            blob.ref_count += 1
+            blob.updated_at = now
+
+    def _resolve_blob(self, db: Session, *, tenant_id: str,
+                      sha256: str) -> bytes:
+        from sqlalchemy import select as _select
+
+        blob = db.scalar(
+            _select(BinaryArtifactBlob)
+            .where(BinaryArtifactBlob.tenant_id == tenant_id,
+                   BinaryArtifactBlob.sha256 == sha256))
+        if blob is None:
+            raise ValueError(
+                "artifact bytes are not in the blob store for this tenant — "
+                "a job whose content is gone is a failure, never a scan of "
+                "nothing")
+        return unprotect(bytes(blob.ciphertext), tenant_id=tenant_id)
+
     def as_dict(self, db: Optional[Session] = None) -> Dict[str, Any]:
         counts: Dict[str, Any]
         if db is not None:
@@ -265,6 +301,14 @@ class DurableScanJobQueue:
             "lease_seconds": self.lease_seconds,
             "max_attempts": self.max_attempts,
             "encryption": encryption_status(),
+            "dedup": ({"blobs": db.scalar(
+                select(func.count()).select_from(BinaryArtifactBlob)) or 0,
+                "references": db.scalar(
+                    select(func.coalesce(func.sum(
+                        BinaryArtifactBlob.ref_count), 0))) or 0,
+                "note": ("content-addressed: bytes stored once per "
+                         "(tenant, sha256); jobs reference, never copy")}
+                if db is not None else None),
             "backend": "database_leased_jobs",
             "durable": True,
             "note": ("durable database handoff — job rows hold the bounded "
@@ -333,7 +377,8 @@ class DurableScanJobQueue:
                  ) -> Dict[str, Any]:
         started = time.perf_counter()
         try:
-            data = unprotect(bytes(row.artifact_bytes), tenant_id=row.tenant_id)
+            data = self._resolve_blob(db, tenant_id=row.tenant_id,
+                                      sha256=row.artifact_sha256)
             result = run_scan(
                 tenant_id=row.tenant_id, data=data,
                 original_filename=row.original_filename,
