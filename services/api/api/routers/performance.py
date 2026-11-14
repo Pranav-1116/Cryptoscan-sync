@@ -14,6 +14,7 @@ from authorized monitoring sources. It is not a load-testing engine.
 from __future__ import annotations
 
 import base64
+import json
 import os
 import re
 from pathlib import Path
@@ -434,6 +435,54 @@ class CaptureReceiptOut(BaseModel):
     duplicate_count: int
     rejected_count: int
     note: str
+
+
+class CaptureTrustAnchorOut(BaseModel):
+    status: str
+    configured: bool
+    form: Optional[str] = None
+    key_count: Optional[int] = None
+    production_requires_signature: bool
+    note: str
+
+
+@router.get("/captures/trust-anchor", response_model=CaptureTrustAnchorOut)
+def capture_trust_anchor(user: str = Depends(get_current_user)) -> CaptureTrustAnchorOut:
+    """Whether this install can receive bank-signed captures.
+
+    Reports configuration shape only — never key material. Registered before
+    ``/captures/{receipt_id}`` so the literal path wins the match.
+    """
+    production = get_settings().is_production
+    trusted = (os.environ.get("PERFORMANCE_CAPTURE_PUBLIC_KEY_FILE") or "").strip()
+    if not trusted:
+        return CaptureTrustAnchorOut(
+            status="unconfigured", configured=False,
+            production_requires_signature=production,
+            note="no PERFORMANCE_CAPTURE_PUBLIC_KEY_FILE on this host — "
+                 "production capture import refuses unsigned captures and "
+                 "cannot verify signed ones until the bank trust anchor is configured")
+    try:
+        raw = Path(trusted).read_bytes()
+    except OSError:
+        return CaptureTrustAnchorOut(
+            status="unconfigured", configured=False,
+            production_requires_signature=production,
+            note="the configured bank capture trust anchor is not readable "
+                 "on this host — signed captures cannot be verified")
+    form, count = "single-pem", 1
+    try:
+        document = json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        document = None
+    if isinstance(document, dict) and "keys" in document:
+        entries = document["keys"] if isinstance(document["keys"], list) else []
+        form, count = "keyset", len(entries)
+    return CaptureTrustAnchorOut(
+        status="ready", configured=True, form=form, key_count=count,
+        production_requires_signature=production,
+        note="bank capture signatures verify against this anchor; the anchor "
+             "reports configuration shape only, never key material")
 
 
 @router.get("/captures/{receipt_id}", response_model=CaptureReceiptOut)

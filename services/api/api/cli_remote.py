@@ -666,6 +666,22 @@ def _cmd_doctor(args: argparse.Namespace, _session: Any = None) -> int:
             blocking += status == "FAIL"
         rows.append((label, status, _short(_field(payload, "status", default=_field(payload, "state")), 70)))
 
+    try:
+        anchor = client.get("/api/v1/performance/captures/trust-anchor")
+        if _field(anchor, "configured"):
+            form = _field(anchor, "form", default="—")
+            count = _field(anchor, "key_count", default="—")
+            rows.append(("capture trust anchor", "OK",
+                         f"{form}, {count} key(s) — signed bank captures can be verified"))
+        else:
+            rows.append(("capture trust anchor", "NOT_CONFIGURED",
+                         "signed capture import will refuse — configure "
+                         "PERFORMANCE_CAPTURE_PUBLIC_KEY_FILE on the API host before the bank pilot"))
+            warnings += 1
+    except (Refused, ApiError) as exc:
+        rows.append(("capture trust anchor", "NOT_OBSERVED",
+                     f"the control plane did not report it ({_reason(exc)})"))
+
     rows.append(("clock", "NOT_OBSERVED", "the server does not report its clock; compare with NTP on the host"))
     _doctor_render(rows, blocking, warnings, args)
     if args.json:
@@ -1300,6 +1316,88 @@ LIVE_STATUS = "/api/v1/ingestion/live/status"
 LIVE_OBSERVATIONS = "/api/v1/ingestion/observations"
 THREAT_PATTERNS = "/api/v1/estate/evidence/threat/patterns"
 LIVE_COMPACT = "/api/v1/ingestion/live/compact"
+
+
+def _cmd_capture(args: argparse.Namespace, _session: Any = None) -> int:
+    """Submit signed bank captures and read their receipts. No key material.
+
+    The body is submitted exactly as signed: this CLI holds no signing key —
+    signing happens in the bank's collector/signing service (or the
+    qualification aid, scripts/capture_signer.py) and raw snapshots stay under
+    bank custody.
+    """
+    client = _client(args)
+    action = args.capture_command
+    try:
+        if action == "submit":
+            try:
+                body = json.loads(Path(args.body).read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise Refused(
+                    f"capture body {args.body} is not readable JSON",
+                    detail="submit a body produced by the bank signing service or "
+                           "`scripts/capture_signer.py sign` — this CLI never signs or edits it",
+                ) from exc
+            if not isinstance(body, dict):
+                raise Refused("capture body must be a JSON object")
+            payload = client.post("/api/v1/performance/captures/import", body)
+
+            def render() -> None:
+                print(f"receipt        {_field(payload, 'receipt_id', default='—')}")
+                print(f"outcome        {_field(payload, 'outcome', default='—')}")
+                print(f"provenance     {_field(payload, 'provenance_state', default='—')}")
+                signer = _field(payload, "signer") or {}
+                print(f"signer         {_short((signer.get('key_id') or '—') + ' / ' + (signer.get('issuer') or '—'), 60)}")
+                print(f"accepted       {_field(payload, 'accepted', default=0)}"
+                      f"  duplicate {_field(payload, 'duplicate', default=0)}"
+                      f"  rejected {_field(payload, 'rejected', default=0)}")
+                print("\nthe body was submitted exactly as signed — this CLI holds no key"
+                      "\nmaterial, and the raw exporter snapshot stays under bank custody.")
+            return _emit(args, payload,
+                         source=client.source("POST", "/api/v1/performance/captures/import"),
+                         render=render)
+
+        if action == "receipt":
+            tenant = args.tenant or _client(args).config.tenant_id
+            if not tenant:
+                raise Refused(
+                    "capture receipt requires the tenant that owns the receipt",
+                    detail="pass --tenant or set the tenant in the CLI configuration "
+                           "(receipts are tenant-owned and never read across tenants)")
+            path = f"/api/v1/performance/captures/{urllib.parse.quote(args.receipt_id)}"
+            payload = client.get(path, tenant_id=tenant)
+
+            def render_receipt() -> None:
+                print(f"receipt        {_field(payload, 'receipt_id', default=args.receipt_id)}")
+                print(f"digest         {_short(_field(payload, 'payload_sha256', default='—'), 70)}")
+                print(f"signer         {_short(_field(payload, 'signer', default='—'), 70)}")
+                print(f"authorization  {_short(_field(payload, 'authorization_ref', default='—'), 70)}")
+                print(f"samples        accepted {_field(payload, 'accepted', default='—')}"
+                      f"  refused {_field(payload, 'refused', default='—')}")
+                print("\nthis receipt proves what was submitted and by whom it was"
+                      "\nsigned — retain the original signed capture bank-side for"
+                      "\nindependent verification.")
+            return _emit(args, payload,
+                         source=client.source("GET", f"/api/v1/performance/captures/{args.receipt_id}",
+                                              tenant_id=tenant),
+                         render=render_receipt)
+
+        if action == "trust-anchor":
+            payload = client.get("/api/v1/performance/captures/trust-anchor")
+
+            def render_anchor() -> None:
+                print(f"configured     {_field(payload, 'configured', default=False)}")
+                print(f"form           {_short(_field(payload, 'form', default='—'), 70)}")
+                print(f"keys           {_field(payload, 'key_count', default='—')}")
+                print(f"production     signatures required"
+                      f" = {_field(payload, 'production_requires_signature', default='—')}")
+                print(f"note           {_short(_field(payload, 'note', default='—'), 90)}")
+            return _emit(args, payload,
+                         source=client.source("GET", "/api/v1/performance/captures/trust-anchor"),
+                         render=render_anchor)
+    except (Refused, ApiError) as exc:
+        return _fail(f"capture {action}", exc)
+    return EXIT_ERROR
 
 
 def _cmd_bom(args: argparse.Namespace, _session: Any = None) -> int:
@@ -3030,6 +3128,22 @@ def register_remote_commands(sub: argparse._SubParsersAction, twin_sub: argparse
     evidence_verify.add_argument("evidence_id")
     _add_common(evidence_verify)
 
+    capture = sub.add_parser(
+        "capture", help="submit signed bank captures and read their receipts (no key material)")
+    capture_sub = capture.add_subparsers(dest="capture_command", required=True)
+    capture_submit = capture_sub.add_parser(
+        "submit", help="POST one already-signed capture body to the import route")
+    capture_submit.add_argument("--body", required=True,
+                                help="the signed capture request body (never edited or signed here)")
+    _add_common(capture_submit)
+    capture_receipt = capture_sub.add_parser(
+        "receipt", help="one capture receipt: digest, signer and accepted/refused counts")
+    capture_receipt.add_argument("receipt_id")
+    _add_common(capture_receipt)
+    capture_anchor = capture_sub.add_parser(
+        "trust-anchor", help="is this install ready to verify bank-signed captures")
+    _add_common(capture_anchor)
+
     bom = sub.add_parser("bom", help="print one BOM projection (sbom|cbom|hbom|nbom|vbom|techbom)")
     bom.add_argument("kind", help="SBOM, CBOM, HBOM, NBOM, VBOM or TECHBOM")
     bom.add_argument(
@@ -3239,6 +3353,7 @@ COMMANDS: dict[str, Callable[[argparse.Namespace, Any], int]] = {
         ("collector", _cmd_collector),
         ("assurance", _cmd_assurance),
         ("evidence", _cmd_evidence),
+        ("capture", _cmd_capture),
         ("bom", _cmd_bom),
         ("live", _cmd_live),
         ("observe", _cmd_observe),

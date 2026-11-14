@@ -188,6 +188,32 @@ async def test_capacity_forecasts_carry_observation_coverage_assumptions_uncerta
 
 
 @pytest.mark.asyncio
+async def test_capture_trust_anchor_reports_shape_never_key_material(monkeypatch):
+    app, session, engine = _make_app()
+    monkeypatch.delenv("PERFORMANCE_CAPTURE_PUBLIC_KEY_FILE", raising=False)
+    res = await _get(app, "/api/v1/performance/captures/trust-anchor", _params())
+    assert res.status_code == 200
+    body = res.json()
+    assert body["configured"] is False
+    assert body["status"] == "unconfigured"
+    assert "refuses unsigned captures" in body["note"]
+    assert body["production_requires_signature"] in (True, False)
+
+    anchor = tmp_anchor = __import__("pathlib").Path(__import__("tempfile").mkdtemp()) / "anchor.json"
+    anchor.write_text('{"keys": [{"key_id": "k1", "public_key_pem": "-----BEGIN PUBLIC KEY-----"}]}',
+                      encoding="utf-8")
+    monkeypatch.setenv("PERFORMANCE_CAPTURE_PUBLIC_KEY_FILE", str(anchor))
+    res = await _get(app, "/api/v1/performance/captures/trust-anchor", _params())
+    body = res.json()
+    assert body["configured"] is True
+    assert body["status"] == "ready"
+    assert body["form"] == "keyset"
+    assert body["key_count"] == 1
+    # configuration shape only — the payload never carries key material
+    assert "PUBLIC KEY" not in str(body)
+
+
+@pytest.mark.asyncio
 async def test_cryptography_ten_categories_gaps_and_pqc_benchmark_only():
     app, session, engine = _make_app()
     _metric(session, "crypto.tls_handshake_ms", 41, asset="gw-1")
