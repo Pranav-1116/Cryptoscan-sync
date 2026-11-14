@@ -1,15 +1,27 @@
 """Rate limiting middleware (W57-58): per-identity sliding windows per endpoint class.
 
-In-process sliding window — honest scope: single-process API deployments (the
-topology this product ships today). For multi-replica setups, front the API with
-a shared limiter (ingress/WAF) and keep these limits as the inner defense.
+Two backends, one contract:
 
-Windows are keyed by identity (API key or session user when known, else client
-IP) and by endpoint class, so a busy scanner cannot lock out the whole org and
-login brute-force is throttled per source.
+* **Shared window (``redis_client`` set)** — a cluster-wide fixed window in
+  Redis: every API replica counts the same (key, epoch-window) row, so a
+  "60/min" identity gets 60/min across the estate, not 60×replicas. With
+  ``fail_closed=True`` a Redis outage REFUSES (a production deployment
+  configured for a shared limiter must not silently downgrade to
+  per-process quotas); with ``fail_closed=False`` it degrades to
+  in-process windows and logs loudly — development posture.
+* **In-process sliding window (no ``redis_client``)** — honest scope:
+  single-process deployments and tests. For multi-replica setups without
+  Redis, front the API with a shared limiter (ingress/WAF) and keep these
+  limits as the inner defense.
 
-Pure ASGI implementation (see asgi_utils.py for why): the decision needs only
-path + headers + identity, never the body.
+Windows are keyed by identity (API key or session user when known, else
+client IP) and by endpoint class, so a busy scanner cannot lock out the
+whole org and login brute-force is throttled per source. Every response
+carries ``X-RateLimit-Limit``/``-Remaining``/``-Reset``; a refusal adds
+``Retry-After`` and a ``RATE_LIMITED`` error contract.
+
+Pure ASGI implementation (see asgi_utils.py for why): the decision needs
+only path + headers + identity, never the body.
 """
 
 from __future__ import annotations
@@ -107,7 +119,11 @@ class RateLimitMiddleware:
             retry_after = max(0.0, window - (now - bucket[0]))
             return False, limit - len(bucket), retry_after
         bucket.append(now)
-        return True, limit - len(bucket), 0.0
+        # Third value is the reset horizon — when the oldest hit ages out and
+        # a slot frees. The same number drives X-RateLimit-Reset and, on a
+        # refusal, Retry-After; clients should never guess.
+        reset = max(0.0, window - (now - bucket[0]))
+        return True, limit - len(bucket), reset
 
     def _take_shared(self, key: tuple[str, str], limit: int, window: float):
         """Cluster-wide fixed window. None -> Redis unavailable, caller falls back."""
@@ -146,6 +162,7 @@ class RateLimitMiddleware:
         headers = {
             "X-RateLimit-Limit": str(limit),
             "X-RateLimit-Remaining": str(max(0, remaining)),
+            "X-RateLimit-Reset": str(max(0, int(retry_after))),
         }
         if not allowed:
             headers["Retry-After"] = str(max(1, int(retry_after) + 1))
