@@ -52,6 +52,11 @@ LIFECYCLE_STATES = ("ACTIVE", "STALE")
 LIST_LIMIT = 200
 
 
+def catalog_tag(tenant_id: str | None) -> str:
+    """Invalidation tag for every cached read of this tenant's catalogue."""
+    return f"estate-catalog:{tenant_id or 'platform'}"
+
+
 def _digest(*parts: Any) -> str:
     body = "|".join(str(part) for part in parts)
     return hashlib.sha256(body.encode("utf-8")).hexdigest()[:32]
@@ -334,6 +339,11 @@ def sync(
             staled["crypto"] += 1
 
     db.commit()
+    # The catalogue just changed for this tenant: every cached read of it is
+    # now a lie. Invalidated at the write, not left to the TTL.
+    from api.cache import get_read_cache
+
+    get_read_cache().invalidate(catalog_tag(tenant_id))
 
     return {
         "schema": SCHEMA,

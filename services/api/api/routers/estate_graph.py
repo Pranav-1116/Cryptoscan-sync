@@ -2881,6 +2881,14 @@ def estate_catalog_assets(
     history worth keeping, and the response says how current each row is rather than
     silently dropping what stopped answering.
     """
+    from api.cache import get_read_cache
+
+    cache = get_read_cache()
+    cache_key = cache.key("catalog-assets", current_tenant() or "platform",
+                          asset_type, environment, owner, lifecycle, q, limit)
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
     rows = estate_catalog.list_assets(
         db,
         tenant_id=current_tenant(),
@@ -2891,7 +2899,7 @@ def estate_catalog_assets(
         q=q,
         limit=limit,
     )
-    return {
+    payload = {
         "schema": estate_catalog.SCHEMA,
         "count": len(rows),
         "assets": [estate_catalog.public_asset(row) for row in rows],
@@ -2907,6 +2915,11 @@ def estate_catalog_assets(
             "means nothing matching has been observed, not that nothing exists"
         ),
     }
+    # Cached per (tenant, filters) and invalidated at the catalog write; the
+    # TTL is the safety net for writers that bypass the ORM.
+    cache.set(cache_key, payload,
+              tags=(estate_catalog.catalog_tag(current_tenant()),))
+    return payload
 
 
 @router.get("/catalog/assets/{identifier}")
