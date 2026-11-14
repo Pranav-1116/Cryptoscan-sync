@@ -31,6 +31,31 @@ def build_database_url(
     )
 
 
+def _pool_settings() -> dict[str, int]:
+    """Pool sizing from the environment (DB_POOL_SIZE / DB_MAX_OVERFLOW /
+    DB_POOL_TIMEOUT / DB_POOL_RECYCLE), validated, with the measured
+    defaults unchanged for every deployment that sets none of them."""
+
+    def _int(name: str, default: int, minimum: int = 1) -> int:
+        raw = os.environ.get(name, "").strip()
+        if not raw:
+            return default
+        try:
+            value = int(raw)
+        except ValueError:
+            raise ValueError(f"{name} must be an integer, got {raw!r}")
+        if value < minimum:
+            raise ValueError(f"{name} must be >= {minimum}, got {value}")
+        return value
+
+    return {
+        "pool_size": _int("DB_POOL_SIZE", 10),
+        "max_overflow": _int("DB_MAX_OVERFLOW", 20, minimum=0),
+        "pool_timeout": _int("DB_POOL_TIMEOUT", 10),
+        "pool_recycle": _int("DB_POOL_RECYCLE", 3600),
+    }
+
+
 def _normalize_url(database_url: str) -> str:
     if database_url.startswith("postgres://"):
         return "postgresql+psycopg2://" + database_url[len("postgres://") :]
@@ -69,12 +94,10 @@ def create_db_engine(
             # NullPool measured 2ms+ of connect+PRAGMA overhead per request.
             # :memory: must share one connection.
             poolclass=StaticPool if in_memory else QueuePool,
-            pool_size=10,
             # Bursts above pool_size (a dashboard with 20 open tabs, a load test) must
-            # not queue for the 30 s pool timeout; WAL readers are cheap, so allow
+            # not queue for the pool timeout; WAL readers are cheap, so allow
             # overflow connections that are closed again when the burst passes.
-            max_overflow=20,
-            pool_timeout=10,
+            **_pool_settings(),
         )
 
         @event.listens_for(engine, "connect")
@@ -92,13 +115,15 @@ def create_db_engine(
         "application_name": application_name,
         "options": "-c statement_timeout=30000",
     }
+    pool = _pool_settings()
     engine = create_engine(
         database_url,
         poolclass=QueuePool,
-        pool_size=10,
-        max_overflow=20,
+        pool_size=pool["pool_size"],
+        max_overflow=pool["max_overflow"],
+        pool_timeout=pool["pool_timeout"],
         pool_pre_ping=True,
-        pool_recycle=3600,
+        pool_recycle=pool["pool_recycle"],
         echo=echo,
         connect_args=connect_args,
     )
@@ -175,3 +200,35 @@ def check_db_health(engine: Engine | None = None) -> dict[str, Any]:
         # connection credentials and SQL. Keep failure visible, not its payload.
         logger.error("database_health_failed", extra={"error_type": type(exc).__name__})
         return {"status": "unhealthy", "error": "Database health probe failed", "error_type": type(exc).__name__}
+
+
+def pool_status(engine: Engine | None = None) -> dict[str, Any]:
+    """Connection-pool observability: the numbers an operator needs before
+    a pool shortage becomes an outage (checked-out, overflow in use,
+    configured ceilings), and nothing the pool cannot honestly know.
+
+    ``pool.dbapi_connections`` exists only on QueuePool-style pools; a
+    StaticPool (SQLite ``:memory:``) reports its single connection. A pool
+    under pressure (>= 90% of ``pool_size + max_overflow`` checked out)
+    reports ``pressure: true`` — the health layer turns that into a
+    DEGRADED signal, never silence.
+    """
+    engine = engine or get_engine()
+    pool = engine.pool
+    size = getattr(pool, "size", lambda: 1)()
+    max_overflow = getattr(pool, "_max_overflow", 0)
+    checkedout = getattr(pool, "checkedout", lambda: 0)()
+    overflow = getattr(pool, "overflow", lambda: 0)()
+    capacity = size + max_overflow
+    return {
+        "dialect": engine.dialect.name,
+        "pool_class": type(pool).__name__,
+        "pool_size": size,
+        "max_overflow": max_overflow,
+        "pool_timeout": getattr(pool, "_timeout", None),
+        "pool_recycle": getattr(pool, "_recycle", None),
+        "checkedout": checkedout,
+        "overflow": overflow,
+        "capacity": capacity,
+        "pressure": bool(capacity and checkedout >= 0.9 * capacity),
+    }

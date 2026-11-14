@@ -83,6 +83,30 @@ def dependency_report() -> dict:
         _probe("redis", redis_configured or redis_required, _redis),
         _probe("neo4j", bool((settings.NEO4J_URI or "").strip()), _neo4j),
     ]
+    # Connection-pool pressure is a health signal, not a footnote: a pool at
+    # >= 90% checked out is already suffering latency, and the operator needs
+    # the numbers BEFORE it becomes an outage. The check goes down under
+    # pressure (rolling the report up to degraded) and always carries its
+    # honest numbers in the detail.
+    try:
+        from db.connection.engine import pool_status
+
+        pool = pool_status()
+        pool_check = {
+            "name": "connection_pool",
+            "status": "down" if pool["pressure"] else "ok",
+            "detail": (
+                f"{pool['checkedout']}/{pool['capacity']} checked out "
+                f"(size={pool['pool_size']}+overflow={pool['max_overflow']})"
+                + (" — pool pressure: request latency is already suffering"
+                   if pool["pressure"] else "")),
+            "pool": pool,
+        }
+    except Exception as pool_exc:  # noqa: BLE001 — never mask, name the type
+        pool_check = {"name": "connection_pool", "status": "down",
+                      "detail": "pool status unavailable",
+                      "error_type": type(pool_exc).__name__}
+    checks.append(pool_check)
     if redis_required and not redis_configured:
         checks[1] = {"name": "redis", "status": "down",
                      "detail": "REDIS_URL is required in production"}
