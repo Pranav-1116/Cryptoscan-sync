@@ -9,7 +9,7 @@ artifact version, never an overwrite.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import JSON, Boolean, DateTime, Index, Integer, String, Text
@@ -191,5 +191,4 @@ class BinaryTwinEdge(BaseModel, TenantScoped):
     limitations: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     observed_at: Mapped[object] = mapped_column(
         DateTime(timezone=True), nullable=False,
-        default=lambda: __import__("datetime").datetime(
-            __import__("datetime").timezone.utc))
+        default=lambda: datetime.now(timezone.utc))

@@ -356,6 +356,83 @@ class TestCheckConstraintsMatchTheModels:
         )
 
 
+class TestModelIndexMigrationParity:
+    """Every index a model declares must exist on the migrated schema.
+
+    Migration 0078 documented the defect class and promised this test: models
+    declare indexes (``Index()`` / ``index=True`` / unique columns) that
+    ``Base.metadata.create_all`` creates — so tests and SQLite installs are
+    fast — while every alembic-migrated deployment (PostgreSQL production)
+    silently lacks them. A missing index is never a failure; it is a slow
+    query no test can see.
+
+    Direction matters: a *model-only* index is a production slowdown hiding
+    behind a green suite and fails here. A *migration-only* index is an
+    operator's deliberate composite for a real query path and is fine — this
+    test never asks migrations to stop being smarter than the models.
+
+    Coverage is prefix-based (the 0078 exclusions): a declared index on
+    ``(scan_id)`` is satisfied by an existing index whose leftmost column is
+    ``scan_id`` — the same reach a database index gives the query planner.
+    """
+
+    @staticmethod
+    def _declared_indexes() -> dict[str, list[tuple[tuple[str, ...], bool]]]:
+        meta = _models().metadata
+        declared: dict[str, list[tuple[tuple[str, ...], bool]]] = {}
+        for table in meta.sorted_tables:
+            entries: list[tuple[tuple[str, ...], bool]] = []
+            seen: set[tuple[tuple[str, ...], bool]] = set()
+
+            def _add(columns: tuple[str, ...], unique: bool) -> None:
+                key = (columns, unique)
+                if key not in seen:
+                    seen.add(key)
+                    entries.append(key)
+
+            for index in table.indexes:
+                _add(tuple(col.name for col in index.columns), bool(index.unique))
+            for column in table.columns:
+                if column.unique:
+                    _add((column.name,), True)
+            for constraint in table.constraints:
+                if constraint.__class__.__name__ == "UniqueConstraint":
+                    _add(tuple(c.name for c in constraint.columns), True)
+            declared[table.name] = entries
+        return declared
+
+    def test_model_migration_index_parity(self, migrated):
+        from sqlalchemy import inspect
+
+        inspector = inspect(migrated)
+        live_tables = _live_tables(inspector)
+        missing = []
+        for table, entries in sorted(self._declared_indexes().items()):
+            if table not in live_tables:
+                continue  # table parity is its own test
+            live: list[tuple[tuple[str, ...], bool]] = []
+            for index in inspector.get_indexes(table):
+                live.append((tuple(index.get("column_names") or ()),
+                             bool(index.get("unique"))))
+            for constraint in inspector.get_unique_constraints(table):
+                live.append((tuple(constraint.get("column_names") or ()), True))
+            for columns, unique in entries:
+                if not columns or columns == (None,):
+                    continue  # expression index: not a column-parity question
+                for live_columns, live_unique in live:
+                    if len(live_columns) >= len(columns) \
+                            and live_columns[:len(columns)] == columns \
+                            and (not unique or live_unique):
+                        break
+                else:
+                    missing.append(f"{table}({', '.join(columns)}"
+                                   f"{', unique' if unique else ''})")
+        assert missing == [], (
+            "indexes the models declare that the migration chain never "
+            "created — create_all deployments are fast and every "
+            f"alembic-migrated deployment silently is not: {missing}")
+
+
 class TestEveryMappedTableCanBeRead:
     """Every one of the 155 mapped tables is actually selectable on the migrated schema.
 
