@@ -14,7 +14,7 @@ documents are left in place as historical snapshots.
 
 ## Schema
 
-- **Migration head (computed from alembic): `0153`**
+- **Migration head (computed from alembic): `0154`**
 - The operator-package contract (`scripts/operator_release.py`) pins the same head;
   `test_operator_release.py` fails if they ever disagree again.
 

@@ -43,6 +43,13 @@ class EstateAssetRecord(BaseModel, TenantScoped):
     __table_args__ = (
         Index("ix_estate_assets_tenant_asset", "tenant_id", "asset_id", unique=True),
         Index("ix_estate_assets_type_env", "asset_type", "environment"),
+        # Hot-search composites (migration 0154): list_assets always filters
+        # tenant first (the RLS equality) and orders by (asset_type, name);
+        # the environment filter is the dashboard's second-most used.
+        Index("ix_estate_assets_tenant_type_name",
+              "tenant_id", "asset_type", "name"),
+        Index("ix_estate_assets_tenant_env_type_name",
+              "tenant_id", "environment", "asset_type", "name"),
     )
 
     #: the graph's stable id — identity, not a row number
@@ -79,6 +86,13 @@ class EstateRelationshipRecord(BaseModel, TenantScoped):
         Index("ix_estate_relationships_tenant_rel", "tenant_id", "relationship_id", unique=True),
         Index("ix_estate_relationships_subject", "subject_id"),
         Index("ix_estate_relationships_object", "object_id"),
+        # list_relationships: WHERE tenant [+status] ORDER BY predicate,
+        # subject_name. The status=ALL path drops the status predicate, so it
+        # needs its own composite (0154).
+        Index("ix_estate_rels_tenant_status_pred_subject",
+              "tenant_id", "status", "predicate", "subject_name"),
+        Index("ix_estate_rels_tenant_pred_subject",
+              "tenant_id", "predicate", "subject_name"),
     )
 
     relationship_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
@@ -125,6 +139,10 @@ class EstateCryptoRecord(BaseModel, TenantScoped):
         Index("ix_estate_crypto_tenant_artifact", "tenant_id", "artifact_id", unique=True),
         Index("ix_estate_crypto_algorithm", "algorithm"),
         Index("ix_estate_crypto_state", "usage_state"),
+        # crypto_for(asset): WHERE tenant+asset ORDER BY usage_state,
+        # algorithm — the asset detail page's crypto table (0154).
+        Index("ix_estate_crypto_tenant_asset_usage",
+              "tenant_id", "asset_id", "usage_state", "algorithm"),
     )
 
     artifact_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
