@@ -1627,9 +1627,13 @@ REMOTE_TWIN_COMMANDS = frozenset({"status", "snapshot", "diff", "remediation", "
                                   "reconcile"})
 
 #: Migrated off the local database handler for bare terminals: the control plane
-#: owns the graph-store connection (POST /twin/graph/load, /twin/graph/verify), and
+#: owns the graph store and the twin projections (POST /twin/graph/load,
+#: /twin/graph/verify, /twin/impact, /twin/simulate and the GET twin reads), and
 #: the in-process bank-server CLI (session_factory) keeps its local handlers.
-MIGRATED_TWIN_COMMANDS = frozenset({"graph-load", "graph-verify"})
+MIGRATED_TWIN_COMMANDS = frozenset({
+    "graph-load", "graph-verify", "placement", "asset", "search", "why",
+    "graph-traversal", "simulate", "simulations", "changes",
+})
 
 
 def main(argv: Sequence[str] | None = None, session_factory: Callable[[], Any] | None = None) -> int:

@@ -1707,6 +1707,7 @@ def _cmd_observe(args: argparse.Namespace, _session: Any = None) -> int:
 # --------------------------------------------------------------------------------------
 
 TWIN = "/api/v1/estate/evidence/twin"
+CHANGES = "/api/v1/estate/evidence/changes"
 
 
 def twin_remote(args: argparse.Namespace, _session: Any = None) -> int:
@@ -1740,6 +1741,109 @@ def twin_remote(args: argparse.Namespace, _session: Any = None) -> int:
             return _emit(args, payload,
                          source=client.source("POST", f"{TWIN}/graph/load"),
                          render=render_load)
+        if action == "placement":
+            payload = client.get(f"{TWIN}/placement")
+            return _emit(args, payload, source=client.source("GET", f"{TWIN}/placement"))
+        if action == "asset":
+            path = f"{TWIN}/assets/{urllib.parse.quote(args.identifier)}"
+            payload = client.get(path)
+            return _emit(args, payload, source=client.source("GET", path))
+        if action == "search":
+            payload = client.get(f"{TWIN}/search", q=args.query)
+            rows = _items(payload)
+            shown = rows
+            note = ""
+            if getattr(args, "kind", None):
+                wanted = args.kind.lower()
+                shown = [r for r in rows
+                         if wanted in str(r.get("kind", "")).lower()
+                         or wanted in str(r.get("type", "")).lower()]
+                note = f"--kind filtered client-side ({len(shown)} of {len(rows)} matches)"
+            if getattr(args, "limit", None) and args.limit > 0:
+                shown = shown[:args.limit]
+
+            def render_search() -> None:
+                if not shown:
+                    print("no matches in the twin — an empty result is not an error")
+                else:
+                    for item in shown[:50]:
+                        print(f"  {_short(_field(item, 'kind') or _field(item, 'type') or '—', 16):<16} "
+                              f"{_short(_field(item, 'name') or _field(item, 'id') or _field(item, 'ref'), 40):<40} "
+                              f"{_short(_field(item, 'algorithm') or _field(item, 'detail') or '', 30)}")
+                if note:
+                    print(f"\nnote: {note}")
+            if getattr(args, "json", False):
+                payload = {"results": shown, "total": len(rows)}
+            return _emit(args, payload, source=client.source("GET", f"{TWIN}/search", q=args.query),
+                         render=render_search)
+        if action == "why":
+            payload = client.get(f"{TWIN}/why", subject=args.identifier,
+                                 predicate=getattr(args, "fact", None))
+            return _emit(args, payload,
+                         source=client.source("GET", f"{TWIN}/why", subject=args.identifier))
+        if action == "graph-traversal":
+            body = {"asset": args.asset, "depth": int(getattr(args, "depth", 3) or 3)}
+            payload = client.post(f"{TWIN}/impact", body)
+
+            def render_impact() -> None:
+                print(f"selector       asset={body['asset']}  depth={body['depth']}")
+                impacted = _field(payload, "impacted") or _field(payload, "assets") or []
+                print(f"impacted       {len(impacted) if isinstance(impacted, list) else impacted}")
+                blind = _field(payload, "blind_spots") or _field(payload, "blind_spots_named") or []
+                if blind:
+                    print(f"blind spots    {_short(blind, 80)}")
+                else:
+                    print("blind spots    none named — absence of a named blind spot is not "
+                          "proof the blast radius is complete")
+            return _emit(args, payload, source=client.source("POST", f"{TWIN}/impact"),
+                         render=render_impact)
+        if action == "simulate":
+            body = {"kind": getattr(args, "kind", None) or "REPLACE_ALGORITHM",
+                    "from": getattr(args, "source", None),
+                    "to": getattr(args, "target", None),
+                    "key_size": getattr(args, "key_size", None),
+                    "label": getattr(args, "label", None),
+                    "persist": bool(getattr(args, "save", False))}
+            body = {k: v for k, v in body.items() if v is not None or k in {"kind", "persist"}}
+            payload = client.post(f"{TWIN}/simulate", body)
+
+            def render_sim() -> None:
+                status = _field(payload, "status", default="—")
+                print(f"status         {status}")
+                print(f"live graph     {'unchanged' if _field(payload, 'live_projection_changed') in (False, None) else 'CHANGED — investigate'}")
+                if body["persist"]:
+                    persisted = _field(payload, "persisted")
+                    print(f"persisted      {persisted}"
+                          + (f" ({_short(_field(payload, 'persist_refused_because'), 70)})"
+                             if persisted is False else ""))
+                else:
+                    print("persisted      no — nothing was stored; re-run with --save to file it")
+                print("\nthis ran on a COPY of the twin; the live estate was never modified.")
+            return _emit(args, payload, source=client.source("POST", f"{TWIN}/simulate"),
+                         render=render_sim)
+        if action == "simulations":
+            payload = client.get(f"{TWIN}/simulations", limit=getattr(args, "limit", 20))
+            return _emit(args, payload,
+                         source=client.source("GET", f"{TWIN}/simulations"))
+        if action == "changes":
+            payload = client.get(f"{CHANGES}",
+                                 severity=getattr(args, "severity", None),
+                                 kind=getattr(args, "kind", None),
+                                 unacknowledged_only=bool(getattr(args, "unacknowledged", False)),
+                                 limit=getattr(args, "limit", None))
+
+            def render_changes() -> None:
+                rows = _items(payload)
+                if not rows:
+                    print("no changes in the window — an empty feed is not proof the estate is stable")
+                    return
+                for item in rows[:50]:
+                    print(f"  {_short(_field(item, 'severity', default='—'), 10):<10} "
+                          f"{_short(_field(item, 'kind') or _field(item, 'change_type') or '—', 22):<22} "
+                          f"{_short(_field(item, 'summary') or _field(item, 'detail') or _field(item, 'id'), 60)}")
+            return _emit(args, payload,
+                         source=client.source("GET", CHANGES, severity=getattr(args, "severity", None)),
+                         render=render_changes)
         if action == "graph-verify":
             body = {"database": getattr(args, "database", None)}
             payload = client.post(f"{TWIN}/graph/verify", body)

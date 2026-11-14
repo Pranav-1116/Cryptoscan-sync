@@ -426,8 +426,14 @@ def test_server_only_daemon_and_legacy_twin_refuse_a_terminal_sqlite_fallback(mo
     monkeypatch.delenv("DATABASE_URL", raising=False)
     monkeypatch.setattr(cli, "_session", lambda *_args: (_ for _ in ()).throw(AssertionError("opened local database")))
     assert cli.main(["serve", "--once"]) == 3
-    assert cli.main(["twin", "placement"]) == 3
+    assert cli.main(["twin", "algorithms"]) == 3  # unmigrated legacy still refuses a terminal DB
     assert "bank-server service operation" in capsys.readouterr().err
+    # a migrated twin command uses the control plane and never opens the local database
+    transport = FakeControlPlane(
+        {("GET", "/api/v1/estate/evidence/twin/placement"): (200, {"placement": []})})
+    monkeypatch.setattr(cli_remote, "TRANSPORT", transport)
+    assert cli.main(["twin", "placement"]) == 0
+    assert [c[1] for c in transport.calls] == ["/api/v1/estate/evidence/twin/placement"]
 
 
 def test_installed_scan_never_opens_a_database_or_collects_without_a_target(monkeypatch, env, capsys):

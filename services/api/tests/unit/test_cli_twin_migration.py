@@ -90,8 +90,71 @@ def test_graph_verify_calls_the_verify_endpoint_and_names_not_connected(monkeypa
     assert "NOT_CONNECTED" in out and "not parity" in out
 
 
+def test_placement_asset_search_why_use_the_twin_reads(monkeypatch, env):
+    transport = FakeControlPlane({
+        ("GET", "/api/v1/estate/evidence/twin/placement"): (200, {"placement": []}),
+        ("GET", "/api/v1/estate/evidence/twin/assets/pay-1"): (200, {"asset": "pay-1"}),
+        ("GET", "/api/v1/estate/evidence/twin/search"): (200, {"results": [
+            {"kind": "ALGORITHM", "name": "RSA", "algorithm": "RSA"}]}),
+        ("GET", "/api/v1/estate/evidence/twin/why"): (200, {"because": "recorded"}),
+    })
+    assert run(monkeypatch, transport, "twin", "placement") == 0
+    assert run(monkeypatch, transport, "twin", "asset", "pay-1") == 0
+    assert run(monkeypatch, transport, "twin", "search", "RSA") == 0
+    assert run(monkeypatch, transport, "twin", "why", "pay-1", "--fact", "uses") == 0
+    paths = [call[1] for call in transport.calls]
+    assert "/api/v1/estate/evidence/twin/assets/pay-1" in paths
+    why_call = [c for c in transport.calls if c[1].split("?")[0].endswith("/twin/why")][0]
+    assert "subject=pay-1" in why_call[1] and "predicate=uses" in why_call[1]
+
+
+def test_graph_traversal_posts_the_blast_radius_selector(monkeypatch, env, capsys):
+    impact = {"impacted": ["pay-1"], "blind_spots": ["unlinked network hop"]}
+    transport = FakeControlPlane(
+        {("POST", "/api/v1/estate/evidence/twin/impact"): (200, impact)})
+    assert run(monkeypatch, transport, "twin", "graph-traversal", "pay-1",
+               "--depth", "4") == 0
+    (_m, _p, _h, body), = transport.calls
+    sent = json.loads(body)
+    assert sent == {"asset": "pay-1", "depth": 4}
+    assert "unlinked network hop" in capsys.readouterr().out
+
+
+def test_simulate_runs_on_a_copy_and_save_maps_to_persist(monkeypatch, env, capsys):
+    result = {"status": "SIMULATED", "live_projection_changed": False, "persisted": True}
+    transport = FakeControlPlane(
+        {("POST", "/api/v1/estate/evidence/twin/simulate"): (200, result)})
+    assert run(monkeypatch, transport, "twin", "simulate",
+               "--from", "RSA", "--to", "ML-KEM-768", "--kind", "REPLACE_ALGORITHM",
+               "--label", "pqc-rehearsal", "--save") == 0
+    (_m, _p, _h, body), = transport.calls
+    sent = json.loads(body)
+    assert sent["from"] == "RSA" and sent["to"] == "ML-KEM-768"
+    assert sent["persist"] is True and sent["label"] == "pqc-rehearsal"
+    out = capsys.readouterr().out
+    assert "COPY of the twin" in out and "persisted" in out
+
+
+def test_changes_maps_the_feed_filters(monkeypatch, env):
+    transport = FakeControlPlane(
+        {("GET", "/api/v1/estate/evidence/changes"): (200, {"changes": []})})
+    assert run(monkeypatch, transport, "twin", "changes",
+               "--severity", "CRITICAL", "--unacknowledged", "--limit", "5") == 0
+    (_m, path, _h, _b), = transport.calls
+    assert "severity=CRITICAL" in path and "unacknowledged_only=True" in path
+    assert "limit=5" in path
+
+
+def test_simulations_listing_uses_the_twin_endpoint(monkeypatch, env):
+    transport = FakeControlPlane(
+        {("GET", "/api/v1/estate/evidence/twin/simulations"): (200, {"simulations": []})})
+    assert run(monkeypatch, transport, "twin", "simulations", "--limit", "7") == 0
+    (_m, path, _h, _b), = transport.calls
+    assert "limit=7" in path
+
+
 def test_unmigrated_twin_still_refuses_on_a_bare_terminal(monkeypatch, env, capsys):
     transport = FakeControlPlane()
-    assert run(monkeypatch, transport, "twin", "placement") == 3
+    assert run(monkeypatch, transport, "twin", "algorithms") == 3
     assert transport.calls == []
     assert "bank-server service operation" in capsys.readouterr().err
