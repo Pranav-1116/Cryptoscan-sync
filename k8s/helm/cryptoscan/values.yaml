@@ -1,0 +1,61 @@
+# Installation knobs. Everything an operator is expected to change lives
+# here — image coordinates, replica counts, resource requests — so a bank
+# deployment diffs one file, not thirty manifests.
+
+namespace: cryptoscan
+
+image:
+  # Unqualified names on purpose: the images come from the bank's own
+  # registry mirror (offline installation) — never a public pull.
+  repository: cryptoscan-api
+  tag: v1.0.0
+  pullPolicy: IfNotPresent
+
+worker:
+  image:
+    repository: cryptoscan-worker
+    tag: v1.0.0
+  replicas: 2
+  # Autoscaling follows demand (queue depth via the custom-metrics adapter
+  # at scale; CPU is the adapter-free baseline). See
+  # deploy/stack/k8s/25-worker-hpa.yaml for the extended form.
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 70
+
+api:
+  replicas: 2
+  service:
+    port: 80
+    targetPort: 8010
+
+resources:
+  api:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+  worker:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+quota:
+  # Resource exhaustion is a failure mode, not weather — the namespace
+  # ceiling ships with the chart and is tuned here.
+  enabled: true
+  requests:
+    cpu: "8"
+    memory: 16Gi
+    storage: 2Ti
+  limits:
+    cpu: "16"
+    memory: 24Gi
+  pods: "40"

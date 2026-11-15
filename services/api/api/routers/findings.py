@@ -105,14 +105,23 @@ def list_all_findings(
     repo: EvidenceRepository = Depends(get_evidence_repository),
     ctx: TenantContext = Depends(history_context),
 ):
-    rows, total = repo.list_all(
-        algorithm=algorithm,
-        compliance_status=compliance_status,
-        scan_id=scan_id,
-        q=q,
-        owner=ctx.tenant_id,
-        page=page,
-        page_size=page_size,
+    from api.cache_policy import policy_read
+
+    # Risk findings are AUTHORITATIVE per the cache policy: fresh from the
+    # store on every call, never cached — a cached finding is a decision
+    # made on evidence nobody re-checked.
+    rows, total = policy_read(
+        "risk_findings",
+        f"findings:{ctx.tenant_id}:{scan_id}:{algorithm}:{compliance_status}:{q}:{page}:{page_size}",
+        lambda: repo.list_all(
+            algorithm=algorithm,
+            compliance_status=compliance_status,
+            scan_id=scan_id,
+            q=q,
+            owner=ctx.tenant_id,
+            page=page,
+            page_size=page_size,
+        ),
     )
     return FindingListResponse(
         findings=[_to_response(r) for r in rows],

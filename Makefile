@@ -158,6 +158,9 @@ security-scan:
 sbom:
 	$(PY) $(ROOT)/scripts/generate_own_sbom.py
 
+offline-bundle:
+	$(PY) $(ROOT)/scripts/offline_bundle.py manifest --out $(ROOT)/dist/offline-manifest.json
+
 backup:
 	bash $(ROOT)/scripts/db_backup.sh
 

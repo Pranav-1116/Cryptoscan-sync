@@ -1,0 +1,19 @@
+{{- if .Values.quota.enabled }}
+{{- $ns := .Values.namespace | default "cryptoscan" }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: cryptoscan-compute-quota
+  namespace: {{ $ns }}
+  labels:
+    {{- include "cryptoscan.labels" . | nindent 4 }}
+spec:
+  hard:
+    requests.cpu: {{ .Values.quota.requests.cpu | quote }}
+    requests.memory: {{ .Values.quota.requests.memory }}
+    limits.cpu: {{ .Values.quota.limits.cpu | quote }}
+    limits.memory: {{ .Values.quota.limits.memory }}
+    pods: {{ .Values.quota.pods | quote }}
+    requests.storage: {{ .Values.quota.requests.storage }}
+    persistentvolumeclaims: "12"
+{{- end }}

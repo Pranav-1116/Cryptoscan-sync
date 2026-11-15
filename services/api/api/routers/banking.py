@@ -104,15 +104,30 @@ def banking_overview_endpoint(
     """Combined regulatory readiness surface (HNDL + roadmap + HSM + mainframe)."""
     from cbom.banking import banking_overview as _overview
 
+    from api.cache import get_read_cache
+    from api.cache_policy import policy_read
+    from db.tenancy import current_tenant
+
     state = _resolve_state(db, version)
     mf = _mainframe_rows(db)
+    key = get_read_cache().key("banking-overview", current_tenant() or user or "platform", version)
+
+    def _compute():
+        return _overview(state, hsms=_hsm_rows(db), mainframe_assets=[
+            {"source": (r.source_language or "").replace("zos-", "")} for r in mf])
+
+    # Cacheable per the cache policy (dashboard aggregate counts): the
+    # aggregate is cached per (user, version) and the envelope (snapshot
+    # identity, generated_at) stays per-request — a cached aggregate never
+    # forges a fresh timestamp onto a stale reading.
     return {
         "source": "technology_bom",
         "environment": state.get("environment"),
         "snapshot_id": state.get("snapshot_id"),
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "overview": _overview(state, hsms=_hsm_rows(db), mainframe_assets=[
-            {"source": (r.source_language or "").replace("zos-", "")} for r in mf]),
+        "overview": policy_read(
+            "dashboard_aggregates", key, _compute,
+            tags=(f"banking-overview:{user}",)),
     }
 
 

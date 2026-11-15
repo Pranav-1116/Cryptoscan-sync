@@ -1,0 +1,11 @@
+CryptoScan {{ .Chart.Version }} installed into namespace {{ .Values.namespace }}.
+
+Images are pulled with policy {{ .Values.image.pullPolicy }} from YOUR registry
+mirror ({{ .Values.image.repository }}:{{ .Values.image.tag }}) — this chart
+never reaches a public registry. The plain manifests in k8s/app/ remain the
+known-good reference; this chart is the repeatable-install layer over them.
+
+Next:
+  kubectl -n {{ .Values.namespace }} get pods
+  kubectl -n {{ .Values.namespace }} get resourcequota
+Air-gapped install: docs/admin-guide/air-gap-install.md

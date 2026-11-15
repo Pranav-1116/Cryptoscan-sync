@@ -2940,44 +2940,46 @@ def estate_catalog_assets(
     silently dropping what stopped answering.
     """
     from api.cache import get_read_cache
+    from api.cache_policy import policy_read
 
     cache = get_read_cache()
     cache_key = cache.key("catalog-assets", current_tenant() or "platform",
                           asset_type, environment, owner, lifecycle, q, limit)
-    cached = cache.get(cache_key)
-    if cached is not None:
-        return cached
-    rows = estate_catalog.list_assets(
-        db,
-        tenant_id=current_tenant(),
-        asset_type=asset_type,
-        environment=environment,
-        owner=owner,
-        lifecycle=lifecycle,
-        q=q,
-        limit=limit,
-    )
-    payload = {
-        "schema": estate_catalog.SCHEMA,
-        "count": len(rows),
-        "assets": [estate_catalog.public_asset(row) for row in rows],
-        "filters": {
-            "asset_type": asset_type,
-            "environment": environment,
-            "owner": owner,
-            "lifecycle": lifecycle,
-            "q": q,
-        },
-        "note": (
-            "the catalogue is derived from evidence and kept across observations; an empty result "
-            "means nothing matching has been observed, not that nothing exists"
-        ),
-    }
-    # Cached per (tenant, filters) and invalidated at the catalog write; the
-    # TTL is the safety net for writers that bypass the ORM.
-    cache.set(cache_key, payload,
-              tags=(estate_catalog.catalog_tag(current_tenant()),))
-    return payload
+
+    def _compute() -> dict:
+        rows = estate_catalog.list_assets(
+            db,
+            tenant_id=current_tenant(),
+            asset_type=asset_type,
+            environment=environment,
+            owner=owner,
+            lifecycle=lifecycle,
+            q=q,
+            limit=limit,
+        )
+        return {
+            "schema": estate_catalog.SCHEMA,
+            "count": len(rows),
+            "assets": [estate_catalog.public_asset(row) for row in rows],
+            "filters": {
+                "asset_type": asset_type,
+                "environment": environment,
+                "owner": owner,
+                "lifecycle": lifecycle,
+                "q": q,
+            },
+            "note": (
+                "the catalogue is derived from evidence and kept across observations; an empty result "
+                "means nothing matching has been observed, not that nothing exists"
+            ),
+        }
+
+    # Cacheable per the cache policy (frequently requested read-only asset
+    # summaries): cached per (tenant, filters), invalidated at the catalog
+    # write; the TTL is the safety net for writers that bypass the ORM.
+    return policy_read(
+        "asset_summaries", cache_key, _compute,
+        tags=(estate_catalog.catalog_tag(current_tenant()),), cache=cache)
 
 
 @router.get("/catalog/assets/{identifier}")

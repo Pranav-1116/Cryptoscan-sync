@@ -1,0 +1,54 @@
+# Namespace resource ceilings — resource exhaustion is a failure mode,
+# not a weather event.
+#
+# The spec marks Resource quotas Critical ("prevent resource exhaustion"):
+# without them, one runaway scan (a 50 GB evidence blob, a fork-bombing
+# parser) takes the whole cluster's headroom with it. The quota caps the
+# namespace's aggregate usage; the LimitRange gives every pod a default and
+# a ceiling so a manifest without resources still cannot run unbounded.
+#
+# Sizes follow the compose-prod profile (API ~512Mi, workers ~1Gi under
+# load) multiplied by the HPA envelope (deploy/stack/k8s/25-worker-hpa.yaml
+# scales workers 2..12). Raise them when the cluster grows — deliberately,
+# with the capacity plan, never by letting pods OOM-kill each other.
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: cryptoscan-compute-quota
+  namespace: cryptoscan
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 24Gi
+    pods: "40"
+    # storage: the evidence tier is provisioned by PVC (32-estate-telecom-pvc
+    # and the per-service volumes); cap the aggregate so a retention-policy
+    # misconfiguration cannot fill the cluster's volumes.
+    requests.storage: 2Ti
+    persistentvolumeclaims: "12"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: cryptoscan-pod-limits
+  namespace: cryptoscan
+spec:
+  limits:
+    - type: Container
+      # the defaults mean a manifest that forgets `resources:` still runs
+      # inside the plan instead of outside it
+      default:
+        cpu: "1"
+        memory: 1Gi
+      defaultRequest:
+        cpu: 100m
+        memory: 256Mi
+      max:
+        cpu: "4"
+        memory: 4Gi
+      min:
+        cpu: 50m
+        memory: 64Mi

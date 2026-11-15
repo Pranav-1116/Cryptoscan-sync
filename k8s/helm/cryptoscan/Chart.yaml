@@ -1,0 +1,14 @@
+apiVersion: v2
+name: cryptoscan
+description: >-
+  CryptoScan — deterministic cryptographic intelligence platform. Repeatable
+  Kubernetes installation over the same objects as k8s/app/ (the known-good
+  plain manifests stay authoritative; this chart parameterizes image, tag,
+  replicas and resources so upgrades and environment overlays are one
+  values file, not a fork of the YAML).
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.25.0-0"
+# Zero chart deps: an install must work inside an isolated bank
+# network with only its own mirrored images.

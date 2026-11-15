@@ -1,0 +1,16 @@
+{{- $ns := .Values.namespace | default "cryptoscan" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: cryptoscan-api
+  namespace: {{ $ns }}
+  labels:
+    app: cryptoscan-api
+    {{- include "cryptoscan.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: cryptoscan-api
+  ports:
+    - name: http
+      port: {{ .Values.api.service.port }}
+      targetPort: http

@@ -392,28 +392,38 @@ def renewal_queue(
     """Certificates due for renewal within `lead_days`."""
     from network_scanner.certificates.lifecycle import renewal_due
 
+    from api.cache_policy import policy_read
+
     repo = CertificateRepository(db)
-    rows = repo.list_all()
-    due = []
-    for row in rows:
-        if row.revocation_status == "REVOKED":
-            continue
-        if renewal_due(row.not_after, lead_days=lead_days):
-            due.append(
-                {
-                    "fingerprint_sha256": row.fingerprint_sha256,
-                    "subject": _subject_cn(row.subject),
-                    "not_after": row.not_after.isoformat() if row.not_after else None,
-                    "renewal_status": row.renewal_status,
-                    "is_self_signed": row.is_self_signed,
-                    # where the record came from: TLS probe (default) or a key/certificate export scan
-                    "source": (row.extra or {}).get("source") or "TLS_SCAN",
-                    "key_label": (row.extra or {}).get("key_label"),
-                    "key_store": (row.extra or {}).get("key_store"),
-                    "usages": list(row.usages or [])[:5],
-                }
-            )
-    return {"lead_days": lead_days, "due": sorted(due, key=lambda d: d["not_after"] or "")}
+
+    def _compute():
+        rows = repo.list_all()
+        due = []
+        for row in rows:
+            if row.revocation_status == "REVOKED":
+                continue
+            if renewal_due(row.not_after, lead_days=lead_days):
+                due.append(
+                    {
+                        "fingerprint_sha256": row.fingerprint_sha256,
+                        "subject": _subject_cn(row.subject),
+                        "not_after": row.not_after.isoformat() if row.not_after else None,
+                        "renewal_status": row.renewal_status,
+                        "is_self_signed": row.is_self_signed,
+                        # where the record came from: TLS probe (default) or a key/certificate export scan
+                        "source": (row.extra or {}).get("source") or "TLS_SCAN",
+                        "key_label": (row.extra or {}).get("key_label"),
+                        "key_store": (row.extra or {}).get("key_store"),
+                        "usages": list(row.usages or [])[:5],
+                    }
+                )
+        return sorted(due, key=lambda d: d["not_after"] or "")
+
+    # Certificate expiration is AUTHORITATIVE per the cache policy: served
+    # fresh from the record on every call, never cached — a stale renewal
+    # queue is how certificates quietly expire.
+    due = policy_read("certificate_expiration", f"renewal-queue:{lead_days}", _compute)
+    return {"lead_days": lead_days, "due": due}
 
 
 __all__ = [

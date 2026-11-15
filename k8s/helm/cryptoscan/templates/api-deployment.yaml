@@ -1,0 +1,33 @@
+{{- $ns := .Values.namespace | default "cryptoscan" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cryptoscan-api
+  namespace: {{ $ns }}
+  labels:
+    app: cryptoscan-api
+    {{- include "cryptoscan.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: cryptoscan-api
+  template:
+    metadata:
+      labels:
+        app: cryptoscan-api
+    spec:
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.api.service.targetPort }}
+              name: http
+          resources:
+            {{- toYaml .Values.resources.api | nindent 12 }}
