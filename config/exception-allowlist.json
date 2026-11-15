@@ -36,6 +36,13 @@
       "reviewed_by": "security-engineering",
       "reviewed_at": "2026-10-11",
       "reason": "Pre-migration version probe: an unreadable/absent alembic_version state degrades to None so the post-migration audit hook records from_version=null honestly. The migration run itself is unaffected; no success is fabricated from the failed probe."
+    },
+    {
+      "location": "services/api/api/routers/metrics.py:389",
+      "owner": "observability",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-16",
+      "reason": "The Elasticsearch document-count probe inside _projection_lines: one unreachable projection store must not silence the rest of the /metrics surface. The failure is logged (projection_doc_count_unavailable) and the degraded result is explicit — the documents gauge is absent, never a fabricated count. (Line-keyed; re-key if the file shifts, the handler is the inner documents-count probe.)"
     }
   ]
 }

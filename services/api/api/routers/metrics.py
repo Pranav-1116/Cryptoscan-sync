@@ -386,8 +386,9 @@ def _projection_lines() -> list[str]:
                 "cryptoscan_graph_projection_documents", docs or 0,
                 "Documents held by the search projection",
                 'projection="elasticsearch"'))
-        except Exception:  # noqa: BLE001 — one store must not silence the rest
-            pass
+        except Exception as docs_exc:  # noqa: BLE001 — one store must not silence the rest
+            logger.warning("projection_doc_count_unavailable",
+                           extra={"error_type": type(docs_exc).__name__})
         return out
     except Exception as proj_exc:  # noqa: BLE001 - keep the rest of the surface
         logger.warning("projection_metrics_unavailable",
