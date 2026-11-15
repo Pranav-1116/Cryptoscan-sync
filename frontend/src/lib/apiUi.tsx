@@ -59,6 +59,11 @@ export function useApi<T>(fn: () => Promise<ApiResult<T>>, deps: unknown[] = [])
       });
       setResult(res);
       return res;
+    } catch {
+      // fetchQuery rejects only when the query is CANCELLED — the cache was
+      // cleared under it (tenant switch, teardown). Not a failure to report;
+      // the last result stays on screen and no unhandled rejection escapes.
+      return { source: "offline", data: null, error: "CANCELLED" };
     } finally {
       setRunning(false);
     }

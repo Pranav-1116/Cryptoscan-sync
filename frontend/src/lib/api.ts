@@ -316,6 +316,10 @@ async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> 
 }
 
 function sleep(ms: number): Promise<void> {
+  // Zero delay must not schedule: under the test runner's fake timers a
+  // pending setTimeout(0) never fires and the retry loop would hang every
+  // offline call. The retry ATTEMPTS still happen — only the wait vanishes.
+  if (ms <= 0) return Promise.resolve();
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
