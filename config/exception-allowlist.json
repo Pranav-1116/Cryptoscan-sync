@@ -43,6 +43,20 @@
       "reviewed_by": "security-engineering",
       "reviewed_at": "2026-10-16",
       "reason": "The Elasticsearch document-count probe inside _projection_lines: one unreachable projection store must not silence the rest of the /metrics surface. The failure is logged (projection_doc_count_unavailable) and the degraded result is explicit — the documents gauge is absent, never a fabricated count. (Line-keyed; re-key if the file shifts, the handler is the inner documents-count probe.)"
+    },
+    {
+      "location": "services/api/api/routers/auth.py:154",
+      "owner": "iam",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-16",
+      "reason": "The suspicious-access recorder runs inside the login-FAILURE path: a broken monitor must never block a refusal (that would turn a detector into a denial-of-service lever). The failure is logged (auth_monitor_record_failed) and the refusal proceeds regardless — the degraded result is an unrecorded observation, never a fabricated one."
+    },
+    {
+      "location": "services/api/api/routers/metrics.py:416",
+      "owner": "observability",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-16",
+      "reason": "The auth-monitor probe inside _auth_lines: the window is process state and must never take /metrics down with it. The failure is logged (auth_monitor_metrics_unavailable) and the degraded result is explicit — the gauges are absent, never zero-by-default. (Line-keyed; re-key if the file shifts.)"
     }
   ]
 }

@@ -96,6 +96,20 @@ def _persist_posture(db: Session, posture: dict) -> tuple[ControlPlaneRepository
     return repo, row, previous_score
 
 
+@router.get("/auth-monitor")
+def get_auth_monitor(
+    user: str = Depends(get_current_user),
+):
+    """Suspicious-access watch: failed authentications in the sliding
+    window and which (user, source) keys crossed the threshold. The
+    pattern between the rate limiter (stops bursts) and the audit chain
+    (records what happened) — observation only, lockout is enforced
+    elsewhere."""
+    from api.security import auth_monitor
+
+    return auth_monitor.suspicious()
+
+
 @router.get("/posture")
 def get_security_posture(
     history_limit: int = Query(60, ge=1, le=500),

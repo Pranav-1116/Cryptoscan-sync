@@ -396,6 +396,29 @@ def _projection_lines() -> list[str]:
         return []
 
 
+def _auth_lines() -> list[str]:
+    """Suspicious-access watch: failed logins in the sliding window and
+    how many (user, source) keys are currently suspicious. Observation,
+    not enforcement — the rate limiter stops bursts, the audit chain
+    records what happened."""
+    try:
+        from api.security import auth_monitor
+
+        out: list[str] = []
+        state = auth_monitor.suspicious()
+        out.append(_gauge(
+            "cryptoscan_auth_failures_in_window", state["total_failures_in_window"],
+            "Failed authentications in the current sliding window"))
+        out.append(_gauge(
+            "cryptoscan_auth_suspicious_keys", len(state["suspicious_keys"]),
+            "(user, source) keys over the failure threshold in the window"))
+        return out
+    except Exception as auth_exc:  # noqa: BLE001 - keep the rest of the surface
+        logger.warning("auth_monitor_metrics_unavailable",
+                       extra={"error_type": type(auth_exc).__name__})
+        return []
+
+
 def _operational_counter_lines() -> list[str]:
     """The security and reliability events section 5 asks to alert on."""
     from api.observability.operational_counters import snapshot
@@ -628,6 +651,7 @@ def metrics(request: Request) -> Response:
 
     lines.extend(_queue_lines())
     lines.extend(_projection_lines())
+    lines.extend(_auth_lines())
     lines.extend(_job_lifecycle_lines())
     lines.extend(_agent_health_lines())
     lines.extend(_coverage_lines())

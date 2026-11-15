@@ -145,6 +145,15 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         roles = user.roles
     except AuthenticationError as exc:
         publish_auth("login_failed", {"user": body.username, "reason": "invalid_credentials", "ip": client})
+        # suspicious-access watch: the pattern between the rate limiter
+        # (stops bursts) and the audit chain (records what happened)
+        try:
+            from api.security.auth_monitor import record_failure
+
+            record_failure(body.username, client)
+        except Exception as monitor_exc:  # noqa: BLE001 — never block a refusal
+            logger.warning("auth_monitor_record_failed",
+                           extra={"error_type": type(monitor_exc).__name__})
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=exc.message) from exc
     except Exception as exc:
         fallback = _auth_db_error(exc)
