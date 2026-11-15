@@ -158,6 +158,7 @@ def mock_db_session() -> MagicMock:
 
 @pytest.fixture
 def app(
+    monkeypatch,
     mock_scan_repo,
     mock_evidence_repo,
     mock_drift_repo,
@@ -170,6 +171,24 @@ def app(
     from api import dependencies
 
     application = create_app()
+
+    # scan_admission.py documents _control_plane_state / _ot_declared /
+    # _active_job_count as *the test seams* — "the only places that touch
+    # the database, so tests can pin them without one". THIS harness mocks
+    # the repositories entirely (no real DB), so unpinned seams raised
+    # UnboundExecutionError and the admission failed closed: every scan
+    # trigger returned 503 ('Scan admission is unavailable'). Pin them
+    # here — scoped to this mocked-repo app, never autouse — exactly the
+    # way unit/test_scan_admission pins them for unrelated behavior
+    # ('nothing blocks, no OT, empty queue'). Tests that drive the REAL
+    # admission pipeline (unit/test_control_plane's emergency stop) build
+    # their own app and are untouched; tests of the seams themselves
+    # override these pins.
+    from api.security import scan_admission as admission
+
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
 
     # Override DI providers
     application.dependency_overrides[dependencies.get_db_session] = (

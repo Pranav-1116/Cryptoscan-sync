@@ -3910,6 +3910,76 @@
         "services/database/db/models/pqc_migration.py",
         "services/api/api/routers/pqc_migration.py"
       ]
+    },
+    {
+      "id": "binary_scan_job.status",
+      "label": "Binary scan job status",
+      "domain": "collection",
+      "kind": "lifecycle",
+      "description": "The durable queue row behind an artifact scan (bjob-...).",
+      "fields": [
+        "binary_scan_job.BinaryScanJob.status"
+      ],
+      "vocabulary": "partial",
+      "vocabulary_source": "model default + durable_queue.py enqueue/claim/complete/fail/reap write sites",
+      "states": [
+        {
+          "id": "QUEUED",
+          "class": "progress",
+          "meaning": "Waiting \u2014 and where a retryable failure returns the job while attempts remain."
+        },
+        {
+          "id": "CLAIMED",
+          "class": "progress",
+          "meaning": "Leased by a named worker under a lease."
+        },
+        {
+          "id": "SUCCEEDED",
+          "class": "done",
+          "meaning": "Finished; the run summary is persisted on the row."
+        },
+        {
+          "id": "FAILED",
+          "class": "failure",
+          "meaning": "Terminal failure \u2014 counted by the dead-letter read."
+        },
+        {
+          "id": "DEAD",
+          "class": "failure",
+          "meaning": "Attempts exhausted; no retry remains."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "Nothing stays QUEUED/CLAIMED forever: leases expire and the reaper reclaims work.",
+        "A retryable failure returns the job to QUEUED with attempts counted; DEAD is the honest end of that budget \u2014 never an infinite retry.",
+        "Every status transition is a compare-and-set on the version it read: a stale worker cannot overwrite a later verdict."
+      ],
+      "sources": [
+        "services/database/db/models/binary_scan_job.py",
+        "services/binary_intelligence/binary_intelligence/durable_queue.py"
+      ]
+    },
+    {
+      "id": "binary_scan_job.result",
+      "label": "Binary scan run summary",
+      "domain": "collection",
+      "kind": "summary",
+      "description": "The persisted run summary on a binary scan job row (status, scan_id, finding_count, timings).",
+      "fields": [
+        "binary_scan_job.BinaryScanJob.result"
+      ],
+      "vocabulary": "unobserved",
+      "vocabulary_source": "field exists (binary_scan_job.py \u2014 persisted run summary); its payload keys are a summary, not a state vocabulary",
+      "states": [],
+      "transitions": [],
+      "invariants": [
+        "Vocabulary not yet observed \u2014 states are never guessed. A summary absent after a failure is absent, never read as a clean run."
+      ],
+      "sources": [
+        "services/database/db/models/binary_scan_job.py",
+        "services/binary_intelligence/binary_intelligence/durable_queue.py"
+      ]
     }
   ]
 }
