@@ -271,3 +271,73 @@ async def test_migration_waves_endpoint_holds_cycle_together(app_db_cyclic):
     assert lonely["unscored"] is True
     assert "no agility score yet" in lonely["rationale"]
     assert body["unscored_systems"] == 1
+
+
+# -- bounded subgraph: the bank rule (never load the estate whole) --------
+
+
+@pytest.mark.asyncio
+async def test_overview_subgraph_is_bounded_and_counts_what_it_omits(app_db):
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://t") as client:
+        response = await client.get("/api/v1/graph/subgraph", params={"limit": 2})
+        assert response.status_code == 200
+        body = response.json()
+        assert len(body["nodes"]) == 2
+        assert body["truncated_nodes"] >= 1
+        assert "expand progressively" in body["note"]
+        # The best-connected node leads: payment-api joins web to db.
+        assert body["nodes"][0]["degree"] >= body["nodes"][1]["degree"]
+
+
+@pytest.mark.asyncio
+async def test_seeded_subgraph_walks_bounded_from_one_node(app_db):
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://t") as client:
+        overview = (await client.get("/api/v1/graph/subgraph", params={"limit": 50})).json()
+        total = len(overview["nodes"])
+        assert total >= 3  # systems and assets of the seeded estate
+        pay = next(n["id"] for n in overview["nodes"] if n["label"] == "payment-api")
+        web = next(n["id"] for n in overview["nodes"] if n["label"] == "web-frontend")
+
+        depth0 = (await client.get("/api/v1/graph/subgraph",
+                                   params={"seed": pay, "depth": 0})).json()
+        assert [n["id"] for n in depth0["nodes"]] == [pay]
+        assert depth0["truncated_nodes"] == total - 1
+
+        depth1 = (await client.get("/api/v1/graph/subgraph",
+                                   params={"seed": pay, "depth": 1})).json()
+        ids1 = {n["id"] for n in depth1["nodes"]}
+        # one hop from payment-api reaches its dependents and its dependencies
+        assert pay in ids1 and web in ids1
+        assert 1 < len(ids1) <= total
+
+
+@pytest.mark.asyncio
+async def test_the_frontier_names_expandable_nodes_never_silent_truncation(app_db):
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://t") as client:
+        overview = (await client.get("/api/v1/graph/subgraph", params={"limit": 50})).json()
+        total = len(overview["nodes"])
+        pay = next(n["id"] for n in overview["nodes"] if n["label"] == "payment-api")
+        capped = (await client.get("/api/v1/graph/subgraph",
+                                   params={"seed": pay, "depth": 1, "limit": 1})).json()
+        assert len(capped["nodes"]) == 1
+        assert capped["nodes"][0]["id"] == pay
+        assert capped["truncated_nodes"] == total - 1
+        # the included node says how much it hides; the frontier names the
+        # discovered-but-omitted nodes to expand into next — truncation is
+        # never silent
+        assert capped["nodes"][0]["omitted_neighbors"] >= 1
+        assert pay not in capped["frontier"]
+        assert len(capped["frontier"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_unknown_seeds_are_404_and_bounds_are_enforced(app_db):
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://t") as client:
+        missing = await client.get("/api/v1/graph/subgraph", params={"seed": "ghost"})
+        assert missing.status_code == 404
+        assert (await client.get("/api/v1/graph/subgraph",
+                                 params={"limit": 10000})).status_code == 422
+        assert (await client.get("/api/v1/graph/subgraph",
+                                 params={"depth": 9})).status_code == 422
+        assert (await client.get("/api/v1/graph/subgraph",
+                                 params={"seed": "x" * 400})).status_code == 422

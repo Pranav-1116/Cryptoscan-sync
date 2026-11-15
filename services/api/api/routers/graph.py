@@ -446,6 +446,122 @@ def graph_hotspots(user: str = Depends(get_current_user), db: Session = Depends(
     return graph_from_db(db).crypto_hotspots()
 
 
+class SubgraphNodeOut(BaseModel):
+    id: str
+    label: str
+    group: str | None = None
+    degree: int
+    omitted_neighbors: int
+    environment: str | None = None
+    owner: str | None = None
+
+
+class SubgraphEdgeOut(BaseModel):
+    from_: str = Field(alias="from")
+    to: str
+    label: str
+
+    model_config = {"populate_by_name": True}
+
+
+class SubgraphOut(BaseModel):
+    schema_: str = Field(alias="schema")
+    model: str = "cryptoscan.graph-subgraph/1"
+    seed: str | None
+    depth: int
+    limit: int
+    nodes: list[SubgraphNodeOut]
+    edges: list[SubgraphEdgeOut]
+    frontier: list[str]
+    truncated_nodes: int
+    truncated_edges: int
+    note: str
+
+    model_config = {"populate_by_name": True}
+
+
+@router.get("/graph/subgraph", response_model=SubgraphOut)
+def graph_subgraph(
+    seed: str | None = Query(None, max_length=300,
+                             description="node id or unique name to expand from; "
+                                         "omit for the best-connected overview"),
+    depth: int = Query(1, ge=0, le=3),
+    limit: int = Query(200, ge=1, le=500),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """A BOUNDED subgraph — the bank rule: never load or render the whole
+    estate graph in a browser. Overview mode (no seed) returns the
+    best-connected nodes; seeded mode walks outward from one node to
+    ``depth``, capped at ``limit`` nodes. Every included node reports
+    ``omitted_neighbors`` — the count of neighbours outside the response —
+    so the console can expand PROGRESSIVELY instead of downloading the
+    estate. Truncation is counted, never hidden."""
+    engine = graph_from_db(db)
+    vis = engine.to_vis()
+    nodes_by_id: dict[str, dict[str, Any]] = {n["id"]: n for n in vis["nodes"]}
+    adjacency: dict[str, set[str]] = {}
+    for edge in vis["edges"]:
+        adjacency.setdefault(edge["from"], set()).add(edge["to"])
+        adjacency.setdefault(edge["to"], set()).add(edge["from"])
+
+    def resolve(raw: str) -> str | None:
+        if raw in nodes_by_id:
+            return raw
+        matches = [nid for nid, node in nodes_by_id.items() if node.get("label") == raw]
+        return matches[0] if len(matches) == 1 else None
+
+    if seed is not None:
+        resolved = resolve(seed)
+        if resolved is None:
+            raise HTTPException(status_code=404, detail=f"node not found in graph: {seed}")
+        kept: set[str] = set()
+        frontier = {resolved}
+        for _ in range(depth + 1):
+            current, frontier = frontier, set()
+            for node in current:
+                if node in kept:
+                    continue
+                if len(kept) < limit:
+                    kept.add(node)
+                    frontier |= adjacency.get(node, set())
+                else:
+                    frontier.add(node)  # discovered but beyond the cap
+            frontier -= kept
+            if not frontier:
+                break
+        ranked = sorted(kept, key=lambda nid: (-len(adjacency.get(nid, ())), nid))
+    else:
+        ranked = sorted(nodes_by_id, key=lambda nid: (-len(adjacency.get(nid, ())), nid))
+        kept = set(ranked[:limit])
+        # Overview frontier: the next nodes by rank — the natural set to
+        # grow the overview into, bounded so the response never becomes
+        # the estate it exists to avoid.
+        frontier = set(ranked[limit:limit + 50])
+
+    edges_out = [e for e in vis["edges"] if e["from"] in kept and e["to"] in kept]
+    node_rows = []
+    for nid in (nid for nid in ranked if nid in kept):
+        node = nodes_by_id[nid]
+        degree = len(adjacency.get(nid, ()))
+        omitted = len(adjacency.get(nid, set()) - kept)
+        node_rows.append(SubgraphNodeOut(
+            id=nid, label=node.get("label") or nid, group=node.get("group"),
+            degree=degree, omitted_neighbors=omitted,
+            environment=node.get("environment"), owner=node.get("owner")))
+    return SubgraphOut(
+        schema_="cryptoscan.api/1", seed=seed, depth=depth, limit=limit,
+        nodes=node_rows,
+        edges=[SubgraphEdgeOut(**{"from": e["from"], "to": e["to"], "label": e.get("label") or ""})
+               for e in edges_out],
+        frontier=sorted(frontier),
+        truncated_nodes=len(nodes_by_id) - len(kept),
+        truncated_edges=len(vis["edges"]) - len(edges_out),
+        note=("bounded subgraph — omitted_neighbors counts neighbours outside "
+              "this response; expand progressively, never load the estate whole"),
+    )
+
+
 @router.get("/graph/cycles")
 def graph_cycles(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     """Strongly-connected dependency cycles (must be migrated together)."""
