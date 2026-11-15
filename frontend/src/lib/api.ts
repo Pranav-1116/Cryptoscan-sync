@@ -263,36 +263,76 @@ export async function downloadAuthenticatedResource(path: string, fallbackFilena
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
-  try {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    const token = getToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const tenant = activeTenantId();
-    if (tenant) headers["X-Tenant-ID"] = tenant;
-    const resp = await tenantFetch(path, {
-      signal: AbortSignal.timeout(8000),
-      headers,
-      // send the httpOnly session cookie too (server auth via cookie, not only
-      // the XSS-readable Bearer token in localStorage)
-      credentials: "include",
-      ...init,
-    });
-    if (!resp.ok) {
-      // Keep the status code stable for callers that branch on it, and carry
-      // the server's own reason alongside it.
-      let detail: string | undefined;
-      try {
-        detail = errorDetail(await resp.json());
-      } catch {
-        detail = undefined;
+  const method = ((init as { method?: string } | undefined)?.method ?? "GET").toUpperCase();
+  /* Retry policy (the risk table), applied at the transport so every caller
+     gets it: transport failures plus 5xx/429 retry at most 3× with exponential
+     backoff capped at 15s, Retry-After is honoured, and 4xx NEVER retries.
+     Mutations retry TRANSPORT failures only — a 5xx after a write may have
+     landed, and replaying it is how double-writes happen. Every request also
+     passes the front-end request gate (8 concurrent / 20-per-5s, delay not
+     drop), so the console cannot become its own rate-limit event. */
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      const token = getToken();
+      if (token) headers.Authorization = `Bearer ${token}`;
+      const tenant = activeTenantId();
+      if (tenant) headers["X-Tenant-ID"] = tenant;
+      // Lazy import: requestGate wraps tenantFetch from this module — a static
+      // import would make api↔requestGate a module cycle. Deferred, there is
+      // exactly one edge (requestGate → api) and the gate still gates.
+      const { gatedFetch } = await import("./requestGate");
+      const resp = await gatedFetch(path, {
+        signal: AbortSignal.timeout(8000),
+        headers,
+        // send the httpOnly session cookie too (server auth via cookie, not only
+        // the XSS-readable Bearer token in localStorage)
+        credentials: "include",
+        ...init,
+      });
+      if (!resp.ok) {
+        const retryable = resp.status >= 500 || resp.status === 429;
+        if (method !== "GET" || !retryable || attempt >= MAX_RETRIES) {
+          // Keep the status code stable for callers that branch on it, and carry
+          // the server's own reason alongside it.
+          let detail: string | undefined;
+          try {
+            detail = errorDetail(await resp.json());
+          } catch {
+            detail = undefined;
+          }
+          return { source: "offline", data: null, error: `HTTP ${resp.status}`, detail };
+        }
+        await sleep(retryDelayFor(resp, attempt));
+        continue;
       }
-      return { source: "offline", data: null, error: `HTTP ${resp.status}`, detail };
+      return { source: "live", data: (await resp.json()) as T };
+    } catch (e) {
+      if (attempt >= MAX_RETRIES) return { source: "offline", data: null, error: String(e) };
+      await sleep(retryDelayFor(null, attempt));
     }
-    return { source: "live", data: (await resp.json()) as T };
-  } catch (e) {
-    return { source: "offline", data: null, error: String(e) };
   }
 }
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Exponential backoff capped at 15s; a server-sent Retry-After wins.
+ *  The base scales to ~0 under the test runner (every offline stub call would
+ *  otherwise pay the real backoff across the whole suite); the FORMULA and the
+ *  status/attempt rules are identical in every environment. */
+export function retryDelayFor(resp: Response | null, attempt: number, baseMs = RETRY_BASE_MS): number {
+  const retryAfter = resp?.headers?.get?.("retry-after");
+  if (retryAfter) {
+    const secs = Number(retryAfter);
+    if (Number.isFinite(secs)) return Math.min(Math.max(secs, 0) * 1000, 15_000);
+  }
+  return Math.min(baseMs * 2 ** attempt, 15_000);
+}
+
+const RETRY_BASE_MS = (import.meta as { env?: { MODE?: string } }).env?.MODE === "test" ? 0 : 250;
 
 export async function apiLogin(username: string, password: string): Promise<{ ok: boolean; error?: string; roles?: string[] }> {
   try {

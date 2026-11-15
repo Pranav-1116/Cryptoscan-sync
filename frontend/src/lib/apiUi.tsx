@@ -1,32 +1,62 @@
 /* React glue for the API bridge — the hook and the source badge live in
    a .tsx module (they render JSX). */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiResult, ApiSource } from "./api.js";
+import { queryClient, queryKeys } from "./serverState.js";
 import { CHANNELS_ALL, channelOf, kindOf, useChannelRefresh, useRealtime } from "./realtime.js";
 
+/** How long a cached answer is served without hitting the network. Mirrors the
+ *  Query client's staleTime (30s): inventories and dashboard summaries are
+ *  re-used across panels and remounts instead of refetched per keystroke /
+ *  per render. The realtime channels invalidate early on real changes. */
+const STALE_MS = 30_000;
+const GC_MS = 5 * 60_000;
+
+function failureEnvelope(err: unknown): ApiResult<never> {
+  // api.ts already turns an HTTP failure into a result, but not every reader
+  // goes through it: a hook given a function that throws would leave `running`
+  // true for ever and keep the previous data on screen, so the panel showed a
+  // stale estate with no indication that the read had failed.
+  const message = err instanceof Error ? err.message : String(err);
+  return {
+    source: "offline",
+    data: null,
+    error: "REQUEST_FAILED",
+    detail: `the request did not complete: ${message}`,
+  };
+}
+
 export function useApi<T>(fn: () => Promise<ApiResult<T>>, deps: unknown[] = []) {
+  /* Server-state caching (TanStack Query) is the cache ENGINE, bound through
+     its imperative client so every existing call-site and test keeps its
+     contract without provider plumbing. The key is [domain, tenant, closure
+     source, ...deps]: identical closures across components share ONE in-flight
+     fetch and ONE cached answer; the tenant is part of the key AND flushed on
+     switch (isolation by eviction — see flushTenantCaches). */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const key = useMemo(() => [...queryKeys.root("api-ui"), fn.toString(), ...deps], deps);
   const [result, setResult] = useState<ApiResult<T>>({ source: "offline", data: null });
   const [running, setRunning] = useState(false);
 
-  const run = async () => {
+  const run = async (): Promise<ApiResult<T>> => {
     setRunning(true);
     try {
-      const res = await fn();
-      setResult(res);
-      return res;
-    } catch (err) {
-      // api.ts already turns an HTTP failure into a result, but not every reader
-      // goes through it: a hook given a function that throws would leave `running`
-      // true for ever and keep the previous data on screen, so the panel showed a
-      // stale estate with no indication that the read had failed.
-      const message = err instanceof Error ? err.message : String(err);
-      const res: ApiResult<T> = {
-        source: "offline",
-        data: null,
-        error: "REQUEST_FAILED",
-        detail: `the request did not complete: ${message}`,
-      };
+      // `run` is an explicit refresh (timer tick, Refresh button): always
+      // reach the network — but Query still DEDUPES concurrent identical
+      // keys, so N panels refreshing together make 1 request.
+      const res = await queryClient.fetchQuery<ApiResult<T>>({
+        queryKey: key,
+        queryFn: async () => {
+          try {
+            return await fn();
+          } catch (err) {
+            return failureEnvelope(err);
+          }
+        },
+        staleTime: 0,
+        gcTime: GC_MS,
+      });
       setResult(res);
       return res;
     } finally {
@@ -35,6 +65,14 @@ export function useApi<T>(fn: () => Promise<ApiResult<T>>, deps: unknown[] = [])
   };
 
   useEffect(() => {
+    const cached = queryClient.getQueryData<ApiResult<T>>(key);
+    const updatedAt = queryClient.getQueryState(key)?.dataUpdatedAt ?? 0;
+    if (cached && Date.now() - updatedAt < STALE_MS) {
+      // Served from the cache — this is the row: 'avoid repeatedly fetching
+      // the same inventory and dashboard data'.
+      setResult(cached);
+      return;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     void run();
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -86,8 +86,18 @@ beforeEach(() => {
   offlineFetch();
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
   vi.restoreAllMocks();
   vi.useRealTimers();
+  // The server-state cache and the request gate are app-level singletons;
+  // without this, one test's answer (or throttling window) leaks into the next.
+  // Imported lazily: a STATIC import here would load lib/api.js before a test
+  // file's own vi.mock factory can install its bridge — the mock would lose.
+  const [{ queryClient }, { resetGate }] = await Promise.all([
+    import("../lib/serverState.js"),
+    import("../lib/requestGate.js"),
+  ]);
+  queryClient.clear();
+  resetGate();
 });
