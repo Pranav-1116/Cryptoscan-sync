@@ -90,6 +90,11 @@ PURGE_EDGE = (
     "WHERE tenant_id = %(tenant_id)s AND edge_id = %(edge_id)s"
 )
 
+PING = (
+    "-- cryptoscan.query=history_ping\n"
+    "SELECT now() FROM system.local"
+)
+
 
 def _ident(value: str, label: str) -> str:
     text = (value or "").strip()
@@ -142,6 +147,13 @@ class CassandraEdgeHistory:
             self.session.execute(statement.format(keyspace=self.keyspace), None)
             applied.append(statement.splitlines()[0])
         return {"applied": applied}
+
+    def ping(self) -> bool:
+        try:
+            self.session.execute(PING, None)
+            return True
+        except Exception:
+            return False
 
     def append_event(self, tenant_id: str, event: dict[str, Any]) -> dict[str, Any]:
         tenant = _ident(tenant_id, "tenant")

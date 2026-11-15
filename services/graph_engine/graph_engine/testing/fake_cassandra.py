@@ -63,6 +63,8 @@ class FakeCassandraSession:
         if tag in ("history_schema_keyspace", "history_schema_table"):
             self.schema_applied.append(tag)
             return []
+        if tag == "history_ping":
+            return [FakeCassandraRow({"now": "now"})]
         # The tenant-isolation contract outranks dispatch: any data statement
         # without a tenant binding is rejected before it is understood.
         tenant = self._require_tenant(cql, params)

@@ -46,4 +46,9 @@ def graph_health(driver=None) -> dict[str, Any]:
     settings = get_graph_settings()
     health["fallback"] = not health.get("ok")
     health["required"] = settings.NEO4J_REQUIRED
+    # The dependency-graph plane is three stores: Neo4j traversal (above),
+    # plus the Cassandra edge-history and Elasticsearch search projections.
+    from graph_engine.core.dependency_stores import dependency_stores_health
+
+    health["dependency_stores"] = dependency_stores_health()
     return health

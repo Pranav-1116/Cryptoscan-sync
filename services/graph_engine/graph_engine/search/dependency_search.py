@@ -130,6 +130,12 @@ class ElasticDependencySearch:
             return {"created": self.index}
         return {"created": None}
 
+    def ping(self) -> bool:
+        try:
+            return bool(self.client.ping())
+        except Exception:
+            return False
+
     def _index_doc(self, tenant_id: str, kind: str, identity: str, doc: dict[str, Any]) -> str:
         if not identity:
             raise ValueError("projection document requires an identity")
