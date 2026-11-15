@@ -28,6 +28,7 @@ const RELATIONS = ["CALLS", "CONTAINS", "USES", "HOSTS", "BACKS_UP"] as const;
 
 export default function EdgeManagerPanel() {
   const [edges, setEdges] = useState<RegisteredDependencyEdge[]>([]);
+  const [total, setTotal] = useState(0);
   const [state, setState] = useState<"loading" | "ready" | "offline">("loading");
   const [parentId, setParentId] = useState("");
   const [childId, setChildId] = useState("");
@@ -52,6 +53,9 @@ export default function EdgeManagerPanel() {
     const r = await apiGraphEdges();
     if (r.source === "live" && r.data) {
       setEdges(r.data.edges);
+      // `count` is what the registry holds; `edges` is the bounded page that
+      // loaded. When they differ, the UI must say so (bounded, not complete).
+      setTotal(r.data.count ?? r.data.edges.length);
       setState("ready");
     } else {
       setState("offline");
@@ -643,7 +647,7 @@ export default function EdgeManagerPanel() {
                       Graph visual
                     </span>
                     <span style={{ fontSize: 11, color: "var(--faint)" }}>— [+]/[−] expand · [brackets] = nodes</span>
-                    <Badge tone="cyan">{edges.length} edges</Badge>
+                    <Badge tone="cyan">{total > edges.length ? `${edges.length} of ${total} edges` : `${edges.length} edges`}</Badge>
                     <Badge tone="slate">{startNodes.length} roots</Badge>
                   </div>
                   <div style={{ display: "flex", gap: 6 }}>
@@ -721,7 +725,7 @@ export default function EdgeManagerPanel() {
         <div style={{ margin: "0 16px 16px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
             <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", color: "var(--dim)", textTransform: "uppercase" }}>
-              Inventory — {edges.length} edges
+              Inventory — {total > edges.length ? `${edges.length} of ${total} registered edges (bounded page)` : `${edges.length} edges`}
             </span>
             <span style={{ fontSize: 11, color: "var(--faint)" }}>Newest first · lifecycle-aware</span>
           </div>

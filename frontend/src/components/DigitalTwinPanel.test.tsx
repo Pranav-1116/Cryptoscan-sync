@@ -747,3 +747,37 @@ it("answers why the twin believes an edge, from the edge itself", async () => {
   expect(screen.getAllByText(/linux-static/).length).toBeGreaterThan(1);
   expect(screen.getAllByText(/bbbbbbbbbbbb/).length).toBeGreaterThan(0);
 });
+
+it("says the loaded graph is a bounded subgraph, never the estate whole", async () => {
+  mockFetch({
+    [TWIN]: overview(),
+    [GRAPH]: {
+      schema: "cryptoscan.estate-graph-export/1", projection_id: "c".repeat(32), generated_at: null,
+      counts: { asset_nodes: 90, evidence_nodes: 8, placement_nodes: 2, relationships: 120, unresolved: 0 },
+      nodes: [
+        { id: "a", labels: ["Asset"], properties: {} },
+        { id: "b", labels: ["Asset"], properties: {} },
+        { id: "c", labels: ["Asset"], properties: {} },
+      ],
+      relationships: [
+        { type: "USES", from: "a", to: "b", properties: {} },
+        { type: "USES", from: "b", to: "c", properties: {} },
+        { type: "USES", from: "c", to: "a", properties: {} },
+        { type: "USES", from: "a", to: "c", properties: {} },
+      ],
+      unresolved: [],
+      load_notes: { not_source_of_truth: "the store is a copy", edge_identity: "edges are (from,to,type)" },
+      label_coverage: {},
+      bounded: true, omitted_nodes: 97, omitted_edges: 117, frontier: ["a", "z"],
+    },
+  });
+  render(<DigitalTwinPanel />);
+  (await screen.findByText("Graph export")).click();
+  // the disclosure counts what is NOT loaded and names the frontier
+  expect(await screen.findByText(/bounded subgraph loaded: 3 of 100 nodes/)).toBeInTheDocument();
+  expect(screen.getByText(/97 not loaded/)).toBeInTheDocument();
+  expect(screen.getByText(/117 edge\(s\) connect unloaded nodes/)).toBeInTheDocument();
+  expect(screen.getByText(/frontier: a, z/)).toBeInTheDocument();
+  // the JSON preview is labelled as a preview of the loaded subset
+  expect(screen.getByText(/preview shows the first 2 of 3 loaded node\(s\)/)).toBeInTheDocument();
+});

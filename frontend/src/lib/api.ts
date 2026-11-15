@@ -6940,10 +6940,12 @@ export interface RegisteredDependencyEdge extends RelationshipLifecycleFields {
 
 export const apiGraphEdges = (
   systemId?: string,
+  limit = 200,
 ): Promise<ApiResult<{ edges: RegisteredDependencyEdge[]; count: number }>> =>
   call(
     `/api/v1/graph/edges` +
-    (systemId ? `?system_id=${encodeURIComponent(systemId)}` : ""),
+    `?limit=${encodeURIComponent(String(limit))}` +
+    (systemId ? `&system_id=${encodeURIComponent(systemId)}` : ""),
   );
 
 export const apiGraphRegisterEdge = (

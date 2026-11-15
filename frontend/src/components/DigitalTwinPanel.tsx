@@ -201,8 +201,12 @@ export default function DigitalTwinPanel() {
     else setError("crypto graph unavailable");
   };
 
+  /* Bounded by design: the export loads a capped subgraph (the 50k-asset rule —
+     never the whole estate graph at once). The counts still describe the full
+     projection; the nodes/relationships arrays are the loaded subset. */
+  const GRAPH_LIMIT = 200;
   const loadExport = async () => {
-    const result = await apiEstateTwinGraph();
+    const result = await apiEstateTwinGraph({ limit: GRAPH_LIMIT });
     if (result.ok) setExported(result.data as EstateTwinGraphExport);
     else setError("graph export unavailable");
   };
@@ -1582,12 +1586,30 @@ export default function DigitalTwinPanel() {
               <div className="faint" style={{ fontSize: 10, marginTop: 4 }}>
                 {String(exported.load_notes.edge_identity)}
               </div>
+              {/* Bounded honesty: the counts above describe the FULL projection;
+                  the arrays below are the loaded subset. Saying so is the
+                  difference between a bounded view and a misleading one. */}
+              {exported.bounded && (
+                <div style={{ fontSize: 10.5, marginTop: 6, color: "var(--amber)" }}>
+                  bounded subgraph loaded: {exported.nodes.length} of {String(exported.counts.asset_nodes + exported.counts.evidence_nodes + (exported.counts.placement_nodes ?? 0))} nodes
+                  {Number(exported.omitted_nodes ?? 0) > 0 && <> · {exported.omitted_nodes} not loaded</>}
+                  {Number(exported.omitted_edges ?? 0) > 0 && <> · {exported.omitted_edges} edge(s) connect unloaded nodes</>}
+                  {Array.isArray(exported.frontier) && exported.frontier.length > 0 && <> · frontier: {exported.frontier.slice(0, 4).join(", ")}{exported.frontier.length > 4 ? " …" : ""}</>}
+                  {" "}— expand via the twin canvas, not by loading the estate whole.
+                </div>
+              )}
               <pre
                 className="mono"
                 style={{ fontSize: 9.5, marginTop: 8, maxHeight: 220, overflow: "auto", opacity: 0.8 }}
               >
                 {JSON.stringify({ nodes: exported.nodes.slice(0, 2), relationships: exported.relationships.slice(0, 3) }, null, 1)}
               </pre>
+              {(exported.nodes.length > 2 || exported.relationships.length > 3) && (
+                <div className="faint" style={{ fontSize: 9.5, marginTop: 2 }}>
+                  preview shows the first 2 of {exported.nodes.length} loaded node(s) and 3 of{" "}
+                  {exported.relationships.length} loaded relationship(s) — the arrays are bounded, not complete.
+                </div>
+              )}
 
               <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 10, flexWrap: "wrap" }}>
                 <button type="button" className="btn sm" onClick={() => void planLoad()} disabled={busy}>
