@@ -403,3 +403,21 @@ class TestScheduledVerifiers:
         assert "--record-evidence" in service
         assert "OnCalendar=Sun" in timer       # weekly
         assert "Persistent=true" in timer
+
+
+# ---------------------------------------------------------------------------
+# mTLS rotation runbook: the one maintenance action that can lock every
+# client out at once must have a written no-outage path.
+# ---------------------------------------------------------------------------
+
+
+class TestMTLSRotationRunbook:
+    RUNBOOK = ROOT / "docs" / "runbooks" / "mtls-cert-rotation.md"
+
+    def test_the_runbook_names_the_mounts_and_the_order(self):
+        doc = self.RUNBOOK.read_text()
+        assert "server first" in doc and "CA last" in doc
+        for mount in ("client-ca.crt", "ca.pem", "fullchain.pem"):
+            assert mount in doc
+        assert "one node at a time" in doc
+        assert "X-Client-Cert-CN" in doc
