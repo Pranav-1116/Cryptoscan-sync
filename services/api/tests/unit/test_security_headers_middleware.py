@@ -73,3 +73,46 @@ def test_app_set_headers_never_overridden():
                     middleware=[Middleware(SecurityHeadersMiddleware)])
     resp = TestClient(app).get("/api/v1/custom")
     assert resp.headers.get("x-frame-options") == "SAMEORIGIN"
+
+
+# ── API versioning + deprecation contract (§B: API maturity) ────────────
+
+
+def test_every_api_response_declares_its_version():
+    """The contract a client can assert without parsing URLs."""
+    client = TestClient(_app())
+    resp = client.get("/api/v1/ping")
+    assert resp.headers.get("x-api-version") == "1"
+
+
+def test_non_api_paths_do_not_claim_an_api_version():
+    async def index(request):
+        return JSONResponse({"ok": True})
+
+    app = Starlette(routes=[Route("/", index)],
+                    middleware=[Middleware(SecurityHeadersMiddleware)])
+    resp = TestClient(app).get("/")
+    assert "x-api-version" not in resp.headers
+
+
+def test_withdrawn_paths_carry_the_rfc8594_lifecycle_trail():
+    """A deprecated endpoint is a promise, not a deletion: Deprecation,
+    Sunset and a successor Link ride the response — including the 410."""
+
+    async def gone(request):
+        return JSONResponse({"detail": "withdrawn"}, status_code=410)
+
+    app = Starlette(routes=[Route("/api/v1/enterprise/airgap/bundle", gone)],
+                    middleware=[Middleware(SecurityHeadersMiddleware)])
+    resp = TestClient(app).get("/api/v1/enterprise/airgap/bundle")
+    assert resp.status_code == 410
+    assert resp.headers.get("deprecation") == "true"
+    assert resp.headers.get("sunset")  # an HTTP-date, RFC 8594
+    assert 'rel="successor-version"' in resp.headers.get("link", "")
+
+
+def test_live_paths_carry_no_lifecycle_headers():
+    client = TestClient(_app())
+    resp = client.get("/api/v1/ping")
+    assert "deprecation" not in resp.headers
+    assert "sunset" not in resp.headers

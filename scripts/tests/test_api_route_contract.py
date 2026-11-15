@@ -183,3 +183,15 @@ def test_every_declared_console_field_is_parseable_from_the_real_file():
         assert fields, f"{name} parsed with no fields"
         for field in fields:
             assert field.isidentifier(), (name, field)
+
+
+def test_every_product_route_is_versioned_v1():
+    """API maturity (§B): the product surface is /api/v1 — clients pin the
+    contract by version, and an old version retires with RFC 8594 headers
+    (api.deprecation + SecurityHeadersMiddleware), never a silent removal.
+    The unversioned remainder is the ops/meta surface only: health, ready,
+    metrics, root. A new product route outside /api/v1 fails here."""
+    ops_meta = {"/", "/health", "/healthz", "/metrics", "/ready", "/readyz"}
+    strays = sorted(p for p in contract.served_paths()
+                    if not p.startswith("/api/v1") and p not in ops_meta)
+    assert strays == [], f"routes outside the versioned surface: {strays}"

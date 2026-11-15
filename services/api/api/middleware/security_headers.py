@@ -9,6 +9,15 @@ zero-overhead equivalent for response-header middleware.
 
 from __future__ import annotations
 
+from api.deprecation import headers_for
+
+#: The versioned surface: every product route is /api/v1. The version also
+#: travels as a response header so a client can assert the contract without
+#: parsing URLs — and an old version never dies silently (RFC 8594
+#: ``Deprecation``/``Sunset``/``Link`` ride registered paths from
+#: api.deprecation).
+API_VERSION = "1"
+
 
 # Restrictive content security policy for the SPA + API. The console is a
 # self-contained React bundle (no third-party CDNs, no inline event handlers,
@@ -68,6 +77,16 @@ class SecurityHeadersMiddleware:
                     ))
                 if wants_no_store and "cache-control" not in present:
                     headers.append((b"cache-control", b"no-store"))
+                path = scope.get("path", "")
+                if path.startswith("/api/") and "x-api-version" not in present:
+                    headers.append((b"x-api-version", API_VERSION.encode("utf-8")))
+                    present.add("x-api-version")
+                # RFC 8594 lifecycle trail for deprecated/withdrawn paths:
+                # a machine-readable promise, never a silent deletion.
+                for name, value in headers_for(path).items():
+                    if name.lower() not in present:
+                        headers.append((name.encode("utf-8"),
+                                        value.encode("utf-8")))
                 message["headers"] = headers
             await send(message)
 
