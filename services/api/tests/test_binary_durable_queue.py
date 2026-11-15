@@ -433,3 +433,107 @@ class TestBackpressureContract:
         assert row.trace_id == "trace-abc-123", (
             "the scan keeps the submitting request's identity after the "
             "HTTP request is gone")
+
+
+class TestInvestigationSurface:
+
+    def _dead(self, db, job_id="bjob-dead", tenant="tenant_001"):
+        queue = _queue(max_attempts=1)
+        queue.submit(_job(job_id=job_id, tenant=tenant), db=db)
+        queue.claim(db, "worker", tenant_id=tenant)
+        queue.fail(db, job_id, "fatal boom", tenant_id=tenant)
+        return queue
+
+    def test_the_dead_letter_is_listable_and_inspectable(self, db):
+        queue = self._dead(db)
+        dead = queue.list_jobs(db, status="DEAD")
+        assert [j["job_id"] for j in dead] == ["bjob-dead"]
+        record = queue.get_job(db, "bjob-dead")
+        assert record["status"] == "DEAD" and record["attempts"] == 1
+        assert record["error"] == "fatal boom"
+        assert queue.list_jobs(db, status="QUEUED") == []
+
+    def test_investigation_reads_are_tenant_scoped(self, db):
+        queue = self._dead(db)
+        assert queue.get_job(db, "bjob-dead", tenant_id="tenant_001") is not None
+        assert queue.get_job(db, "bjob-dead", tenant_id="tenant_002") is None
+        assert queue.list_jobs(db, tenant_id="tenant_002") == []
+        assert len(queue.list_jobs(db, tenant_id="tenant_001")) == 1
+
+    def test_replay_requeues_only_dead_letters(self, db):
+        queue = self._dead(db)
+        ok, reason = queue.replay_dead(db, "bjob-dead", tenant_id="tenant_001")
+        assert ok and reason == "requeued"
+        record = queue.get_job(db, "bjob-dead")
+        assert record["status"] == "QUEUED" and record["attempts"] == 0
+        assert record["error"] is None
+        claimed = queue.claim(db, "worker", tenant_id="tenant_001")
+        assert claimed is not None
+        assert queue.complete(db, "bjob-dead", {"scan_id": "s1"},
+                              tenant_id="tenant_001")
+        ok, reason = queue.replay_dead(db, "bjob-dead", tenant_id="tenant_001")
+        assert not ok and "not a dead letter" in reason
+
+    def test_replay_of_missing_or_foreign_jobs_is_refused(self, db):
+        queue = self._dead(db)
+        assert queue.replay_dead(db, "bjob-nope") == (False, "job not found")
+        assert queue.replay_dead(db, "bjob-dead",
+                                 tenant_id="tenant_002") == (False, "job not found")
+
+    def test_listing_is_bounded(self, db):
+        queue = _queue()
+        for i in range(5):
+            queue.submit(_job(job_id=f"bjob-{i}"), db=db)
+        assert len(queue.list_jobs(db, limit=2)) == 2
+        assert len(queue.list_jobs(db, limit=1000)) == 5
+
+
+class TestInvestigationAPI:
+
+    def _make_dead(self, client, session, binary):
+        binary.WORKER_QUEUE.max_attempts = 1
+        accepted = client.post("/api/v1/binary/scan/async", json={
+            "tenant_id": "tenant_001",
+            "artifact_base64": base64.b64encode(b"dead-bytes").decode(),
+            "original_filename": "a", "source_type": "upload",
+            "scan_profile": "standard"})
+        assert accepted.status_code == 202, accepted.text
+        job_id = accepted.json()["job_id"]
+        assert binary.WORKER_QUEUE.claim(session, "worker",
+                                         tenant_id="tenant_001") is not None
+        binary.WORKER_QUEUE.fail(session, job_id, "fatal boom",
+                                 tenant_id="tenant_001")
+        return job_id
+
+    def test_dead_jobs_are_listed_and_inspectable_over_http(self, api):
+        client, session, binary = api
+        job_id = self._make_dead(client, session, binary)
+        listing = client.get("/api/v1/binary/scan/jobs",
+                             params={"status": "DEAD"})
+        assert listing.status_code == 200
+        body = listing.json()
+        assert body["count"] == 1 and body["jobs"][0]["job_id"] == job_id
+        assert body["jobs"][0]["error"] == "fatal boom"
+        detail = client.get(f"/api/v1/binary/scan/jobs/{job_id}")
+        assert detail.status_code == 200
+        assert detail.json()["status"] == "DEAD"
+
+    def test_replay_requeues_the_dead_letter_over_http(self, api):
+        client, session, binary = api
+        job_id = self._make_dead(client, session, binary)
+        replay = client.post(f"/api/v1/binary/scan/jobs/{job_id}/replay")
+        assert replay.status_code == 200, replay.text
+        assert replay.json() == {"job_id": job_id, "requeued": True,
+                                "reason": "requeued"}
+        detail = client.get(f"/api/v1/binary/scan/jobs/{job_id}")
+        assert detail.json()["status"] == "QUEUED"
+        # A live job is never replayed underneath its worker.
+        again = client.post(f"/api/v1/binary/scan/jobs/{job_id}/replay")
+        assert again.status_code == 409
+        assert "not a dead letter" in again.json()["detail"]
+
+    def test_unknown_jobs_are_indistinguishable_from_missing(self, api):
+        client, _session, _binary = api
+        assert client.get("/api/v1/binary/scan/jobs/bjob-nope").status_code == 404
+        assert client.post(
+            "/api/v1/binary/scan/jobs/bjob-nope/replay").status_code == 404

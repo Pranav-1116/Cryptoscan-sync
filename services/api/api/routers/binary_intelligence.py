@@ -110,6 +110,44 @@ class WorkerStatusOut(BaseModel):
     note: str
 
 
+class QueuedJobRecord(BaseModel):
+    """One job row as the investigation surface sees it — including the
+    dead letter: status, attempts, error and the persisted result."""
+    job_id: str
+    tenant_id: str
+    status: str
+    attempts: int
+    max_attempts: int
+    original_filename: str
+    source_type: str
+    source_location: Optional[str] = None
+    uploaded_by: str
+    profile: str
+    trace_id: Optional[str] = None
+    claimed_by: Optional[str] = None
+    lease_expires_at: Optional[str] = None
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    error: Optional[str] = None
+    result: Optional[Dict[str, Any]] = None
+
+
+class JobListOut(BaseModel):
+    jobs: list[QueuedJobRecord]
+    count: int
+    backend: str = "database_leased_jobs"
+    note: str = ("bounded investigation listing — the dead letter is "
+                 "readable, never just a counter")
+
+
+class JobReplayOut(BaseModel):
+    job_id: str
+    requeued: bool
+    reason: str
+
+
 class ArtifactOut(BaseModel):
     artifact_id: str
     sha256: str
@@ -624,6 +662,62 @@ class TwinEdgeOut(BaseModel):
     evidence_class: str
     limitations: List[str] = Field(default_factory=list)
     observed_at: Optional[str] = None
+
+
+@router.get("/scan/jobs", response_model=JobListOut,
+            dependencies=[Depends(require_intelligence_writer)])
+def list_scan_jobs(
+        status: Optional[str] = Query(
+            None, pattern="^(QUEUED|CLAIMED|SUCCEEDED|FAILED|DEAD)$"),
+        limit: int = Query(50, ge=1, le=200),
+        db: Session = Depends(get_db_session),
+        user: str = Depends(get_current_user)
+        ) -> JobListOut:
+    """Investigation listing over the job table (§12). The dead letter is
+    READABLE here — jobs that repeatedly failed are preserved for
+    investigation, never just counted."""
+    from db.tenancy import current_tenant
+
+    jobs = WORKER_QUEUE.list_jobs(db, tenant_id=current_tenant(),
+                                  status=status, limit=limit)
+    return JobListOut(jobs=jobs, count=len(jobs))
+
+
+@router.get("/scan/jobs/{job_id}", response_model=QueuedJobRecord,
+            dependencies=[Depends(require_intelligence_writer)])
+def get_scan_job(job_id: str,
+                 db: Session = Depends(get_db_session),
+                 user: str = Depends(get_current_user)
+                 ) -> QueuedJobRecord:
+    """One job's full record: status, attempts, error, persisted result.
+    A foreign tenant's job is indistinguishable from a missing one."""
+    from db.tenancy import current_tenant
+
+    record = WORKER_QUEUE.get_job(db, job_id, tenant_id=current_tenant())
+    if record is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    return QueuedJobRecord(**record)
+
+
+@router.post("/scan/jobs/{job_id}/replay", response_model=JobReplayOut,
+             dependencies=[Depends(require_intelligence_writer)])
+def replay_scan_job(job_id: str,
+                    db: Session = Depends(get_db_session),
+                    user: str = Depends(get_current_user)
+                    ) -> JobReplayOut:
+    """Requeue a DEAD job after investigation. Only dead letters replay —
+    a live job is never replayed underneath its worker (version CAS).
+    The replay gets a fresh attempt budget; the failure reason stays on
+    the row's history through the audit trail."""
+    _require_durable_async_backend()
+    from db.tenancy import current_tenant
+
+    requeued, reason = WORKER_QUEUE.replay_dead(db, job_id,
+                                               tenant_id=current_tenant())
+    if not requeued:
+        code = 404 if reason == "job not found" else 409
+        raise HTTPException(status_code=code, detail=reason)
+    return JobReplayOut(job_id=job_id, requeued=True, reason=reason)
 
 
 class TwinEdgesOut(BaseModel):

@@ -232,10 +232,78 @@ class DurableScanJobQueue:
                         if status == "QUEUED" else
                         "lease expired repeatedly: dead-lettered after "
                         f"{attempts} attempts"))
-            if result.rowcount == 1:
-                recovered += 1
+        if result.rowcount == 1:
+            recovered += 1
         db.commit()
         return recovered
+
+    # -- investigation surface -------------------------------------------
+    def list_jobs(self, db: Session, *, tenant_id: Optional[str] = None,
+                  status: Optional[str] = None,
+                  limit: int = 50) -> list[Dict[str, Any]]:
+        """Bounded job listing for investigation — the dead letter is
+        READABLE, never just a counter. Ordering: newest first."""
+        stmt = select(BinaryScanJob).order_by(BinaryScanJob.created_at.desc())
+        if tenant_id is not None:
+            stmt = stmt.where(BinaryScanJob.tenant_id == tenant_id)
+        if status is not None:
+            stmt = stmt.where(BinaryScanJob.status == status)
+        rows = db.scalars(stmt.limit(max(1, min(int(limit), 200)))).all()
+        return [self._job_summary(row) for row in rows]
+
+    def get_job(self, db: Session, job_id: str,
+                tenant_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        row = self._visible(db, job_id, tenant_id)
+        return self._job_summary(row) if row is not None else None
+
+    def replay_dead(self, db: Session, job_id: str,
+                    tenant_id: Optional[str] = None) -> Tuple[bool, str]:
+        """Requeue a dead-lettered job after investigation. Only DEAD rows:
+        a live job is never replayed underneath its worker — that is what
+        the version CAS is for. The replay is a fresh attempt budget."""
+        row = self._visible(db, job_id, tenant_id)
+        if row is None:
+            return False, "job not found"
+        now = utcnow()
+        result = db.execute(
+            update(BinaryScanJob)
+            .where(BinaryScanJob.id == row.id,
+                   BinaryScanJob.version == row.version,
+                   BinaryScanJob.status == "DEAD")
+            .values(status="QUEUED", attempts=0,
+                    claimed_by=None, lease_expires_at=None,
+                    error=None, version=row.version + 1, updated_at=now))
+        db.commit()
+        if result.rowcount != 1:
+            return False, ("job is not a dead letter (or moved underfoot) "
+                           "— replay refused")
+        return True, "requeued"
+
+    def _job_summary(self, row: BinaryScanJob) -> Dict[str, Any]:
+        def iso(value: Any) -> Optional[str]:
+            return value.isoformat() if value is not None else None
+
+        return {
+            "job_id": row.job_id,
+            "tenant_id": row.tenant_id,
+            "status": row.status,
+            "attempts": row.attempts,
+            "max_attempts": row.max_attempts,
+            "original_filename": row.original_filename,
+            "source_type": row.source_type,
+            "source_location": row.source_location,
+            "uploaded_by": row.uploaded_by,
+            "profile": row.profile,
+            "trace_id": row.trace_id,
+            "claimed_by": row.claimed_by,
+            "lease_expires_at": iso(row.lease_expires_at),
+            "started_at": iso(row.started_at),
+            "completed_at": iso(row.completed_at),
+            "created_at": iso(row.created_at),
+            "updated_at": iso(row.updated_at),
+            "error": row.error,
+            "result": row.result,
+        }
 
     # -- introspection ---------------------------------------------------
     def _refer_blob(self, db: Session, *, tenant_id: str, sha256: str,
