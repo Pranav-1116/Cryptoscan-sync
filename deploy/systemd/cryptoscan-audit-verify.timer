@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily CryptoScan audit-chain verification
+
+[Timer]
+# After the nightly backup window; daily is the floor for an integrity
+# signal (a tampered chain found weekly is a week of undetected tamper).
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+Unit=cryptoscan-audit-verify.service
+
+[Install]
+WantedBy=timers.target

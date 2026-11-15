@@ -1,0 +1,12 @@
+[Unit]
+Description=Weekly CryptoScan restore drill
+
+[Timer]
+# Weekly: backups are verified continuously (checksums), but only a real
+# restore proves the runbook. Sunday, well clear of the backup window.
+OnCalendar=Sun *-*-* 04:00:00
+Persistent=true
+Unit=cryptoscan-restore-drill.service
+
+[Install]
+WantedBy=timers.target

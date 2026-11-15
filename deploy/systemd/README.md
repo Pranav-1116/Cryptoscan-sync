@@ -20,3 +20,24 @@ systemctl list-timers cryptoscan-backup.*
 
 Verify a restore at least quarterly as part of the failover drill
 (`docs/runbooks/dr-recovery.md` §5).
+
+## Integrity + recovery schedules (the other half of backup automation)
+
+```bash
+sudo cp deploy/systemd/cryptoscan-audit-verify.{service,timer} /etc/systemd/system/
+sudo cp deploy/systemd/cryptoscan-restore-drill.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now cryptoscan-audit-verify.timer cryptoscan-restore-drill.timer
+systemctl list-timers 'cryptoscan-*'
+```
+
+- **`cryptoscan-audit-verify.timer`** (daily) runs `scripts/audit_verify.py`:
+  the audit hash chain must verify. Exit `1` = **TAMPERED** (incident),
+  exit `2` = could not verify — either way the unit FAILS and your
+  unit-failure alerting lights up. Discovery by happenstance is not an
+  integrity program.
+- **`cryptoscan-restore-drill.timer`** (weekly) runs
+  `scripts/backup_drill.py --record-evidence`: restores the latest backup
+  into a scratch instance and records the verdict in the signed
+  production-evidence chain. The only backup that counts is one that has
+  restored.

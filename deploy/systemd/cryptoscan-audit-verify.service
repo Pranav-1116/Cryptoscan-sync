@@ -1,0 +1,15 @@
+[Unit]
+Description=CryptoScan audit-chain verification (a tampered chain must surface as a FAILED unit, not at the next audit)
+After=docker.service
+
+[Service]
+Type=oneshot
+# Run from the repo checkout (the same layout the backup unit assumes).
+WorkingDirectory=/opt/cryptoscan
+# Exit 0 = chain OK, 1 = TAMPERED (incident), 2 = could not verify. Either
+# non-zero is a unit failure — hook your alerting to unit failures.
+ExecStart=/usr/bin/env python3 scripts/audit_verify.py
+# Periodic full re-verification (the daily run is incremental). Uncomment
+# for the belt-and-braces schedule:
+# ExecStart=/usr/bin/env python3 scripts/audit_verify.py --incremental --force-full
+Nice=10

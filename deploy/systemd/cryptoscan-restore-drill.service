@@ -1,0 +1,15 @@
+[Unit]
+Description=CryptoScan restore drill (the only backup that counts is one that restores; results are recorded, not assumed)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/cryptoscan
+# The drill restores the latest backup into a scratch instance, probes it,
+# and --record-evidence appends the verdict to the signed production-
+# evidence chain (BC/DR policy: drill results are an auditable artifact).
+# A failed or unrecorded drill exits non-zero — silence is not success.
+ExecStart=/usr/bin/env python3 scripts/backup_drill.py --record-evidence
+Nice=19
+IOSchedulingClass=idle

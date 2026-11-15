@@ -360,3 +360,46 @@ class TestQueueSignalConsumers:
         assert "kind: ScaledObject" in tmpl
         assert ".Values.worker.autoscaling.keda.enabled" in tmpl
         assert "cryptoscan_scan_queue_depth" in tmpl
+
+
+# ---------------------------------------------------------------------------
+# Scheduled verifiers: integrity and recovery are standing signals, not
+# things discovered by happenstance.
+# ---------------------------------------------------------------------------
+
+
+class TestScheduledVerifiers:
+    SYSTEMD = ROOT / "deploy" / "systemd"
+
+    def test_audit_verification_is_scheduled_and_fail_loud(self):
+        service = (self.SYSTEMD / "cryptoscan-audit-verify.service").read_text()
+        timer = (self.SYSTEMD / "cryptoscan-audit-verify.timer").read_text()
+        assert "scripts/audit_verify.py" in service
+        assert "Type=oneshot" in service
+        assert "OnCalendar=" in timer          # daily floor
+        assert "Persistent=true" in timer
+        # the README tells the operator what a failure means
+        readme = (self.SYSTEMD / "README.md").read_text()
+        assert "TAMPERED" in readme
+
+    def test_audit_verify_exit_codes_are_the_unit_health(self):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "audit_verify", ROOT / "scripts" / "audit_verify.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        ok, _ = mod.evaluate({"status": "OK"})
+        bad, report = mod.evaluate({"status": "TAMPERED"})
+        unknown, _ = mod.evaluate({})
+        assert (ok, bad, unknown) == (0, 1, 2)
+        assert report["ok"] is False and "incident" in report["note"]
+
+    def test_restore_drill_is_scheduled_and_records_evidence(self):
+        service = (self.SYSTEMD / "cryptoscan-restore-drill.service").read_text()
+        timer = (self.SYSTEMD / "cryptoscan-restore-drill.timer").read_text()
+        assert "scripts/backup_drill.py" in service
+        assert "--record-evidence" in service
+        assert "OnCalendar=Sun" in timer       # weekly
+        assert "Persistent=true" in timer
