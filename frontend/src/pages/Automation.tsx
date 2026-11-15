@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, PageHead } from "../components/ui.jsx";
+import { RequireRole } from "../lib/auth.jsx";
+import { AUTOMATION_WRITE_ROLES } from "../lib/rbac.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
 import { ICON_SM, IconClose, IconRadioOff, IconRadioOn, StatusMark } from "../components/icons";
@@ -227,9 +229,11 @@ export default function Automation() {
                 {SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             </label>
-            <button className="btn primary" disabled={!canSave} onClick={() => void save()}>
-              {saving ? "Saving…" : "Save rule"}
-            </button>
+            <RequireRole anyOf={[...AUTOMATION_WRITE_ROLES]}>
+              <button className="btn primary" disabled={!canSave} onClick={() => void save()}>
+                {saving ? "Saving…" : "Save rule"}
+              </button>
+            </RequireRole>
             <span style={{ marginInlineStart: "auto" }} className="dim" />
           </div>
           <div className="row" style={{ gap: 8, marginTop: 10, fontSize: 12 }}>
@@ -263,8 +267,10 @@ export default function Automation() {
                     <span className="rb-name mono">{r.name || r.rule_id || r.id}</span>
                     <Badge tone={String(r.severity || "MEDIUM").toLowerCase() === "critical" || String(r.severity).toLowerCase() === "high" ? "red" : "amber"}>{r.severity || "MEDIUM"}</Badge>
                     {r.enabled === false && <Badge tone="slate">disabled</Badge>}
-                    <button className="btn sm" style={{ marginInlineStart: "auto" }}
-                      onClick={() => void remove(r.rule_id ?? r.id)}>delete</button>
+                    <RequireRole anyOf={[...AUTOMATION_WRITE_ROLES]}>
+                      <button className="btn sm" style={{ marginInlineStart: "auto" }}
+                        onClick={() => void remove(r.rule_id ?? r.id)}>delete</button>
+                    </RequireRole>
                   </div>
                   <div className="rb-when" style={{ marginTop: 6 }}>WHEN {r.when}</div>
                   {conds.length > 0 && (

@@ -2,6 +2,7 @@
 
 import React, { ReactNode } from "react";
 import { IconClose, ICON_MD } from "./icons";
+import { PanelErrorBoundary } from "./ErrorBoundary";
 import { motion } from "framer-motion";
 import { CountUp, DecryptText, DUR, EASE, useAutoAnimate, useMotionOK } from "../lib/motion";
 
@@ -25,7 +26,11 @@ export function Panel({ title, sub, children, frame = true, className = "", styl
       {frame && <Corners />}
       {title && <h3>{title}</h3>}
       {sub && <p className="sub">{sub}</p>}
-      {children}
+      {/* One panel's render failure must not blank the page (Critical:
+          error boundaries). Mounted here so EVERY panel is isolated. */}
+      <PanelErrorBoundary label={typeof title === "string" ? title : undefined}>
+        {children}
+      </PanelErrorBoundary>
     </>
   );
   // Every page is built from Panels, so animating here is what makes the

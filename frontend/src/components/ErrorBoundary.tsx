@@ -67,3 +67,49 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     );
   }
 }
+
+
+/**
+ * PanelErrorBoundary — one panel's render failure must not blank the page.
+ *
+ * Charts, tables and graph views are independent panels; a bug in one is a
+ * bug in ONE. The fallback says which panel failed, keeps the rest of the
+ * page live, and offers a retry (render errors are often transient data
+ * shapes). Mounted inside ui.tsx `Panel`, so every panel on every page is
+ * isolated without per-page wiring.
+ */
+export class PanelErrorBoundary extends React.Component<
+  { children: React.ReactNode; label?: string },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("panel render failed", error, info.componentStack);
+  }
+
+  render() {
+    const { error } = this.state;
+    if (!error) return this.props.children;
+    return (
+      <div role="alert" style={{ padding: 14, fontSize: 12.5, color: "var(--dim)" }}>
+        <strong style={{ color: "var(--text)" }}>
+          {this.props.label ? `“${this.props.label}”` : "This panel"} failed to render.
+        </strong>{" "}
+        The rest of the page is still live.
+        <button
+          type="button"
+          className="btn outline"
+          style={{ marginLeft: 10, padding: "3px 10px", fontSize: 12 }}
+          onClick={() => this.setState({ error: null })}
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+}
