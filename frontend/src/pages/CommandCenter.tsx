@@ -7,7 +7,7 @@ import {
   LiveBadge,
 } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
-import { useRealtime, severityOf, isSystemEvent, useRealtimeRefresh, RealtimeChip } from "../lib/realtime.js";
+import { useRealtime, severityOf, isSystemEvent, RealtimeChip } from "../lib/realtime.js";
 import { useLive } from "../lib/useLive.js";
 import { ICON_SM, IconRunning, StatusMark } from "../components/icons";
 import { GapBar, HBars, KpiMeter, StackedBar, StateCell, TickStrip, VizEmpty } from "../components/viz";
@@ -106,7 +106,9 @@ export default function CommandCenter() {
   const liveAlerts = usePollingApi(apiLiveAlerts, 6000, [], { channels: ["security", "findings"] });
   const liveBom = usePollingApi(apiLiveBom, 12000, [], { channels: ["crypto"] });
   const liveDrift = usePollingApi(apiLiveDrift, 9000, [], { channels: ["estate", "remediation"] });
-  useRealtimeRefresh(liveStats.run, liveDeliveries.run, liveInventory.run, liveScan.run, liveAlerts.run, liveBom.run, liveDrift.run);
+  // (Event-driven refresh lives in each hook's channels — the global
+  // useRealtimeRefresh would refresh every panel on every event, the
+  // double-refresh the realtime coverage ratchet forbids.)
 
   const runFirstScan = async () => {
     setFirstScanBusy(true);

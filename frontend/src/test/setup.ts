@@ -15,6 +15,8 @@ export type FetchRoute = (url: string, init?: RequestInit) => unknown | Response
 
 /** Build a fetch stub from a path → payload map (or resolver). */
 export function mockFetch(routes: Record<string, unknown | FetchRoute>, fallbackStatus = 404) {
+  // A new fixture = a fresh backend scenario = a fresh rate-limit budget.
+  (globalThis as unknown as { __resetRequestGate?: () => void }).__resetRequestGate?.();
   const fn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     const path = url.replace(/^https?:\/\/[^/]+/, "").split("?")[0];
@@ -33,6 +35,8 @@ export function mockFetch(routes: Record<string, unknown | FetchRoute>, fallback
 
 /** The default: the backend is down. */
 export function offlineFetch() {
+  // A new scenario = a fresh rate-limit budget (same as mockFetch above).
+  (globalThis as unknown as { __resetRequestGate?: () => void }).__resetRequestGate?.();
   const fn = vi.fn(async () => { throw new TypeError("Failed to fetch"); });
   globalThis.fetch = fn as unknown as typeof fetch;
   return fn;
@@ -94,10 +98,11 @@ afterEach(async () => {
   // without this, one test's answer (or throttling window) leaks into the next.
   // Imported lazily: a STATIC import here would load lib/api.js before a test
   // file's own vi.mock factory can install its bridge — the mock would lose.
-  const [{ queryClient }, { resetGate }] = await Promise.all([
+  const [{ queryClient, inFlight }, { resetGate }] = await Promise.all([
     import("../lib/serverState.js"),
     import("../lib/requestGate.js"),
   ]);
   queryClient.clear();
+  inFlight.clear();
   resetGate();
 });

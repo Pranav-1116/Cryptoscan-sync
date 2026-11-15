@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Badge, Feed, Kpi, PageHead, Panel, Stat, Table, Tabs, Code, Bar, Ring, Drawer,
 } from "../components/ui.jsx";
-import { useRealtime, useRealtimeRefresh, severityOf } from "../lib/realtime.js";
+import { useRealtime, severityOf } from "../lib/realtime.js";
 import { usePollingApi, useApi } from "../lib/apiUi.jsx";
 import AssetDetail from "../components/AssetDetail";
 import { useSearchParams } from "react-router-dom";
@@ -756,8 +756,8 @@ export default function LiveAssetIntelligence() {
   const schedules = usePollingApi(apiTechBomSchedules, 30000, [], { channels: ["crypto"] });
   const vendor = usePollingApi(apiTechBomVendor, 60000, [], { channels: ["crypto"] });
   const runs = usePollingApi(apiTechBomExportRuns, 30000, [], { channels: ["crypto"] });
-  const assurance = usePollingApi(apiTechBomAssurance, 30000);
-  const banking = usePollingApi(apiBankingOverview, 60000);
+  const assurance = usePollingApi(apiTechBomAssurance, 30000, [], { channels: ["crypto"] });
+  const banking = usePollingApi(apiBankingOverview, 60000, [], { channels: ["security"] });
   const rt = useRealtime();
 
   const [compare, setCompare] = useState<{ from: number; to: number; diff: TechBomDiff | null; loading: boolean }>({ from: 0, to: 0, diff: null, loading: false });
@@ -767,7 +767,9 @@ export default function LiveAssetIntelligence() {
   const [evidenceMsg, setEvidenceMsg] = useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = useState<{ name: string; frequency: string; fmt: string; layer: string }>({ name: "", frequency: "weekly", fmt: "json", layer: "all" });
 
-  useRealtimeRefresh(live.run, versions.run, schedules.run, runs.run, vendor.run, assurance.run);
+  // (Event-driven refresh lives in each hook's channels — the global
+  // useRealtimeRefresh would refresh every panel on every event, the
+  // double-refresh the realtime coverage ratchet forbids.)
 
   const state: TechBomState | null = (live.data as TechBomState) ?? null;
 

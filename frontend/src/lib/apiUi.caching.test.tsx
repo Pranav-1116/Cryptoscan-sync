@@ -45,7 +45,13 @@ describe("server-state caching at the hook layer", () => {
     expect(calls).toBe(1);
   });
 
-  it("serves a remount from the cache within the stale window — no refetch", async () => {
+  it("paints a remount from the cache instantly, then revalidates for truth", async () => {
+    // The cache is a PAINT, not a truth: a remount shows the cached answer
+    // with no blank flash ("avoid repeatedly fetching the same inventory and
+    // dashboard data") — but the network is always revalidated in the
+    // background and its answer replaces the paint. An honest console never
+    // presents a stale live answer over a dead backend ("stays honest
+    // offline" — Certificates pins this).
     let calls = 0;
     mockFetch({
       "/api/v1/graph/edges": () => {
@@ -57,8 +63,10 @@ describe("server-state caching at the hook layer", () => {
     await waitFor(() => expect(screen.getByTestId("a-source")).toHaveTextContent("live"));
     first.unmount();
     render(<Probe label="a" />);
-    await waitFor(() => expect(screen.getByTestId("a-source")).toHaveTextContent("live"));
-    expect(calls).toBe(1); // the second mount paid nothing
+    // Instant paint from cache — before any revalidate can land.
+    expect(screen.getByTestId("a-source")).toHaveTextContent("live");
+    await waitFor(() => expect(calls).toBe(2)); // the truth check happened
+    expect(screen.getByTestId("a-source")).toHaveTextContent("live");
   });
 
   it("run() is an explicit refresh — it reaches the network", async () => {
@@ -77,17 +85,22 @@ describe("server-state caching at the hook layer", () => {
 });
 
 describe("retry policy at the transport", () => {
-  it("GET retries 5xx ≤3× and succeeds on the first good response", async () => {
+  it("GET retries 5xx and succeeds on the first good response", async () => {
+    // Retry pin (deliberate, re-scoped 2026-10): 2 attempts per GET (initial
+    // + 1 retry — inside the ≤3 contract). Recovery from a single transient
+    // blip works; a page of error reads cannot multiply itself past the
+    // request gate's burst window and push its own honest failure state out
+    // of reach (BankingRegulatory/Certificates depend on that).
     let calls = 0;
     mockFetch({
       "/api/v1/graph/edges": () => {
         calls += 1;
-        return calls < 4 ? new Response("{}", { status: 500 }) : { edges: [], count: 0 };
+        return calls < 2 ? new Response("{}", { status: 500 }) : { edges: [], count: 0 };
       },
     });
     const res = await apiGraphEdges();
     expect(res.source).toBe("live");
-    expect(calls).toBe(4); // initial + 3 retries
+    expect(calls).toBe(2); // initial + 1 retry
   });
 
   it("GET treats 4xx as final — a 404 never retries", async () => {

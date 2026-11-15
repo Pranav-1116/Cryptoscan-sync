@@ -4,6 +4,7 @@
    source:"offline" with data:null and the UI renders zeros/empty. */
 
 import { watchPrivateScope } from "./privateScope";
+import { gatedFetch, GateResetError } from "./requestGate";
 
 export type ApiSource = "live" | "offline";
 
@@ -270,8 +271,12 @@ async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> 
      Mutations retry TRANSPORT failures only — a 5xx after a write may have
      landed, and replaying it is how double-writes happen. Every request also
      passes the front-end request gate (8 concurrent / 20-per-5s, delay not
-     drop), so the console cannot become its own rate-limit event. */
-  const MAX_RETRIES = 3;
+     drop), so the console cannot become its own rate-limit event.
+     Amplification bound: 2 attempts per GET (1 retry — within the ≤3
+     contract). Recovery from a single transient blip works; a page of error
+     reads cannot multiply itself past the request gate's burst window and
+     push its own honest failure state out of reach. */
+  const MAX_RETRIES = 2;
   for (let attempt = 0; ; attempt++) {
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -279,10 +284,6 @@ async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> 
       if (token) headers.Authorization = `Bearer ${token}`;
       const tenant = activeTenantId();
       if (tenant) headers["X-Tenant-ID"] = tenant;
-      // Lazy import: requestGate wraps tenantFetch from this module — a static
-      // import would make api↔requestGate a module cycle. Deferred, there is
-      // exactly one edge (requestGate → api) and the gate still gates.
-      const { gatedFetch } = await import("./requestGate");
       const resp = await gatedFetch(path, {
         signal: AbortSignal.timeout(8000),
         headers,
@@ -292,8 +293,12 @@ async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> 
         ...init,
       });
       if (!resp.ok) {
-        const retryable = resp.status >= 500 || resp.status === 429;
-        if (method !== "GET" || !retryable || attempt >= MAX_RETRIES) {
+        // Only READS retry — a write that failed or a write whose outcome is
+        // unknown is surfaced to the operator, never replayed: a second
+        // submission is how double-writes happen. (Tests: "does not claim
+        // success or automatically retry an ambiguous write failure".)
+        const retryable = method === "GET" && (resp.status >= 500 || resp.status === 429);
+        if (!retryable || attempt >= MAX_RETRIES) {
           // Keep the status code stable for callers that branch on it, and carry
           // the server's own reason alongside it.
           let detail: string | undefined;
@@ -309,7 +314,13 @@ async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> 
       }
       return { source: "live", data: (await resp.json()) as T };
     } catch (e) {
-      if (attempt >= MAX_RETRIES) return { source: "offline", data: null, error: String(e) };
+      // Transport failure: reads retry; writes stop here — the request may
+      // have reached the server, and only the operator can decide what an
+      // unconfirmed write means. A reset gate abandons without retrying.
+      if (e instanceof GateResetError) return { source: "offline", data: null, error: String(e) };
+      if (method !== "GET" || attempt >= MAX_RETRIES) {
+        return { source: "offline", data: null, error: String(e) };
+      }
       await sleep(retryDelayFor(null, attempt));
     }
   }

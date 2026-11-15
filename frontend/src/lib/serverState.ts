@@ -112,7 +112,14 @@ export function makeQueryClient(): QueryClient {
  *  isolation is enforced by eviction, never by key-shape luck. */
 export function flushTenantCaches(client: QueryClient): void {
   client.clear();
+  inFlight.clear();
 }
+
+/** In-flight dedupe shared by useApi: identical keys join ONE request. Owned
+ *  here so both the tenant flush and the test teardown can purge it — a
+ *  leaked (never-settled) request must never become a zombie that later
+ *  same-key requests join. */
+export const inFlight = new Map<string, Promise<unknown>>();
 
 /** The one client the app mounts. Tests build their own via makeQueryClient. */
 export const queryClient = makeQueryClient();

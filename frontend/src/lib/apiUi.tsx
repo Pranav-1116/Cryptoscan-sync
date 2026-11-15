@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiResult, ApiSource } from "./api.js";
-import { queryClient, queryKeys } from "./serverState.js";
+import { queryClient, queryKeys, inFlight } from "./serverState.js";
 import { CHANNELS_ALL, channelOf, kindOf, useChannelRefresh, useRealtime } from "./realtime.js";
 
 /** How long a cached answer is served without hitting the network. Mirrors the
@@ -28,7 +28,7 @@ function failureEnvelope(err: unknown): ApiResult<never> {
 }
 
 export function useApi<T>(fn: () => Promise<ApiResult<T>>, deps: unknown[] = []) {
-  /* Server-state caching (TanStack Query) is the cache ENGINE, bound through
+  /* Server-state caching (TanStack Query) is the cache STORE, bound through
      its imperative client so every existing call-site and test keeps its
      contract without provider plumbing. The key is [domain, tenant, closure
      source, ...deps]: identical closures across components share ONE in-flight
@@ -36,6 +36,7 @@ export function useApi<T>(fn: () => Promise<ApiResult<T>>, deps: unknown[] = [])
      switch (isolation by eviction — see flushTenantCaches). */
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const key = useMemo(() => [...queryKeys.root("api-ui"), fn.toString(), ...deps], deps);
+  const cacheKey = JSON.stringify(key);
   const [result, setResult] = useState<ApiResult<T>>({ source: "offline", data: null });
   const [running, setRunning] = useState(false);
 
@@ -43,27 +44,30 @@ export function useApi<T>(fn: () => Promise<ApiResult<T>>, deps: unknown[] = [])
     setRunning(true);
     try {
       // `run` is an explicit refresh (timer tick, Refresh button): always
-      // reach the network — but Query still DEDUPES concurrent identical
-      // keys, so N panels refreshing together make 1 request.
-      const res = await queryClient.fetchQuery<ApiResult<T>>({
-        queryKey: key,
-        queryFn: async () => {
+      // reach the network. fn() starts SYNCHRONOUSLY — the transport call is
+      // on the wire before the first await (tests capture the request's
+      // deferred resolver right after render) — and concurrent runs with the
+      // same key join one in-flight request instead of stampeding.
+      let pending = inFlight.get(cacheKey) as Promise<ApiResult<T>> | undefined;
+      if (!pending) {
+        pending = (async () => {
           try {
             return await fn();
           } catch (err) {
             return failureEnvelope(err);
           }
-        },
-        staleTime: 0,
-        gcTime: GC_MS,
-      });
+        })();
+        inFlight.set(cacheKey, pending as Promise<unknown>);
+        void (pending as Promise<unknown>).finally(() => inFlight.delete(cacheKey));
+      }
+      const res = await pending;
+      // Prune answers older than the gc window (the cache's eviction contract).
+      for (const q of queryClient.getQueryCache().getAll()) {
+        if (Date.now() - (q.state.dataUpdatedAt ?? 0) > GC_MS) queryClient.getQueryCache().remove(q);
+      }
+      queryClient.setQueryData(key, res);
       setResult(res);
       return res;
-    } catch {
-      // fetchQuery rejects only when the query is CANCELLED — the cache was
-      // cleared under it (tenant switch, teardown). Not a failure to report;
-      // the last result stays on screen and no unhandled rejection escapes.
-      return { source: "offline", data: null, error: "CANCELLED" };
     } finally {
       setRunning(false);
     }
@@ -73,10 +77,14 @@ export function useApi<T>(fn: () => Promise<ApiResult<T>>, deps: unknown[] = [])
     const cached = queryClient.getQueryData<ApiResult<T>>(key);
     const updatedAt = queryClient.getQueryState(key)?.dataUpdatedAt ?? 0;
     if (cached && Date.now() - updatedAt < STALE_MS) {
-      // Served from the cache — this is the row: 'avoid repeatedly fetching
-      // the same inventory and dashboard data'.
+      // Cache paints instantly — no blank flash on remounts ("avoid repeatedly
+      // fetching the same inventory and dashboard data"). But the cache is a
+      // PAINT, not a truth: the network is always revalidated in the
+      // background, and its answer replaces the paint — an honest console
+      // never presents a stale live answer over a dead backend (the
+      // "stays honest offline" contract). Simultaneous mounts share one
+      // revalidate via the in-flight dedupe.
       setResult(cached);
-      return;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     void run();

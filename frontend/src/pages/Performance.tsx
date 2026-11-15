@@ -220,7 +220,7 @@ function ErrorNote({ error }: { error: string }) {
   );
 }
 
-function useAsync<T>(loader: () => Promise<ApiResult<T>>, deps: React.DependencyList) {
+function useAsync<T>(loader: () => Promise<ApiResult<T>>, deps: React.DependencyList, enabled = true) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -235,7 +235,7 @@ function useAsync<T>(loader: () => Promise<ApiResult<T>>, deps: React.Dependency
       .then(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
-  useEffect(() => { run(); }, [run]);
+  useEffect(() => { if (enabled) run(); }, [run, enabled]);
   return { data, error, loading, reload: run };
 }
 
@@ -266,25 +266,29 @@ export default function Performance() {
   const reloadKey = `${tenant}|${window.window_start}|${window.window_end}`;
   const w = { tenant_id: tenant, ...window };
 
-  const overview = useAsync(() => apiPerformanceOverview(w), [reloadKey]);
-  const network = useAsync(() => apiPerformanceNetwork(w), [reloadKey]);
-  const storage = useAsync(() => apiPerformanceStorage(w), [reloadKey]);
-  const applications = useAsync(() => apiPerformanceAppWorkspace(w), [reloadKey]);
-  const databases = useAsync(() => apiPerformanceDbWorkspace(w), [reloadKey]);
-  const cryptography = useAsync(() => apiPerformanceCryptography(w), [reloadKey]);
-  const infrastructure = useAsync(() => apiPerformanceInfraWorkspace(w), [reloadKey]);
-  const cloud = useAsync(() => apiPerformanceCloud(w), [reloadKey]);
-  const alerts = useAsync(() => apiPerformanceAlerts(w), [reloadKey]);
+  // Reads wait for tenant resolution — exactly once, never twice: a batch
+  // fired with a blank tenant is thrown away when the real tenant arrives,
+  // and double batches blow the request gate's burst window for nothing.
+  const readsReady = !tenantResolving;
+  const overview = useAsync(() => apiPerformanceOverview(w), [reloadKey], readsReady);
+  const network = useAsync(() => apiPerformanceNetwork(w), [reloadKey], readsReady);
+  const storage = useAsync(() => apiPerformanceStorage(w), [reloadKey], readsReady);
+  const applications = useAsync(() => apiPerformanceAppWorkspace(w), [reloadKey], readsReady);
+  const databases = useAsync(() => apiPerformanceDbWorkspace(w), [reloadKey], readsReady);
+  const cryptography = useAsync(() => apiPerformanceCryptography(w), [reloadKey], readsReady);
+  const infrastructure = useAsync(() => apiPerformanceInfraWorkspace(w), [reloadKey], readsReady);
+  const cloud = useAsync(() => apiPerformanceCloud(w), [reloadKey], readsReady);
+  const alerts = useAsync(() => apiPerformanceAlerts(w), [reloadKey], readsReady);
   // No measured capacity ceiling is configured by this page. Request the
   // recorded series as-is; the backend must say no-capacity, not forecast.
-  const capacity = useAsync(() => apiPerformanceCapacity(w), [reloadKey]);
-  const baselines = useAsync(() => apiPerformanceBaselines(w), [reloadKey]);
-  const benchmarks = useAsync(() => apiPerformanceBenchmarks({ tenant_id: tenant }), [reloadKey]);
-  const health = useAsync(() => apiPerformanceHealth({ tenant_id: tenant }), [reloadKey]);
-  const slo = useAsync(() => apiPerformanceSlo(w), [reloadKey]);
-  const hsm = useAsync(() => apiPerformanceHsm(w), [reloadKey]);
-  const workloads = useAsync(() => apiPerformanceWorkloads(w), [reloadKey]);
-  const trends = useAsync(() => apiPerformanceSamples({ ...w, limit: 240 }), [reloadKey]);
+  const capacity = useAsync(() => apiPerformanceCapacity(w), [reloadKey], readsReady);
+  const baselines = useAsync(() => apiPerformanceBaselines(w), [reloadKey], readsReady);
+  const benchmarks = useAsync(() => apiPerformanceBenchmarks({ tenant_id: tenant }), [reloadKey], readsReady);
+  const health = useAsync(() => apiPerformanceHealth({ tenant_id: tenant }), [reloadKey], readsReady);
+  const slo = useAsync(() => apiPerformanceSlo(w), [reloadKey], readsReady);
+  const hsm = useAsync(() => apiPerformanceHsm(w), [reloadKey], readsReady);
+  const workloads = useAsync(() => apiPerformanceWorkloads(w), [reloadKey], readsReady);
+  const trends = useAsync(() => apiPerformanceSamples({ ...w, limit: 240 }), [reloadKey], readsReady);
 
   return (
     <div>
