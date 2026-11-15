@@ -10,7 +10,6 @@ the scan succeeded. Each test below is one of those seven points.
 """
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
 
 import pytest

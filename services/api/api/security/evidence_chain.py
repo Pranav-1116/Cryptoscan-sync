@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import hmac
 import json
 import uuid
 from datetime import datetime, timezone
@@ -362,3 +363,92 @@ def verify(
             "access from rewriting the chain"
         ),
     }
+
+
+# ------------------------------------------------------- signed checkpoints --
+
+def _checkpoint_key() -> bytes:
+    """The operator-held checkpoint key. There is NO default: a checkpoint
+    signed with a key nobody holds is theater. Missing key is an explicit
+    refusal (the caller's problem, loudly)."""
+    import os
+
+    raw = os.environ.get("EVIDENCE_CHECKPOINT_KEY", "").strip()
+    if not raw or len(raw) < 16:
+        raise RuntimeError(
+            "EVIDENCE_CHECKPOINT_KEY is unset or too short (>=16 chars) — "
+            "refusing to sign a checkpoint nobody can hold")
+    return raw.encode("utf-8")
+
+
+def checkpoint_body(chain: dict[str, Any], *, spec: ChainSpec,
+                    tenant_id: str | None) -> dict[str, Any]:
+    """The signed body: what this checkpoint asserts about the chain right
+    now. Every field that lets a later reader detect drift is inside the
+    signature — including the declared truncation, so a dropped window can
+    never be mistaken for a complete chain."""
+    entries = list(chain.get("entries") or [])
+    head = entries[-1].get("record_hash") if entries else GENESIS
+    return {
+        "schema": "cryptoscan.evidence-chain-checkpoint/1",
+        "namespace": spec.namespace,
+        "tenant_id": tenant_id,
+        "chain_key": spec.key(tenant_id),
+        "entry_count": len(entries),
+        "last_seq": entries[-1].get("seq") if entries else 0,
+        "head_hash": head,
+        "anchored_prev_hash": chain.get("anchored_prev_hash") or GENESIS,
+        "truncated_before_seq": int(chain.get("truncated_before_seq") or 0),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def checkpoint(chain: dict[str, Any], *, spec: ChainSpec,
+               tenant_id: str | None, signer_id: str,
+               key: bytes | None = None) -> dict[str, Any]:
+    """Sign the current chain head — the external anchor the local chain
+    cannot provide for itself. The bank archives this document; anyone
+    holding the key can later prove the chain was exactly this long, with
+    exactly this head, at checkpoint time. The chain's own
+    ``anchoring: local-database-only`` honesty is not weakened: the
+    checkpoint ADDS an anchor beside it, it does not replace the
+    database's own account of itself."""
+    signing_key = key if key is not None else _checkpoint_key()
+    body = checkpoint_body(chain, spec=spec, tenant_id=tenant_id)
+    body["signer_id"] = signer_id
+    signature = hmac.new(
+        signing_key,
+        json.dumps(body, sort_keys=True, separators=(",", ":"),
+                   default=str).encode("utf-8"),
+        hashlib.sha256).hexdigest()
+    return {**body, "signature": signature}
+
+
+def verify_checkpoint(doc: dict[str, Any], *, key: bytes | None = None) -> dict[str, Any]:
+    """Verify a checkpoint's signature. A forged head, an edited count, a
+    rewritten truncation window — all break the signature equally."""
+    signing_key = key if key is not None else _checkpoint_key()
+    body = {k: v for k, v in doc.items() if k != "signature"}
+    expected = hmac.new(
+        signing_key,
+        json.dumps(body, sort_keys=True, separators=(",", ":"),
+                   default=str).encode("utf-8"),
+        hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, str(doc.get("signature") or "")):
+        return {"valid": False, "reason": "signature does not match the checkpoint body",
+                "checked": sorted(body)}
+    return {"valid": True, "reason": "signature verifies", "head_hash": doc.get("head_hash")}
+
+
+def match_head(chain: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any]:
+    """Compare a live chain against a checkpoint's asserted head. MATCH
+    proves the chain has not moved since the checkpoint; DRIFT names the
+    change (growth is legitimate — the checkpoint says so honestly)."""
+    entries = list(chain.get("entries") or [])
+    head = entries[-1].get("record_hash") if entries else GENESIS
+    if head != doc.get("head_hash"):
+        return {"status": "DRIFT", "live_head": head,
+                "checkpoint_head": doc.get("head_hash"),
+                "note": "the chain has changed since the checkpoint — verify "
+                        "the change is legitimate growth before trusting it"}
+    return {"status": "MATCH", "head_hash": head}
