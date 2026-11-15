@@ -1554,3 +1554,146 @@ def adopt_edges(
         )
     return {"adopted": adopted, "skipped": skipped,
             "adopted_count": len(adopted)}
+
+
+# ------------------------------------------------------- dependency stores
+# The dependency-graph plane is three stores over one authoritative
+# inventory: Neo4j traversal (above), plus the Cassandra edge-history and
+# Elasticsearch search projections. PostgreSQL remains the source of truth;
+# these reads serve the rebuildable projections and say which backend
+# answered — an unconfigured store is reported, never faked.
+
+def _memory_dependency_search(vis: dict[str, Any], q: str, kind: str | None, limit: int) -> dict[str, Any]:
+    """Honest in-process fallback: substring match over the authoritative graph."""
+    needle = (q or "").lower()
+    hits: list[dict[str, Any]] = []
+    for node in vis.get("nodes") or []:
+        node_id = str(node.get("id") or "")
+        prefix, _, bare = node_id.partition(":")
+        node_kind = {"system": "system", "asset": "asset"}.get(prefix, "system")
+        text = " ".join(str(node.get(key) or "") for key in ("id", "label", "name")).lower()
+        if kind and kind != node_kind:
+            continue
+        if not needle or needle in text:
+            hits.append({"kind": node_kind, "identity": bare or node_id,
+                         "name": node.get("label") or node_id, "score": None})
+    for edge in vis.get("edges") or []:
+        if kind and kind != "edge":
+            continue
+        text = f"{edge.get('from')} {edge.get('label')} {edge.get('to')}".lower()
+        if not needle or needle in text:
+            subject = str(edge.get("from") or "").partition(":")[2] or edge.get("from")
+            object_ = str(edge.get("to") or "").partition(":")[2] or edge.get("to")
+            hits.append({"kind": "edge",
+                         "identity": f"{subject}::{edge.get('label')}::{object_}",
+                         "name": f"{edge.get('from')} {edge.get('label')} {edge.get('to')}",
+                         "score": None})
+    return {"hits": hits[:limit], "total": len(hits), "backend": "memory",
+            "configured": False, "query": q}
+
+
+class DependencySearchResponse(BaseModel):
+    """Dependency search over the Elasticsearch projection, or the in-process fallback.
+
+    ``hits`` entries carry the projection documents (identity, name, kind and
+    whatever provenance fields the edge/node holds); ``backend`` says which
+    store answered and ``configured`` whether the projection was available.
+    """
+    hits: list[dict[str, Any]] = Field(default_factory=list)
+    total: int = 0
+    backend: str | None = None
+    configured: bool = False
+    query: str = ""
+    tenant: str = "platform"
+
+
+class DependencyHistoryResponse(BaseModel):
+    """Dependency-edge timeline from the Cassandra projection.
+
+    When the projection is unconfigured the timeline is an honest gap
+    (``reason``), with ``current`` carrying the edge's authoritative
+    lifecycle state instead of a fabricated history.
+    """
+    configured: bool = False
+    backend: str | None = None
+    tenant: str = "platform"
+    events: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    as_of: str | None = None
+    state: dict[str, Any] | None = None
+    current: dict[str, Any] | None = None
+    reason: str | None = None
+
+
+@router.get("/graph/search", response_model=DependencySearchResponse)
+def graph_dependency_search(
+    q: str = Query("", description="free-text over names, relations, evidence"),
+    kind: str | None = Query(None, pattern="^(system|asset|edge)$"),
+    limit: int = Query(20, ge=1, le=100),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Dependency search over the Elasticsearch projection.
+
+    Falls back to an in-process scan of the authoritative graph when
+    Elasticsearch is unconfigured; ``backend`` says which answered.
+    """
+    from graph_engine.core.dependency_stores import dependency_search_store, sync_tenant
+
+    tenant = sync_tenant()
+    store = dependency_search_store()
+    if store is not None:
+        result = store.search(tenant, q, kind=kind, limit=limit)
+        result["configured"] = True
+        result["tenant"] = tenant
+        return result
+    result = _memory_dependency_search(graph_from_db(db).to_vis(), q, kind, limit)
+    result["tenant"] = tenant
+    return result
+
+
+@router.get("/graph/history", response_model=DependencyHistoryResponse)
+def graph_dependency_history(
+    subject_id: str = Query(...),
+    object_id: str = Query(...),
+    relation: str = Query("CALLS"),
+    since: str | None = Query(None),
+    until: str | None = Query(None),
+    at: str | None = Query(None, description="as-of reconstruction instead of the timeline"),
+    limit: int = Query(100, ge=1, le=1000),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Dependency-edge timeline from the Cassandra projection.
+
+    ``at`` returns the edge state at that instant instead of the event list.
+    When Cassandra is unconfigured the timeline is reported unavailable —
+    never fabricated — and ``current`` carries the edge's authoritative
+    lifecycle state so the caller is not left blind.
+    """
+    from graph_engine.core.dependency_stores import edge_history_store, sync_tenant
+
+    tenant = sync_tenant()
+    store = edge_history_store()
+    if store is not None:
+        if at:
+            state = store.as_of(tenant, subject_id, object_id, relation, at)
+            return {"configured": True, "backend": "cassandra", "tenant": tenant,
+                    "as_of": at, "state": state}
+        events = store.history(tenant, subject_id, object_id, relation,
+                               since=since, until=until, limit=limit)
+        return {"configured": True, "backend": "cassandra", "tenant": tenant,
+                "events": events, "count": len(events)}
+
+    current = None
+    for edge in graph_from_db(db).to_vis().get("edges") or []:
+        subject = str(edge.get("from") or "").partition(":")[2] or edge.get("from")
+        object_ = str(edge.get("to") or "").partition(":")[2] or edge.get("to")
+        if (str(subject) == subject_id and str(object_) == object_id
+                and str(edge.get("label") or "").upper() == relation.upper()):
+            current = {"lifecycle_state": edge.get("lifecycle_state"),
+                       "lifecycle_revision": edge.get("lifecycle_revision")}
+            break
+    return {"configured": False, "backend": None, "tenant": tenant,
+            "events": [], "count": 0, "current": current,
+            "reason": "cassandra_unconfigured"}

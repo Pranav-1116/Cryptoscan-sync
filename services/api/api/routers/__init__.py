@@ -23,7 +23,8 @@ Modules:
 - exposure: Bounded exposure-path queries over the system dependency graph
 - export: CBOM export and integrity verification
 - findings: Findings endpoints
-- graph: Dependency graph and blast-radius APIs (Neo4j when configured)
+- graph: Dependency graph and blast-radius APIs (Neo4j traversal plus the
+  Cassandra edge-history and Elasticsearch search projections when configured)
 - health
 - hsm_scans: Spec-named HSM/KMS key-residence scan endpoints (`/hsm-scans`)
 - intelligence: Evidence packs, CI gate, agility, work-orders, materials, CRA/NIST zip
