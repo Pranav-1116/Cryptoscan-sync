@@ -190,17 +190,28 @@ class DurableScanJobQueue:
                             status="SUCCEEDED", result=summary, error=None)
 
     def fail(self, db: Session, job_id: str, error: str,
-             tenant_id: Optional[str] = None) -> Optional[str]:
+             tenant_id: Optional[str] = None,
+             *, error_kind: Optional[str] = None) -> Optional[str]:
         """Record one failure. Returns the resulting status: QUEUED when a
         retry remains, DEAD when ``max_attempts`` is exhausted — the dead
-        letter, visible for operators, never a silent disappearance."""
+        letter, visible for operators, never a silent disappearance.
+
+        ``error_kind="TERMINAL"`` (the caller classified the failure as one
+        a retry cannot fix — see worker.core.retry_policy) dead-letters on
+        THIS attempt: retrying a terminal failure just burns attempts and
+        delays the operator finding out."""
         row = self._visible(db, job_id, tenant_id)
         if row is None:
             return None
         attempts = row.attempts + 1
-        terminal = "DEAD" if attempts >= row.max_attempts else "QUEUED"
+        if error_kind == "TERMINAL":
+            terminal = "DEAD"
+        else:
+            terminal = "DEAD" if attempts >= row.max_attempts else "QUEUED"
         ok = self._finish(db, job_id, tenant_id,
-                          status=terminal, result=None, error=error,
+                          status=terminal,
+                          result={"failure_kind": error_kind or "RECOVERABLE"},
+                          error=error,
                           extra={"attempts": attempts,
                                  "claimed_by": None, "lease_expires_at": None})
         return terminal if ok else None
