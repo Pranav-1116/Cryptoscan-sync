@@ -23,7 +23,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           resources:
             {{- toYaml .Values.resources.worker | nindent 12 }}
-{{- if .Values.worker.autoscaling.enabled }}
+{{- if and .Values.worker.autoscaling.enabled (not .Values.worker.autoscaling.keda.enabled) }}
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

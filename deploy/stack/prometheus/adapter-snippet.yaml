@@ -1,0 +1,34 @@
+# prometheus-adapter custom-metrics configuration — how
+# cryptoscan_scan_queue_depth becomes a scale target for the plain-HPA
+# form (25-worker-hpa.yaml, type: Pods). Merge these rules into the
+# cluster's prometheus-adapter `custom-metrics-api` configmap; KEDA's
+# prometheus trigger queries Prometheus directly and does not need them.
+#
+# Prerequisite: Prometheus scrapes the API's /metrics (the surface that
+# exposes cryptoscan_scan_queue_depth, _limit, _refused_total,
+# _failed_total). The API Service carries the scrape annotation in
+# k8s/app/21-api-service.yaml; an isolated bank points its own Prometheus
+# at the same path with the metrics token.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: adapter-queue-depth-rules
+  namespace: monitoring
+data:
+  rules.yaml: |
+    rules:
+      custom:
+        - seriesQuery: 'cryptoscan_scan_queue_depth{namespace!=""}'
+          resources:
+            template: <<.Resource>>
+          name:
+            matches: '^cryptoscan_scan_queue_depth$'
+            as: 'scan_queue_depth'
+          metricsQuery: 'sum(<<.Series>>{<<.LabelMatchers>>) by (<<.GroupBy>>)'
+        - seriesQuery: 'cryptoscan_scan_queue_refused_total{namespace!=""}'
+          resources:
+            template: <<.Resource>>
+          name:
+            matches: '^cryptoscan_scan_queue_refused_total$'
+            as: 'scan_queue_refusals'
+          metricsQuery: 'sum(rate(<<.Series>>{<<.LabelMatchers>>}[5m])) by (<<.GroupBy>>)'

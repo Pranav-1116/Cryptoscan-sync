@@ -1,0 +1,31 @@
+{{- if and .Values.worker.autoscaling.enabled .Values.worker.autoscaling.keda.enabled }}
+# Queue-driven worker autoscaling (the honest signal):
+# cryptoscan_scan_queue_depth at /metrics. This renders INSTEAD of the
+# CPU HPA in worker-deployment.yaml — KEDA owns the HPA it generates, so
+# exactly one controller scales the worker deployment. Requires the KEDA
+# operator; deploy/stack/k8s/26-worker-keda.yaml is the stack form.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: cryptoscan-worker
+  labels:
+    {{- include "cryptoscan.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cryptoscan-worker
+  minReplicas: {{ .Values.worker.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.worker.autoscaling.maxReplicas }}
+  pollingInterval: 15
+  cooldownPeriod: 300
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: {{ .Values.worker.autoscaling.keda.prometheusAddress | default "http://prometheus.monitoring.svc:9090" }}
+        metricName: cryptoscan_scan_queue_depth
+        query: sum(cryptoscan_scan_queue_depth)
+        threshold: {{ .Values.worker.autoscaling.keda.queueDepthThreshold | quote }}
+        activationThreshold: {{ .Values.worker.autoscaling.keda.activationThreshold | quote }}
+{{- end }}

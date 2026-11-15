@@ -16,14 +16,21 @@ worker:
     repository: cryptoscan-worker
     tag: v1.0.0
   replicas: 2
-  # Autoscaling follows demand (queue depth via the custom-metrics adapter
-  # at scale; CPU is the adapter-free baseline). See
-  # deploy/stack/k8s/25-worker-hpa.yaml for the extended form.
+  # Autoscaling follows demand. CPU is the adapter-free baseline; the
+  # honest signal is queue depth (cryptoscan_scan_queue_depth at
+  # /metrics). See deploy/stack/k8s/25-worker-hpa.yaml (CPU HPA) and
+  # deploy/stack/k8s/26-worker-keda.yaml (queue-driven KEDA) for the
+  # stack forms. keda.enabled renders the ScaledObject INSTEAD of the
+  # CPU HPA — one controller per deployment, never both.
   autoscaling:
     enabled: true
     minReplicas: 2
     maxReplicas: 12
     targetCPUUtilizationPercentage: 70
+    keda:
+      enabled: false
+      queueDepthThreshold: 5      # pending jobs per replica above this adds replicas
+      activationThreshold: 1      # any backlog wakes the scaler from the floor
 
 api:
   replicas: 2

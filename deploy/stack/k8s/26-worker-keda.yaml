@@ -1,0 +1,39 @@
+# Queue-driven worker autoscaling — the CONSUMER of the signal /metrics
+# exposes (4152c334: cryptoscan_scan_queue_depth / _limit / _refused_total).
+# Pending job depth is the honest scaling signal: CPU is a proxy, the
+# backlog is the demand.
+#
+# This form REPLACES the CPU HPA in 25-worker-hpa.yaml: KEDA owns the
+# HorizontalPodAutoscaler it generates, so apply ONE of the two — never
+# both (two controllers fighting over one deployment is an outage with
+# extra steps). Requires the KEDA operator in the cluster and the
+# Prometheus adapter path in deploy/stack/prometheus/adapter-snippet.yaml
+# (KEDA queries Prometheus directly; the adapter is for plain HPA
+# custom-metrics consumers).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: cryptoscan-worker
+  namespace: cryptoscan
+  labels:
+    app.kubernetes.io/part-of: cryptoscan
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cryptoscan-worker
+  minReplicas: 2          # same floor as the CPU form — capacity is never zero
+  maxReplicas: 12         # same ceiling — the boundary is policy, not weather
+  pollingInterval: 15     # backlog is urgent; poll accordingly
+  cooldownPeriod: 300     # never shed workers mid-scan (mirrors the HPA behavior)
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus.monitoring.svc:9090
+        metricName: cryptoscan_scan_queue_depth
+        query: sum(cryptoscan_scan_queue_depth)
+        threshold: "5"           # pending jobs per replica above this adds replicas
+        activationThreshold: "1" # from the floor: any backlog wakes the scaler
+        # refusals are the secondary alarm: a sustained
+        # increase(cryptoscan_scan_queue_refused_total[5m]) means demand
+        # outgrew even the ceiling — see the runbooks/alerts surface.

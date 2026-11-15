@@ -1,12 +1,14 @@
 # Worker autoscaling: processing capacity follows demand.
 #
 # The honest scaling signal is the queue itself — pending job depth and
-# refusal counts are exposed at GET /api/v1/binary/worker/status (the
-# "measure queue depth, refusals and failure rate" surface). CPU
-# utilization is the baseline trigger available without a metrics
-# adapter; at bank scale, wire the queue-depth metric through the
-# cluster's custom-metrics adapter and add a second metric target here
-# (type: Pods / external) so replicas track backlog directly. min is
+# refusal counts are exposed at GET /api/v1/binary/worker/status and, for
+# controllers, at /metrics (cryptoscan_scan_queue_depth / _limit /
+# _refused_total). CPU utilization below is the baseline trigger that
+# works with no metrics adapter. The queue-driven form is
+# 26-worker-keda.yaml (KEDA) — apply ONE of the two files, never both:
+# two controllers fighting over one deployment is an outage with extra
+# steps. The custom-metrics adapter wiring for a plain HPA variant is in
+# deploy/stack/prometheus/adapter-snippet.yaml. min is
 # kept at or below the deployment's static replicas so the HPA takes
 # ownership without a scale-down cliff on adopt.
 apiVersion: autoscaling/v2

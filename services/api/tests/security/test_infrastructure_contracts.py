@@ -58,9 +58,14 @@ class TestTheHelmChartIsARepeatableInstall:
 
     def test_images_come_from_values_never_a_public_registry(self, chart):
         # templates may only interpolate the repository/tag — a hardcoded
-        # image in a template bypasses the bank's mirror
+        # image in a template bypasses the bank's mirror. The kind is matched
+        # at the document level: a ScaledObject that only *references* a
+        # Deployment in scaleTargetRef is not a workload template.
+        import re as _re
+
         for name, text in chart["templates"].items():
-            if "kind: Deployment" in text:
+            if _re.search(r"^kind: Deployment\s*$", text, _re.MULTILINE):
+                assert "image:" in text, f"{name} declares a Deployment but ships no image"
                 assert ".Values" in text.split("image:")[1].split("\n")[0], (
                     f"{name} hardcodes an image instead of reading values")
         assert "pullPolicy: IfNotPresent" in chart["values"]
@@ -312,3 +317,46 @@ class TestQueueDepthSignal:
 
         monkeypatch.setattr(session_mod, "SessionLocal", boom)
         assert metrics_mod._queue_lines() == []  # degraded, not dead
+
+
+# ---------------------------------------------------------------------------
+# The queue-depth signal must have CONSUMERS, not just a producer: an
+# autoscaler that reads backlog, and adapter wiring for the plain-HPA form.
+# ---------------------------------------------------------------------------
+
+
+class TestQueueSignalConsumers:
+    KEDA = ROOT / "deploy" / "stack" / "k8s" / "26-worker-keda.yaml"
+    ADAPTER = ROOT / "deploy" / "stack" / "prometheus" / "adapter-snippet.yaml"
+    HPA = ROOT / "deploy" / "stack" / "k8s" / "25-worker-hpa.yaml"
+
+    def test_keda_scales_the_worker_on_queue_depth(self):
+        text = self.KEDA.read_text()
+        assert "kind: ScaledObject" in text
+        assert "cryptoscan_scan_queue_depth" in text
+        assert "name: cryptoscan-worker" in text
+        assert 'activationThreshold: "1"' in text  # any backlog wakes it
+        # bounds are policy: floor is never zero, ceiling is explicit
+        assert "minReplicas: 2" in text and "maxReplicas: 12" in text
+
+    def test_one_controller_per_deployment_never_both(self):
+        keda = self.KEDA.read_text()
+        hpa = self.HPA.read_text()
+        assert "ONE of the two" in hpa and "never both" in keda.lower() or "never both" in hpa
+        # the chart renders exactly one form: the CPU HPA gate excludes keda
+        deploy = (ROOT / "k8s" / "helm" / "cryptoscan" / "templates" / "worker-deployment.yaml").read_text()
+        assert "not .Values.worker.autoscaling.keda.enabled" in deploy
+
+    def test_adapter_wiring_exists_for_the_plain_hpa_form(self):
+        text = self.ADAPTER.read_text()
+        assert "cryptoscan_scan_queue_depth" in text
+        assert "cryptoscan_scan_queue_refused_total" in text
+        assert "prometheus-adapter" in text.lower()
+
+    def test_chart_keda_form_is_gated_off_by_default(self):
+        values = (ROOT / "k8s" / "helm" / "cryptoscan" / "values.yaml").read_text()
+        assert "keda:" in values and "enabled: false" in values
+        tmpl = (ROOT / "k8s" / "helm" / "cryptoscan" / "templates" / "worker-keda.yaml").read_text()
+        assert "kind: ScaledObject" in tmpl
+        assert ".Values.worker.autoscaling.keda.enabled" in tmpl
+        assert "cryptoscan_scan_queue_depth" in tmpl
