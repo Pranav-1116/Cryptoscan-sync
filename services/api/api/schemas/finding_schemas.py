@@ -46,3 +46,87 @@ class FindingListResponse(BaseModel):
     total_count: int
     page: int
     page_size: int
+
+
+class ProvenanceCollector(BaseModel):
+    scanner_id: str
+    scanner_version: str
+    operator: str
+    scan_status: str
+
+
+class ProvenanceAsset(BaseModel):
+    file_path: str
+    line_number: int
+    class_name: Optional[str] = None
+    method_name: Optional[str] = None
+    target_type: str
+    target_location: str
+    target_commit: Optional[str] = None
+
+
+class ProvenanceObserved(BaseModel):
+    scan_start: datetime
+    scan_end: Optional[datetime] = None
+    recorded_at: Optional[datetime] = None
+
+
+class ProvenanceSourceAndMethod(BaseModel):
+    collection_method: str
+    target_type: str
+    target_location: str
+    collection_authorization: dict
+
+
+class ProvenanceEvidenceReference(BaseModel):
+    content_hash: str
+    storage_key: str
+    storage_backend: str = "content_addressed_store"
+    chain_position: int
+    chain_hash: str
+    previous_hash: Optional[str] = None
+    manifest_hash: Optional[str] = None
+
+
+class ProvenanceDetection(BaseModel):
+    detection_rule_version: str
+    scanner_ids: list[str] = []
+
+
+class ProvenanceIntegrity(BaseModel):
+    # The claim is capped at hash integrity. This is not caution — it is
+    # the contract: a verified hash proves the record is unmodified since
+    # it was recorded, nothing about whether the collector observed truth.
+    claim: str = "HASH_INTEGRITY_ONLY"
+    hash_algorithm: str = "SHA-256"
+    chain_link_verified: Optional[bool] = None
+    verification_result: str
+    statement: str = (
+        "Hash integrity detects later modification of the record. It does "
+        "not independently prove that the collector observed the truth: the "
+        "evidence source, collection authorization and detection method are "
+        "preserved above and remain the basis on which truth is assessed."
+    )
+
+
+class ProvenanceTruth(BaseModel):
+    status: str = "NOT_INDEPENDENTLY_VERIFIED"
+    independently_verified: bool = False
+    note: str = (
+        "Independent truth review (the assurance layer's reviewed-verdict "
+        "process) is separate from integrity verification and is never "
+        "implied by a verified hash."
+    )
+
+
+class FindingProvenanceBundle(BaseModel):
+    evidence_id: str
+    collector: ProvenanceCollector
+    asset: ProvenanceAsset
+    observed: ProvenanceObserved
+    source_and_method: ProvenanceSourceAndMethod
+    evidence_reference: ProvenanceEvidenceReference
+    detection: ProvenanceDetection
+    finding: dict
+    integrity: ProvenanceIntegrity
+    truth: ProvenanceTruth

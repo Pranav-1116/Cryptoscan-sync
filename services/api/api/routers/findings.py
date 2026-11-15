@@ -23,7 +23,19 @@ from api.dependencies import (
     require_auditor,
 )
 from api.security.estate_history import history_context
-from api.schemas.finding_schemas import FindingListResponse, FindingResponse
+from api.schemas.finding_schemas import (
+    FindingListResponse,
+    FindingProvenanceBundle,
+    FindingResponse,
+    ProvenanceAsset,
+    ProvenanceCollector,
+    ProvenanceDetection,
+    ProvenanceEvidenceReference,
+    ProvenanceIntegrity,
+    ProvenanceObserved,
+    ProvenanceSourceAndMethod,
+    ProvenanceTruth,
+)
 from api.security.evidence_projection import project_finding
 from db.models.evidence_record import EvidenceRecord
 from db.models.scan import Scan
@@ -128,6 +140,129 @@ def list_all_findings(
         total_count=total,
         page=page,
         page_size=page_size,
+    )
+
+
+# ------------------------------------------------------------------------- #
+# Provenance bundle — the hash-integrity-versus-truth distinction, preserved #
+# as data. Every question the finding must answer: who observed it, on what, #
+# when, from where, by which method, under whose authorization, with which   #
+# parser and rule version, what was found — and what verification does and   #
+# does NOT prove.                                                            #
+# ------------------------------------------------------------------------- #
+
+def _chain_link_verified(row) -> bool:
+    """Recompute the chain link exactly as evidence/hashing/chain_hasher.py
+    committed it: sha256(content_hash + previous_hash); the first entry
+    chains from the scan id. True only when the stored hash matches — a
+    mismatch is reported as False, never smoothed over."""
+    import hashlib
+
+    previous = row.previous_hash if row.previous_hash else (row.scan_id or "")
+    expected = hashlib.sha256(
+        f"{row.content_hash}{previous}".encode("utf-8")).hexdigest()
+    return expected == row.chain_hash
+
+
+@router.get("/findings/{evidence_id}/provenance",
+            response_model=FindingProvenanceBundle)
+def finding_provenance(
+    evidence_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    row = db.get(EvidenceRecord, evidence_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="no such finding")
+    scan = db.get(Scan, row.scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="finding's scan is gone")
+
+    provenance_meta = row.provenance or {}
+    scanner_ids = list(provenance_meta.get("scanner_ids") or [scan.scanner_id])
+
+    # Collection authorization: exact-match only. An unrevoked authority
+    # whose entry is EXACTLY this scan's target — no fuzzy matching, no
+    # implied consent.
+    from db.models.collector_authority import CollectorAuthority
+
+    authority = db.execute(
+        select(CollectorAuthority)
+        .where(CollectorAuthority.tenant_id == row.tenant_id,
+               CollectorAuthority.entry == scan.target_location,
+               CollectorAuthority.revoked_at.is_(None))
+        .order_by(CollectorAuthority.approved_at.desc())
+    ).scalars().first()
+    if authority is not None:
+        authorization = {
+            "status": "AUTHORIZED",
+            "permission": authority.permission,
+            "target_kind": authority.target_kind,
+            "approved_by": authority.approved_by,
+            "approved_at": authority.approved_at.isoformat(),
+            "expires_at": authority.expires_at.isoformat(),
+            "note": "an unrevoked authority covered this exact target; "
+                    "expiry is reported, not re-judged here",
+        }
+    else:
+        authorization = {
+            "status": "NOT_RECORDED",
+            "note": "no unrevoked collector authority matches this target "
+                    "exactly — truth assessment must account for this",
+        }
+
+    finding, redacted = project_finding(row.finding_data)
+    verified = _chain_link_verified(row)
+    tenant = row.tenant_id or "unknown"
+    sha = row.content_hash or ""
+
+    return FindingProvenanceBundle(
+        evidence_id=row.id,
+        collector=ProvenanceCollector(
+            scanner_id=scan.scanner_id,
+            scanner_version=scan.scanner_version,
+            operator=scan.operator,
+            scan_status=scan.status,
+        ),
+        asset=ProvenanceAsset(
+            file_path=row.file_path,
+            line_number=row.line_number,
+            class_name=row.class_name,
+            method_name=row.method_name,
+            target_type=scan.target_type,
+            target_location=scan.target_location,
+            target_commit=scan.target_commit,
+        ),
+        observed=ProvenanceObserved(
+            scan_start=scan.scan_start,
+            scan_end=scan.scan_end,
+            recorded_at=getattr(row, "created_at", None),
+        ),
+        source_and_method=ProvenanceSourceAndMethod(
+            collection_method=scan.scanner_id,
+            target_type=scan.target_type,
+            target_location=scan.target_location,
+            collection_authorization=authorization,
+        ),
+        evidence_reference=ProvenanceEvidenceReference(
+            content_hash=row.content_hash,
+            storage_key=f"{tenant}/{sha[:2]}/{sha}.bin" if sha else "",
+            chain_position=row.chain_position,
+            chain_hash=row.chain_hash,
+            previous_hash=row.previous_hash,
+            manifest_hash=scan.manifest_hash,
+        ),
+        detection=ProvenanceDetection(
+            detection_rule_version=scan.scanner_version,
+            scanner_ids=scanner_ids,
+        ),
+        finding=finding or {},
+        integrity=ProvenanceIntegrity(
+            chain_link_verified=verified,
+            verification_result="CHAIN_LINK_VERIFIED" if verified
+            else "CHAIN_LINK_BROKEN",
+        ),
+        truth=ProvenanceTruth(),
     )
 
 
