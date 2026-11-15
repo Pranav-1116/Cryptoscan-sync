@@ -48,16 +48,19 @@ class ResolutionRecord:
     reference: str
     resolved_at: str
     outcome: str  # OK | FAILED
+    kind: str = "probe"  # "held" = resolved into the running settings; "probe" = status check
 
 
 @dataclass
 class ResolutionLog:
     records: list[ResolutionRecord] = field(default_factory=list)
 
-    def add(self, provider: str, reference: str, outcome: str) -> None:
+    def add(self, provider: str, reference: str, outcome: str, *,
+            kind: str = "probe") -> None:
         self.records.append(ResolutionRecord(
             provider=provider, reference=reference, outcome=outcome,
             resolved_at=datetime.now(timezone.utc).isoformat(),
+            kind=kind,
         ))
 
     def report(self) -> list[dict[str, Any]]:
@@ -66,6 +69,45 @@ class ResolutionLog:
              "resolved_at": r.resolved_at, "outcome": r.outcome}
             for r in self.records
         ]
+
+    def last_ok(self, reference: str, kind: Optional[str] = None) -> Optional[str]:
+        """The most recent successful resolution timestamp for a reference.
+
+        ``kind="held"`` answers the question the rotation watch asks: how
+        long has the value the PROCESS IS RUNNING ON been in force — a
+        status probe that re-reads the vault does not refresh that."""
+        stamps = [r.resolved_at for r in self.records
+                  if r.reference == reference and r.outcome == "OK"
+                  and (kind is None or r.kind == kind)]
+        return max(stamps) if stamps else None
+
+
+# Process-wide verification history: rotation happens on the vault side,
+# so the operational risk CryptoScan CAN see is a reference that has not
+# been re-verified recently — a long-running process keeps the value it
+# resolved at boot, and a rotated-out value is invisible until it breaks.
+RESOLUTION_LOG = ResolutionLog()
+
+# Rotation-staleness windows (days) per credential class. The classes are
+# the spec's own: collector credentials, database credentials, signing
+# secrets. A reference not re-verified within its window is flagged.
+ROTATION_POLICY: dict[str, int] = {
+    "collector_creds": 30,
+    "database": 90,
+    "signing": 30,
+    "other": 90,
+}
+
+
+def classify_reference(field_name: str) -> str:
+    name = field_name.upper()
+    if any(tok in name for tok in ("COLLECTOR", "AGENT", "SCANNER")):
+        return "collector_creds"
+    if any(tok in name for tok in ("DB", "DATABASE", "POSTGRES", "REDIS")):
+        return "database"
+    if any(tok in name for tok in ("SIGN", "JWS", "JWK", "KEY")):
+        return "signing"
+    return "other"
 
 
 class SecretProvider(Protocol):
@@ -257,6 +299,13 @@ def resolve_settings_secrets(*, providers: tuple[SecretProvider, ...] = DEFAULT_
             failures.append({"field": name, "reference": raw, "error": f"not writable: {exc}"})
             if strict:
                 raise SecretResolutionError(f"settings field {name} not writable") from exc
+    # keep the process-wide verification history current (staleness watch).
+    # Startup resolutions are what the process RUNS ON — kind "held".
+    for record in log.records:
+        RESOLUTION_LOG.records.append(ResolutionRecord(
+            provider=record.provider, reference=record.reference,
+            resolved_at=record.resolved_at, outcome=record.outcome,
+            kind="held"))
     return {
         "resolved": len(resolved_fields),
         "resolved_fields": resolved_fields,
@@ -292,11 +341,29 @@ def secret_status() -> dict[str, Any]:
             "error": None,
         }
         try:
-            resolve_secret(raw)
+            resolve_secret(raw, log=RESOLUTION_LOG)
             entry["resolves"] = True
         except SecretResolutionError as exc:
             entry["error"] = str(exc)
+        # rotation-staleness watch: rotation happens on the vault side; what
+        # this side can see is how long the HELD value (what the process
+        # resolved at boot) has been in force. A status probe re-reads the
+        # vault but does not change what the running process holds.
+        entry["class"] = classify_reference(name)
+        entry["max_age_days"] = ROTATION_POLICY[entry["class"]]
+        entry["held_verified_at"] = RESOLUTION_LOG.last_ok(raw, kind="held")
+        entry["last_verified_at"] = RESOLUTION_LOG.last_ok(raw)
+        held = entry["held_verified_at"] or entry["last_verified_at"]
+        if held:
+            verified = datetime.fromisoformat(held)
+            age = (datetime.now(timezone.utc) - verified).total_seconds() / 86400.0
+            entry["value_age_days"] = round(age, 2)
+            entry["stale"] = age > entry["max_age_days"]
+        else:
+            entry["value_age_days"] = None
+            entry["stale"] = not entry["resolves"]  # never verified = worse than stale
         entries.append(entry)
+    stale_references = sorted(e["field"] for e in entries if e.get("stale"))
     return {
         "enabled": True,
         "providers": [
@@ -304,6 +371,12 @@ def secret_status() -> dict[str, Any]:
         ],
         "vault_configured": vault_configured,
         "references": entries,
+        "rotation_policy": dict(ROTATION_POLICY),
+        "stale_references": stale_references,
         "resolved_at": datetime.now(timezone.utc).isoformat(),
-        "note": "values are never exposed; vault rotation happens on the vault side",
+        "note": ("values are never exposed; vault rotation happens on the "
+                 "vault side — CryptoScan watches VERIFICATION age: a "
+                 "reference not re-verified within its window is flagged, "
+                 "because a rotated-out value held by a long-running "
+                 "process is invisible until it breaks"),
     }
