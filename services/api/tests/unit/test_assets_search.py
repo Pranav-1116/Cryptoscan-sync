@@ -94,3 +94,48 @@ async def test_q_combines_with_paging_and_algorithm_filter(app_session):
         assert len(body["assets"]) == 2 and body["page_size"] == 2
         r = await c.get("/api/v1/assets?q=.java&algorithm=3DES")
         assert r.json()["total_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_sort_and_order_are_server_side(app_session):
+    """Sorting happens in the DATABASE — the browser never sorts an estate
+    it should not have downloaded in the first place."""
+    app, _session = app_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        asc = await client.get("/api/v1/assets", params={"sort": "algorithm", "order": "asc"})
+        assert [a["algorithm"] for a in asc.json()["assets"]] == [
+            "3DES", "AES-256-GCM", "RSA-2048"]
+        desc = await client.get("/api/v1/assets", params={"sort": "algorithm", "order": "desc"})
+        assert [a["algorithm"] for a in desc.json()["assets"]] == [
+            "RSA-2048", "AES-256-GCM", "3DES"]
+        by_path = await client.get("/api/v1/assets",
+                                   params={"sort": "file_path", "order": "asc"})
+        assert [a["file_path"] for a in by_path.json()["assets"]] == [
+            "legacy/LegacyPad.java", "src/Keys.java", "src/Tunnel.java"]
+
+
+@pytest.mark.asyncio
+async def test_unknown_sort_columns_are_rejected_not_guessed(app_session):
+    """A sort column outside the whitelist is a 422 — never interpolated."""
+    app, _session = app_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        resp = await client.get("/api/v1/assets",
+                                params={"sort": "file_path; DROP TABLE crypto_assets"})
+        assert resp.status_code == 422
+        bad_order = await client.get("/api/v1/assets", params={"order": "sideways"})
+        assert bad_order.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_sorted_pages_stay_bounded_and_total_is_the_estate(app_session):
+    app, _session = app_session
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://t") as client:
+        page2 = await client.get("/api/v1/assets", params={
+            "sort": "algorithm", "order": "asc", "page": 2, "page_size": 2})
+        body = page2.json()
+        assert body["total_count"] == 3          # the estate, not the page
+        assert len(body["assets"]) == 1          # bounded page
+        assert body["assets"][0]["algorithm"] == "RSA-2048"

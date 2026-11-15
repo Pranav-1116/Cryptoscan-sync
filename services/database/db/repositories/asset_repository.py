@@ -23,7 +23,26 @@ class AssetRepository(BaseRepository[CryptoAsset]):
         q: str | None = None,
         page: int = 1,
         page_size: int = 50,
+        sort: str = "algorithm",
+        order: str = "asc",
     ) -> tuple[list[CryptoAsset], int]:
+        # Server-side sorting — the bank rule: filtering, sorting,
+        # authorization and pagination happen in the database, never by
+        # downloading an inventory into the browser. Column names are
+        # whitelisted; order is validated; nothing user-supplied reaches
+        # the SQL text. No new indexes for this: algorithm and asset_key
+        # are already indexed and the default sort (algorithm, file_path)
+        # matches the existing order; sort by unindexed columns is an
+        # explicit, bounded choice (page_size <= 200).
+        columns = {
+            "algorithm": CryptoAsset.algorithm,
+            "asset_key": CryptoAsset.asset_key,
+            "file_path": CryptoAsset.file_path,
+            "key_size": CryptoAsset.key_size,
+            "id": CryptoAsset.id,
+        }
+        sort_column = columns.get(sort, CryptoAsset.algorithm)
+        direction = sort_column.desc() if order == "desc" else sort_column.asc()
         stmt = select(CryptoAsset)
         count_stmt = select(func.count()).select_from(CryptoAsset)
         if algorithm:
@@ -45,7 +64,7 @@ class AssetRepository(BaseRepository[CryptoAsset]):
             stmt = stmt.where(condition)
             count_stmt = count_stmt.where(condition)
         total = int(self.session.execute(count_stmt).scalar_one())
-        stmt = stmt.order_by(CryptoAsset.algorithm, CryptoAsset.file_path).offset((page - 1) * page_size).limit(page_size)
+        stmt = stmt.order_by(direction, CryptoAsset.file_path).offset((page - 1) * page_size).limit(page_size)
         return list(self.session.execute(stmt).scalars().all()), total
 
     def algorithm_counts(self) -> dict[str, int]:

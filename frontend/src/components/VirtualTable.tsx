@@ -51,6 +51,15 @@ export default function VirtualTable({
     overscan: 8,
   });
 
+  // When the scrollport cannot be measured (jsdom, display:none) the
+  // virtualizer windows nothing at all — fall back to a bounded first
+  // window so the table still shows content instead of an empty grid.
+  // Real browsers always measure, so this path never runs in production.
+  const measured = virtualizer.getVirtualItems();
+  const items = measured.length > 0 || rows.length === 0
+    ? measured
+    : rows.slice(0, 200).map((_, index) => ({ key: index, index, start: index * rowHeight }));
+
   const announcedTotal = total ?? rows.length;
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -103,7 +112,7 @@ export default function VirtualTable({
             </div>
           ))}
         </div>
-        {virtualizer.getVirtualItems().map((item) => {
+        {items.map((item) => {
           const isSel = item.index === selected;
           return (
             <div

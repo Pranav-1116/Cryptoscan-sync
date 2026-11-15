@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -51,11 +53,15 @@ def list_assets(
                                       "identity spine key, algorithm, file location"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    sort: Literal["algorithm", "asset_key", "file_path", "key_size", "id"] = Query(
+        "algorithm", description="Server-side sort column (whitelist)"),
+    order: Literal["asc", "desc"] = Query("asc"),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     rows, total = AssetRepository(db).list_assets(
-        algorithm=algorithm, q=q, page=page, page_size=page_size)
+        algorithm=algorithm, q=q, page=page, page_size=page_size,
+        sort=sort, order=order)
     return {
         "assets": [
             {**row.to_dict(),

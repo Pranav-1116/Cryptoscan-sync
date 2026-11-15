@@ -46,7 +46,11 @@ describe("asset inventory from the live API", () => {
     };
     const second = { id: "asset-2", algorithm: "AES", file_path: "src/crypto/encrypt.ts" };
     const fetchSpy = mockFetch({
-      [listPath]: { assets: [first, second], total_count: 2, page: 1, page_size: 100 },
+      // The honest server: q= narrows the estate in the DATABASE.
+      [listPath]: (url: string) =>
+        url.includes("q=encrypt.ts")
+          ? { assets: [second], total_count: 1, page: 1, page_size: 100 }
+          : { assets: [first, second], total_count: 2, page: 1, page_size: 100 },
       "/api/v1/assets/asset-1": { ...first, evidence_ids: ["ev-1", "ev-2"] },
       "/api/v1/assets/asset-2": { ...second, evidence_ids: [] },
     });
@@ -69,7 +73,12 @@ describe("asset inventory from the live API", () => {
       expect(init?.credentials).toBe("include");
     }
     fireEvent.change(screen.getByRole("searchbox", { name: "Search assets" }), { target: { value: "encrypt.ts" } });
-    const assetButton = screen.getByRole("button", { name: /AES/ });
+    // The bank rule: search travels to the SERVER (debounced) — the
+    // browser never filters an estate it should not be holding.
+    await waitFor(() => {
+      expect(fetchSpy.mock.calls.some(([path]) => String(path).includes("q=encrypt.ts"))).toBe(true);
+    });
+    const assetButton = await screen.findByRole("button", { name: /AES/ });
     expect(assetButton).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /ECDSA/ })).toBeNull();
     fireEvent.click(assetButton);
@@ -81,10 +90,16 @@ describe("asset inventory from the live API", () => {
   it("loads beyond 100 without duplicate IDs and reports the server total", async () => {
     const firstPage = Array.from({ length: 100 }, (_, i) => ({ id: `asset-${i + 1}`, algorithm: `ALG-${i + 1}` }));
     const fetchSpy = mockFetch({
-      [listPath]: (url: string) => url.includes("page=2")
-        ? { assets: [firstPage[99], { id: "asset-101", algorithm: "ALG-101" }], total_count: 101, page: 2, page_size: 100 }
-        : { assets: firstPage, total_count: 101, page: 1, page_size: 100 },
-      "/api/v1/assets/*": (url: string) => ({ id: url.split("/").pop(), evidence_ids: [] }),
+      [listPath]: (url: string) => {
+        if (url.includes("q=ALG-101")) return { assets: [{ id: "asset-101", algorithm: "ALG-101" }], total_count: 1, page: 1, page_size: 100 };
+        return url.includes("page=2")
+          ? { assets: [firstPage[99], { id: "asset-101", algorithm: "ALG-101" }], total_count: 101, page: 2, page_size: 100 }
+          : { assets: firstPage, total_count: 101, page: 1, page_size: 100 };
+      },
+      "/api/v1/assets/*": (url: string) => {
+        const id = String(url.split("/").pop());
+        return { id, algorithm: id.replace("asset-", "ALG-"), evidence_ids: [] };
+      },
     });
     renderWithProviders(<Assets />);
     expect(await screen.findByText("Loaded 100 of 101 assets")).toBeInTheDocument();
@@ -92,10 +107,14 @@ describe("asset inventory from the live API", () => {
     expect(await screen.findByText("Loaded 101 of 101 assets")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /ALG-100/ })).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Load more assets" })).toBeNull();
+    // The search travels to the server (debounced), never the browser.
     fireEvent.change(screen.getByRole("searchbox", { name: "Search assets" }), { target: { value: "ALG-101" } });
-    fireEvent.click(screen.getByRole("button", { name: /ALG-101/ }));
+    await waitFor(() => {
+      expect(fetchSpy.mock.calls.some(([path]) => String(path).includes("q=ALG-101"))).toBe(true);
+    });
+    fireEvent.click(await screen.findByRole("button", { name: /ALG-101/ }));
     await screen.findByRole("heading", { name: "ALG-101" });
-    expect(fetchSpy.mock.calls.filter(([path]) => String(path) === "/api/v1/assets?page=2&page_size=100")).toHaveLength(1);
+    expect(fetchSpy.mock.calls.filter(([path]) => String(path).includes("page=2"))).toHaveLength(1);
   });
 
   it("keeps loaded assets and exposes later-page failure with retry", async () => {
@@ -418,20 +437,25 @@ describe("asset inventory — evidence classification (gap analysis §A)", () =>
 describe("asset inventory — traceability entry (gap analysis §A)", () => {
   it("a ?q= deep link opens the inventory focused on that term", async () => {
     mockFetch({
-      [listPath]: {
-        assets: [
-          { id: "a-pay", algorithm: "RSA", file_path: "payments/api.py" },
-          { id: "a-ledger", algorithm: "AES", file_path: "ledger/svc.py" },
-        ],
-        total_count: 2, page: 1, page_size: 100,
-      },
+      // The server answers the term — the browser never narrows a list itself.
+      [listPath]: (url: string) =>
+        url.includes("q=payments")
+          ? { assets: [{ id: "a-pay", algorithm: "RSA", file_path: "payments/api.py" }], total_count: 1, page: 1, page_size: 100 }
+          : {
+              assets: [
+                { id: "a-pay", algorithm: "RSA", file_path: "payments/api.py" },
+                { id: "a-ledger", algorithm: "AES", file_path: "ledger/svc.py" },
+              ],
+              total_count: 2, page: 1, page_size: 100,
+            },
       "/api/v1/assets/a-pay": { id: "a-pay", evidence_ids: [] },
       "/api/v1/assets/a-ledger": { id: "a-ledger", evidence_ids: [] },
     });
     renderWithProviders(<Assets />, { route: "/assets?q=payments" });
     await screen.findByRole("heading", { name: "RSA" });
-    // the search opens on the linked term: one match, the other filtered out
-    expect(screen.getByText(/1 match search/)).toBeInTheDocument();
+    // the deep link searches the server: its total, its rows
+    expect(screen.getByText(/1 of 1 assets/)).toBeInTheDocument();
+    expect(screen.getByText(/server-side matches for "payments"/)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "AES" })).toBeNull();
   });
 });

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Badge, Tabs } from "../components/ui";
+import VirtualTable from "../components/VirtualTable";
+import { useDebouncedValue } from "../lib/useDebouncedValue";
 import { Link } from "react-router-dom";
 import { apiFactStore, apiGraphBlastRadiusFromAsset, apiRemediationTasks, FactStoreRow, RemediationTask, tenantFetch } from "../lib/api";
 import { IconEstate } from "../components/icons";
@@ -136,6 +138,13 @@ export default function Assets() {
   // links here with ?q=<term> and the inventory opens focused on that term.
   const [searchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(() => searchParams.get("q") ?? "");
+  /* The bank rule: never download an estate to filter it in the browser —
+   * search and sort travel to the DATABASE (debounced: one request per
+   * keystroke burst, never one per keystroke). */
+  const debouncedSearch = useDebouncedValue(searchTerm, 300);
+  const [sort, setSort] = useState("algorithm");
+  const [order, setOrder] = useState<"asc" | "desc">("asc");
+  const listQuery = `&sort=${sort}&order=${order}${debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""}`;
 
   const tabNames = ["Overview", "Evidence", "Facts", "Dependencies", "Usage", "History", "Policy", "PQC", "Remediation"];
   /* §5 (round 64): the fact behind the selected asset (joined on the
@@ -189,13 +198,17 @@ export default function Assets() {
   }, []);
 
   useEffect(() => {
+    // A new query (search term, sort or refresh) supersedes any in-flight
+    // page load: the old epoch dies and the paging latch reopens.
+    requestEpoch.current += 1;
+    paging.current = false;
     let cancelled = false;
     const epoch = requestEpoch.current;
     const current = () => !cancelled && requestEpoch.current === epoch;
     async function fetchAssets() {
       setLoading(true);
       try {
-        const res = await tenantFetch(`/api/v1/assets?page=1&page_size=${PAGE_SIZE}`, { signal: AbortSignal.timeout(6000) });
+        const res = await tenantFetch(`/api/v1/assets?page=1&page_size=${PAGE_SIZE}${listQuery}`, { signal: AbortSignal.timeout(6000) });
         if (!res.ok) {
           if (current()) setListError(requestError(res.status, "assets"));
           return;
@@ -226,7 +239,7 @@ export default function Assets() {
     }
     fetchAssets();
     return () => { cancelled = true; };
-  }, [refreshKey]);
+  }, [refreshKey, listQuery]);
 
   async function loadMore() {
     if (nextPage === null || paging.current) return;
@@ -236,7 +249,7 @@ export default function Assets() {
     const epoch = requestEpoch.current;
     const page = nextPage;
     try {
-      const res = await tenantFetch(`/api/v1/assets?page=${page}&page_size=${PAGE_SIZE}`, { signal: AbortSignal.timeout(6000) });
+      const res = await tenantFetch(`/api/v1/assets?page=${page}&page_size=${PAGE_SIZE}${listQuery}`, { signal: AbortSignal.timeout(6000) });
       if (requestEpoch.current !== epoch) return;
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
@@ -395,10 +408,40 @@ export default function Assets() {
 
   const selectedAsset = assetsList.find((asset) => asset.id === selectedId) ?? null;
   const displayedAsset = detail?.id === selectedId ? detail : selectedAsset;
-  const filteredAssets = assetsList.filter((asset) => {
-    const query = searchTerm.toLowerCase();
-    return [asset.name, asset.id, asset.sourcePath, asset.owner].some((field) => field?.toLowerCase().includes(query));
-  });
+  // No browser-side filtering: the list shows what the DATABASE matched.
+  const assetButton = (asset: AssetRecord) => {
+    const isSel = selectedId === asset.id;
+    return (
+      <button
+        type="button"
+        aria-pressed={isSel}
+        onClick={() => setSelectedId(asset.id)}
+        style={{
+          width: "100%", textAlign: "left", color: "var(--text)",
+          padding: "10px 12px",
+          background: isSel ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent",
+          border: isSel ? "1px solid var(--cyan)" : "1px solid var(--line)",
+          borderRadius: "var(--r)",
+          cursor: "pointer",
+          transition: "all 0.15s ease"
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+          <span style={{ fontWeight: 600, fontSize: "13px", color: isSel ? "var(--cyan)" : "var(--text)" }}>{asset.name}</span>
+          <span style={{ display: "flex", gap: "4px" }}>
+            <Badge tone={asset.evidenceClass && asset.evidenceClass !== "UNCLASSIFIED" ? "cyan" : "slate"}>
+              {`Evidence: ${asset.evidenceClass ?? "UNCLASSIFIED"}`}
+            </Badge>
+            <Badge tone="slate">{asset.lifecycleState ?? "Unknown"}</Badge>
+          </span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", color: "var(--dim)" }}>
+          <span>{asset.sourcePath ?? "Source not observed"}</span>
+          <span>{asset.owner ?? "Owner unknown"}</span>
+        </div>
+      </button>
+    );
+  };
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
@@ -434,7 +477,7 @@ export default function Assets() {
         </div>
       ) : listError ? (
         <div className="panel" style={{ padding: "40px", color: "var(--dim)" }} role="alert">{listError}</div>
-      ) : assetsList.length === 0 ? (
+      ) : assetsList.length === 0 && !debouncedSearch ? (
         <div className="panel" style={{ padding: "48px 24px", textAlign: "center" }}>
           <div style={{ marginBottom: "12px", lineHeight: 0, color: "var(--faint)" }}><IconEstate size={32} /></div>
           <h3 style={{ fontSize: "18px", fontWeight: 600, margin: "0 0 8px" }}>No cryptographic assets discovered yet</h3>
@@ -454,7 +497,7 @@ export default function Assets() {
                 <input
                   type="search"
                   aria-label="Search assets"
-                  placeholder="Search assets..."
+                  placeholder="Search the estate..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   style={{
@@ -467,47 +510,44 @@ export default function Assets() {
                     fontSize: "13px"
                   }}
                 />
+                <select
+                  aria-label="Sort assets by"
+                  value={sort}
+                  onChange={(e) => setSort(e.target.value)}
+                  style={{ background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", color: "var(--text)", fontSize: "12px", padding: "6px" }}
+                >
+                  <option value="algorithm">Algorithm</option>
+                  <option value="file_path">Source path</option>
+                  <option value="asset_key">Identity key</option>
+                  <option value="key_size">Key size</option>
+                  <option value="id">ID</option>
+                </select>
+                <button
+                  type="button"
+                  aria-label={order === "asc" ? "Sort descending" : "Sort ascending"}
+                  onClick={() => setOrder(order === "asc" ? "desc" : "asc")}
+                  className="btn outline"
+                  style={{ padding: "6px 10px", fontSize: "12px" }}
+                >
+                  {order === "asc" ? "↑" : "↓"}
+                </button>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "600px", overflowY: "auto" }}>
-                {filteredAssets.map((asset) => {
-                  const isSel = selectedId === asset.id;
-                  return (
-                    <button
-                      type="button"
-                      key={asset.id}
-                      aria-pressed={isSel}
-                      onClick={() => setSelectedId(asset.id)}
-                      style={{
-                        width: "100%", textAlign: "left", color: "var(--text)",
-                        padding: "10px 12px",
-                        background: isSel ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent",
-                        border: isSel ? "1px solid var(--cyan)" : "1px solid var(--line)",
-                        borderRadius: "var(--r)",
-                        cursor: "pointer",
-                        transition: "all 0.15s ease"
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                        <span style={{ fontWeight: 600, fontSize: "13px", color: isSel ? "var(--cyan)" : "var(--text)" }}>{asset.name}</span>
-                        <span style={{ display: "flex", gap: "4px" }}>
-                          <Badge tone={asset.evidenceClass && asset.evidenceClass !== "UNCLASSIFIED" ? "cyan" : "slate"}>
-                            {`Evidence: ${asset.evidenceClass ?? "UNCLASSIFIED"}`}
-                          </Badge>
-                          <Badge tone="slate">{asset.lifecycleState ?? "Unknown"}</Badge>
-                        </span>
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", color: "var(--dim)" }}>
-                        <span>{asset.sourcePath ?? "Source not observed"}</span>
-                        <span>{asset.owner ?? "Owner unknown"}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-                {filteredAssets.length === 0 && <p style={{ color: "var(--dim)" }}>No assets match your search.</p>}
-              </div>
+              <VirtualTable
+                head={["Cryptographic asset"]}
+                rows={assetsList.map((asset) => [assetButton(asset)])}
+                rowHeight={68}
+                height={600}
+                total={totalCount ?? assetsList.length}
+                selected={assetsList.findIndex((asset) => asset.id === selectedId)}
+                onSelect={(index) => {
+                  const asset = assetsList[index];
+                  if (asset) setSelectedId(asset.id);
+                }}
+                empty={<p style={{ color: "var(--dim)" }}>No assets match your search.</p>}
+              />
               <p style={{ fontSize: "12px", color: "var(--dim)", margin: "12px 0 0" }} role="status">
-                Loaded {assetsList.length} of {totalCount} assets{searchTerm ? ` · ${filteredAssets.length} match search` : ""}
+                Loaded {assetsList.length} of {totalCount} assets{debouncedSearch ? ` · server-side matches for "${debouncedSearch}"` : ""}
               </p>
               {pageError && <p role="alert" style={{ color: "var(--dim)", fontSize: "12px" }}>{pageError}</p>}
               {nextPage !== null && (
