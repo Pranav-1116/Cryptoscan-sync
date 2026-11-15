@@ -354,6 +354,47 @@ def _queue_lines() -> list[str]:
         return []
 
 
+def _projection_lines() -> list[str]:
+    """Dependency-graph projections (Neo4j/Elasticsearch/Cassandra) are
+    rebuildable views of PostgreSQL — the gauges say whether each is
+    connected and how much it holds. A projection that cannot be counted
+    reports down, never silently nothing."""
+    try:
+        from graph_engine.core.dependency_stores import (
+            dependency_stores_health,
+            dependency_search_store,
+            sync_tenant,
+        )
+
+        out: list[str] = []
+        health = dependency_stores_health()
+        for name in ("cassandra", "elasticsearch"):
+            state = health.get(name) or {}
+            out.append(_gauge(
+                f"cryptoscan_graph_projection_up", 1 if state.get("ok") else 0,
+                "Dependency projection reachable",
+                f'projection="{name}"'))
+            out.append(_gauge(
+                f"cryptoscan_graph_projection_configured",
+                1 if state.get("configured") else 0,
+                "Dependency projection configured (1) or honest gap (0)",
+                f'projection="{name}"'))
+        try:
+            search = dependency_search_store()
+            docs = search.count(sync_tenant()) if search is not None else 0
+            out.append(_gauge(
+                "cryptoscan_graph_projection_documents", docs or 0,
+                "Documents held by the search projection",
+                'projection="elasticsearch"'))
+        except Exception:  # noqa: BLE001 — one store must not silence the rest
+            pass
+        return out
+    except Exception as proj_exc:  # noqa: BLE001 - keep the rest of the surface
+        logger.warning("projection_metrics_unavailable",
+                       extra={"error_type": type(proj_exc).__name__})
+        return []
+
+
 def _operational_counter_lines() -> list[str]:
     """The security and reliability events section 5 asks to alert on."""
     from api.observability.operational_counters import snapshot
@@ -585,6 +626,7 @@ def metrics(request: Request) -> Response:
         logger.warning("scan_metrics_unavailable", extra={"error_type": type(exc).__name__})
 
     lines.extend(_queue_lines())
+    lines.extend(_projection_lines())
     lines.extend(_job_lifecycle_lines())
     lines.extend(_agent_health_lines())
     lines.extend(_coverage_lines())
