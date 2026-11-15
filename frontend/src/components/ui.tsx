@@ -305,8 +305,35 @@ export function Code({ children }: { children: ReactNode }) {
 }
 
 export function Drawer({ title, sub, onClose, children }: { title: ReactNode; sub?: ReactNode; onClose: () => void; children: ReactNode }) {
+  /* Accessibility: a drawer is a modal dialog — it takes focus on open,
+     traps Tab inside itself, and closes on Escape. Without the trap, keyboard
+     users tab into the covered page behind the overlay (audit 06). */
+  const ref = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    root.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.stopPropagation(); onClose(); return; }
+      if (e.key !== "Tab") return;
+      const focusables = root.querySelectorAll<HTMLElement>(
+        "a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex='-1'])");
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === root)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+    };
+    root.addEventListener("keydown", onKey);
+    return () => {
+      root.removeEventListener("keydown", onKey);
+      previouslyFocused?.focus?.();
+    };
+  }, [onClose]);
   return (
-    <div className="drawer">
+    <div className="drawer" ref={ref} role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined} tabIndex={-1}>
       <button className="close" onClick={onClose} aria-label="Close"><IconClose size={ICON_MD} /></button>
       <h2>{title}</h2>
       {sub && <div className="sub dim" style={{ marginBottom: 14, fontSize: 12.5 }}>{sub}</div>}

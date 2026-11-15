@@ -1559,3 +1559,9 @@ summary:focus-visible,
   outline: 2px solid var(--accent) !important;
   outline-offset: 2px !important;
 }
+
+/* Phone-width drawers: full-width sheets, reachable close target (responsive sweep). */
+@media (max-width: 560px) {
+  .drawer { width: 100%; inset: 0; border-radius: 0; }
+  .drawer .close { top: 10px; right: 10px; padding: 8px; min-width: 40px; min-height: 40px; }
+}
