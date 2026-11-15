@@ -59,6 +59,6 @@ def test_a_successful_probe_is_reachability_not_a_qualification():
 def test_an_unparseable_endpoint_is_unreachable_with_a_reason():
     status = probe(environ={"VAULT_ADDR": "not a url"},
                    connect=lambda h, p, t: None)
-    row = status.checked[10]
+    row = next(r for r in status.checked if r["name"] == "Vault")
     assert row["status"] == UNREACHABLE
     assert "no probeable host" in row["detail"]

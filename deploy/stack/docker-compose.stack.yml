@@ -1,16 +1,23 @@
 # DEVELOPMENT ONLY. This overlays the root app Compose; run via `make stack-up`
 # after `scripts/check_stack_profile.py` passes. Direct Compose invocation is
 # unsupported without the same preflight. The Redis-backed worker/outbox is NOT
-# Celery. Internal endpoints use plaintext and OpenSearch security is disabled;
-# the Vault server runs in dev mode. Never use this profile for bank production.
+# Celery. Internal endpoints use plaintext and Elasticsearch security is
+# disabled; the Vault server runs in dev mode. Never use this profile for bank
+# production.
 # Root Compose resolves relative bind paths, so mounts below use ./deploy/stack/.
 # Compose >=2.24 is needed for !override to replace root host-port mappings.
 #
 #   PostgreSQL    = TRUTH        Neo4j       = GRAPH       Redis      = SPEED
 #   Worker/outbox = JOBS         Kafka       = EVENTS      MinIO      = EVIDENCE
-#   OpenSearch    = SEARCH       Prometheus  = METRICS     Grafana    = MONITORING
-#   OpenTelemetry = TRACING      Vault       = SECRETS     Envoy      = GATEWAY
-#   Docker        = PACKAGING    Kubernetes  = ORCHESTRATION (deploy/stack/k8s/)
+#   Cassandra     = HISTORY      Elasticsearch = SEARCH   Prometheus = METRICS
+#   Grafana       = MONITORING   OpenTelemetry = TRACING  Vault      = SECRETS
+#   Envoy         = GATEWAY      Docker      = PACKAGING  Kubernetes = ORCHESTRATION (deploy/stack/k8s/)
+#
+# The dependency-graph plane is three stores over the one authoritative
+# inventory in PostgreSQL: Neo4j (graph traversal), Cassandra (append-only
+# dependency-edge history) and Elasticsearch (dependency search). No store
+# holds duplicate authoritative asset records — all three are rebuildable
+# projections.
 
 name: cryptoscan-stack
 
@@ -158,16 +165,31 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
     networks: [cryptoscan-net]
 
-  opensearch:
-    image: opensearchproject/opensearch:2.17.0
+  cassandra:
+    image: cassandra:4.1
+    environment:
+      CASSANDRA_CLUSTER_NAME: cryptoscan
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    ports:
+      - "127.0.0.1:${CASSANDRA_HOST_PORT:-59042}:9042"
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'SELECT now() FROM system.local' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+    networks: [cryptoscan-net]
+
+  elasticsearch:
+    image: elasticsearch:8.15.3
     environment:
       discovery.type: single-node
-      plugins.security.disabled: "true"
-      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
     volumes:
-      - opensearch_data:/usr/share/opensearch/data
+      - elastic_data:/usr/share/elasticsearch/data
     ports:
-      - "127.0.0.1:9200:9200"
+      - "127.0.0.1:${ELASTICSEARCH_HOST_PORT:-59200}:9200"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
       interval: 15s
@@ -243,7 +265,8 @@ volumes:
   redis_data:
   kafka_data:
   minio_data:
-  opensearch_data:
+  cassandra_data:
+  elastic_data:
   prometheus_data:
   grafana_data:
 

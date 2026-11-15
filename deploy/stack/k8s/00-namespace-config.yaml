@@ -17,6 +17,7 @@ data:
   REDIS_URL: "redis://redis.cryptoscan.svc:6379/0"
   KAFKA_BOOTSTRAP_SERVERS: "kafka.cryptoscan.svc:9092"
   MINIO_ENDPOINT: "minio.cryptoscan.svc:9000"
-  OPENSEARCH_URL: "http://opensearch.cryptoscan.svc:9200"
+  CASSANDRA_CONTACT_POINTS: "cassandra.cryptoscan.svc"
+  ELASTICSEARCH_URL: "http://elasticsearch.cryptoscan.svc:9200"
   OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.cryptoscan.svc:4317"
   VAULT_ADDR: "http://vault.cryptoscan.svc:8200"

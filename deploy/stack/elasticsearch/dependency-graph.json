@@ -1,0 +1,29 @@
+{
+  "index_patterns": ["cryptoscan-dependency-graph"],
+  "template": {
+    "settings": { "number_of_shards": 1, "number_of_replicas": 0 },
+    "mappings": {
+      "properties": {
+        "tenant_id":    { "type": "keyword" },
+        "kind":         { "type": "keyword" },
+        "identity":     { "type": "keyword" },
+        "name":         { "type": "text", "fields": { "raw": { "type": "keyword" } } },
+        "subject_id":   { "type": "keyword" },
+        "object_id":    { "type": "keyword" },
+        "relation":     { "type": "keyword" },
+        "labels":       { "type": "text" },
+        "environment":  { "type": "keyword" },
+        "criticality":  { "type": "keyword" },
+        "owner":        { "type": "keyword" },
+        "lifecycle_state":          { "type": "keyword" },
+        "lifecycle_revision":       { "type": "keyword" },
+        "lifecycle_source":         { "type": "keyword" },
+        "lifecycle_reason":         { "type": "text" },
+        "lifecycle_evidence_ref":   { "type": "keyword" },
+        "evidence":     { "type": "text" }
+      }
+    }
+  },
+  "composed_of": [],
+  "version": 1
+}

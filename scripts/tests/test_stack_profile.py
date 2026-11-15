@@ -40,7 +40,8 @@ def _compose():
 #: the platform table, tool -> role
 TABLE = {
     "PostgreSQL": "postgres", "Neo4j": "neo4j", "Redis": "redis",
-    "Kafka": "kafka", "MinIO": "minio", "OpenSearch": "opensearch",
+    "Kafka": "kafka", "MinIO": "minio",
+    "Cassandra": "cassandra", "Elasticsearch": "elasticsearch",
     "Prometheus": "prometheus", "Grafana": "grafana",
     "OpenTelemetry": "otel-collector", "Vault": "vault", "Envoy": "envoy",
 }
@@ -54,13 +55,14 @@ def test_every_tool_in_the_table_serves_from_the_stack():
 
 def test_every_stateful_tool_has_a_healthcheck_and_persistence():
     services = _compose()["services"]
-    stateful = ["postgres", "neo4j", "redis", "kafka", "minio", "opensearch"]
+    stateful = ["postgres", "neo4j", "redis", "kafka", "minio",
+                "cassandra", "elasticsearch"]
     for name in stateful:
         service = services[name]
         assert "healthcheck" in service, f"{name} has no healthcheck"
         assert service.get("volumes"), f"{name} has no named persistence"
     for name in ("postgres", "neo4j", "redis", "kafka", "minio",
-                 "opensearch", "prometheus", "grafana"):
+                 "cassandra", "elasticsearch", "prometheus", "grafana"):
         assert any(str(v).split(":")[0].endswith("_data")
                    for v in services[name].get("volumes", [])), \
             f"{name} persists into a named volume"
@@ -172,8 +174,15 @@ def test_tool_configurations_parse():
     dashboard = json.loads((STACK / "grafana/dashboards/cryptoscan-stack.json").read_text())
     assert dashboard["title"].startswith("CryptoScan")
     assert len(dashboard["panels"]) >= 4
-    template = json.loads((STACK / "opensearch/cryptolog-events.json").read_text())
+    template = json.loads((STACK / "elasticsearch/cryptolog-events.json").read_text())
     assert template["index_patterns"] == ["cryptolog-events-*"]
+    depgraph = json.loads((STACK / "elasticsearch/dependency-graph.json").read_text())
+    assert depgraph["index_patterns"] == ["cryptoscan-dependency-graph"]
+    # Tenant isolation is enforced by the query layer — but the mapping must
+    # still carry tenant_id as a keyword so every query can filter on it.
+    props = depgraph["template"]["mappings"]["properties"]
+    assert props["tenant_id"]["type"] == "keyword"
+    assert props["kind"]["type"] == "keyword"
     policy = (STACK / "vault/policies/cryptoscan.hcl").read_text()
     assert "secret/data/cryptoscan/*" in policy
     assert not re.search(r"= *\"[^\"]{16,}\"", policy), "no secret material in the policy"
