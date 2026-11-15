@@ -44,6 +44,7 @@ from api.routers import (
     priority,
     saas,
     stream,
+    storage,
     realtime as realtime_router,
     assets,
     inventory,
@@ -636,6 +637,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(algorithms.router, prefix=prefix)
     app.include_router(systems.router, prefix=prefix)
     app.include_router(cbom.router, prefix=prefix)
+    app.include_router(storage.router, prefix=prefix)
     app.include_router(cbom_usage.router, prefix=prefix)
     app.include_router(security_controls.router, prefix=prefix)
     app.include_router(vbom.router, prefix=prefix)

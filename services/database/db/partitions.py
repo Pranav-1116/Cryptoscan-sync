@@ -135,6 +135,13 @@ def ensure(db: Any, *, now: datetime | None = None, ahead: int = 6,
             "FOR VALUES FROM (:lower) TO (:upper)"
         ), {"lower": lower, "upper": upper})
         created.append(name)
+    # Every partition — new or pre-existing — carries the tenant RLS guard.
+    # A monthly rollover must never mint an unprotected relation (0161
+    # backfills the ones that already slipped through).
+    from db.rls import install_table_rls
+    for name in sorted(existing | set(created)):
+        if name.startswith(f"{table}_"):
+            install_table_rls(db, name)
     return created
 
 

@@ -131,6 +131,13 @@ PERMISSION_MATRIX: dict[str, frozenset[str]] = {
     "crypto.read": ALL_ROLES,
     "crypto.manage": frozenset({"superadmin", "ciso", "security_analyst"}),
     "crypto.ingest": frozenset({"superadmin", "ciso", "scanner"}),
+    # storage optimization (spec 2.1/7): usage truth is an estate read;
+    # sweeps/GC/restore tests are operations; policy overrides configure
+    # retention — each tier gated like its nearest neighbour.
+    "storage.read": ALL_ROLES,
+    "storage.ingest": frozenset({"superadmin", "ciso", "security_analyst", "scanner"}),
+    "storage.operate": frozenset({"superadmin", "ciso", "security_analyst"}),
+    "storage.policy": frozenset({"superadmin", "ciso"}),
     # telecom realtime scanner — estate registry vs operator-side ingest
     "telecom.manage": frozenset({"superadmin", "ciso", "security_analyst"}),
     "telecom.ingest": frozenset({"superadmin", "ciso", "scanner"}),

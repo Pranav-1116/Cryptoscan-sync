@@ -58,3 +58,6 @@ rfc3986-validator>=0.1.1,<0.2
 # never executed, and its output is leads, never evidence. PyPI's
 # binwalk packaging is broken; the maintained fork is the source.
 binwalk @ git+https://github.com/OSPG/binwalk.git
+
+# Storage optimization: Zstandard compression for evidence bundles (spec 2.1/7)
+zstandard>=0.25

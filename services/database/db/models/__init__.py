@@ -300,3 +300,11 @@ from db.models.pqc_migration import (  # noqa: E402,F401
     PqcProgressRecord,
 )
 from db.models.target_scan_lock import TargetScanLock  # noqa: E402,F401
+
+# --- Storage optimization (spec 2.1/7): content-addressed evidence store,
+# provenance-preserving dedup links, incremental snapshot deltas, storage
+# policies/quotas and restore-test records.
+from db.models.content_object import ContentObject, ContentObjectBody  # noqa: E402,F401
+from db.models.evidence_content_link import EvidenceContentLink  # noqa: E402,F401
+from db.models.snapshot_delta import SnapshotDelta  # noqa: E402,F401
+from db.models.storage_policy import StoragePolicy, StorageQuota, RestoreTestRecord  # noqa: E402,F401

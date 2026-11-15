@@ -143,3 +143,38 @@ def enforcement(connection: Any) -> dict[str, Any]:
 def attach(engine: Engine) -> None:  # pragma: no cover - convenience
     """Install the binder for a configured engine (no-op on SQLite)."""
     install_rls_binder()
+
+
+def install_table_rls(connection: Any, table: str, *, nullable_tenant: bool = False) -> None:
+    """Enable + FORCE tenant RLS with the four isolation policies on one table.
+
+    Idempotent: policies are dropped-if-exists and recreated, ENABLE/FORCE are
+    no-ops when already set. Every relation with a tenant_id needs this —
+    including monthly PARTITION CHILDREN, whose parent's policies only apply
+    when the parent is queried. A direct partition read is guarded by the
+    partition's own policies or by nothing at all, and "nothing at all" is
+    how partitioned stores leak across tenants. Migration 0161 and
+    db.partitions.ensure both call this so no relation ever starts (or rolls
+    over, month by month) unprotected.
+    """
+    if getattr(connection, "dialect", None) is None or connection.dialect.name != "postgresql":
+        return
+    from sqlalchemy import text
+
+    connection.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
+    connection.execute(text(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY"))
+    null_ok = "tenant_id IS NULL OR " if nullable_tenant else ""
+    own = (f"({null_ok}tenant_id::text = cryptoscan_current_tenant() OR "
+           "cryptoscan_current_tenant() = '*')")
+    for action, clause in (
+        ("select", f"FOR SELECT USING {own}"),
+        ("insert", f"FOR INSERT WITH CHECK {own}"),
+        ("update", f"FOR UPDATE USING {own} WITH CHECK {own}"),
+        ("delete", f"FOR DELETE USING {own}"),
+    ):
+        name = f"tenant_isolation_{action}"
+        connection.execute(text(f"DROP POLICY IF EXISTS {name} ON {table}"))
+        connection.execute(text(f"CREATE POLICY {name} ON {table} {clause}"))
+    connection.execute(text(
+        f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} "
+        "TO cryptoscan_tenant, cryptoscan_platform"))
