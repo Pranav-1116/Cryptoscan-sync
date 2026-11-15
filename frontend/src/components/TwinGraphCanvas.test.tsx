@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { expect, it } from "vitest";
-import TwinGraphCanvas from "./TwinGraphCanvas";
+import TwinGraphCanvas, { mergeTwinExport } from "./TwinGraphCanvas";
 import { mockFetch } from "../test/setup";
 
 /* The drawn canvas, and the four rules that make a picture honest:
@@ -173,4 +173,35 @@ it("draws the same picture twice for the same projection", async () => {
   const secondLabel = screen.getByRole("img", { name: "The twin's relationship graph" }).innerHTML;
 
   expect(secondLabel).toBe(firstLabel);
+});
+
+it("expands progressively: loading a neighbourhood merges, never refetches the estate", async () => {
+  const base = {
+    schema: "x", projection_id: "p", generated_at: "2026-01-01T00:00:00Z",
+    counts: { nodes: 2, relationships: 1, unresolved: 0 },
+    nodes: [
+      { id: "a", labels: ["Asset", "APPLICATION"], properties: { name: "App A" } },
+      { id: "b", labels: ["Asset", "APPLICATION"], properties: { name: "App B" } },
+    ],
+    relationships: [{ type: "USES", from: "a", to: "b", properties: {} }],
+    unresolved: [], load_notes: {},
+  };
+  const merged = mergeTwinExport(
+    { ...base, bounded: true, omitted_nodes: 5, omitted_edges: 2, frontier: ["a"] } as never,
+    {
+      ...base,
+      nodes: [base.nodes[1], { id: "c", labels: ["Asset", "APPLICATION"], properties: { name: "App C" } }],
+      relationships: [
+        { type: "USES", from: "a", to: "b", properties: {} },
+        { type: "USES", from: "b", to: "c", properties: {} },
+      ],
+      bounded: true, omitted_nodes: 3, omitted_edges: 0, frontier: ["c"],
+    } as never,
+  );
+  // duplicates never double-draw; the new neighbourhood lands
+  expect(merged.nodes.map((n: { id: string }) => n.id).sort()).toEqual(["a", "b", "c"]);
+  expect(merged.relationships).toHaveLength(2);
+  // disclosure tracks what is still not loaded anywhere
+  expect(merged.omitted_nodes).toBe(3);
+  expect(merged.frontier).toEqual(["c"]);
 });

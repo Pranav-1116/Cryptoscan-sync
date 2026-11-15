@@ -1,6 +1,45 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge } from "./ui.jsx";
 import { apiEstateTwinGraph, apiEstateTwinWhy, type EstateTwinGraphExport, type EstateTwinWhy } from "../lib/api.js";
+import { useConsoleStore } from "../lib/appStore.js";
+
+/** Union of two bounded exports: expanding a neighbourhood merges into the
+ *  picture without refetching what is already drawn. Dedupe by node id and
+ *  by (type, from, to). */
+export function mergeTwinExport(
+  prev: EstateTwinGraphExport | null,
+  next: EstateTwinGraphExport,
+): EstateTwinGraphExport {
+  if (!prev) return next;
+  const nodes = [...prev.nodes];
+  const seen = new Set(nodes.map((n) => n.id));
+  for (const node of next.nodes) {
+    if (!seen.has(node.id)) {
+      seen.add(node.id);
+      nodes.push(node);
+    }
+  }
+  const relationships = [...prev.relationships];
+  const edgeSeen = new Set(relationships.map((e) => `${e.type}|${e.from}|${e.to}`));
+  for (const edge of next.relationships) {
+    const key = `${edge.type}|${edge.from}|${edge.to}`;
+    if (!edgeSeen.has(key)) {
+      edgeSeen.add(key);
+      relationships.push(edge);
+    }
+  }
+  return {
+    ...prev,
+    ...next,
+    nodes,
+    relationships,
+    // The disclosure still covers everything NOT loaded anywhere.
+    omitted_nodes: next.omitted_nodes ?? prev.omitted_nodes,
+    omitted_edges: next.omitted_edges ?? prev.omitted_edges,
+    frontier: next.frontier ?? prev.frontier,
+    bounded: true,
+  };
+}
 
 /* ─── The twin's own graph, drawn ─────────────────────────────────────────────
    §9's footnote has been the same for a while: the picture on `/graph` is drawn
@@ -76,11 +115,16 @@ export default function TwinGraphCanvas() {
   const [selected, setSelected] = useState<string | null>(null);
   const [answer, setAnswer] = useState<{ key: string; data: EstateTwinWhy | null } | null>(null);
   const [asking, setAsking] = useState(false);
+  const [expanding, setExpanding] = useState<string | null>(null);
+  const expandNode = useConsoleStore((s) => s.expandNode);
 
   useEffect(() => {
     let live = true;
     void (async () => {
-      const result = await apiEstateTwinGraph();
+      // The bank rule: the server returns a BOUNDED subgraph (best-connected
+      // overview). The estate is never downloaded whole; neighbourhoods load
+      // on demand through expandNeighborhood.
+      const result = await apiEstateTwinGraph({ limit: MAX_NODES });
       if (!live) return;
       if (result.ok) setExported(result.data as EstateTwinGraphExport);
       // a failed read is a fact about the read, not an empty graph
@@ -88,6 +132,19 @@ export default function TwinGraphCanvas() {
     })();
     return () => { live = false; };
   }, []);
+
+  const expandNeighborhood = async (nodeId: string) => {
+    if (expanding) return;
+    setExpanding(nodeId);
+    const result = await apiEstateTwinGraph({ seed: nodeId, depth: 1 });
+    if (result.ok) {
+      setExported((prev) => mergeTwinExport(prev, result.data as EstateTwinGraphExport));
+      expandNode(nodeId, true);
+    } else {
+      setLoadError("the neighbourhood could not be loaded — the picture is unchanged, not empty");
+    }
+    setExpanding(null);
+  };
 
   const { placed, drawn, omittedNodes, omittedEdges } = useMemo(() => {
     const nodes = exported?.nodes ?? [];
@@ -261,6 +318,14 @@ export default function TwinGraphCanvas() {
                     cx={node.x} cy={node.y} r={node.layer === "ASSET" ? 13 : 9}
                     fill={node.layer === "EVIDENCE" ? "var(--amber)" : node.layer === "ASSET" ? "var(--violet)" : "var(--slate)"}
                     opacity={0.9}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Load the neighbourhood of ${node.name}`}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => void expandNeighborhood(node.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") void expandNeighborhood(node.id);
+                    }}
                   />
                   <text
                     x={node.x} y={node.y + (node.layer === "ASSET" ? 28 : 22)}
@@ -284,6 +349,16 @@ export default function TwinGraphCanvas() {
               {omittedNodes > 0 && <>{omittedNodes} further node(s) are not drawn (the canvas holds {MAX_NODES}). </>}
               {omittedEdges > 0 && <>{omittedEdges} relationship(s) connect nodes this canvas did not draw. </>}
               This is a drawing limit, not the edge of the estate.
+            </div>
+          )}
+
+          {exported.bounded && (
+            <div style={{ marginTop: 6, fontSize: 11, color: "var(--dim)" }}>
+              {Number(exported.omitted_nodes ?? 0) > 0 && (
+                <>{exported.omitted_nodes} further node(s) are not loaded — the picture is a bounded subgraph. </>
+              )}
+              Select a node to load its neighbourhood (progressive expansion).
+              {expanding && <> Loading {expanding}…</>}
             </div>
           )}
 

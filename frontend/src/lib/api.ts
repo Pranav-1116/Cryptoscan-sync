@@ -7538,6 +7538,12 @@ export interface EstateTwinGraphExport {
      emits — served with every export so "the projection covers the spec" is read,
      not taken on trust */
   label_coverage?: Record<string, string[]>;
+  /* Bounded export (the bank rule: never load the estate whole): counts of
+     what the server left out and the frontier of nodes to expand into next. */
+  bounded?: boolean;
+  omitted_nodes?: number;
+  omitted_edges?: number;
+  frontier?: string[];
 }
 
 export const apiEstateTwinSnapshots = (): Promise<ApiResult<EstateTwinSnapshotList>> =>
@@ -7557,8 +7563,19 @@ export const apiEstateTwinCompare = (before?: string, after?: string): Promise<A
 export const apiEstateTwinCryptoGraph = (): Promise<ApiResult<EstateTwinCryptoGraph>> =>
   _rsGet<EstateTwinCryptoGraph>("/api/v1/estate/evidence/twin/crypto-graph");
 
-export const apiEstateTwinGraph = (): Promise<ApiResult<EstateTwinGraphExport>> =>
-  _rsGet<EstateTwinGraphExport>("/api/v1/estate/evidence/twin/graph");
+export const apiEstateTwinGraph = (bounds?: {
+  seed?: string;
+  depth?: number;
+  limit?: number;
+}): Promise<ApiResult<EstateTwinGraphExport>> => {
+  const params = new URLSearchParams();
+  if (bounds?.seed) params.set("seed", bounds.seed);
+  if (bounds?.depth !== undefined) params.set("depth", String(bounds.depth));
+  if (bounds?.limit !== undefined) params.set("limit", String(bounds.limit));
+  const qs = params.toString();
+  return _rsGet<EstateTwinGraphExport>(
+    `/api/v1/estate/evidence/twin/graph${qs ? `?${qs}` : ""}`);
+};
 
 /* A graph-store load is a side effect on a bank's graph, so the panel can only
    ever ask for the *plan*: the request is sent with dry_run pinned to true, and the
