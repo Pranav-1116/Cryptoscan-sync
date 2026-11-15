@@ -176,3 +176,77 @@ def test_permitted_job_proceeds_to_the_pipeline(db_env, monkeypatch, tmp_path):
     row = session.query(ScanJobRow).filter_by(id="job-1").one()
     session.expire_all()
     assert row.status == "RUNNING", "permitted execution claims the queued row before dispatch"
+
+
+# ── target-scoped locks (§10): prevent conflicting jobs ─────────────────
+
+
+def test_conflicting_job_is_deferred_not_run(db_env, monkeypatch, tmp_path):
+    """A job whose target is locked by another owner is DEFERRED —
+    retryable and told who holds the lock — never run underneath its
+    twin and never failed silently."""
+    import worker.core.execution_gate as gate
+    from db.target_lock import acquire_target_lock
+    from worker.core.job_executor import JobExecutor
+
+    session, _factory = db_env
+    monkeypatch.setattr(gate, "_matching_policy", lambda: {"mode": "standard"})
+    monkeypatch.setenv("CRYPTOSCAN_SOURCE_ROOTS", str(tmp_path))
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    session.query(ScanJobRow).filter_by(id="job-1").update(
+        {"target_repo": str(repo_dir)})
+    session.commit()
+    held = acquire_target_lock(session, None, f"{repo_dir}#main", "job-twin")
+    assert held["acquired"] is True
+
+    class _NeverRunner:
+        def run(self, **kwargs):  # pragma: no cover - must never be reached
+            raise AssertionError("pipeline ran while the target was locked")
+
+    monkeypatch.setattr(JobExecutor, "__init__",
+                        lambda self, **kw: setattr(self, "runner", _NeverRunner()))
+    deferred = []
+    import db.repositories.execution_outbox as outbox
+
+    monkeypatch.setattr(outbox, "defer",
+                        lambda job_id, owner: deferred.append((job_id, owner)))
+
+    executor = JobExecutor()
+    result = executor.execute(_job(str(repo_dir)))
+    assert result is False
+    assert deferred == [("job-1", None)], "a lock conflict defers for retry"
+    row = session.query(ScanJobRow).filter_by(id="job-1").one()
+    assert row.status == "QUEUED", "deferred, not FAILED — the job retries"
+
+
+def test_the_target_lock_releases_after_the_run(db_env, monkeypatch, tmp_path):
+    """The lock guards the run and is released after it — the next job on
+    the same target proceeds without waiting for a lease to lapse."""
+    import worker.core.execution_gate as gate
+    from db.models.target_scan_lock import TargetScanLock
+    from db.target_lock import acquire_target_lock
+    from worker.core.job_executor import JobExecutor
+
+    session, _factory = db_env
+    monkeypatch.setattr(gate, "_matching_policy", lambda: {"mode": "standard"})
+    monkeypatch.setenv("CRYPTOSCAN_SOURCE_ROOTS", str(tmp_path))
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    session.query(ScanJobRow).filter_by(id="job-1").update(
+        {"target_repo": str(repo_dir)})
+    session.commit()
+
+    class _StubRunner:
+        def run(self, **kwargs):
+            return "scan-123"
+
+    monkeypatch.setattr(JobExecutor, "__init__",
+                        lambda self, **kw: setattr(self, "runner", _StubRunner()))
+    executor = JobExecutor()
+    result = executor.execute(_job(str(repo_dir)))
+    assert result is True
+    session.expire_all()
+    assert session.query(TargetScanLock).count() == 0, "released after the run"
+    nxt = acquire_target_lock(session, None, f"{repo_dir}#main", "job-next")
+    assert nxt["acquired"] is True

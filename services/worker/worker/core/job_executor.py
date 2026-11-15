@@ -78,6 +78,27 @@ class JobExecutor:
             logger.warning("job_refused_at_execution", extra={"job_id": job.job_id, "reason": reason})
             self._stamp_refusal(job, message)
             return False
+        # Target-scoped lock (§10): one job per target at a time. A
+        # conflicting job is DEFERRED — retryable, told who holds the lock
+        # and until when — never run underneath its twin and never failed
+        # silently. Released after the run; an expired holder is stealable.
+        from db.target_lock import TargetLocked, target_key_for, with_job_target_lock
+
+        try:
+            with with_job_target_lock(job):
+                return self._run_claimed(job, run)
+        except TargetLocked as conflict:
+            from db.repositories.execution_outbox import defer
+
+            defer(job.job_id, job.tenant_id)
+            logger.warning(
+                "target_locked_deferred",
+                extra={"job_id": job.job_id, "target": target_key_for(job),
+                       "reason": conflict.result.get("reason")},
+            )
+            return False
+
+    def _run_claimed(self, job: ScanJob, run) -> bool:
         try:
             attempt = claim(job)
         except QueueDeferred:

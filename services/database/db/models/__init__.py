@@ -299,3 +299,4 @@ from db.models.pqc_migration import (  # noqa: E402,F401
     PqcMigrationWave,
     PqcProgressRecord,
 )
+from db.models.target_scan_lock import TargetScanLock  # noqa: E402,F401
