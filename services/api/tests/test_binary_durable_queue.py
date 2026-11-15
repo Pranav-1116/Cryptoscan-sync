@@ -265,51 +265,52 @@ class TestIntrospection:
             queue.submit(_job())
 
 
+@pytest.fixture()
+def api():
+    from db.models.base import Base
+    from db.models.binary_scan_job import BinaryScanJob
+    from db.models.binary_artifact_blob import BinaryArtifactBlob
+    from db.models.binary_scan import BinaryScanObservation, BinaryScanRecord
+    from db.models.binary_intelligence import (
+        BinaryAnalysisCoverage, BinaryArtifact, BinaryCryptoFinding,
+        BinaryEvidence, BinaryScanRun, BinaryTwinEdge,
+    )
+    from db.models.performance import PerformanceMetric
+    from db.models.cryptolog import CryptoLogEvent
+
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False},
+        poolclass=StaticPool)
+    Base.metadata.create_all(engine, tables=[
+        BinaryArtifact.__table__, BinaryScanRun.__table__,
+        BinaryCryptoFinding.__table__, BinaryEvidence.__table__,
+        BinaryAnalysisCoverage.__table__, BinaryTwinEdge.__table__,
+        BinaryScanJob.__table__, BinaryArtifactBlob.__table__,
+        BinaryScanRecord.__table__,
+        BinaryScanObservation.__table__,
+        PerformanceMetric.__table__, CryptoLogEvent.__table__])
+    session = sessionmaker(bind=engine)()
+
+    from api import dependencies
+    from api.routers import binary_intelligence
+    from api.errors import install_error_contract
+
+    app = FastAPI()
+    app.include_router(binary_intelligence.router, prefix="/api/v1")
+    install_error_contract(app)
+    app.dependency_overrides[dependencies.get_db_session] = lambda: session
+    app.dependency_overrides[dependencies.get_current_user] = lambda: "auditor"
+    app.dependency_overrides[dependencies.require_intelligence_writer] = lambda: "writer"
+    original = binary_intelligence.WORKER_QUEUE
+    binary_intelligence.configure_durable_queue()
+    try:
+        with TestClient(app) as client:
+            yield client, session, binary_intelligence
+    finally:
+        binary_intelligence.WORKER_QUEUE = original
+
+
 class TestRouterIntegration:
-
-    @pytest.fixture()
-    def api(self):
-        from db.models.base import Base
-        from db.models.binary_scan_job import BinaryScanJob
-        from db.models.binary_artifact_blob import BinaryArtifactBlob
-        from db.models.binary_scan import BinaryScanObservation, BinaryScanRecord
-        from db.models.binary_intelligence import (
-            BinaryAnalysisCoverage, BinaryArtifact, BinaryCryptoFinding,
-            BinaryEvidence, BinaryScanRun, BinaryTwinEdge,
-        )
-        from db.models.performance import PerformanceMetric
-        from db.models.cryptolog import CryptoLogEvent
-
-        engine = create_engine(
-            "sqlite://", connect_args={"check_same_thread": False},
-            poolclass=StaticPool)
-        Base.metadata.create_all(engine, tables=[
-            BinaryArtifact.__table__, BinaryScanRun.__table__,
-            BinaryCryptoFinding.__table__, BinaryEvidence.__table__,
-            BinaryAnalysisCoverage.__table__, BinaryTwinEdge.__table__,
-            BinaryScanJob.__table__, BinaryArtifactBlob.__table__,
-            BinaryScanRecord.__table__,
-            BinaryScanObservation.__table__,
-            PerformanceMetric.__table__, CryptoLogEvent.__table__])
-        session = sessionmaker(bind=engine)()
-
-        from api import dependencies
-        from api.routers import binary_intelligence
-        from api.errors import install_error_contract
-
-        app = FastAPI()
-        app.include_router(binary_intelligence.router, prefix="/api/v1")
-        install_error_contract(app)
-        app.dependency_overrides[dependencies.get_db_session] = lambda: session
-        app.dependency_overrides[dependencies.get_current_user] = lambda: "auditor"
-        app.dependency_overrides[dependencies.require_intelligence_writer] = lambda: "writer"
-        original = binary_intelligence.WORKER_QUEUE
-        binary_intelligence.configure_durable_queue()
-        try:
-            with TestClient(app) as client:
-                yield client, session, binary_intelligence
-        finally:
-            binary_intelligence.WORKER_QUEUE = original
 
     def test_production_endpoints_accept_the_durable_backend(self, api, monkeypatch):
         client, _session, binary = api
@@ -341,3 +342,94 @@ class TestRouterIntegration:
         queue = status.json()["queue"]
         assert queue["durable"] is True
         assert queue["accepted_total"] == 0
+
+
+class TestTraceContinuity:
+
+    def test_the_submitting_trace_rides_the_job_row(self, db):
+        from binary_intelligence.orchestrator import ScanJob
+        from worker.pipeline.pipeline_runner import trace_id_from_job
+
+        queue = _queue()
+        accepted, _ = queue.submit(ScanJob(
+            job_id="bjob-tr", tenant_id="tenant_001", data=b"trace-bytes",
+            original_filename="f", source_type="upload", uploaded_by="tester",
+            trace_id="4bf92f3577b34da6a3ce929d0e0e4736"), db=db)
+        assert accepted
+        row = _row(db, "bjob-tr")
+        # The job outlives its HTTP request: the identity rides the row and
+        # survives a queue replacement (restart) — the worker reads it back.
+        assert row.trace_id == "4bf92f3577b34da6a3ce929d0e0e4736"
+        assert trace_id_from_job(row) == "4bf92f3577b34da6a3ce929d0e0e4736"
+
+    def test_the_trace_reader_covers_both_job_families(self):
+        from types import SimpleNamespace
+
+        from worker.pipeline.pipeline_runner import trace_id_from_job
+
+        assert trace_id_from_job(SimpleNamespace(
+            progress={"trace_id": "from-progress"},
+            raw={"trace_id": "from-raw"}, trace_id="from-column")) == "from-progress"
+        assert trace_id_from_job(SimpleNamespace(
+            progress=None, raw={"trace_id": "from-raw"},
+            trace_id="from-column")) == "from-raw"
+        assert trace_id_from_job(SimpleNamespace(
+            progress=None, raw=None, trace_id="from-column")) == "from-column"
+        assert trace_id_from_job(SimpleNamespace(
+            progress=None, raw=None, trace_id=None)) is None
+
+
+class TestBackpressureContract:
+
+    def test_a_full_queue_answers_429_with_retry_after_and_depth_headers(self, api):
+        client, _session, binary = api
+        binary.WORKER_QUEUE.limits.max_queue_depth = 1
+        payload = {
+            "tenant_id": "tenant_001",
+            "artifact_base64": base64.b64encode(b"first").decode(),
+            "original_filename": "a", "source_type": "upload",
+            "scan_profile": "standard"}
+        first = client.post("/api/v1/binary/scan/async", json=payload)
+        assert first.status_code == 202
+        assert first.headers["X-Queue-Depth"] == "1"
+        assert first.headers["X-Queue-Limit"] == "1"
+
+        payload["artifact_base64"] = base64.b64encode(b"second").decode()
+        refused = client.post("/api/v1/binary/scan/async", json=payload)
+        assert refused.status_code == 429
+        assert refused.headers["Retry-After"] == "30", (
+            "a backpressure refusal tells the caller when to come back")
+        assert refused.headers["X-Queue-Depth"] == "1"
+        assert refused.headers["X-Queue-Limit"] == "1"
+        assert "backpressure" in refused.json()["detail"]
+
+    def test_an_oversized_artifact_answers_413_not_a_queue_refusal(self, api):
+        client, _session, binary = api
+        binary.WORKER_QUEUE.limits.max_artifact_bytes = 4
+        refused = client.post("/api/v1/binary/scan/async", json={
+            "tenant_id": "tenant_001",
+            "artifact_base64": base64.b64encode(b"too-large").decode(),
+            "original_filename": "a", "source_type": "upload",
+            "scan_profile": "standard"})
+        assert refused.status_code == 413
+        assert refused.headers["X-Queue-Depth"] == "0"
+        assert "above the worker limit" in refused.json()["detail"]
+
+    def test_the_submission_stamps_the_request_trace_onto_the_job_row(self, api):
+        client, session, _binary = api
+        accepted = client.post("/api/v1/binary/scan/async",
+                               headers={"X-Request-ID": "trace-abc-123"},
+                               json={
+                                   "tenant_id": "tenant_001",
+                                   "artifact_base64": base64.b64encode(b"traced").decode(),
+                                   "original_filename": "a", "source_type": "upload",
+                                   "scan_profile": "standard"})
+        assert accepted.status_code == 202
+        job_id = accepted.json()["job_id"]
+        from db.models.binary_scan_job import BinaryScanJob
+
+        row = session.scalar(select(BinaryScanJob)
+                             .where(BinaryScanJob.job_id == job_id))
+        assert row.trace_id == "trace-abc-123", (
+            "the scan keeps the submitting request's identity after the "
+            "HTTP request is gone")

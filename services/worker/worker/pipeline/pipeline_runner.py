@@ -32,12 +32,15 @@ settings = get_settings()
 
 
 def trace_id_from_job(job: Any) -> str | None:
-    """Trace context off a ScanJob row: progress JSON first, raw payload second."""
+    """Trace context off a job row: progress JSON first, raw payload second,
+    then the binary family's dedicated trace column (0158) — the job
+    outlives its HTTP request, so the identity rides the row."""
     for source in (getattr(job, "progress", None) or {},
                    getattr(job, "raw", None) or {}):
         if isinstance(source, dict) and source.get("trace_id"):
             return str(source["trace_id"])
-    return None
+    trace_id = getattr(job, "trace_id", None)
+    return str(trace_id) if trace_id else None
 
 
 @dataclass

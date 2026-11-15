@@ -12,7 +12,7 @@ import base64
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -531,14 +531,23 @@ def worker_status(db: Session = Depends(get_db_session),
 @router.post("/scan/async", response_model=QueuedJobOut, status_code=202,
              dependencies=[Depends(require_intelligence_writer)])
 def submit_scan_async(body: ScanRequest,
+                      request: Request,
+                      response: Response,
                       db: Session = Depends(get_db_session),
                       user: str = Depends(get_current_user)
                       ) -> QueuedJobOut:
     """Submit for ASYNC processing (§12): the job enters the bounded
     worker queue; a worker executes it via POST /binary/scan/
     jobs/{job_id}/process. Backpressure refuses and counts — never
-    silently drops. This queue is development-only; production refuses it
-    rather than falsely acknowledging a job that cannot survive restart."""
+    silently drops: a full queue answers 429 with Retry-After and the
+    live depth/limit headers, an oversized artifact 413. The submitting
+    request's trace id rides the job row so a scan that outlives its HTTP
+    request keeps its identity across services. This queue is
+    development-only; production refuses it rather than falsely
+    acknowledging a job that cannot survive restart."""
+    from api.middleware.asgi_utils import request_id_from_scope
+    from api.middleware.trace import active_trace
+
     _require_tenant_scope(body.tenant_id)
     _require_durable_async_backend()
     import uuid as _uuid
@@ -549,18 +558,31 @@ def submit_scan_async(body: ScanRequest,
             status_code=422,
             detail="artifact bytes did not decode — content is "
                    "validated, never assumed") from exc
+    trace_id = (active_trace()[0] or request_id_from_scope(request.scope)
+                or request.headers.get("X-Request-ID"))
     job_id = f"bjob-{_uuid.uuid4().hex[:12]}"
     accepted, reason = WORKER_QUEUE.submit(ScanJob(
         job_id=job_id, tenant_id=body.tenant_id, data=data,
         original_filename=body.original_filename,
         source_type=body.source_type, uploaded_by=user,
         source_location=body.source_location,
-        profile=body.scan_profile), db=db)
+        profile=body.scan_profile,
+        trace_id=trace_id), db=db)
+    queue = WORKER_QUEUE.as_dict(db)
+    depth_headers = {
+        "X-Queue-Depth": str(queue.get("pending") or 0),
+        "X-Queue-Limit": str(queue["limits"]["max_queue_depth"]),
+    }
     if not accepted:
-        raise HTTPException(status_code=429, detail=reason)
+        if "above the worker limit" in reason:
+            raise HTTPException(status_code=413, detail=reason,
+                                headers=depth_headers)
+        raise HTTPException(status_code=429, detail=reason,
+                            headers={"Retry-After": "30", **depth_headers})
+    response.headers.update(depth_headers)
     return QueuedJobOut(
         job_id=job_id, status="queued",
-        queue=WORKER_QUEUE.as_dict(db),
+        queue=queue,
         note="accepted into the bounded worker queue; a worker executes "
              "it via POST /binary/scan/jobs/{job_id}/process (§12)")
 

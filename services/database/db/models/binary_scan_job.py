@@ -40,6 +40,9 @@ class BinaryScanJob(BaseModel, TenantOwned):
     source_location: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     uploaded_by: Mapped[str] = mapped_column(String(100), nullable=False)
     profile: Mapped[str] = mapped_column(String(40), nullable=False, default="standard")
+    #: Submitting request's trace id — the job outlives its HTTP request, so
+    #: the identity rides the row (0158) and the worker reads it back.
+    trace_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     #: Optimistic-lock counter: every status transition is a compare-and-set on
     #: the version it read.
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

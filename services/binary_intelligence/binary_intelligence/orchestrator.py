@@ -51,6 +51,8 @@ class ScanJob:
     uploaded_by: str
     source_location: Optional[str] = None
     profile: str = "standard"
+    #: Submitting request's trace id — continuity across the async handoff.
+    trace_id: Optional[str] = None
 
 
 @dataclass

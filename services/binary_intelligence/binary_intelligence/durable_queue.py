@@ -128,6 +128,7 @@ class DurableScanJobQueue:
             source_type=job.source_type,
             source_location=job.source_location,
             uploaded_by=job.uploaded_by, profile=job.profile,
+            trace_id=job.trace_id,
             version=0, attempts=0,
             max_attempts=int(self.max_attempts),
             created_at=now, updated_at=now))
