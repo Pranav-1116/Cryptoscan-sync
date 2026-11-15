@@ -276,3 +276,59 @@ def test_register_json_is_stable_and_versioned():
     assert data["schema_version"] == 1
     assert data["register"] == "cryptoscan-state-machines"
     assert len(data["machines"]) == len(MACHINES)
+
+
+# ------------------------------------------------------- 6. write-site pins --
+_WRITE_SITES_ROOTS = ("services", "shared", "scripts", "collectors")
+_UPPER_LITERAL = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+def _write_site_literals() -> dict[str, set[str]]:
+    """{state literal: {"path:line", ...}} for every UPPER_CASE string written
+    to a status-bearing attribute anywhere outside tests (AST — the same
+    lens the register was built with)."""
+    found: dict[str, set[str]] = {}
+    for root in _WRITE_SITES_ROOTS:
+        base = REPO / root
+        if not base.exists():
+            continue
+        for path in sorted(base.rglob("*.py")):
+            if "tests" in path.parts or path.name.startswith("test_"):
+                continue
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                targets: list[ast.Attribute] = []
+                if isinstance(node, ast.Assign):
+                    targets = [t for t in node.targets if isinstance(t, ast.Attribute)]
+                elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Attribute):
+                    targets = [node.target]
+                for target in targets:
+                    if not FIELD_RE.match(target.attr):
+                        continue
+                    value = node.value
+                    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                        if _UPPER_LITERAL.match(value.value):
+                            found.setdefault(value.value, set()).add(
+                                f"{path.relative_to(REPO)}:{node.lineno}"
+                            )
+    return found
+
+
+def test_write_site_state_literals_are_registered():
+    """The register claims every state is observed from code. The flip side
+    must hold too: code may not write a state the register does not know —
+    that is exactly how the twin silently stops describing reality."""
+    known = {s["id"] for m in MACHINES.values() for s in m["states"]}
+    unregistered = {
+        lit: sorted(where)
+        for lit, where in _write_site_literals().items()
+        if lit not in known
+    }
+    assert unregistered == {}, (
+        "states written in code but missing from the register: "
+        f"{unregistered} — teach state_machines.json (both copies) or stop "
+        "writing the literal"
+    )

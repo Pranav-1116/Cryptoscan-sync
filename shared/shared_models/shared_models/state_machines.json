@@ -1056,6 +1056,73 @@
       ]
     },
     {
+      "id": "cbom.component_state",
+      "label": "CBOM component liveness",
+      "domain": "estate",
+      "kind": "lifecycle",
+      "description": "A component in the live cryptographic BOM of a cloud estate.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "services/cloud_scanner/cloud_scanner/enterprise/live/cbom.py CbomComponent.state writes",
+      "states": [
+        {
+          "id": "ACTIVE",
+          "class": "progress",
+          "meaning": "Present in the estate now."
+        },
+        {
+          "id": "CHANGED",
+          "class": "warn",
+          "meaning": "Present but its fingerprint changed."
+        },
+        {
+          "id": "REMOVED",
+          "class": "stopped",
+          "meaning": "Gone from the estate."
+        }
+      ],
+      "transitions": [
+        {
+          "from": "ACTIVE",
+          "to": "CHANGED",
+          "trigger": "a change event alters the fingerprint",
+          "observed_in": [
+            "services/cloud_scanner/cloud_scanner/enterprise/live/cbom.py"
+          ]
+        },
+        {
+          "from": "ACTIVE",
+          "to": "REMOVED",
+          "trigger": "RESOURCE_REMOVED / DELETED_RESOURCE event",
+          "observed_in": [
+            "services/cloud_scanner/cloud_scanner/enterprise/live/cbom.py"
+          ]
+        },
+        {
+          "from": "CHANGED",
+          "to": "REMOVED",
+          "trigger": "RESOURCE_REMOVED / DELETED_RESOURCE event",
+          "observed_in": [
+            "services/cloud_scanner/cloud_scanner/enterprise/live/cbom.py"
+          ]
+        },
+        {
+          "from": "REMOVED",
+          "to": "ACTIVE",
+          "trigger": "the component reappears in a later snapshot",
+          "observed_in": [
+            "services/cloud_scanner/cloud_scanner/enterprise/live/cbom.py"
+          ]
+        }
+      ],
+      "invariants": [
+        "Removal is a state, never a deletion: the component's history stays reachable."
+      ],
+      "sources": [
+        "services/cloud_scanner/cloud_scanner/enterprise/live/cbom.py"
+      ]
+    },
+    {
       "id": "identity.confidence",
       "label": "Identity confidence",
       "domain": "evidence",
@@ -1376,6 +1443,114 @@
       ]
     },
     {
+      "id": "devsecops.finding_state",
+      "label": "DevSecOps finding (chat/ticket sync)",
+      "domain": "findings",
+      "kind": "lifecycle",
+      "description": "A finding reconciled between the local chat loop and a remote ticket system.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "services/devsecops/devsecops/sync.py FindingState writes + its deterministic remote-state maps",
+      "states": [
+        {
+          "id": "NEW",
+          "class": "progress",
+          "meaning": "Just raised; no one has looked yet."
+        },
+        {
+          "id": "OPEN",
+          "class": "progress",
+          "meaning": "Open and untriaged (the default)."
+        },
+        {
+          "id": "IN_PROGRESS",
+          "class": "progress",
+          "meaning": "Being worked on."
+        },
+        {
+          "id": "ASSIGNED",
+          "class": "progress",
+          "meaning": "Assigned to an owner via chat."
+        },
+        {
+          "id": "ACKNOWLEDGED",
+          "class": "progress",
+          "meaning": "Someone has seen it."
+        },
+        {
+          "id": "RESOLVED",
+          "class": "done",
+          "meaning": "Fixed, pending closure."
+        },
+        {
+          "id": "CLOSED",
+          "class": "done",
+          "meaning": "Closed."
+        },
+        {
+          "id": "CANCELED",
+          "class": "refused",
+          "meaning": "Rejected upstream; not being worked."
+        }
+      ],
+      "transitions": [
+        {
+          "from": "OPEN",
+          "to": "ASSIGNED",
+          "trigger": "chat action 'assign'",
+          "observed_in": [
+            "services/devsecops/devsecops/sync.py"
+          ]
+        },
+        {
+          "from": "NEW",
+          "to": "ASSIGNED",
+          "trigger": "chat action 'assign' before triage",
+          "observed_in": [
+            "services/devsecops/devsecops/sync.py"
+          ]
+        },
+        {
+          "from": "OPEN",
+          "to": "ACKNOWLEDGED",
+          "trigger": "chat action 'ack'",
+          "observed_in": [
+            "services/devsecops/devsecops/sync.py"
+          ]
+        },
+        {
+          "from": "ASSIGNED",
+          "to": "RESOLVED",
+          "trigger": "remote ticket moves to Done",
+          "observed_in": [
+            "services/devsecops/devsecops/sync.py"
+          ]
+        },
+        {
+          "from": "RESOLVED",
+          "to": "CLOSED",
+          "trigger": "remote ticket closes",
+          "observed_in": [
+            "services/devsecops/devsecops/sync.py"
+          ]
+        },
+        {
+          "from": "OPEN",
+          "to": "CANCELED",
+          "trigger": "remote ticket is rejected",
+          "observed_in": [
+            "services/devsecops/devsecops/sync.py"
+          ]
+        }
+      ],
+      "invariants": [
+        "A remote state is applied only when it is newer than the local state; local never guesses."
+      ],
+      "sources": [
+        "services/devsecops/devsecops/sync.py"
+      ]
+    },
+    {
       "id": "drift.verification_status",
       "label": "Drift verification",
       "domain": "findings",
@@ -1457,7 +1632,7 @@
         "baseline.Baseline.status"
       ],
       "vocabulary": "partial",
-      "vocabulary_source": "model default ACTIVE + baseline_repository write sites",
+      "vocabulary_source": "model default ACTIVE + baseline_repository and routers/baselines.py write sites",
       "states": [
         {
           "id": "ACTIVE",
@@ -1468,6 +1643,16 @@
           "id": "SUPERSEDED",
           "class": "stale",
           "meaning": "Replaced by a later baseline."
+        },
+        {
+          "id": "PROPOSED",
+          "class": "progress",
+          "meaning": "Proposed by an auditor; not in force."
+        },
+        {
+          "id": "REJECTED",
+          "class": "refused",
+          "meaning": "Dismissed by an auditor; never in force."
         }
       ],
       "transitions": [
@@ -1477,6 +1662,22 @@
           "trigger": "a newer baseline is approved",
           "observed_in": [
             "services/database/db/repositories/baseline_repository.py"
+          ]
+        },
+        {
+          "from": "PROPOSED",
+          "to": "ACTIVE",
+          "trigger": "the proposal is approved and put in force",
+          "observed_in": [
+            "services/api/api/routers/baselines.py"
+          ]
+        },
+        {
+          "from": "PROPOSED",
+          "to": "REJECTED",
+          "trigger": "the auditor dismisses the proposal",
+          "observed_in": [
+            "services/api/api/routers/baselines.py"
           ]
         }
       ],
@@ -1584,6 +1785,40 @@
       ],
       "sources": [
         "services/database/db/models/payment_crypto.py"
+      ]
+    },
+    {
+      "id": "payment.compliance_status",
+      "label": "Payment message compliance verdict",
+      "domain": "payments",
+      "kind": "verdict",
+      "description": "The compliance verdict on an ISO 20022 / SWIFT signature check.",
+      "fields": [],
+      "vocabulary": "observed",
+      "vocabulary_source": "services/payment_crypto/payment_crypto/iso20022.py IsoSignatureReport.compliance_status writes",
+      "states": [
+        {
+          "id": "PASS",
+          "class": "done",
+          "meaning": "Within SWIFT CSCF & ISO 20022 constraints."
+        },
+        {
+          "id": "FAIL",
+          "class": "failure",
+          "meaning": "Below the standard's floor (weak key or algorithm)."
+        },
+        {
+          "id": "CRITICAL_VIOLATION",
+          "class": "failure",
+          "meaning": "Prohibited outright (SHA-1 / MD5 signatures)."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "A prohibited algorithm is a CRITICAL_VIOLATION regardless of key size; verdicts are computed fresh per message."
+      ],
+      "sources": [
+        "services/payment_crypto/payment_crypto/iso20022.py"
       ]
     },
     {
@@ -2050,15 +2285,29 @@
         "credential_lease.CredentialLease.status"
       ],
       "vocabulary": "partial",
-      "vocabulary_source": "model default ACTIVE; further write vocabulary not yet observed",
+      "vocabulary_source": "model default ACTIVE + routers/control_plane.py lease writes",
       "states": [
         {
           "id": "ACTIVE",
           "class": "done",
           "meaning": "Lease in force."
+        },
+        {
+          "id": "RELEASED",
+          "class": "done",
+          "meaning": "Released on request; the handle no longer grants access."
         }
       ],
-      "transitions": [],
+      "transitions": [
+        {
+          "from": "ACTIVE",
+          "to": "RELEASED",
+          "trigger": "the holder releases the lease early",
+          "observed_in": [
+            "services/api/api/routers/control_plane.py"
+          ]
+        }
+      ],
       "invariants": [],
       "sources": [
         "services/database/db/models/credential_lease.py"
