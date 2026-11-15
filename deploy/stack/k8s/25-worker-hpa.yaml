@@ -1,0 +1,43 @@
+# Worker autoscaling: processing capacity follows demand.
+#
+# The honest scaling signal is the queue itself — pending job depth and
+# refusal counts are exposed at GET /api/v1/binary/worker/status (the
+# "measure queue depth, refusals and failure rate" surface). CPU
+# utilization is the baseline trigger available without a metrics
+# adapter; at bank scale, wire the queue-depth metric through the
+# cluster's custom-metrics adapter and add a second metric target here
+# (type: Pods / external) so replicas track backlog directly. min is
+# kept at or below the deployment's static replicas so the HPA takes
+# ownership without a scale-down cliff on adopt.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cryptoscan-worker
+  namespace: cryptoscan
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cryptoscan-worker
+  minReplicas: 2
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300   # never shed workers mid-scan
+      policies:
+        - type: Percent
+          value: 25
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0     # backlog is the emergency
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30

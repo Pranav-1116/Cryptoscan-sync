@@ -105,6 +105,15 @@ def test_the_kubernetes_profile_covers_orchestration():
     assert ("Deployment", "cryptoscan-worker") in kinds   # Celery
     assert ("Deployment", "cryptoscan-gateway") in kinds  # Envoy
     assert ("HorizontalPodAutoscaler", "cryptoscan-api") in kinds
+    assert ("HorizontalPodAutoscaler", "cryptoscan-worker") in kinds  # queue-driven capacity
+    worker_hpa = next(d for d in docs if d.get("kind") == "HorizontalPodAutoscaler"
+                      and d["metadata"]["name"] == "cryptoscan-worker")
+    spec = worker_hpa["spec"]
+    assert spec["minReplicas"] <= 3 <= spec["maxReplicas"], \
+        "the HPA adopts the deployment's static replicas without a cliff"
+    scale_down = spec["behavior"]["scaleDown"]
+    assert scale_down["stabilizationWindowSeconds"] >= 300, \
+        "workers are never shed mid-scan"
     text = (STACK / "k8s" / "10-api.yaml").read_text()
     assert "secretRef" in text and "bank secret manager" in text
     assert "kind: Secret" not in text, "no secret VALUES in the repository"
