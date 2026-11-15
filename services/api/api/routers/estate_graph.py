@@ -1624,6 +1624,11 @@ def estate_twin_crypto_graph(
 
 @router.get("/twin/graph")
 def estate_twin_graph_export(
+    seed: str | None = Query(None, max_length=300,
+                             description="node id to expand from; omit for the "
+                                         "best-connected overview"),
+    depth: int = Query(1, ge=0, le=3),
+    limit: int = Query(200, ge=1, le=500),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
@@ -1631,9 +1636,62 @@ def estate_twin_graph_export(
 
     The export is a projection of the canonical evidence records: if a graph store
     and this export disagree, the evidence wins and the store is rebuilt.
+
+    BOUNDED by default (the bank rule: never load the estate whole into a
+    browser): the overview keeps the best-connected nodes; a seed walks
+    outward to ``depth``, capped at ``limit``. ``omitted_nodes`` /
+    ``omitted_edges`` count what was left out and ``frontier`` names the
+    next nodes to expand into — truncation is disclosed, never hidden.
     """
     run = _latest_run(db)
-    return {"run_id": run.id, **estate_twin.graph_export(_graph_from_run(run))}
+    export = estate_twin.graph_export(_graph_from_run(run))
+    nodes = export.get("nodes") or []
+    relationships = export.get("relationships") or []
+    adjacency: dict[str, set[str]] = {}
+    for edge in relationships:
+        adjacency.setdefault(edge["from"], set()).add(edge["to"])
+        adjacency.setdefault(edge["to"], set()).add(edge["from"])
+    if seed is not None:
+        ids = {n["id"] for n in nodes}
+        if seed not in ids:
+            matches = [n["id"] for n in nodes
+                       if str((n.get("properties") or {}).get("name")) == seed]
+            if len(matches) == 1:
+                seed = matches[0]
+            else:
+                raise HTTPException(status_code=404,
+                                    detail=f"node not found in twin graph: {seed}")
+        kept: set[str] = set()
+        frontier = {seed}
+        for _ in range(depth + 1):
+            current, frontier = frontier, set()
+            for node in current:
+                if node in kept:
+                    continue
+                if len(kept) < limit:
+                    kept.add(node)
+                    frontier |= adjacency.get(node, set())
+                else:
+                    frontier.add(node)
+            frontier -= kept
+            if not frontier:
+                break
+    else:
+        ranked = sorted(nodes, key=lambda n: (-len(adjacency.get(n["id"], ())), n["id"]))
+        kept = {n["id"] for n in ranked[:limit]}
+        frontier = {n["id"] for n in ranked[limit:limit + 50]}
+    bounded_nodes = [n for n in nodes if n["id"] in kept]
+    bounded_rels = [e for e in relationships if e["from"] in kept and e["to"] in kept]
+    return {
+        "run_id": run.id,
+        **{k: v for k, v in export.items() if k not in {"nodes", "relationships"}},
+        "nodes": bounded_nodes,
+        "relationships": bounded_rels,
+        "omitted_nodes": len(nodes) - len(bounded_nodes),
+        "omitted_edges": len(relationships) - len(bounded_rels),
+        "frontier": sorted(frontier),
+        "bounded": True,
+    }
 
 
 # -- the evidence object tier (spec 94 §7) ---------------------------------- #
