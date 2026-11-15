@@ -309,7 +309,13 @@ def test_every_new_intelligence_mutation_declares_a_write_role():
         (binary_intelligence.router, {
             "/binary/scan", "/binary/artifacts/{artifact_id}/rescan",
             "/binary/scan/async", "/binary/scan/jobs/{job_id}/process",
-            "/binary/firmware/scan"}),
+            "/binary/firmware/scan",
+            # Deliberate pin bump: the queue-ops batch (DLQ replay + job
+            # listing, scan/jobs routes) landed with intelligence-writer
+            # guards on every mutation — the guarded set grew because new
+            # guarded WRITES arrived, which is this test's whole point.
+            "/binary/scan/jobs", "/binary/scan/jobs/{job_id}",
+            "/binary/scan/jobs/{job_id}/replay"}),
         (cryptolog.router, {
             "/cryptolog/events", "/cryptolog/events/batch",
             "/cryptolog/events/{event_id}/corrections",
