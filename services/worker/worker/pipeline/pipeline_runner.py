@@ -43,6 +43,104 @@ def trace_id_from_job(job: Any) -> str | None:
     return str(trace_id) if trace_id else None
 
 
+#: Execution stages in run() order. The checkpoint's stage-list fingerprint
+#: is derived from exactly this sequence: any change to it invalidates
+#: checkpoints written by older code (see _resume_from_checkpoint).
+EXECUTION_STAGES = (
+    "clone", "language_detect", "scan", "evidence", "load", "normalize",
+    "policy", "drift", "quantum", "gate", "cbom", "alert",
+)
+
+#: The ctx snapshot rides the job's progress JSON. Findings for a big
+#: monolith can be megabytes; past this bound the checkpoint honestly
+#: records that a retry must rerun in full rather than silently restoring
+#: a truncated snapshot.
+MAX_CHECKPOINT_BYTES = 2_000_000
+
+
+def checkpoint_fingerprint() -> str:
+    import hashlib
+
+    return hashlib.sha256("|".join(EXECUTION_STAGES).encode()).hexdigest()[:12]
+
+
+def _checkpoint_payload(ctx: "PipelineContext") -> dict[str, Any]:
+    import json
+
+    snapshot = {
+        "findings": ctx.findings,
+        "scan_meta": ctx.scan_meta,
+        "evidence_records": ctx.evidence_records,
+        "manifest": ctx.manifest,
+        "drift_events": ctx.drift_events,
+        "compliance_scopes": list(ctx.compliance_scopes),
+        "system_id": ctx.system_id,
+        "scan_id": ctx.scan_id,
+        "target_commit": ctx.target_commit,
+        "scan_persisted": ctx.scan_persisted,
+        "scan_committed": ctx.scan_committed,
+    }
+    payload: dict[str, Any] = {
+        "fingerprint": checkpoint_fingerprint(),
+        "completed_stages": list(ctx.completed_stages),
+    }
+    try:
+        encoded = json.dumps(snapshot, default=str)
+    except (TypeError, ValueError):
+        encoded = ""
+    if not encoded or len(encoded) > MAX_CHECKPOINT_BYTES:
+        payload["ctx"] = None
+        payload["note"] = ("stage outputs exceed the checkpoint bound — "
+                           "a retry reruns the pipeline in full")
+        return payload
+    payload["ctx"] = snapshot
+    return payload
+
+
+def _resume_from_checkpoint(job: Any) -> tuple[frozenset, dict[str, Any] | None]:
+    """Which stages a retry may skip, and the ctx to restore.
+
+    Safety rules — resume happens ONLY when all hold:
+    - the checkpoint carries the CURRENT stage-list fingerprint (a code
+      change that alters the pipeline invalidates it: rerun in full);
+    - a ctx snapshot survived the bound (stage outputs live in memory —
+      skipping stages without restoring their outputs would scan nothing);
+    - clone always re-runs: the workspace is ephemeral and the repo must
+      exist before any later stage can act.
+    """
+    progress = getattr(job, "progress", None) or {}
+    if not isinstance(progress, dict):
+        return frozenset(), None
+    checkpoint = progress.get("checkpoint") or {}
+    if not isinstance(checkpoint, dict):
+        return frozenset(), None
+    if checkpoint.get("fingerprint") != checkpoint_fingerprint():
+        return frozenset(), None
+    snapshot = checkpoint.get("ctx")
+    if not isinstance(snapshot, dict):
+        return frozenset(), None
+    completed = checkpoint.get("completed_stages") or []
+    skip = frozenset(s for s in completed
+                     if s in EXECUTION_STAGES and s != "clone")
+    return skip, snapshot
+
+
+def _restore_ctx(ctx: "PipelineContext", snapshot: dict[str, Any]) -> None:
+    ctx.findings = list(snapshot.get("findings") or [])
+    ctx.scan_meta = dict(snapshot.get("scan_meta") or {})
+    ctx.evidence_records = list(snapshot.get("evidence_records") or [])
+    ctx.manifest = dict(snapshot.get("manifest") or {})
+    ctx.drift_events = list(snapshot.get("drift_events") or [])
+    ctx.compliance_scopes = list(snapshot.get("compliance_scopes") or [])
+    ctx.system_id = snapshot.get("system_id")
+    ctx.scan_id = snapshot.get("scan_id") or ctx.scan_id
+    ctx.target_commit = snapshot.get("target_commit") or ctx.target_commit
+    ctx.scan_persisted = bool(snapshot.get("scan_persisted"))
+    ctx.scan_committed = bool(snapshot.get("scan_committed"))
+    if ctx.trace_id:
+        ctx.scan_meta["trace_id"] = ctx.trace_id
+
+
 @dataclass
 class PipelineContext:
     job_id: str
@@ -65,6 +163,9 @@ class PipelineContext:
     current_stage: str = ""
     logs: list[dict[str, Any]] = field(default_factory=list)
     compliance_scopes: list[str] = field(default_factory=list)
+    #: finished execution stages — persisted as a checkpoint after each
+    #: stage so an interrupted job resumes at the boundary, not at clone
+    completed_stages: list[str] = field(default_factory=list)
     # request trace context that queued this job (report 02 P2#7): carried
     # from the API middleware through the queue payload / job progress row
     trace_id: str | None = None
@@ -234,59 +335,89 @@ class PipelineRunner:
         measurement = measure(session.get_bind())
         ctx.workload_meter = measurement.__enter__()
         stage = "init"
+        resume: frozenset = frozenset()
+        if job is not None:
+            resume, restored = _resume_from_checkpoint(job)
+            if restored is not None:
+                _restore_ctx(ctx, restored)
         try:
+            # clone always re-runs: the workspace is ephemeral and later
+            # stages need the repo on disk.
             self._advance(session, ctx, "clone", status="RUNNING")
             self._post_github(ctx, "pending", "CryptoScan pipeline running")
             self._clone(ctx)
+            self._stage_done(session, ctx, "clone")
             stage = "language_detect"
-            self._advance(session, ctx, "language_detect")
-            self._language_detect(ctx)
+            if stage not in resume:
+                self._advance(session, ctx, "language_detect")
+                self._language_detect(ctx)
+                self._stage_done(session, ctx, "language_detect")
             stage = "scan"
-            self._advance(session, ctx, "scan")
-            self._scan(ctx)
-            # Resolve system scopes before hashing; finding_data is immutable
-            # once the evidence chain has committed to its contents.
-            self._resolve_system(ctx, session)
+            if stage not in resume:
+                self._advance(session, ctx, "scan")
+                self._scan(ctx)
+                # Resolve system scopes before hashing; finding_data is immutable
+                # once the evidence chain has committed to its contents.
+                self._resolve_system(ctx, session)
+                self._stage_done(session, ctx, "scan")
             stage = "evidence"
-            self._advance(session, ctx, "evidence", extra={"findings": len(ctx.findings)})
-            self._evidence(ctx)
+            if stage not in resume:
+                self._advance(session, ctx, "evidence", extra={"findings": len(ctx.findings)})
+                self._evidence(ctx)
+                self._stage_done(session, ctx, "evidence")
             stage = "load"
-            self._advance(session, ctx, "load")
-            self._load(ctx, session)
+            if stage not in resume:
+                self._advance(session, ctx, "load")
+                self._load(ctx, session)
+                self._stage_done(session, ctx, "load")
             stage = "normalize"
-            self._advance(session, ctx, "normalize")
-            self._normalize(ctx, session)
+            if stage not in resume:
+                self._advance(session, ctx, "normalize")
+                self._normalize(ctx, session)
+                self._stage_done(session, ctx, "normalize")
             stage = "policy"
-            self._advance(session, ctx, "policy")
-            self._policy(ctx, session)
+            if stage not in resume:
+                self._advance(session, ctx, "policy")
+                self._policy(ctx, session)
+                self._stage_done(session, ctx, "policy")
             stage = "drift"
-            self._advance(session, ctx, "drift")
-            self._drift(ctx, session)
-            # §4.7 (round 40): condition-level verification of previously
-            # RESOLVED drift events against THIS scan's evidence. Runs after
-            # the drift stage regardless of its internal early returns, and
-            # is fail-soft: an outage is disclosed, never fatal.
-            try:
-                self._verify_resolved_conditions(ctx, session)
-            except Exception:
-                logger.debug("drift_verification_skipped", exc_info=True)
-                self._note_optional_failure(
-                    ctx, "drift_verification",
-                    "Condition-level verification of resolved drift events failed",
-                    session=session)
+            if stage not in resume:
+                self._advance(session, ctx, "drift")
+                self._drift(ctx, session)
+                # §4.7 (round 40): condition-level verification of previously
+                # RESOLVED drift events against THIS scan's evidence. Runs after
+                # the drift stage regardless of its internal early returns, and
+                # is fail-soft: an outage is disclosed, never fatal.
+                try:
+                    self._verify_resolved_conditions(ctx, session)
+                except Exception:
+                    logger.debug("drift_verification_skipped", exc_info=True)
+                    self._note_optional_failure(
+                        ctx, "drift_verification",
+                        "Condition-level verification of resolved drift events failed",
+                        session=session)
+                self._stage_done(session, ctx, "drift")
             stage = "quantum"
-            self._advance(session, ctx, "quantum")
-            self._quantum(ctx, session)
+            if stage not in resume:
+                self._advance(session, ctx, "quantum")
+                self._quantum(ctx, session)
+                self._stage_done(session, ctx, "quantum")
             stage = "gate"
-            self._advance(session, ctx, "gate")
-            self._gate(ctx, session)
+            if stage not in resume:
+                self._advance(session, ctx, "gate")
+                self._gate(ctx, session)
+                self._stage_done(session, ctx, "gate")
             stage = "cbom"
-            self._advance(session, ctx, "cbom")
-            self._cbom(ctx, session)
-            self._stamp_coverage(ctx, session, status="CURRENT")
+            if stage not in resume:
+                self._advance(session, ctx, "cbom")
+                self._cbom(ctx, session)
+                self._stamp_coverage(ctx, session, status="CURRENT")
+                self._stage_done(session, ctx, "cbom")
             stage = "alert"
-            self._advance(session, ctx, "alert")
-            self._alert(ctx, session)
+            if stage not in resume:
+                self._advance(session, ctx, "alert")
+                self._alert(ctx, session)
+                self._stage_done(session, ctx, "alert")
             if owns_session:
                 session.commit()
                 ctx.scan_committed = True
@@ -478,12 +609,24 @@ class PipelineRunner:
         )
         if ctx.workload_meter is not None:
             progress["performance"] = ctx.workload_meter.report()
+        progress["checkpoint"] = _checkpoint_payload(ctx)
         kwargs: dict[str, Any] = {"progress": progress}
         if status == "COMPLETED" and ctx.scan_committed:
             kwargs["scan_id"] = ctx.scan_id
         if status == "FAILED" and message:
             kwargs["error_message"] = message
         self._set_job_status(session, ctx.job_id, status, defer_to_session=defer_to_session, **kwargs)
+
+    def _stage_done(self, session, ctx: PipelineContext, stage: str) -> None:
+        """Checkpoint one finished stage (graceful-shutdown contract: an
+        interrupted job resumes at the boundary instead of restarting)."""
+        from worker.pipeline.progress import build_progress
+
+        ctx.completed_stages.append(stage)
+        progress = build_progress(current_stage=stage, status="RUNNING",
+                                  logs=ctx.logs)
+        progress["checkpoint"] = _checkpoint_payload(ctx)
+        self._set_job_status(session, ctx.job_id, "RUNNING", progress=progress)
 
     def _publish_event(
         self,
