@@ -781,3 +781,31 @@ it("says the loaded graph is a bounded subgraph, never the estate whole", async 
   // the JSON preview is labelled as a preview of the loaded subset
   expect(screen.getByText(/preview shows the first 2 of 3 loaded node\(s\)/)).toBeInTheDocument();
 });
+
+it("says the catalogue list is a bounded page when the filter matches more", async () => {
+  const row = {
+    asset_id: "asset:app:1", asset_type: "APPLICATION", name: "payments-api",
+    environment: "production", owner: null, location: null, source: null,
+    identity: {}, attributes: {}, evidence_ids: [], evidence_count: 1,
+    lifecycle_state: "ACTIVE" as const, first_seen_at: null,
+    last_seen_at: null, observation_count: 1,
+    is_estate_state: true as const,
+  };
+  mockFetch({
+    [TWIN]: overview(),
+    [CATALOG]: {
+      schema: "cryptoscan.estate-catalog/1", assets: 120,
+      assets_by_type: { APPLICATION: 120 }, assets_by_lifecycle: { ACTIVE: 120 },
+      note: "the catalogue is what has been observed",
+    },
+    [`${CATALOG}/assets`]: {
+      count: 120, note: "server-capped page",
+      assets: [row, { ...row, asset_id: "asset:app:2", name: "auth-api" }],
+    },
+  });
+  render(<DigitalTwinPanel />);
+  (await screen.findByText("Catalogue")).click();
+  // the page loaded 2 rows; the catalogue holds 120 for this filter — the UI
+  // says so (an uncounted cap reads as complete)
+  expect(await screen.findByText(/showing 2 of 120 asset record\(s\) for this filter/)).toBeInTheDocument();
+});

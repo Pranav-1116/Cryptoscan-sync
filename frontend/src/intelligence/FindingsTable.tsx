@@ -16,7 +16,15 @@ const CLASSES: ThreatClass[] = [
 
 /** Evidence-linked findings: every row answers the six mandated questions and
  *  carries an explicit "NOT PROVEN" column. A detection is a question, never a
- *  declared compromise — the header says so on every render. */
+ *  declared compromise — the header says so on every render.
+ *
+ *  Filtering here is report-internal and deliberate: this table renders a
+ *  DERIVED findings report (source queries capped at CERT_CAP/LIVE_CAP in
+ *  roadmap_intelligence), not the bank inventory — inventories paginate,
+ *  filter and authorise at the server (see Assets). The class/search filters
+ *  narrow within the loaded report and say "N of M shown". The ROWS are
+ *  windowed (the virtual-scroll row): a report with thousands of findings
+ *  never lands fully in the DOM. */
 export default function FindingsTable({
   findings,
   onEvidence,
@@ -26,6 +34,11 @@ export default function FindingsTable({
 }) {
   const [query, setQuery] = useState("");
   const [klass, setKlass] = useState<string>("ALL");
+  /* Windowed rendering (the virtual-scroll row): a report can carry thousands
+     of findings (source caps CERT_CAP=2000/LIVE_CAP=5000). Only the first
+     window lands in the DOM; scrolling to the bottom extends it. */
+  const WINDOW = 200;
+  const [shown, setShown] = useState(WINDOW);
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -81,7 +94,14 @@ export default function FindingsTable({
           {rows.length} of {findings.length} shown
         </span>
       </div>
-      <table aria-label="Findings">
+      <div
+        style={{ maxHeight: rows.length > WINDOW ? "70vh" : undefined, overflowY: rows.length > WINDOW ? "auto" : undefined }}
+        onScroll={rows.length > shown ? (e) => {
+          const el = e.currentTarget;
+          if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) setShown((s) => Math.min(s + WINDOW, rows.length));
+        } : undefined}
+      >
+      <table aria-label="Findings" aria-rowcount={rows.length}>
         <thead>
           <tr>
             <th>class</th>
@@ -94,7 +114,7 @@ export default function FindingsTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((f, i) => (
+          {rows.slice(0, shown).map((f, i) => (
             <tr key={`${f.class}-${f.asset}-${i}`}>
               <td>
                 <span className="chip">{f.class}</span>
@@ -129,6 +149,13 @@ export default function FindingsTable({
           )}
         </tbody>
       </table>
+      {rows.length > shown && (
+        <div className="dim" role="status" style={{ fontSize: 12, padding: "6px 2px" }}>
+          Showing {shown.toLocaleString()} of {rows.length.toLocaleString()} findings — scroll to
+          load more (windowed rendering; the rest is not in the DOM).
+        </div>
+      )}
+      </div>
     </section>
   );
 }

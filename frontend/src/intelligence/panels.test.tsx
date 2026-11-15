@@ -216,3 +216,18 @@ describe("SimulationPanel", () => {
     expect(screen.getByText("UNKNOWN")).toBeInTheDocument();
   });
 });
+
+describe("FindingsTable windowing (the virtual-scroll row)", () => {
+  it("renders a window of a large report, not every row, and says so", () => {
+    const many = Array.from({ length: 500 }, (_, i) => ({
+      ...finding,
+      asset: `asset-${i}`,
+      evidence_ids: [`E${i}`],
+    }));
+    render(<FindingsTable findings={many} />);
+    // first window only (200), never all 500 — a report's rows must not all
+    // land in the DOM at once
+    expect(document.querySelectorAll("tbody tr").length).toBe(200);
+    expect(screen.getByRole("status")).toHaveTextContent(/Showing 200 of 500 findings/);
+  });
+});

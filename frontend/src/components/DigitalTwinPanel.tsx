@@ -142,6 +142,7 @@ export default function DigitalTwinPanel() {
   const [detected, setDetected] = useState<EstateChangeEvent | null>(null);
   const [catalogSummary, setCatalogSummary] = useState<EstateCatalogSummary | null>(null);
   const [catalogAssets, setCatalogAssets] = useState<EstateCatalogAsset[] | null>(null);
+  const [catalogCount, setCatalogCount] = useState(0);
   const [catalogFilter, setCatalogFilter] = useState<string>("");
   const [catalogRecord, setCatalogRecord] = useState<EstateCatalogDetail | null>(null);
   const [registry, setRegistry] = useState<EstateCryptoRegistry | null>(null);
@@ -221,15 +222,19 @@ export default function DigitalTwinPanel() {
 
   /* The catalogue is the twin's memory: rows survive observations, so a STALE asset
      is history rather than a deletion and the UI must not filter it away. */
-  const loadCatalog = async (filter?: string) => {
+  const loadCatalog = async (filter?: string, q?: string) => {
     const summary = await apiEstateCatalog();
     if (summary.ok) setCatalogSummary(summary.data as EstateCatalogSummary);
     else setCatalogError("catalogue unavailable — this is not 'no assets'");
     const assets = await apiEstateCatalogAssets(
-      filter ? { assetType: filter } : undefined,
+      { ...(filter ? { assetType: filter } : {}), ...(q ? { q } : {}) },
     );
     if (assets.ok) {
-      setCatalogAssets((assets.data as { assets: EstateCatalogAsset[] }).assets);
+      const page = assets.data as { assets: EstateCatalogAsset[]; count?: number; note?: string };
+      setCatalogAssets(page.assets);
+      // `count` is what the catalogue holds for this filter; `assets` is the
+      // bounded page (server limit). When they differ, the UI must say so.
+      setCatalogCount(page.count ?? page.assets.length);
       setCatalogError(null);
     } else setCatalogError("catalogue unavailable — this is not 'no assets'");
     const crypto = await apiEstateCryptoRegistry();
@@ -1170,6 +1175,17 @@ export default function DigitalTwinPanel() {
               </span>
             </button>
           ))}
+
+          {/* Bounded honesty: the server caps the page (limit 100, ≤200); when
+              the catalogue holds more for this filter, say so — an uncounted
+              cap reads as complete. */}
+          {catalogAssets && catalogAssets.length > 0 && catalogCount > catalogAssets.length && (
+            <div className="dim" role="status" style={{ fontSize: 11, marginTop: 6 }}>
+              showing {catalogAssets.length} of {catalogCount} asset record(s) for this filter —
+              a bounded page loaded from the server; the type filters above narrow at the server,
+              never in the browser.
+            </div>
+          )}
 
           {catalogRecord && (
             <div style={{ marginTop: 12, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
