@@ -3,6 +3,8 @@ import { Panel, Badge, Table, PageHead, Code, Tabs, Bar, ProgressBar } from "../
 import { StackedBar, StateCell, VizEmpty } from "../components/viz.jsx";
 import { IconCode, IconContainer, IconCloud, IconComponent, IconSecurity, IconNetwork, IconHardware, IconCertificate, IconTarget, IconTrendUp } from "../components/icons";
 import { ApiResult } from "../lib/api.js";
+import { RequireRole } from "../lib/auth.js";
+import { PACK_OPERATE_ROLES } from "../lib/rbac.js";
 import {
   apiContainerScan, apiK8sScan, apiCloudPosture, apiSbomImport,
   apiSbomScan, apiSbomArtifacts, apiSbomValidate, apiSbomDiff, apiSbomVerify,
@@ -1411,10 +1413,12 @@ function BinaryPanel() {
           <input className="inp" style={{ flex: 1, minWidth: 260 }}
             placeholder="/media/acme-fips-2026.09.tar.gz or a pack directory on this host"
             value={packPath} onChange={(e) => setPackPath(e.target.value)} />
-          <button className="btn sm" onClick={() => void installPack(true)} disabled={packBusy}>
-            {packBusy ? "working…" : "Verify only"}
-          </button>
-          <button className="btn sm" onClick={() => void installPack(false)} disabled={packBusy}>Install pack</button>
+          <RequireRole anyOf={[...PACK_OPERATE_ROLES]}>
+            <button className="btn sm" onClick={() => void installPack(true)} disabled={packBusy}>
+              {packBusy ? "working…" : "Verify only"}
+            </button>
+            <button className="btn sm" onClick={() => void installPack(false)} disabled={packBusy}>Install pack</button>
+          </RequireRole>
         </div>
         {packInfo && (
           <div style={{ fontSize: 12.5, marginTop: 4, color: packInfo.ok ? "var(--green)" : "var(--red)" }}>
@@ -1465,7 +1469,9 @@ function BinaryPanel() {
                 {(entry.tables || []).length > 0 && (
                   <span className="muted">{(entry.tables || []).length} table(s)</span>
                 )}
-                <button className="btn sm" onClick={() => void removePack(name)} disabled={packBusy}>Remove</button>
+                <RequireRole anyOf={[...PACK_OPERATE_ROLES]}>
+                  <button className="btn sm" onClick={() => void removePack(name)} disabled={packBusy}>Remove</button>
+                </RequireRole>
               </div>
             ))}
             {knowledge.tables?.errors?.map((problem, i) => (

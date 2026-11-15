@@ -4,6 +4,14 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import EdgeManagerPanel from "./EdgeManagerPanel";
 import { apiGraphDeleteEdge, apiGraphEdges, apiGraphRegisterEdge, apiGraphUpdateOperationalDependency } from "../lib/api";
 vi.mock("../lib/api", () => ({ apiGraphDeleteEdge: vi.fn(), apiGraphEdges: vi.fn(), apiGraphRegisterEdge: vi.fn(), apiGraphUpdateOperationalDependency: vi.fn() }));
+// These tests exercise the WRITE-FLOW fidelity (revision CAS, retirement
+// evidence) as an operator who holds the role. RBAC presentation itself is
+// covered by lib/rbac.test.tsx; the gate is mocked open here so the flows
+// under test stay the subject.
+vi.mock("../lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  RequireRole: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(apiGraphEdges).mockResolvedValue({ source: "live", data: { count: 1, edges: [{

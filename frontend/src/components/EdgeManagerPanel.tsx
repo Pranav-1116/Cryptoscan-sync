@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Panel, Bar } from "./ui";
+import { RequireRole } from "../lib/auth";
+import { EDGE_WRITE_ROLES } from "../lib/rbac";
 import {
   IconComponent,
   IconSearch,
@@ -254,9 +256,11 @@ export default function EdgeManagerPanel() {
           <span style={{ fontSize: 11, color: "var(--faint)", lineHeight: 1.4 }}>
             Edge is a manual declaration. Provenance is recorded; it is not an observed traffic proof.
           </span>
-          <button className="btn primary" onClick={register} disabled={!!editing || busy || !parentId.trim() || !childId.trim()} style={{ minWidth: 132 }}>
-            {busy ? "Registering…" : "Register edge"}
-          </button>
+          <RequireRole anyOf={[...EDGE_WRITE_ROLES]}>
+            <button className="btn primary" onClick={register} disabled={!!editing || busy || !parentId.trim() || !childId.trim()} style={{ minWidth: 132 }}>
+              {busy ? "Registering…" : "Register edge"}
+            </button>
+          </RequireRole>
         </div>
       </div>
 
@@ -375,9 +379,11 @@ export default function EdgeManagerPanel() {
               />
             </label>
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-              <button className="btn primary sm" onClick={saveMode} disabled={busy || !modeReason.trim() || !modeEvidence.trim()}>
-                Save operational mode
-              </button>
+              <RequireRole anyOf={[...EDGE_WRITE_ROLES]}>
+                <button className="btn primary sm" onClick={saveMode} disabled={busy || !modeReason.trim() || !modeEvidence.trim()}>
+                  Save operational mode
+                </button>
+              </RequireRole>
               <button
                 className="btn sm"
                 onClick={() => {
@@ -765,6 +771,7 @@ export default function EdgeManagerPanel() {
                   >
                     Edit mode
                   </button>
+                  <RequireRole anyOf={[...EDGE_WRITE_ROLES]}>
                   <button
                     className="btn sm"
                     style={{ minWidth: 92, color: "var(--red)", borderColor: "var(--line)" }}
@@ -780,6 +787,7 @@ export default function EdgeManagerPanel() {
                   >
                     Retire
                   </button>
+                  </RequireRole>
                 </div>
               </div>
             ))}

@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
 import { useApi, LiveBadge } from "../lib/apiUi.jsx";
 import { StatusMark } from "../components/icons";
+import { RequireRole } from "../lib/auth";
+import { ADMIN_CISO_ROLES } from "../lib/rbac";
 import {
   apiActiveSector,
   apiListSectors,
@@ -92,9 +94,11 @@ export default function Settings() {
               ))}
               {!sectors.data && <option value="">{sectors.running ? "reading sector catalogue…" : "sector catalogue unavailable"}</option>}
             </select>
-            <button className="btn primary" onClick={() => void saveSector()} disabled={savingSector || !sectorSel}>
-              {savingSector ? "Saving…" : "Save"}
-            </button>
+            <RequireRole anyOf={[...ADMIN_CISO_ROLES]}>
+              <button className="btn primary" onClick={() => void saveSector()} disabled={savingSector || !sectorSel}>
+                {savingSector ? "Saving…" : "Save"}
+              </button>
+            </RequireRole>
           </div>
           {sector.data && (
             <div className="dim" style={{ fontSize: 12.5, marginTop: 10 }}>
@@ -161,9 +165,11 @@ export default function Settings() {
                 <button className="btn sm" onClick={() => setRoutes((routing.data as { routing?: RouteItem[] })?.routing ? [...((routing.data as { routing?: RouteItem[] }).routing as RouteItem[])] : (routes ?? []))}>
                   Reset
                 </button>
-                <button className="btn primary sm" onClick={() => void saveRouting()} disabled={saving}>
-                  {saving ? "Saving…" : "Save routing"}
-                </button>
+                <RequireRole anyOf={[...ADMIN_CISO_ROLES]}>
+                  <button className="btn primary sm" onClick={() => void saveRouting()} disabled={saving}>
+                    {saving ? "Saving…" : "Save routing"}
+                  </button>
+                </RequireRole>
               </div>
             </>
           )}

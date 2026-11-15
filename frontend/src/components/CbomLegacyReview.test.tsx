@@ -5,6 +5,15 @@ import PrivateScope from "./PrivateScope";
 import CbomLegacyReview from "./CbomLegacyReview";
 import { mockFetch, offlineFetch } from "../test/setup";
 
+// These tests exercise the WRITE-FLOW fidelity (revision CAS, refusal
+// semantics) as an operator who holds the role. RBAC presentation itself is
+// covered by lib/rbac.test.tsx; the gate is mocked open here so the flows
+// under test stay the subject.
+vi.mock("../lib/auth", async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  RequireRole: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 const list = { systems: [{ id: "legacy-system", name: "Payments" }], total: 1, page: 1, page_size: 50, unassigned_review_required: 0 };
 const review = { system_id: "legacy-system", system_name: "Payments", snapshot_sha256: "a".repeat(64),
   replacement_document_sha256: "b".repeat(64), pending_assets: 1, mixed_evidence_assets: 0,

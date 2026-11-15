@@ -4,6 +4,8 @@ import { MixedHistoryDecision, UnassignedHistory } from "./CbomControlledHistory
 import CbomRescanInspection from "./CbomRescanInspection";
 import { usePrivateScopeCurrent } from "./PrivateScope";
 import { Badge, Bar } from "./ui";
+import { RequireRole } from "../lib/auth";
+import { CBOM_WRITE_ROLES } from "../lib/rbac";
 import { IconClock, IconWarn, IconComponent, IconSecurity } from "./icons";
 
 /** Existing CBOM workflow, not a separate dashboard. No automatic write/retry. */
@@ -125,7 +127,9 @@ export default function CbomLegacyReview({ refresh, onCommitted }: { refresh: nu
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8, maxHeight: 180, overflow: "auto" }}>{review.assets.map(asset => (<div key={asset.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 8px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 11 }}><span><strong>{asset.algorithm}</strong> · {asset.reported_confidence} · {asset.linked_evidence_count} evidence</span><Badge tone="slate">REVIEW</Badge></div>))}</div>
       <label style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 10, fontSize: 11, color: "var(--dim)" }}>Review rationale (no secrets)<textarea style={{ padding: "8px 10px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg-2)", color: "var(--text)", fontSize: 12.5, minHeight: 60 }} value={reason} maxLength={500} disabled={busy} onChange={event => setReason(event.target.value)} /></label>
       <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 8, padding: "8px 10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 11, color: "var(--dim)" }}><input type="checkbox" checked={accepted} disabled={busy} onChange={event => setAccepted(event.target.checked)} /><span>I reviewed original declaration and replacement fingerprint — retires historical associations only, not scanner evidence, does not establish coverage.</span></label>
+      <RequireRole anyOf={[...CBOM_WRITE_ROLES]}>
       <button type="button" className="btn primary sm" disabled={busy || !accepted || reason.trim().length < 20 || !review.replacement_document_sha256 || review.mixed_evidence_assets > 0 || review.pending_assets === 0} onClick={() => void submit()} style={{ marginTop: 8 }}>Reconcile historical declarations</button>
+      </RequireRole>
     </div>}
   </section>;
 }

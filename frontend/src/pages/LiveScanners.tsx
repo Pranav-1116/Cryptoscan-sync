@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Panel, Badge, PageHead } from "../components/ui.jsx";
+import { RequireRole } from "../lib/auth.jsx";
+import { SCAN_OPERATE_ROLES } from "../lib/rbac.jsx";
 import {
   apiLiveScanStatus, apiLiveScanRun, apiLiveScanStart, apiLiveScanStop,
   LiveScanStatus,
@@ -494,10 +496,12 @@ export default function LiveScanners() {
             <input className="inp" type="number" value={intervalS} min={30}
               onChange={(e) => setIntervalS(Number(e.target.value) || 900)} style={{ width: 100 }} />
           </label>
-          <button className="btn" onClick={() => void startLoop()} disabled={status?.periodic?.enabled}>
-            {status?.periodic?.enabled ? `loop on (${status.periodic.interval_seconds}s)` : "Start live loop"}
-          </button>
-          <button className="btn sm" onClick={() => void stopLoop()} disabled={!status?.periodic?.enabled}>Stop</button>
+          <RequireRole anyOf={[...SCAN_OPERATE_ROLES]}>
+            <button className="btn" onClick={() => void startLoop()} disabled={status?.periodic?.enabled}>
+              {status?.periodic?.enabled ? `loop on (${status.periodic.interval_seconds}s)` : "Start live loop"}
+            </button>
+            <button className="btn sm" onClick={() => void stopLoop()} disabled={!status?.periodic?.enabled}>Stop</button>
+          </RequireRole>
         </div>
       </Panel>
 

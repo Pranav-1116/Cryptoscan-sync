@@ -4,6 +4,8 @@ import { IconTarget, IconClock, IconSecurity, IconComponent, IconInfo } from "..
 import { useLive, LiveStatus } from "../lib/useLive.js";
 import { getToken, tenantFetch, apiReportTemplates, apiReportScheduleCreate, apiReportSnapshotPin, generateExitReport, downloadEngagementArchive } from "../lib/api.js";
 import { StatusMark } from "../components/icons";
+import { RequireRole } from "../lib/auth.js";
+import { SCHEDULE_WRITE_ROLES } from "../lib/rbac.js";
 
 export default function Reports() {
   const snaps = useLive<{ snapshots: any[]; total?: number }>("/api/v1/report-snapshots", { snapshots: [] });
@@ -115,7 +117,9 @@ export default function Reports() {
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="schedule name (e.g. Q4 PCI-DSS)" style={{ flex: 1, minWidth: 200, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", color: "var(--text)", fontFamily: "var(--mono)", fontSize: 12, padding: "8px 10px" }} />
           <select value={freq} onChange={(e) => setFreq(e.target.value as "monthly" | "quarterly")} style={{ background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", color: "var(--text)", fontSize: 12, padding: "8px 10px" }}><option value="quarterly">quarterly</option><option value="monthly">monthly</option></select>
           <input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="scan target (optional)" style={{ flex: 1, minWidth: 160, background: "var(--bg)", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", color: "var(--text)", fontFamily: "var(--mono)", fontSize: 12, padding: "8px 10px" }} />
-          <button onClick={() => void create()} disabled={busy} style={{ padding: "8px 14px", borderRadius: "var(--r)", background: "var(--cyan)", color: "#fff", border: "1px solid var(--cyan)", fontWeight: 700, fontSize: 12, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Scheduling…" : "Create schedule"}</button>
+          <RequireRole anyOf={[...SCHEDULE_WRITE_ROLES]}>
+            <button onClick={() => void create()} disabled={busy} style={{ padding: "8px 14px", borderRadius: "var(--r)", background: "var(--cyan)", color: "#fff", border: "1px solid var(--cyan)", fontWeight: 700, fontSize: 12, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "Scheduling…" : "Create schedule"}</button>
+          </RequireRole>
         </div>
         {msg && <div style={{ marginTop: 10, padding: "8px 10px", borderRadius: "var(--r)", background: msg.ok ? "color-mix(in srgb, var(--green) 10%, transparent)" : "color-mix(in srgb, var(--red) 10%, transparent)", border: `1px solid ${msg.ok ? "var(--green)" : "var(--red)"}`, fontSize: 12 }}><Badge tone={msg.ok ? "green" : "red"}>{msg.ok ? "OK" : "ERR"}</Badge> {msg.text}</div>}
       </Panel>
