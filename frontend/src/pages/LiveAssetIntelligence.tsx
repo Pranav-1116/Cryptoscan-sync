@@ -748,11 +748,14 @@ export default function LiveAssetIntelligence() {
   const wsActive = TECHBOM_TABS.some((t) => t.id === wsParams.get("tab")) ? wsParams.get("tab") as string : "overview";
   const wsAsset = wsParams.get("asset");
   const [view, setView] = useState(0);
-  const live = usePollingApi(apiTechBomLive, 15000);
-  const versions = usePollingApi(apiTechBomVersions, 30000);
-  const schedules = usePollingApi(apiTechBomSchedules, 30000);
-  const vendor = usePollingApi(apiTechBomVendor, 60000);
-  const runs = usePollingApi(apiTechBomExportRuns, 30000);
+  // Technology-BOM surfaces ride the crypto channel (BOM snapshots, exports,
+  // evidence packages): event-driven while the stream is up, timer backstop
+  // when it is not.
+  const live = usePollingApi(apiTechBomLive, 15000, [], { channels: ["crypto"] });
+  const versions = usePollingApi(apiTechBomVersions, 30000, [], { channels: ["crypto"] });
+  const schedules = usePollingApi(apiTechBomSchedules, 30000, [], { channels: ["crypto"] });
+  const vendor = usePollingApi(apiTechBomVendor, 60000, [], { channels: ["crypto"] });
+  const runs = usePollingApi(apiTechBomExportRuns, 30000, [], { channels: ["crypto"] });
   const assurance = usePollingApi(apiTechBomAssurance, 30000);
   const banking = usePollingApi(apiBankingOverview, 60000);
   const rt = useRealtime();

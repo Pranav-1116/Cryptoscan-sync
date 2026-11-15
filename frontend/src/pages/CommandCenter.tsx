@@ -91,13 +91,21 @@ export default function CommandCenter() {
     void isBackendLive().then(setBackend);
   }, []);
 
-  const liveStats = usePollingApi(apiStatsSummary, 15000);
-  const liveDeliveries = usePollingApi(apiDeliveries, 20000);
-  const liveInventory = usePollingApi(apiLiveInventory, 12000);
-  const liveScan = usePollingApi(apiLiveScanStatus, 5000);
-  const liveAlerts = usePollingApi(apiLiveAlerts, 6000);
-  const liveBom = usePollingApi(apiLiveBom, 12000);
-  const liveDrift = usePollingApi(apiLiveDrift, 9000);
+  // Channel-wired: when the stream is up these refetch on the EVENTS that
+  // move them (scan runs, asset lifecycle, findings, posture, BOM snapshots)
+  // and the timer slows to a 120s backstop — live scan progress without
+  // constant polling. With the stream down, the honest timer keeps the
+  // screen correct.
+  const liveStats = usePollingApi(apiStatsSummary, 15000, [], { channels: ["estate", "inventory", "findings", "security"] });
+  const liveDeliveries = usePollingApi(apiDeliveries, 20000, [], { channels: ["notifications"] });
+  const liveInventory = usePollingApi(apiLiveInventory, 12000, [], { channels: ["inventory"] });
+  const liveScan = usePollingApi(apiLiveScanStatus, 5000, [], {
+    channels: ["estate"],
+    kinds: ["run_started", "run_finished", "run_failed", "plane_finished"],
+  });
+  const liveAlerts = usePollingApi(apiLiveAlerts, 6000, [], { channels: ["security", "findings"] });
+  const liveBom = usePollingApi(apiLiveBom, 12000, [], { channels: ["crypto"] });
+  const liveDrift = usePollingApi(apiLiveDrift, 9000, [], { channels: ["estate", "remediation"] });
   useRealtimeRefresh(liveStats.run, liveDeliveries.run, liveInventory.run, liveScan.run, liveAlerts.run, liveBom.run, liveDrift.run);
 
   const runFirstScan = async () => {
