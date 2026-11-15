@@ -24,7 +24,7 @@ bank-approved object-storage directory via ``FileObjectStore``).
 
 from db.storage.cas import (  # noqa: F401
     CHUNK_SIZE, ContentAddressedStore, ContentCorruptionError, ContentGoneError,
-    ContentRef, DbObjectStore, FileObjectStore, ObjectStore, sha256_hex,
+    ContentRef, DbObjectStore, FileObjectStore, ObjectStore, S3ObjectStore, sha256_hex,
 )
 from db.storage.compression import compress, decompress  # noqa: F401
 from db.storage.provenance import record_evidence_content  # noqa: F401

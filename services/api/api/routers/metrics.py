@@ -321,6 +321,39 @@ def _dependency_lines() -> list[str]:
     return lines
 
 
+def _queue_lines() -> list[str]:
+    """Queue depth is the honest autoscaling signal (the worker HPA's
+    custom-metrics target): pending backlog, the ceiling, and the
+    backpressure refusals that say "demand outgrew capacity". Guarded like
+    everything else — a queue that cannot be counted must not silence the
+    rest of the surface."""
+    try:
+        from db.connection.session import SessionLocal as _QueueSession
+
+        from api.routers.binary_intelligence import WORKER_QUEUE
+
+        out: list[str] = []
+        with _QueueSession() as queue_session:
+            queue = WORKER_QUEUE.as_dict(queue_session)
+        limits = queue.get("limits") or {}
+        out.append(_gauge(
+            "cryptoscan_scan_queue_depth", queue.get("pending") or 0,
+            "Pending scan jobs (queued) — the worker autoscaling signal"))
+        out.append(_gauge(
+            "cryptoscan_scan_queue_limit", limits.get("max_queue_depth") or 0,
+            "Queue depth ceiling (backpressure above this refuses)"))
+        out.append(_counter(
+            "cryptoscan_scan_queue_refused_total", queue.get("refused_total") or 0,
+            "Scan jobs refused by backpressure"))
+        out.append(_counter(
+            "cryptoscan_scan_queue_failed_total", queue.get("failed_total") or 0,
+            "Scan jobs that failed or died after bounded retries"))
+        return out
+    except Exception as queue_exc:  # noqa: BLE001 - keep the rest of the surface
+        logger.warning("queue_metrics_unavailable", extra={"error_type": type(queue_exc).__name__})
+        return []
+
+
 def _operational_counter_lines() -> list[str]:
     """The security and reliability events section 5 asks to alert on."""
     from api.observability.operational_counters import snapshot
@@ -551,6 +584,7 @@ def metrics(request: Request) -> Response:
     except Exception as exc:  # noqa: BLE001 - keep the rest of the surface
         logger.warning("scan_metrics_unavailable", extra={"error_type": type(exc).__name__})
 
+    lines.extend(_queue_lines())
     lines.extend(_job_lifecycle_lines())
     lines.extend(_agent_health_lines())
     lines.extend(_coverage_lines())

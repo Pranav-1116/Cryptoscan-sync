@@ -119,3 +119,196 @@ class TestTheAirGapBundleIsMechanicalNotAMemoryExercise:
         report = offline_bundle.verify(doc, tmp_path / "empty")
         assert report["complete"] is False
         assert set(report["missing"]) == set(doc["repo_files"])
+
+
+# ---------------------------------------------------------------------------
+# TLS/mTLS row (Critical): "Enable TLS/mTLS to protect internal and external
+# communication." The gateways must demand client certificates signed by the
+# bank's CA — configuration, not commentary.
+# ---------------------------------------------------------------------------
+
+REPO = ROOT  # the repository root this suite already locates
+
+from api.routers import metrics as metrics_mod  # noqa: E402
+
+
+class TestMTLSContracts:
+    ENVLOY = REPO / "deploy" / "stack" / "envoy" / "envoy.yaml"
+    NGINX = REPO / "deploy" / "ha" / "nginx.conf"
+
+    def test_envoy_demands_client_certificates_at_the_edge(self):
+        text = self.ENVLOY.read_text()
+        assert "require_client_certificate: true" in text
+        assert "validation_context" in text
+        assert "trusted_ca" in text and "client-ca.crt" in text
+        # and the same protection on the internal hop (service-to-service)
+        assert "UpstreamTlsContext" in text
+
+    def test_ha_nginx_verifies_client_certificates(self):
+        text = self.NGINX.read_text()
+        # real directives, not commented-out suggestions
+        active = [ln for ln in text.splitlines()
+                  if ln.strip().startswith("ssl_verify_client")]
+        assert any("on" in ln for ln in active), text
+        assert any("ssl_client_certificate" in ln and not ln.strip().startswith("#")
+                   for ln in text.splitlines())
+
+
+# ---------------------------------------------------------------------------
+# Blue-green row (High — "safer upgrades"): a real state machine with the
+# safety rules enforced, plus the runbook.
+# ---------------------------------------------------------------------------
+
+
+class TestBlueGreenContracts:
+    SCRIPT = REPO / "scripts" / "blue_green.py"
+    RUNBOOK = REPO / "docs" / "runbooks" / "blue-green-upgrade.md"
+
+    @pytest.fixture()
+    def orchestrator(self, tmp_path):
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("blue_green", self.SCRIPT)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        class FakeDriver:
+            def __init__(self):
+                self.running = {"blue": True, "green": False}
+                self.healthy = {"blue": True, "green": True}
+                self.current = "blue"
+                self.flips: list[str] = []
+
+            def start(self, slot):
+                self.running[slot] = True
+
+            def stop(self, slot):
+                self.running[slot] = False
+
+            def health(self, slot):
+                return self.running.get(slot) and self.healthy.get(slot, False)
+
+            def activate(self, slot):
+                self.current = slot
+                self.flips.append(slot)
+
+            def active(self):
+                return self.current
+
+        return mod.BlueGreen(FakeDriver())
+
+    def test_activation_refuses_an_unhealthy_slot(self, orchestrator):
+        orchestrator.driver.healthy["green"] = False
+        report = orchestrator.activate("green")
+        assert report.get("refused"), report
+        assert orchestrator.driver.active() == "blue"  # never flipped blind
+
+    def test_failed_verify_rolls_back_automatically(self, orchestrator):
+        orchestrator.driver.start("green")
+        assert orchestrator.activate("green")["active"] == "green"
+        orchestrator.driver.healthy["green"] = False  # the release is bad
+        report = orchestrator.verify("green")
+        assert report["verified"] is False
+        assert report["rolled_back_to"] == "blue"
+        assert orchestrator.driver.active() == "blue"
+
+    def test_prepare_stops_a_slot_that_fails_its_health_check(self, orchestrator):
+        orchestrator.driver.healthy["green"] = False
+        report = orchestrator.prepare("green")
+        assert report.get("refused"), report
+        assert orchestrator.driver.running["green"] is False
+        assert orchestrator.driver.active() == "blue"
+
+    def test_rollback_names_where_it_went(self, orchestrator):
+        orchestrator.driver.start("green")
+        orchestrator.activate("green")
+        report = orchestrator.rollback()
+        assert report["to"] == "blue" and report["active"] == "blue"
+
+    def test_dry_run_touches_nothing(self, orchestrator):
+        before = (orchestrator.driver.current, list(orchestrator.driver.flips))
+        orchestrator.prepare("green", dry_run=True)
+        orchestrator.activate("green", dry_run=True)
+        orchestrator.verify("green", dry_run=True)
+        orchestrator.rollback(dry_run=True)
+        assert (orchestrator.driver.current, orchestrator.driver.flips) == before
+
+    def test_the_runbook_is_beside_the_script(self):
+        assert self.SCRIPT.exists() and self.RUNBOOK.exists()
+        doc = self.RUNBOOK.read_text()
+        for marker in ("prepare", "activate", "verify", "rollback", "undo"):
+            assert marker in doc
+
+
+# ---------------------------------------------------------------------------
+# IaC row: "Use Ansible/Terraform where suitable." Repeatable installation
+# that never reaches the internet and refuses unverified releases.
+# ---------------------------------------------------------------------------
+
+
+class TestAnsibleContracts:
+    ANSIBLE = REPO / "deploy" / "ansible"
+
+    def test_playbook_and_roles_exist(self):
+        site = (self.ANSIBLE / "site.yml").read_text()
+        for role in ("common", "runtime", "cryptoscan", "backup"):
+            assert (self.ANSIBLE / "roles" / role / "tasks" / "main.yml").exists()
+            assert f"- {role}" in site
+        assert (self.ANSIBLE / "inventory.example.ini").exists()
+
+    def test_installation_refuses_unverified_releases(self):
+        tasks = (self.ANSIBLE / "roles" / "cryptoscan" / "tasks" / "main.yml").read_text()
+        assert "manifest.sig" in tasks
+        assert "refuse to install an unverified release" in tasks
+
+    def test_secrets_are_referenced_not_valued(self):
+        env = (self.ANSIBLE / "roles" / "cryptoscan" / "templates" / "env.j2").read_text()
+        assert "_FILE=" in env
+        assert "PASSWORD=" not in env.replace("PASSWORD_FILE=", "")
+
+    def test_backup_automation_is_installed_not_advertised(self):
+        tasks = (self.ANSIBLE / "roles" / "backup" / "tasks" / "main.yml").read_text()
+        assert "cryptoscan-backup.timer" in tasks
+
+
+# ---------------------------------------------------------------------------
+# Queue-depth signal: the worker autoscaler and the operator need the same
+# number — the pending backlog, the ceiling, and the refusals.
+# ---------------------------------------------------------------------------
+
+
+class TestQueueDepthSignal:
+    def test_queue_gauges_expose_depth_limit_and_refusals(self, monkeypatch):
+        import contextlib
+
+        from api.routers import binary_intelligence as bi_mod
+
+        fake = {
+            "pending": 7,
+            "refused_total": 3,
+            "failed_total": 1,
+            "limits": {"max_queue_depth": 1000},
+        }
+        monkeypatch.setattr(bi_mod.WORKER_QUEUE, "as_dict", lambda db=None: fake)
+
+        @contextlib.contextmanager
+        def fake_session():
+            yield None
+
+        import db.connection.session as session_mod
+
+        monkeypatch.setattr(session_mod, "SessionLocal", fake_session)
+        rendered = "".join(metrics_mod._queue_lines())
+        assert 'cryptoscan_scan_queue_depth 7' in rendered
+        assert 'cryptoscan_scan_queue_limit 1000' in rendered
+        assert 'cryptoscan_scan_queue_refused_total 3' in rendered
+        assert 'cryptoscan_scan_queue_failed_total 1' in rendered
+
+    def test_queue_failure_never_silences_the_metrics_surface(self, monkeypatch):
+        import db.connection.session as session_mod
+
+        def boom():
+            raise RuntimeError("db down")
+
+        monkeypatch.setattr(session_mod, "SessionLocal", boom)
+        assert metrics_mod._queue_lines() == []  # degraded, not dead

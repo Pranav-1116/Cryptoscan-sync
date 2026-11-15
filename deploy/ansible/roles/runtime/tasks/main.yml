@@ -1,0 +1,23 @@
+---
+# Container runtime + engine from the bank's internal mirror. The names
+# below assume a Debian-family mirror; adjust for the bank's distro —
+# the playbook never pulls from the internet.
+- name: container runtime packages
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - docker-compose
+    state: present
+    update_cache: true
+
+- name: docker service
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: cryptoscan user in the docker group
+  ansible.builtin.user:
+    name: cryptoscan
+    groups: docker
+    append: true

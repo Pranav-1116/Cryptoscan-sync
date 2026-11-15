@@ -1,0 +1,19 @@
+---
+# Backup automation (the spec row "Implement backup automation for scan
+# results, configuration, and audit logs"): install the systemd units the
+# repo ships and enable the timer.
+- name: backup unit files
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/etc/systemd/system/{{ item | basename }}"
+    mode: "0644"
+  loop:
+    - "{{ playbook_dir }}/../../systemd/cryptoscan-backup.service"
+    - "{{ playbook_dir }}/../../systemd/cryptoscan-backup.timer"
+  notify: reload systemd
+
+- name: backup timer enabled
+  ansible.builtin.systemd:
+    name: cryptoscan-backup.timer
+    state: started
+    enabled: true

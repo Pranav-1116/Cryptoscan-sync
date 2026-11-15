@@ -202,6 +202,12 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         load_env()
         configure_logging(settings.LOG_LEVEL, json_output=settings.is_production)
         validate_runtime_settings(settings)
+        # Cache tier selection (memory per process by default; redis for the
+        # shared tier when CACHE_BACKEND=redis). Authoritative reads are
+        # never cached on either tier — api.cache_policy enforces that.
+        from api.cache import configure_read_cache
+
+        configure_read_cache(settings)
         # Runtime egress guard (audit 81, round 35): under enforce, every
         # outbound TCP connection must match the explicit allowlist —
         # fail-closed, fail-loud. Off by default (community installs).

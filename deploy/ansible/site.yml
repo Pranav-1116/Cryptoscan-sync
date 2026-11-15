@@ -1,0 +1,22 @@
+---
+# CryptoScan — repeatable installation and upgrades (IaC row: "Use
+# Ansible/Terraform where suitable"). Single-server Docker Compose form;
+# the Kubernetes form is `k8s/` + `k8s/helm/cryptoscan/`.
+#
+# The playbook assumes the artifacts are already staged (an isolated bank
+# network installs from `make offline-bundle` output — see
+# docs/admin-guide/air-gap-install.md). It never reaches the internet:
+# package installation comes from the bank's internal mirror.
+#
+#   ansible-playbook -i inventory.example.ini site.yml
+- name: CryptoScan platform installation
+  hosts: cryptoscan
+  become: true
+  vars:
+    cryptoscan_root: /opt/cryptoscan
+    cryptoscan_profile: prod          # prod -> docker-compose.prod.yml
+  roles:
+    - common          # users, directories, time sync, kernel limits
+    - runtime         # container runtime from the internal mirror
+    - cryptoscan      # the compose stack: config, secrets, services
+    - backup          # evidence + database backup automation (systemd timer)

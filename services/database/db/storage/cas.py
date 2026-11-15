@@ -26,7 +26,7 @@ import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Any, Optional, Protocol
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -146,6 +146,58 @@ class FileObjectStore:
         path = self._path(tenant_id, sha256)
         if path.exists():
             path.unlink()
+
+
+class S3ObjectStore:
+    """Bodies in a bank-controlled S3-compatible object store.
+
+    The spec names the technology for large evidence artifacts and exports:
+    "bank-controlled S3-compatible storage or an equivalent". This is the
+    S3-compatible form of the ObjectStore protocol — S3 itself, MinIO, Ceph
+    RGW or any bank appliance speaking the same API.
+
+    The client is injected (boto3-shaped: put_object / get_object /
+    delete_object), so the bank's endpoint, credentials and signing stay
+    entirely in the bank's hands — this class never opens a network
+    connection of its own choosing and never embeds a credential. Key
+    layout matches FileObjectStore (``{tenant}/{sha[:2]}/{sha}.bin``), so
+    the same content address works over either backend.
+
+    A missing body raises ``ContentGoneError`` exactly like the other
+    stores; corruption is caught one layer up where the SHA-256 is checked
+    against the content address (a store that re-hash-verified would do the
+    work twice).
+    """
+
+    def __init__(self, client: Any, bucket: str, *, prefix: str = ""):
+        self.client = client
+        self.bucket = bucket
+        self.prefix = prefix.strip("/")
+
+    def _key(self, tenant_id: str, sha256: str) -> str:
+        safe_tenant = "".join(c for c in (tenant_id or "platform") if c.isalnum() or c in "-_")
+        key = f"{safe_tenant}/{sha256[:2]}/{sha256}.bin"
+        return f"{self.prefix}/{key}" if self.prefix else key
+
+    def put(self, tenant_id: str, sha256: str, ciphertext: bytes) -> None:
+        self.client.put_object(Bucket=self.bucket, Key=self._key(tenant_id, sha256),
+                               Body=ciphertext)
+
+    def get(self, tenant_id: str, sha256: str) -> bytes:
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=self._key(tenant_id, sha256))
+        except Exception as exc:  # noqa: BLE001 — translated to the store contract
+            name = type(exc).__name__
+            if "NoSuchKey" in name or "404" in str(exc) or "NotFound" in name:
+                raise ContentGoneError(f"no stored body for {sha256[:16]}…") from exc
+            raise
+        body = response["Body"]
+        return body.read() if hasattr(body, "read") else bytes(body)
+
+    def delete(self, tenant_id: str, sha256: str) -> None:
+        # S3 delete is idempotent (204 whether or not the key existed) —
+        # same contract as FileObjectStore.delete.
+        self.client.delete_object(Bucket=self.bucket, Key=self._key(tenant_id, sha256))
 
 
 def sha256_hex(data: bytes) -> str:

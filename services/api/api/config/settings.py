@@ -240,6 +240,11 @@ class APISettings(BaseSettings):
 
     DATABASE_URL: str = "sqlite:///./data/cryptoscan.db"
     REDIS_URL: str = ""
+    # Read-cache tier: "memory" (default — one bounded cache per API
+    # process) or "redis" (shared tier so several replicas share one
+    # tag-invalidation domain). Never authoritative either way: see
+    # api.cache_policy for what may not be cached at all.
+    CACHE_BACKEND: str = "memory"
     REDIS_CA_CERTS: str = ""
     REDIS_SENTINELS: str = ""  # JSON [[host, port], ...], TLS only
     REDIS_SENTINEL_MASTER: str = ""

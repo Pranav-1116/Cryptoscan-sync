@@ -23,28 +23,28 @@ artifacts that implement them. Two rules govern every row:
 | Reverse proxy | Critical | `infra/nginx/sites/cryptoscan.conf`, `.docker/nginx/nginx.conf` (TLS, security headers), `deploy/ha/nginx.conf` |
 | API gateway | High | Reverse proxy + application controls (`api/middleware/`: auth, rate limit, security headers) — a dedicated gateway is introduced only if the bank's estate demands it |
 | CDN | Low (on-prem) / Medium (SaaS) | `deploy/cdn/cache-policy.json` + README — only when content distribution is real |
-| Redis caching | High | `api/cache.py` + `api/cache_policy.py` (dashboard aggregates, category summaries, policy definitions, vendor reference, asset summaries, UI config); `api/events/redis_backend.py` for event transport. **Never authoritative evidence** |
+| Redis caching | High | `api/cache.py` + `api/cache_policy.py` (dashboard aggregates, category summaries, policy definitions, vendor reference, asset summaries, UI config) + `api/cache_redis.py` (named Redis tier: tenant keys, tag invalidation, TTL ceiling, LRU trim); `api/events/redis_backend.py` for event transport. **Never authoritative evidence** |
 | Message queue | Critical | Durable DB-backed job queue (`binary_intelligence/durable_queue.py` with leases, bounded retries, dead-letter) + worker pool (`services/worker/`) |
-| Object storage | Critical | `db/storage/cas.py` `FileObjectStore` on a bank-approved mount, `DbObjectStore` for metadata-only deployments (storage optimization batch) |
+| Object storage | Critical | `db/storage/cas.py` — `FileObjectStore` (bank-approved mount), `DbObjectStore` (metadata-only), `S3ObjectStore` (bank-controlled S3-compatible / MinIO / Ceph via a client-injected adapter — the store never opens its own connection); layout `{tenant}/{sha[:2]}/{sha}.bin` everywhere |
 | Containerization | Critical | `.docker/*` images, `docker-compose.yml` (dev), `docker-compose.prod.yml` (prod profile) |
 | Kubernetes | Medium initially / High at scale | `k8s/app/` (namespace, configmap, secrets example, deployments, services, ingress, PVC, availability) |
 | Helm | High | `k8s/helm/cryptoscan/` — repeatable install over the same objects; images/tags/replicas/resources come from `values.yaml` |
 | NGINX / Envoy | Critical | nginx as above; `deploy/stack/envoy/` for the service-mesh form |
-| Autoscaling | Medium–High | `deploy/stack/k8s/25-worker-hpa.yaml` (CPU baseline; queue-depth via the custom-metrics adapter at scale) + chart HPA |
+| Autoscaling | Medium–High | `deploy/stack/k8s/25-worker-hpa.yaml` (CPU baseline) + **`cryptoscan_scan_queue_depth` / `_limit` / `_refused_total` in `/metrics`** (the queue-depth custom-metrics signal) + chart HPA |
 | Network policies | Critical | `k8s/app/45-availability.yaml` (default-deny + explicit allowances) |
 | Persistent volumes | Critical | `k8s/app/32-estate-telecom-pvc.yaml`, `k8s/neo4j/persistentvolumeclaim.yaml` |
 | Resource quotas | Critical | `k8s/app/46-resource-quota.yaml` (ResourceQuota + LimitRange) — resource exhaustion is a ceiling, not weather |
 | Service discovery | Medium | Compose DNS / Kubernetes Services — no external registry calls |
 | Secrets manager | Critical | `k8s/app/15-secret.example.yaml` (mounted secrets), `deploy/stack/vault/` (HashiCorp Vault form for banks with one) |
 | WAF | Deployment-dependent | Edge concern — terminate at the bank's existing edge; the app enforces its own headers + rate limits regardless |
-| TLS / mTLS | Critical | nginx TLS termination; service-to-service inside the cluster per the bank's mesh policy (docs/security/threat-model.md) |
-| Infrastructure as Code | High | `k8s/` manifests + `deploy/` profiles + this chart are the source of truth; Ansible/Terraform wrappers per bank standard |
+| TLS / mTLS | Critical | nginx TLS termination + `deploy/ha/nginx.conf` **mTLS** (`ssl_verify_client on`, bank CA at `/etc/nginx/certs/ca.pem`, client CN forwarded to the app); `deploy/stack/envoy/envoy.yaml` **mTLS both edges** (`require_client_certificate` + CA validation inbound, `UpstreamTlsContext` to the API) |
+| Infrastructure as Code | High | `k8s/` manifests + `deploy/` profiles + `k8s/helm/cryptoscan/`; **`deploy/ansible/`** (site.yml + common/runtime/cryptoscan/backup roles — never reaches the internet, refuses unverified releases, installs backup automation) |
 | CI/CD | Critical | `.github/workflows/` (ci, db-migration, docker-build, scanner-tests) + `scripts/operator_release.py` (signed, pinned, provenance-checked releases) |
 | Software signing | Critical | `operator_release.py` provenance: `files_sha256`, migration-head pin, attestation verification |
 | SBOM for CryptoScan itself | Critical | `make sbom` → `scripts/generate_own_sbom.py` (CycloneDX over Python lock + frontend lock + first-party services) |
 | Offline installation | High | [air-gap-install.md](air-gap-install.md) + `make offline-bundle` (`scripts/offline_bundle.py` — manifest + tamper-evident verify) |
 | Backup automation | Critical | `scripts/backup_evidence.py`, `deploy/ha/pg-backup/`, `docs/admin-guide/backup-restore.md`, restore drills in `db/storage/restore.py` |
-| Blue-green / rolling | High | Rolling updates with `maxUnavailable: 0` (k8s deployments + chart); blue-green for the DB-owning tier per the runbooks |
+| Blue-green / rolling | High | Rolling updates with `maxUnavailable: 0` (k8s deployments + chart); **blue-green `scripts/blue_green.py`** (activation refuses unhealthy slots; failed verify rolls back automatically) + `docs/runbooks/blue-green-upgrade.md` |
 | Configuration management | Critical | `.env.example` / `.env.production.example` + `api/config/settings.py` (validated settings) |
 
 ## What is deliberately NOT in the box

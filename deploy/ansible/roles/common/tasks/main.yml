@@ -1,0 +1,38 @@
+---
+# Baseline: users, directories, limits. Nothing here phones home.
+- name: cryptoscan system group
+  ansible.builtin.group:
+    name: cryptoscan
+    system: true
+
+- name: cryptoscan system user
+  ansible.builtin.user:
+    name: cryptoscan
+    group: cryptoscan
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: application root
+  ansible.builtin.file:
+    path: "{{ cryptoscan_root }}"
+    state: directory
+    owner: cryptoscan
+    group: cryptoscan
+    mode: "0750"
+
+- name: secrets directory (root-only — the API reads it at start-up)
+  ansible.builtin.file:
+    path: "{{ cryptoscan_root }}/secrets"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: container runtime file-descriptor limits
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/90-cryptoscan.conf
+    mode: "0644"
+    content: |
+      cryptoscan soft nofile 65535
+      cryptoscan hard nofile 65535

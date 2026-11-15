@@ -1,0 +1,45 @@
+---
+# The stack itself: release artifacts, configuration, secrets, services.
+- name: release artifact present (staged by the offline bundle)
+  ansible.builtin.stat:
+    path: "{{ cryptoscan_root }}/release/manifest.sig"
+  register: release_manifest
+
+- name: refuse to install an unverified release
+  ansible.builtin.assert:
+    that: release_manifest.stat.exists
+    fail_msg: >-
+      No verified release at {{ cryptoscan_root }}/release — install from
+      `make offline-bundle` output and verify the signature first
+      (docs/admin-guide/air-gap-install.md). CryptoScan refuses to run
+      unverified code.
+
+- name: compose environment file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ cryptoscan_root }}/.env"
+    owner: root
+    group: cryptoscan
+    mode: "0640"
+
+- name: compose profile mapping (prod -> docker-compose.prod.yml)
+  ansible.builtin.set_fact:
+    cryptoscan_compose_file: >-
+      {{ 'docker-compose.prod.yml' if cryptoscan_profile == 'prod'
+         else 'docker-compose.yml' }}
+
+- name: pull images from the internal registry only
+  ansible.builtin.command:
+    cmd: >-
+      docker compose -f {{ cryptoscan_root }}/release/{{ cryptoscan_compose_file }}
+      --env-file {{ cryptoscan_root }}/.env pull
+    chdir: "{{ cryptoscan_root }}/release"
+
+- name: start the stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ cryptoscan_root }}/release"
+    files:
+      - "{{ cryptoscan_compose_file }}"
+    env_files:
+      - "{{ cryptoscan_root }}/.env"
+    state: present

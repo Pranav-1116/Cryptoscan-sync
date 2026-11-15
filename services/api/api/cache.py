@@ -141,3 +141,32 @@ def get_read_cache() -> ReadCache:
 def set_read_cache(cache: ReadCache) -> None:
     global _cache
     _cache = cache
+
+
+def configure_read_cache(settings: Any) -> None:
+    """Install the cache tier the deployment asked for.
+
+    ``CACHE_BACKEND=memory`` (the default) keeps one bounded cache per API
+    process — honest for a single replica, with the wire layer's ETag
+    keeping cross-replica staleness visible. ``CACHE_BACKEND=redis`` swaps
+    in the shared tier (``api.cache_redis.RedisReadCache``) so several
+    replicas share one tag-invalidation domain — the spec's "Redis caching"
+    for dashboard summaries and lookup data. Whichever tier is installed,
+    the policy never changes: authoritative reads are never stored on
+    either backend (api.cache_policy's chokepoint is backend-agnostic).
+    """
+    global _cache
+    backend = (getattr(settings, "CACHE_BACKEND", "memory") or "memory").strip().lower()
+    if backend == "redis":
+        from api.cache_redis import RedisReadCache
+        import redis as _redis  # lazy: only the redis deployment needs the client
+
+        url = getattr(settings, "REDIS_URL", "")
+        if not url:
+            raise ValueError("CACHE_BACKEND=redis needs REDIS_URL — a shared "
+                             "cache with no shared store is a lie")
+        _cache = RedisReadCache(_redis.Redis.from_url(url))
+    elif backend == "memory":
+        _cache = ReadCache()
+    else:
+        raise ValueError(f"unknown CACHE_BACKEND {backend!r} — 'memory' or 'redis'")
