@@ -1,6 +1,6 @@
 /* Reusable HUD primitives */
 
-import React, { ReactNode } from "react";
+import React, { ReactNode, useState } from "react";
 import { IconClose, ICON_MD } from "./icons";
 import { PanelErrorBoundary } from "./ErrorBoundary";
 import { motion } from "framer-motion";
@@ -185,9 +185,21 @@ export function Table({ head, rows, total, clickable = false, selected = -1, onS
 }) {
   const bodyRef = useAutoAnimate<HTMLTableSectionElement>();
   const interactive = clickable && onSelect;
+  /* Windowed rendering: a large table must never put every row in the DOM
+     (the 50k-asset rule). The first WINDOW rows render; scrolling to the
+     bottom extends the window. Measured lists use VirtualTable; this covers
+     the generic cell-array Table. aria-rowcount keeps the truth. */
+  const WINDOW = 200;
+  const [shown, setShown] = useState(WINDOW);
   return (
-    <div style={{ overflowX: "auto" }}>
-      <table className={`tbl ${clickable ? "clickable" : ""}`}>
+    <div
+      style={{ overflowX: "auto", maxHeight: rows.length > WINDOW ? "70vh" : undefined, overflowY: rows.length > WINDOW ? "auto" : undefined }}
+      onScroll={rows.length > shown ? (e) => {
+        const el = e.currentTarget;
+        if (el.scrollTop + el.clientHeight >= el.scrollHeight - 80) setShown((s) => Math.min(s + WINDOW, rows.length));
+      } : undefined}
+    >
+      <table className={`tbl ${clickable ? "clickable" : ""}`} aria-rowcount={total ?? rows.length}>
         <thead>
           <tr>{head.map((h, i) => <th key={i} scope="col">{h}</th>)}</tr>
         </thead>
@@ -196,7 +208,7 @@ export function Table({ head, rows, total, clickable = false, selected = -1, onS
             matters most on the live views, where rows arrive from SSE
             while the operator is reading. */}
         <tbody ref={bodyRef}>
-          {rows.map((row, i) => (
+          {rows.slice(0, shown).map((row, i) => (
             <tr
               key={i}
               className={selected === i ? "sel" : ""}
@@ -219,6 +231,12 @@ export function Table({ head, rows, total, clickable = false, selected = -1, onS
           ))}
         </tbody>
       </table>
+      {rows.length > shown && (
+        <div className="dim" role="status" style={{ fontSize: 12, padding: "6px 2px" }}>
+          Showing {shown.toLocaleString()} of {rows.length.toLocaleString()} rows — scroll to load
+          more (windowed rendering; the rest is not in the DOM).
+        </div>
+      )}
       {typeof total === "number" && total > rows.length && (
         <div className="dim" role="status" style={{ fontSize: 12, padding: "6px 2px" }}>
           Showing the first {rows.length.toLocaleString()} of {total.toLocaleString()} rows — the

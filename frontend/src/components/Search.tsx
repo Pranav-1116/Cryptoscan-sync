@@ -5,6 +5,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiAlgorithmCatalog } from "../lib/api.js";
+import { useDebouncedValue } from "../lib/useDebouncedValue.js";
 import { IconCrypto, ICON_SM, type Icon } from "./icons";
 
 interface Item { name: string; to: string; meta: string }
@@ -30,26 +31,27 @@ export default function SearchOverlay({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // One debounce contract for the whole console (lib/useDebouncedValue) —
+  // not a hand-rolled timer per input.
+  const term = useDebouncedValue(q.trim(), 200);
+
   useEffect(() => {
-    const term = q.trim();
     if (!term) { setGroups([]); return; }
     let cancelled = false;
     setSearching(true);
-    const t = setTimeout(() => {
-      apiAlgorithmCatalog({ q: term }).then((res) => {
-        if (cancelled) return;
-        const rows = (res.data?.algorithms ?? []) as any[];
-        const items: Item[] = rows.slice(0, 6).map((a) => ({
-          name: `${a.name ?? a.algorithm ?? a.id}${a.family ? ` · ${a.family}` : ""}`,
-          to: "/catalog",
-          meta: a.status ?? a.quantum_status ?? "",
-        }));
-        setGroups(items.length ? [{ label: "Algorithms", icon: IconCrypto, items }] : []);
-        setSearching(false);
-      }).catch(() => { if (!cancelled) { setGroups([]); setSearching(false); } });
-    }, 200);
-    return () => { cancelled = true; clearTimeout(t); };
-  }, [q]);
+    apiAlgorithmCatalog({ q: term }).then((res) => {
+      if (cancelled) return;
+      const rows = (res.data?.algorithms ?? []) as any[];
+      const items: Item[] = rows.slice(0, 6).map((a) => ({
+        name: `${a.name ?? a.algorithm ?? a.id}${a.family ? ` · ${a.family}` : ""}`,
+        to: "/catalog",
+        meta: a.status ?? a.quantum_status ?? "",
+      }));
+      setGroups(items.length ? [{ label: "Algorithms", icon: IconCrypto, items }] : []);
+      setSearching(false);
+    }).catch(() => { if (!cancelled) { setGroups([]); setSearching(false); } });
+    return () => { cancelled = true; };
+  }, [term]);
 
   const total = groups.reduce((n, g) => n + g.items.length, 0);
 
