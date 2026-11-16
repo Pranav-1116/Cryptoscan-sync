@@ -126,13 +126,12 @@ services:
     container_name: cryptoscan-sbx-seed
     profiles: ["seed"]
     working_dir: /work
-    entrypoint: ["/bin/sh", "-c"]
-    command:
-      - "pip install -q sqlalchemy 'psycopg[binary]' pydantic && python /work/scripts/seed_sandbox_bank.py ${SEED_ARGS:-}"
+    entrypoint: ["/bin/sh", "/init/entry-seed.sh"]
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:-cryptoscan_secret}@postgres:5432/${POSTGRES_DB:-cryptoscan}"
     volumes:
       - .:/work:ro
+      - ./sandbox/estate/init/entry-seed.sh:/init/entry-seed.sh:ro
     networks: [cryptoscan-net]
     restart: "no"
 

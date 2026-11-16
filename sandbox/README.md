@@ -90,6 +90,13 @@ bash sandbox/run_sandbox.sh reset     # delete only the sandbox-seeded rows,
 
 ## Notes
 
+- **Migrations first**: the Postgres schema is created by Alembic (the seed
+  container runs `upgrade head` before seeding). If the API fails to start
+  with `Database migration status is missing (applied: [])`, run
+  `bash sandbox/run_sandbox.sh migrate` and restart the API. If a stale
+  seeder version created tables *without* migration bookkeeping (the schema
+  then blocks `upgrade head`), run `bash sandbox/run_sandbox.sh db-rebuild`
+  once — it drops only the CryptoScan `public` schema and rebuilds it.
 - Reseeding is idempotent: a second run detects the marker row and exits.
 - SQLite also works for a quick local demo: the script defaults to
   `sqlite:///./data/cryptoscan.db` (create schema via the app's normal startup first).

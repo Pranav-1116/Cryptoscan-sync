@@ -53,6 +53,25 @@ case "${1:-up}" in
     ;;
   seed)   "${COMPOSE[@]}" run --rm sandbox-seed ;;
   reset)  "${COMPOSE[@]}" run --rm -e SEED_ARGS="--reset" sandbox-seed ;;
+  migrate)
+    # Applies the DB migrations without seeding — the repair path for the
+    # API's 'Database migration status is missing' startup failure.
+    "${COMPOSE[@]}" run --rm -e SEED_MODE="migrate-only" sandbox-seed
+    echo "schema migrated. Now: docker compose restart cryptoscan-api (or rerun: $0 up)"
+    ;;
+  db-rebuild)
+    # Destructive but scoped: drops ONLY the CryptoScan public schema (which
+    # currently holds just sandbox rows + unstamped create_all tables), then
+    # re-migrates and reseeds. Needed once to repair the state left by the
+    # pre-alembic seeder. Bank stack volumes are untouched.
+    read -r -p "This drops the 'public' schema of the cryptoscan DB and rebuilds it. Type REBUILD to continue: " answer
+    if [ "$answer" != "REBUILD" ]; then echo "aborted"; exit 1; fi
+    docker exec cryptoscan-postgres psql -U "${POSTGRES_USER:-cryptoscan}" -d "${POSTGRES_DB:-cryptoscan}" \
+      -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO public;"
+    "${COMPOSE[@]}" run --rm sandbox-seed
+    echo "DB rebuilt, migrated and seeded. Restarting API..."
+    docker compose -f docker-compose.yml restart api 2>/dev/null || true
+    ;;
   estate) "${COMPOSE[@]}" up -d ${SBX_SERVICES%% sandbox-seed} ;;
   down)
     # Sandbox-only teardown: stop/remove just the fake-estate containers plus
@@ -64,5 +83,5 @@ case "${1:-up}" in
     echo "sandbox estate removed; main stack untouched"
     ;;
   status) "${COMPOSE[@]}" ps ;;
-  *) echo "usage: $0 [up|seed|reset|estate|down|status]" >&2; exit 2 ;;
+  *) echo "usage: $0 [up|seed|reset|migrate|db-rebuild|estate|down|status]" >&2; exit 2 ;;
 esac

@@ -166,12 +166,29 @@ def _engine_with_retry(db_url: str, attempts: int = 20, delay_s: float = 3.0):
 
 
 def _ensure_schema(engine) -> None:
-    """Bootstrap the schema if empty (fresh local stacks).
+    """Bootstrap the schema ONLY for SQLite development databases.
 
-    Production Postgres is migrated by alembic; this is only a safety net for
-    sandboxes where the API never came up. create_all() is a no-op when the
-    tables already exist, so it is safe to call unconditionally.
+    create_all() on PostgreSQL was a trap: it builds tables without the
+    alembic_version stamp, so when the API later runs its migration guard
+    ('applied: []') startup aborts, and the real `alembic upgrade head` then
+    collides with the already-present tables. Postgres schemas must come from
+    alembic alone — the seeded container runs `upgrade head` before calling us.
     """
+    if engine.dialect.name != "sqlite":
+        with engine.connect() as conn:
+            stamped = conn.execute(text(
+                "SELECT to_regclass('alembic_version')"
+            )).scalar()
+        if not stamped:
+            raise SystemExit(
+                "PostgreSQL schema is un-migrated (alembic_version missing; possibly\n"
+                "tables were created by an older sandbox seeder without migration\n"
+                "bookkeeping — the API refuses to start on such a database).\n"
+                "Recovery, in order:\n"
+                "  1) bash sandbox/run_sandbox.sh migrate      # if DB is truly empty\n"
+                "  2) bash sandbox/run_sandbox.sh db-rebuild   # if create_all tables linger"
+            )
+        return
     from db.connection.session import Base
     import db.models.scan  # noqa: F401 - register models on the metadata
     import db.models.evidence_record  # noqa: F401
@@ -182,7 +199,7 @@ def _ensure_schema(engine) -> None:
     import db.models.baseline  # noqa: F401
     import db.models.system  # noqa: F401
     Base.metadata.create_all(engine)
-    print("schema ensured (existing tables untouched)")
+    print("sqlite schema ensured (existing tables untouched)")
 
 
 def seed(db_url: str, reset: bool) -> None:
