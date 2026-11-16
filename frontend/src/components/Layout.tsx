@@ -407,22 +407,20 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
       <a href="#main-content" className="skip-link">Skip to main content</a>
       <motion.aside className="sidebar" layout="position" aria-label="Primary navigation">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "4px 8px 16px" }}>
-          <Link to="/" className="logo" style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700, fontSize: 16, letterSpacing: "-0.01em", textDecoration: "none" }}>
-            <BrandMark size={28} />
-            <span className="logo-text" style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
-              <span style={{ color: "var(--text)", fontWeight: 700, fontSize: 15, letterSpacing: "0.02em" }}>CRYPTOSCAN</span>
-              <span style={{
-                background: "rgba(167, 139, 250, 0.12)",
-                border: "1px solid rgba(167, 139, 250, 0.3)",
-                color: "var(--accent)",
-                fontSize: "9px",
-                fontWeight: 700,
-                letterSpacing: "0.08em",
-                padding: "1px 5px",
-                borderRadius: "4px",
-                fontFamily: "var(--mono)"
-              }}>BANK CORE</span>
-            </span>
+          <Link to="/" className="logo" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
+            <BrandMark size={24} />
+            <span
+              className="logo-text"
+              style={{
+                color: "var(--text)",
+                fontFamily: "var(--display)",
+                fontWeight: 600,
+                fontSize: 14,
+                letterSpacing: "0.18em",
+                paddingBottom: 4,
+                borderBottom: "2px solid var(--accent)",
+              }}
+            >CRYPTOSCAN</span>
           </Link>
           <button
             onClick={toggleSidebar}
@@ -594,6 +592,27 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
 
       <main className="main" id="main-content" tabIndex={-1}>
         <div className="livehead">
+          {/* Breadcrumb: section / page, so an executive always knows where they are */}
+          {(() => {
+            let section = ""; let itemLabel = "";
+            for (const s of PRIMARY_SECTIONS) {
+              const item = s.items.find((it) => sameRoute(it.to, route) || (it.children || []).some((c) => sameRoute(c.to, route)));
+              if (item) {
+                section = s.title;
+                const child = (item.children || []).find((c) => sameRoute(c.to, route));
+                itemLabel = child ? child.label : item.label;
+                break;
+              }
+            }
+            if (!section) return null;
+            return (
+              <span className="crumb" aria-hidden="true">
+                <span className="crumb-sec">{section}</span>
+                <span className="crumb-sep">/</span>
+                <span className="crumb-page">{itemLabel}</span>
+              </span>
+            );
+          })()}
           {(() => {
             const conn = ticker.conn ?? (ticker.connected ? "live" : "offline");
             const map: Record<string, { c: string; label: string; pulse: boolean }> = {
@@ -607,11 +626,11 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
               <>
                 <div
     onClick={() => setShowHealthModal(true)}
-    style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", background: "var(--panel)", padding: "5px 12px", borderRadius: "8px", border: "1px solid var(--line)", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }}
+    style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", padding: "4px 6px" }}
     title="Click to view 24/7 Engine Health & Status"
   >
     <span className="live-dot" style={{ background: s.c, animation: s.pulse ? undefined : "none" }} />
-    <span style={{ fontWeight: 600, color: s.c, fontSize: "12px" }}>CryptoScan Enclave Active</span>
+    <span style={{ fontWeight: 600, color: s.c, fontSize: "12.5px" }}>System Operational</span>
     <IconCaretDown className="ico" size={ICON_SM} color="var(--faint)" />
   </div>
               </>
@@ -634,10 +653,10 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
             className="searchbox"
             aria-label="Open global search"
             onClick={() => setShowSearch(true)}
-            style={{ borderRadius: "8px", background: "var(--panel)", display: "flex", alignItems: "center", gap: "10px", padding: "7px 14px", cursor: "pointer", border: "1px solid var(--line)", font: "inherit", textAlign: "left" }}
+            style={{ borderRadius: "7px", background: "var(--bg)", display: "flex", alignItems: "center", gap: "10px", padding: "7px 14px", cursor: "pointer", border: "1px solid var(--line-strong)", font: "inherit", textAlign: "left" }}
           >
-            <IconSearch className="ico" size={ICON_MD} color="var(--accent)" />
-            <span style={{ fontSize: "12.5px" }}>Search cryptographic estate (keys, algorithms, vaults)...</span>
+            <IconSearch className="ico" size={ICON_MD} color="var(--faint)" />
+            <span style={{ fontSize: "12.5px", color: "var(--dim)" }}>Search keys, policies, vaults...</span>
             <span style={{ marginLeft: "auto", fontSize: "10px", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", padding: "1px 6px", fontFamily: "var(--mono)" }}>⌘K</span>
           </button>
 
