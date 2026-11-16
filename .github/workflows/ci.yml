@@ -93,7 +93,7 @@ jobs:
           python scripts/check_junit.py --allow-skips test-results/backend.xml
       - name: Retain backend test report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: backend-${{ strategy.job-index }}
           path: test-results/backend.xml
@@ -152,7 +152,7 @@ jobs:
           python scripts/check_junit.py --allow-skips test-results/api.xml
       - name: Retain API shard manifest and JUnit
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: api-shard-${{ matrix.shard }}
           path: |
@@ -199,7 +199,7 @@ jobs:
           python scripts/check_junit.py test-results/tenant-security.xml
       - name: Retain authenticated tenant contract
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tenant-security-contract
           path: test-results/tenant-security.xml
@@ -250,7 +250,7 @@ jobs:
           python scripts/check_junit.py test-results/performance.xml
       - name: Retain Performance contract
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: performance-contract
           path: test-results/performance.xml
