@@ -1,11 +1,16 @@
 # CryptoScan banking sandbox estate.
 #
-# Stack this on top of the main compose file:
+# IMPORTANT: compose resolves relative bind-mount paths against the FIRST
+# `-f` file's directory, so when this file is stacked after the root
+# docker-compose.yml the paths below must include the `sandbox/` prefix
+# (they did once resolve as plain ./estate/… and fail to mount).
+#
+# Must be run from the repo root, stacked after the main file:
 #   docker compose -f docker-compose.yml -f sandbox/docker-compose.sandbox.yml up -d
 #
-# It joins `cryptoscan-net`, so the CryptoScan scanners can reach every fake
-# bank system by DNS name (internet-banking.bank.sandbox, …), while the estate
-# itself is nothing but throwaway containers.
+# It joins `cryptoscan-net`, so CryptoScan scanners can reach every fake bank
+# system by DNS name (internet-banking.bank.sandbox, …). Everything here is
+# throwaway; never point it at a production network.
 
 services:
 
@@ -14,53 +19,58 @@ services:
     container_name: cryptoscan-sbx-certgen
     entrypoint: ["/bin/sh", "/init/gen-certs.sh"]
     volumes:
-      - ./estate/init/gen-certs.sh:/init/gen-certs.sh:ro
+      - ./sandbox/estate/init/gen-certs.sh:/init/gen-certs.sh:ro
       - sandbox_certs:/certs
     networks: [cryptoscan-net]
+    restart: "no"
 
   internet-banking:
     image: nginx:1.27-alpine
     container_name: cryptoscan-sbx-internet-banking
     depends_on: [certgen]
     volumes:
-      - ./estate/nginx/internet-banking.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./sandbox/estate/nginx/internet-banking.conf:/etc/nginx/conf.d/default.conf:ro
       - sandbox_certs:/certs:ro
     networks:
       cryptoscan-net:
         aliases: [internet-banking.bank.sandbox]
+    restart: unless-stopped
 
   mobile-api:
     image: nginx:1.27-alpine
     container_name: cryptoscan-sbx-mobile-api
     depends_on: [certgen]
     volumes:
-      - ./estate/nginx/mobile-api.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./sandbox/estate/nginx/mobile-api.conf:/etc/nginx/conf.d/default.conf:ro
       - sandbox_certs:/certs:ro
     networks:
       cryptoscan-net:
         aliases: [mobile-api.bank.sandbox]
+    restart: unless-stopped
 
   swift-gateway:
     image: nginx:1.27-alpine
     container_name: cryptoscan-sbx-swift-gateway
     depends_on: [certgen]
     volumes:
-      - ./estate/nginx/swift-gateway.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./sandbox/estate/nginx/swift-gateway.conf:/etc/nginx/conf.d/default.conf:ro
       - sandbox_certs:/certs:ro
     networks:
       cryptoscan-net:
         aliases: [swift-gateway.bank.sandbox]
+    restart: unless-stopped
 
   legacy-branch:
     image: nginx:1.27-alpine
     container_name: cryptoscan-sbx-legacy-branch
     depends_on: [certgen]
     volumes:
-      - ./estate/nginx/legacy-branch.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./sandbox/estate/nginx/legacy-branch.conf:/etc/nginx/conf.d/default.conf:ro
       - sandbox_certs:/certs:ro
     networks:
       cryptoscan-net:
         aliases: [legacy-branch.bank.sandbox]
+    restart: unless-stopped
 
   hsm-sim:
     image: python:3.12-alpine
@@ -68,13 +78,14 @@ services:
     depends_on: [certgen]
     command: ["python", "/app/hsm_sim.py"]
     volumes:
-      - ./estate/hsm_sim.py:/app/hsm_sim.py:ro
+      - ./sandbox/estate/hsm_sim.py:/app/hsm_sim.py:ro
       - sandbox_certs:/certs:ro
     ports:
       - "${SBX_HSM_PORT:-9843}:8443"
     networks:
       cryptoscan-net:
         aliases: [hsm-sim.bank.sandbox]
+    restart: unless-stopped
 
   core-banking-db:
     image: postgres:15-alpine
@@ -84,7 +95,7 @@ services:
       POSTGRES_PASSWORD: sandbox-only-password
       POSTGRES_DB: ledger
     volumes:
-      - ./estate/init/core-banking-db.sql:/docker-entrypoint-initdb.d/01-core.sql:ro
+      - ./sandbox/estate/init/core-banking-db.sql:/docker-entrypoint-initdb.d/01-core.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U core -d ledger"]
       interval: 5s
@@ -93,6 +104,7 @@ services:
     networks:
       cryptoscan-net:
         aliases: [core-banking-db.bank.sandbox]
+    restart: unless-stopped
 
   bank-redis-seed:
     image: redis:7-alpine
@@ -100,8 +112,29 @@ services:
     depends_on: [redis]
     entrypoint: ["/bin/sh", "/init/seed-redis.sh"]
     volumes:
-      - ./estate/init/seed-redis.sh:/init/seed-redis.sh:ro
+      - ./sandbox/estate/init/seed-redis.sh:/init/seed-redis.sh:ro
     networks: [cryptoscan-net]
+    restart: "no"
+
+  # One-off seeder: installs its own Python deps inside the container, so the
+  # host does not need sqlalchemy/psycopg/pydantic installed. Uses a profile
+  # so `up -d` never runs it by accident; invoke via run_sandbox.sh or:
+  #   docker compose -f docker-compose.yml -f sandbox/docker-compose.sandbox.yml \
+  #     run --rm sandbox-seed           # or:  run --rm sandbox-seed python scripts/seed_sandbox_bank.py --reset
+  sandbox-seed:
+    image: python:3.12-slim
+    container_name: cryptoscan-sbx-seed
+    profiles: ["seed"]
+    working_dir: /work
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "pip install -q sqlalchemy 'psycopg[binary]' pydantic && python /work/scripts/seed_sandbox_bank.py ${SEED_ARGS:-}"
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:-cryptoscan_secret}@postgres:5432/${POSTGRES_DB:-cryptoscan}"
+    volumes:
+      - .:/work:ro
+    networks: [cryptoscan-net]
+    restart: "no"
 
 volumes:
   sandbox_certs:

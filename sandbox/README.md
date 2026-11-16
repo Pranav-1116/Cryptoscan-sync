@@ -32,22 +32,24 @@ this stack must never reach a production network.
 ## Run it
 
 ```bash
-# from the repo root
+# from the repo root — one command brings up core + estate and seeds the DB.
+bash sandbox/run_sandbox.sh up        # docker compose stacks the files for you
+bash sandbox/run_sandbox.sh status    # container overview
+```
 
-# 1. start CryptoScan core + the banking estate
-docker compose -f docker-compose.yml -f sandbox/docker-compose.sandbox.yml up -d
+Seeding runs in a throwaway `python:3.12-slim` container (service
+`sandbox-seed`) that installs sqlalchemy/psycopg itself and talks to the
+stack's Postgres over `cryptoscan-net` — **no Python deps needed on the
+host**. Prefer host Python instead? Install the requirements first, then:
 
-# 2. check the estate answered
-docker logs cryptoscan-sbx-certgen            # certificates generated
-curl -k https://$(docker compose port ...)    # optional
-
-# 3. seed the dashboards (points at the stack's Postgres by default)
+```bash
+pip install sqlalchemy 'psycopg[binary]' pydantic
 DATABASE_URL="postgresql://cryptoscan:cryptoscan_secret@127.0.0.1:55432/cryptoscan" \
   python scripts/seed_sandbox_bank.py
-
-# 4. open the console and sign in — CommandCenter / CBOM / certificates /
-#    drift / PQC-readiness are all populated.
 ```
+
+Open the console at http://127.0.0.1:3003 and sign in — CommandCenter / CBOM /
+certificates / drift / PQC-readiness are all populated.
 
 Verify a TLS endpoint by hand (from any container on `cryptoscan-net`):
 
@@ -64,11 +66,17 @@ Then run a network scan from the console targeting e.g.
 ## Tear down and clean up
 
 ```bash
-docker compose -f docker-compose.yml -f sandbox/docker-compose.sandbox.yml down -v
+bash sandbox/run_sandbox.sh down      # removes ONLY the sandbox containers +
+                                      # sandbox_certs volume; the main
+                                      # CryptoScan stack and its data volumes
+                                      # (postgres_data, redis_data, …) are
+                                      # never touched — do NOT run
+                                      # `docker compose … down -v` with both
+                                      # compose files or you will wipe the
+                                      # main database volume too.
 
-# remove the seeded rows only (leaves everything else untouched)
-DATABASE_URL="postgresql://cryptoscan:cryptoscan_secret@127.0.0.1:55432/cryptoscan" \
-  python scripts/seed_sandbox_bank.py --reset
+bash sandbox/run_sandbox.sh reset     # delete only the sandbox-seeded rows,
+                                      # then reseed (runs inside Docker)
 ```
 
 ## Notes
