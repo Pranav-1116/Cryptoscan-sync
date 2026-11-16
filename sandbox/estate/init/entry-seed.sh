@@ -6,6 +6,10 @@
 # inside the seeder).
 set -e
 pip install -q sqlalchemy 'psycopg[binary]' pydantic alembic
+# migrations/env.py imports the ORM (from db.models.base import Base) — the repo
+# layout puts that package under services/database, so the container must have
+# it on PYTHONPATH exactly like the API image does via its .pth file.
+export PYTHONPATH="/work/services/database:/work/shared/shared_models"
 cd /work
 echo '[sandbox-seed] applying migrations (alembic upgrade head)'
 alembic -c services/database/migrations/alembic.ini upgrade head
