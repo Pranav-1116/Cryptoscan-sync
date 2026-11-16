@@ -41,3 +41,11 @@ systemctl list-timers 'cryptoscan-*'
   into a scratch instance and records the verdict in the signed
   production-evidence chain. The only backup that counts is one that has
   restored.
+- **`cryptoscan-evidence-checkpoint.timer`** (weekly, Monday 04:15) runs
+  `scripts/evidence_checkpoint_timer.sh`: verifies last week's signed
+  evidence-chain checkpoint, proves the live chain still CONTAINS what it
+  anchored (`continuity`), then signs this week's checkpoint and promotes
+  it only after it verifies. Requires `EVIDENCE_CHECKPOINT_KEY` in
+  `/etc/cryptoscan/evidence-checkpoint.env` (no default key exists — the
+  unit fails without it, on purpose). Archive the checkpoint files per
+  `docs/runbooks/evidence-checkpoint-archive.md`.

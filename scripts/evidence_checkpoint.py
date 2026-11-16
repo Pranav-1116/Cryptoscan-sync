@@ -13,10 +13,14 @@ this long, with exactly this head, at checkpoint time.
     python3 scripts/evidence_checkpoint.py verify --file checkpoint.json
     python3 scripts/evidence_checkpoint.py match --file checkpoint.json \
         --stream network --tenant t1     # has the chain moved since?
+    python3 scripts/evidence_checkpoint.py continuity --file checkpoint.json \
+        --stream network --tenant t1     # does the chain still CONTAIN it?
 
-Exit codes: 0 the operation succeeded (signature valid / head matches);
-1 the checkpoint is invalid or the chain has drifted; 2 the operation
-could not run (missing key, unknown stream) — fail loud, never fake.
+Exit codes: 0 the operation succeeded (signature valid / head matches /
+chain continues the checkpoint); 1 the checkpoint is invalid, the chain
+has drifted, or history at the checkpoint was rewritten; 2 the operation
+could not run (missing key, unknown stream) or continuity cannot be
+proven (anchored entry truncated out of window) — fail loud, never fake.
 """
 from __future__ import annotations
 
@@ -48,7 +52,7 @@ def _load(stream: str):
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("mode", choices=["sign", "verify", "match"])
+    ap.add_argument("mode", choices=["sign", "verify", "match", "continuity"])
     ap.add_argument("--stream", choices=sorted(STREAMS))
     ap.add_argument("--tenant", default=None)
     ap.add_argument("--file", default=None, help="checkpoint JSON path")
@@ -93,15 +97,21 @@ def main() -> int:
         return 0 if result.get("valid") else 1
 
     if not args.stream:
-        ap.error("match needs --stream")
+        ap.error(f"{args.mode} needs --stream")
     module, _spec = _load(args.stream)
     from db.connection.session import SessionLocal
 
     with SessionLocal() as db:
         chain = module.read_chain(db, tenant_id=args.tenant)
-    result = ec.match_head(chain, doc)
+    if args.mode == "match":
+        result = ec.match_head(chain, doc)
+        print(json.dumps(result, indent=2))
+        return 0 if result.get("status") == "MATCH" else 1
+
+    result = ec.checkpoint_continuity(chain, doc)
     print(json.dumps(result, indent=2))
-    return 0 if result.get("status") == "MATCH" else 1
+    return {"CONTINUES": 0, "REWRITTEN": 1, "OUT_OF_WINDOW": 2}.get(
+        result.get("status"), 1)
 
 
 if __name__ == "__main__":

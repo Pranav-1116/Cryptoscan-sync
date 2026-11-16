@@ -1,0 +1,14 @@
+[Unit]
+Description=Weekly CryptoScan evidence-chain checkpoint signing + continuity
+
+[Timer]
+# Weekly, Monday 04:15 — after the nightly backup/audit-verify window. The
+# daily audit-verify unit watches chain integrity continuously; the signed
+# checkpoint is the OFF-BOX anchor layer (head + length + declared
+# truncation bound under an operator key, archived by the bank).
+OnCalendar=Mon *-*-* 04:15:00
+Persistent=true
+Unit=cryptoscan-evidence-checkpoint.service
+
+[Install]
+WantedBy=timers.target

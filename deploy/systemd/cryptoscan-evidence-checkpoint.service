@@ -1,0 +1,18 @@
+[Unit]
+Description=CryptoScan evidence-chain checkpoint (a rewritten chain must surface as a FAILED unit, not at the next audit)
+After=docker.service
+
+[Service]
+Type=oneshot
+# Run from the repo checkout (the same layout the backup unit assumes).
+WorkingDirectory=/opt/cryptoscan
+# Operator-held key material: EVIDENCE_CHECKPOINT_KEY (>=16 characters).
+# There is NO default key anywhere in the build — without this file the
+# unit fails, which is exactly what should happen.
+EnvironmentFile=/etc/cryptoscan/evidence-checkpoint.env
+# Exit 0 = previous checkpoint held and a fresh one signed; non-zero =
+# forged archive (verify), REWRITTEN history (continuity 1), or continuity
+# that cannot be proven (continuity 2 — the runbook decides retention vs
+# incident). Previous checkpoints are preserved on every failure.
+ExecStart=/bin/sh scripts/evidence_checkpoint_timer.sh
+Nice=10

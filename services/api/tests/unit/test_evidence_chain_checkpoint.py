@@ -86,3 +86,56 @@ class TestThereIsNoDefaultKey:
         with pytest.raises(RuntimeError, match="refusing to sign"):
             ec.checkpoint(_chain("a" * 64), spec=SPEC, tenant_id="t1",
                           signer_id="ops-1")
+
+
+class TestContinuityAcrossGrowth:
+    """The weekly question: does the live chain still CONTAIN the anchor?"""
+
+    def test_legitimate_growth_continues_the_checkpoint(self):
+        doc = ec.checkpoint(_chain("a" * 64, "b" * 64), spec=SPEC,
+                            tenant_id="t1", signer_id="ops-1", key=KEY)
+        grown = _chain("a" * 64, "b" * 64, "c" * 64)
+        result = ec.checkpoint_continuity(grown, doc)
+        assert result["status"] == "CONTINUES"
+        assert result["head_hash"] == "b" * 64
+
+    def test_a_rewritten_anchored_entry_is_named(self):
+        doc = ec.checkpoint(_chain("a" * 64, "b" * 64), spec=SPEC,
+                            tenant_id="t1", signer_id="ops-1", key=KEY)
+        rewritten = _chain("a" * 64, "x" * 64)
+        result = ec.checkpoint_continuity(rewritten, doc)
+        assert result["status"] == "REWRITTEN"
+        assert result["live_hash"] == "x" * 64
+        assert "changed" in result["note"]
+
+    def test_history_below_the_anchor_renumbered_is_named(self):
+        doc = ec.checkpoint(_chain("a" * 64, "b" * 64), spec=SPEC,
+                            tenant_id="t1", signer_id="ops-1", key=KEY)
+        short = _chain("a" * 64)  # seq 2 gone, window NOT declared truncated
+        result = ec.checkpoint_continuity(short, doc)
+        assert result["status"] == "REWRITTEN"
+        assert "renumbered" in result["note"] or "rewritten" in result["note"]
+
+    def test_declared_truncation_past_the_anchor_is_honest_uncertainty(self):
+        doc = ec.checkpoint(_chain("a" * 64, "b" * 64), spec=SPEC,
+                            tenant_id="t1", signer_id="ops-1", key=KEY)
+        window = {"entries": [{"seq": 7, "record_hash": "c" * 64,
+                               "prev_hash": "b" * 64, "recorded_at": "x"}],
+                  "truncated_before_seq": 5}
+        result = ec.checkpoint_continuity(window, doc)
+        assert result["status"] == "OUT_OF_WINDOW"
+        assert result["truncated_before_seq"] == 5
+        assert "runbook" in result["note"]
+
+    def test_an_empty_checkpoint_trivially_continues(self):
+        empty = {"entries": []}
+        doc = ec.checkpoint(empty, spec=SPEC, tenant_id="t1",
+                            signer_id="ops-1", key=KEY)
+        assert doc["last_seq"] == 0
+        assert ec.checkpoint_continuity(
+            _chain("a" * 64), doc)["status"] == "CONTINUES"
+        assert ec.checkpoint_continuity(empty, doc)["status"] == "CONTINUES"
+
+    def test_a_garbage_checkpoint_is_treated_as_rewrite_not_crash(self):
+        result = ec.checkpoint_continuity(_chain("a" * 64), {"last_seq": "oops"})
+        assert result["status"] == "REWRITTEN"

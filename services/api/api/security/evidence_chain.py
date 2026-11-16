@@ -452,3 +452,63 @@ def match_head(chain: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any]:
                 "note": "the chain has changed since the checkpoint — verify "
                         "the change is legitimate growth before trusting it"}
     return {"status": "MATCH", "head_hash": head}
+
+
+def checkpoint_continuity(chain: dict[str, Any], doc: dict[str, Any]) -> dict[str, Any]:
+    """The growth-direction companion to ``match_head``: is this live chain a
+    legitimate continuation of the checkpointed history?
+
+    MATCH answers "has anything moved since?" — on a busy chain the weekly
+    answer is always yes. Continuity asks the question that matters across
+    growth: **does the chain still contain what the checkpoint anchored?**
+    The entry at the checkpointed ``last_seq`` must still hash to the
+    checkpointed ``head_hash`` — a changed or missing anchored entry is
+    named ``REWRITTEN``. This is the anchor check, not full content truth:
+    per-record chain_hash verification lives on the verify surfaces
+    (``ec.verify`` with records loaded, ``/findings/{id}/verify``); this
+    proves the anchored point still holds.
+
+    ``OUT_OF_WINDOW`` is honest uncertainty, not a pass: declared
+    truncation has dropped the anchored entry, so this checkpoint can no
+    longer prove anything — an operator and the archive runbook decide
+    whether that is retention-as-designed or an incident. A checkpoint of
+    an empty chain (``last_seq == 0``) trivially continues.
+    """
+    entries = list(chain.get("entries") or [])
+    try:
+        last_seq = int(doc.get("last_seq") or 0)
+    except (TypeError, ValueError):
+        return {"status": "REWRITTEN", "note": "checkpoint last_seq is not an integer"}
+    if last_seq == 0:
+        return {"status": "CONTINUES", "last_seq": 0,
+                "note": "the checkpoint anchored an empty chain — any growth continues it"}
+    by_seq: dict[Any, dict[str, Any]] = {}
+    for entry in entries:
+        try:
+            by_seq[int(entry.get("seq"))] = entry
+        except (TypeError, ValueError):
+            continue
+    entry = by_seq.get(last_seq)
+    if entry is not None:
+        if str(entry.get("record_hash")) == str(doc.get("head_hash")):
+            return {"status": "CONTINUES", "last_seq": last_seq,
+                    "head_hash": doc.get("head_hash"),
+                    "note": "the anchored entry still hashes to the checkpointed head"}
+        return {"status": "REWRITTEN", "last_seq": last_seq,
+                "checkpoint_head": doc.get("head_hash"),
+                "live_hash": entry.get("record_hash"),
+                "note": "the entry the checkpoint anchored no longer hashes to "
+                        "the anchored head — history at or before the checkpoint changed"}
+    try:
+        truncated_before = int(chain.get("truncated_before_seq") or 0)
+    except (TypeError, ValueError):
+        truncated_before = 0
+    if truncated_before > last_seq:
+        return {"status": "OUT_OF_WINDOW", "last_seq": last_seq,
+                "truncated_before_seq": truncated_before,
+                "note": "declared truncation dropped the anchored entry — this "
+                        "checkpoint can no longer prove continuity; the archive "
+                        "runbook decides whether that is retention or incident"}
+    return {"status": "REWRITTEN", "last_seq": last_seq,
+            "note": "the checkpointed entry is missing from a window that should "
+                    "still hold it — sequence history was renumbered or rewritten"}
