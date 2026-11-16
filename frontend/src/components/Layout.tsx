@@ -407,9 +407,22 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
       <a href="#main-content" className="skip-link">Skip to main content</a>
       <motion.aside className="sidebar" layout="position" aria-label="Primary navigation">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "4px 8px 16px" }}>
-          <Link to="/" className="logo" style={{ display: "flex", alignItems: "center", gap: 11, fontWeight: 700, fontSize: 17, letterSpacing: "0.02em", textDecoration: "none" }}>
-            <BrandMark size={30} />
-            <span className="logo-text" style={{ color: "var(--text)" }}>ZELNX<span style={{ color: "var(--faint)", fontWeight: 500, fontSize: 10, marginLeft: 6, letterSpacing: "0.14em" }}>SEC</span></span>
+          <Link to="/" className="logo" style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700, fontSize: 16, letterSpacing: "-0.01em", textDecoration: "none" }}>
+            <BrandMark size={28} />
+            <span className="logo-text" style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+              <span style={{ color: "var(--text)", fontWeight: 700, fontSize: 15, letterSpacing: "0.02em" }}>CRYPTOSCAN</span>
+              <span style={{
+                background: "rgba(167, 139, 250, 0.12)",
+                border: "1px solid rgba(167, 139, 250, 0.3)",
+                color: "var(--accent)",
+                fontSize: "9px",
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                padding: "1px 5px",
+                borderRadius: "4px",
+                fontFamily: "var(--mono)"
+              }}>BANK CORE</span>
+            </span>
           </Link>
           <button
             onClick={toggleSidebar}
@@ -454,13 +467,13 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
         {/* Action button inside sidebar: Start Scan */}
         {!isCollapsed && (
           <RequireRole anyOf={["superadmin", "ciso", "security_analyst", "developer", "scanner"]}>
-            <div style={{ padding: "0 8px 12px" }}>
+            <div style={{ padding: "0 8px 14px" }}>
               <Link
                 to="/scanners"
-                className="btn primary"
-                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", width: "100%", padding: "8px 12px", textDecoration: "none", borderRadius: "var(--r)", fontSize: "12.5px" }}
+                className="btn primary start-scan-btn"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", width: "100%", padding: "9px 12px", textDecoration: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 600, letterSpacing: "0.02em" }}
               >
-                <span>+</span> Start Scan
+                <Scan size={16} weight="bold" /> Start Scan
               </Link>
             </div>
           </RequireRole>
@@ -569,12 +582,12 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
               {ticker.backend === null
                 ? "Connecting to 24/7 Engine..."
                 : ticker.backend
-                  ? "24/7 Real-Time Engine Active"
+                  ? "24/7 Enclave Engine Active"
                   : "Connecting to Daemon..."}
             </span>
           </div>
           <div className="footer-text" style={{ marginTop: 10, padding: "0 4px", fontFamily: "var(--mono)", fontSize: 10, color: "var(--faint)", lineHeight: 1.6 }}>
-            ZELNX v1.0 · Continuous Crypto Observability
+            CryptoScan Enterprise · Zero Key Exposure
           </div>
         </div>
       </motion.aside>
@@ -594,11 +607,11 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
               <>
                 <div
     onClick={() => setShowHealthModal(true)}
-    style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", background: "var(--panel)", padding: "4px 10px", borderRadius: "var(--r)", border: "1px solid var(--line)" }}
+    style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", background: "var(--panel)", padding: "5px 12px", borderRadius: "8px", border: "1px solid var(--line)", boxShadow: "0 1px 3px rgba(0,0,0,0.2)" }}
     title="Click to view 24/7 Engine Health & Status"
   >
     <span className="live-dot" style={{ background: s.c, animation: s.pulse ? undefined : "none" }} />
-    <span style={{ fontWeight: 600, color: s.c, fontSize: "12px" }}>ZELNX Operational</span>
+    <span style={{ fontWeight: 600, color: s.c, fontSize: "12px" }}>CryptoScan Enclave Active</span>
     <IconCaretDown className="ico" size={ICON_SM} color="var(--faint)" />
   </div>
               </>
@@ -621,10 +634,10 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
             className="searchbox"
             aria-label="Open global search"
             onClick={() => setShowSearch(true)}
-            style={{ borderRadius: "var(--r)", background: "var(--panel)", display: "flex", alignItems: "center", gap: "10px", padding: "6px 14px", cursor: "pointer", border: "1px solid var(--line)", font: "inherit", textAlign: "left" }}
+            style={{ borderRadius: "8px", background: "var(--panel)", display: "flex", alignItems: "center", gap: "10px", padding: "7px 14px", cursor: "pointer", border: "1px solid var(--line)", font: "inherit", textAlign: "left" }}
           >
             <IconSearch className="ico" size={ICON_MD} color="var(--accent)" />
-            <span style={{ fontSize: "12.5px" }}>Search the catalog...</span>
+            <span style={{ fontSize: "12.5px" }}>Search cryptographic estate (keys, algorithms, vaults)...</span>
             <span style={{ marginLeft: "auto", fontSize: "10px", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", padding: "1px 6px", fontFamily: "var(--mono)" }}>⌘K</span>
           </button>
 
