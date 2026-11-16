@@ -16,6 +16,12 @@ class EvidenceRecord(BaseModel, TenantScoped):
     __table_args__ = (
         Index("ix_evidence_scan_chain", "scan_id", "chain_position"),
         Index("ix_evidence_scan_status", "scan_id", "compliance_status"),
+        # 0162: the two EXPLAIN-backed indexes from the 50k-asset scale
+        # receipt — tenant-scoped per-algorithm aggregate, and the findings
+        # lookup page (tenant + hardcoded-key filter, newest first).
+        Index("ix_evidence_tenant_algorithm", "tenant_id", "algorithm"),
+        Index("ix_evidence_tenant_hardcoded_created",
+              "tenant_id", "is_hardcoded_key", "created_at"),
         # Declared here because the migration chain creates them: a create_all
         # database (SQLite, dev) otherwise accepts rows a bank's PostgreSQL
         # rejects — a negative chain position, an unknown confidence, a status
