@@ -51,20 +51,30 @@ def _make_app():
 
 
 def _seed(factory, *, scan_id="scan-p", evidence_id="ev-p", tamper: bool = False,
-          authorize: bool = False):
-    factory.add(Scan(
-        id=scan_id, status="COMPLETED",
+          authorize: bool = False, stamp: bool = True, authority_revision: int = 1,
+          stamped_revision: int | None = None):
+    authority = None
+    if authorize:
+        authority = CollectorAuthority(
+            tenant_id="t1", plane="collection", entry="https://bank.example/repo.git",
+            permission="READ", target_kind="GIT_REPOSITORY",
+            approved_by="security-lead", approved_at=NOW - timedelta(days=1),
+            expires_at=NOW + timedelta(days=89), revision=authority_revision)
+        factory.add(authority)
+        factory.flush()
+    scan = Scan(
+        id=scan_id, status="COMPLETED", tenant_id="t1",
         scanner_id="static-java-scanner-v0.1", scanner_version="1.4.2",
         target_type="GIT_REPOSITORY", target_location="https://bank.example/repo.git",
         target_commit="abc123", operator="svc-collector",
         scan_start=NOW, scan_end=NOW + timedelta(minutes=2),
-        manifest_hash="m" * 64))
-    if authorize:
-        factory.add(CollectorAuthority(
-            tenant_id="t1", plane="collection", entry="https://bank.example/repo.git",
-            permission="READ", target_kind="GIT_REPOSITORY",
-            approved_by="security-lead", approved_at=NOW - timedelta(days=1),
-            expires_at=NOW + timedelta(days=89)))
+        manifest_hash="m" * 64)
+    if authorize and stamp:
+        # what the loaders do at collection time (collector_stamp.py)
+        scan.collector_authority_id = authority.id
+        scan.collector_authority_revision = (
+            authority.revision if stamped_revision is None else stamped_revision)
+    factory.add(scan)
     payload = {"algorithm": "RSA", "key_size": 2048, "finding": "RSA-2048 configuration"}
     content = ContentHasher.compute_hash(payload)
     chain = ChainHasher.compute_chain_hash(
@@ -147,9 +157,103 @@ async def test_an_exact_match_authority_is_reported_with_its_window():
         r = await ac.get("/api/v1/findings/ev-a/provenance")
     auth = r.json()["source_and_method"]["collection_authorization"]
     assert auth["status"] == "AUTHORIZED"
+    assert auth["basis"] == "collection_recorded"
+    assert auth["authority_revision"] == 1
     assert auth["permission"] == "READ"
     assert auth["approved_by"] == "security-lead"
     assert auth["expires_at"].startswith("2027")  # the window is visible
+    assert auth["revoked_at"] is None
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_an_unstamped_collection_is_not_blessed_by_a_later_authority():
+    """The truth-side gap: a live authority must not read as AUTHORIZED
+    for a collection that never named it — that is an inference, and the
+    bundle says so."""
+    app, factory, engine = _make_app()
+    _seed(factory, evidence_id="ev-b", authorize=True, stamp=False)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.get("/api/v1/findings/ev-b/provenance")
+    auth = r.json()["source_and_method"]["collection_authorization"]
+    assert auth["status"] == "NOT_RECORDED"
+    assert auth["basis"] == "collection_did_not_name_authority"
+    candidate = auth["candidate_authority"]
+    assert candidate["authority_revision"] == 1
+    assert "NOT proof" in candidate["note"]
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_a_revocation_after_collection_is_reported_not_re_judged():
+    app, factory, engine = _make_app()
+    _seed(factory, evidence_id="ev-c", authorize=True)
+    # the authority is revoked AFTER the collection ran
+    authority = factory.query(CollectorAuthority).one()
+    authority.revoked_at = NOW + timedelta(days=3)
+    authority.revoked_by = "security-lead"
+    factory.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.get("/api/v1/findings/ev-c/provenance")
+    auth = r.json()["source_and_method"]["collection_authorization"]
+    assert auth["status"] == "AUTHORIZED"  # it WAS authorized at collection
+    assert auth["revoked_at"].startswith("2026-10-19")  # the later revocation is visible
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_a_revision_mismatch_is_named_not_smoothed_over():
+    app, factory, engine = _make_app()
+    _seed(factory, evidence_id="ev-d", authorize=True,
+          authority_revision=2, stamped_revision=1)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.get("/api/v1/findings/ev-d/provenance")
+    auth = r.json()["source_and_method"]["collection_authorization"]
+    assert auth["status"] == "NOT_RECORDED"
+    assert auth["basis"] == "revision_mismatch"
+    engine.dispose()
+
+
+def test_the_loader_stamps_the_authority_and_never_overwrites():
+    from db.loader.collector_stamp import (
+        current_authority,
+        stamp_collection_authority,
+    )
+
+    app, factory, engine = _make_app()
+    _seed_factory = factory
+    authority = CollectorAuthority(
+        tenant_id="t1", plane="collection", entry="repo-x",
+        permission="READ", target_kind="GIT_REPOSITORY",
+        approved_by="security-lead", approved_at=NOW - timedelta(days=1),
+        expires_at=NOW + timedelta(days=89), revision=3)
+    _seed_factory.add(authority)
+    scan = Scan(
+        id="scan-s", status="RUNNING", tenant_id="t1",
+        target_type="GIT_REPOSITORY", target_location="repo-x",
+        scan_start=NOW)
+    _seed_factory.add(scan)
+    _seed_factory.flush()
+
+    assert stamp_collection_authority(_seed_factory, scan) is not None
+    assert scan.collector_authority_id == authority.id
+    assert scan.collector_authority_revision == 3
+
+    # a historical stamp is never overwritten — the stamp itself is the
+    # guard (authorities are unique per (tenant, plane), so there is no
+    # second approval to re-stamp from anyway)
+    assert stamp_collection_authority(_seed_factory, scan) is None
+    assert scan.collector_authority_revision == 3
+
+    # no covering authority honestly leaves the scan unstamped
+    bare = Scan(id="scan-t", status="RUNNING", tenant_id="t1",
+                target_type="GIT_REPOSITORY", target_location="no-authority-here",
+                scan_start=NOW)
+    _seed_factory.add(bare)
+    assert stamp_collection_authority(_seed_factory, bare) is None
+    assert bare.collector_authority_id is None
+    assert current_authority(_seed_factory, tenant_id="t1",
+                             entry="no-authority-here") is None
     engine.dispose()
 
 

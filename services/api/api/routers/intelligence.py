@@ -437,6 +437,11 @@ def import_scan_transfer(
         scan.scan_start = utcnow()  # honest fallback: verification passed but no start recorded
     db.add(scan)
     db.flush()
+    # Name the collector authority IN FORCE at import time — the
+    # provenance surface validates the stamp, never guesses later.
+    from db.loader.collector_stamp import stamp_collection_authority
+
+    stamp_collection_authority(db, scan)
     for row in records_for_import(body):
         db.add(EvidenceRecord(scan_id=scan_id, **row))
     db.flush()

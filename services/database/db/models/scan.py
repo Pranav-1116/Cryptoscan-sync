@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import CheckConstraint, DateTime, JSON, String, Text
+from sqlalchemy import CheckConstraint, DateTime, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
@@ -52,6 +52,15 @@ class Scan(BaseModel, TenantScoped):
     statistics: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     manifest_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    #: The collector authority this collection ran under, named AT
+    #: COLLECTION TIME (migration 0164): id + approved revision. Nullable
+    #: because legacy rows honestly carry none — the provenance surface
+    #: reports NOT_RECORDED for those instead of guessing from whatever
+    #: authority happens to exist later.
+    collector_authority_id: Mapped[Optional[str]] = mapped_column(
+        String(36), nullable=True)
+    collector_authority_revision: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True)
 
     evidence_records = relationship(
         "EvidenceRecord",

@@ -102,6 +102,11 @@ class BulkInserter:
         )
         self.session.add(scan)
         self.session.flush()
+        # Name the collector authority IN FORCE for this target now — the
+        # provenance surface validates the stamp, never guesses later.
+        from db.loader.collector_stamp import stamp_collection_authority
+
+        stamp_collection_authority(self.session, scan)
         return scan
 
     def _insert_evidence(self, scan: Scan, records: list[dict[str, Any]]) -> int:

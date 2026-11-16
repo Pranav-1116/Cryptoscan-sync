@@ -181,35 +181,74 @@ def finding_provenance(
     provenance_meta = row.provenance or {}
     scanner_ids = list(provenance_meta.get("scanner_ids") or [scan.scanner_id])
 
-    # Collection authorization: exact-match only. An unrevoked authority
-    # whose entry is EXACTLY this scan's target — no fuzzy matching, no
-    # implied consent.
+    # Collection authorization: the collection NAMES its authority
+    # (scans.collector_authority_id + revision, stamped at collection
+    # time). The stamp is validated, never guessed from whatever
+    # authority happens to exist later: an authority approved after the
+    # scan cannot bless a collection it never covered.
     from db.models.collector_authority import CollectorAuthority
 
-    authority = db.execute(
-        select(CollectorAuthority)
-        .where(CollectorAuthority.tenant_id == row.tenant_id,
-               CollectorAuthority.entry == scan.target_location,
-               CollectorAuthority.revoked_at.is_(None))
-        .order_by(CollectorAuthority.approved_at.desc())
-    ).scalars().first()
-    if authority is not None:
+    authority = None
+    if getattr(scan, "collector_authority_id", None):
+        authority = db.get(CollectorAuthority, scan.collector_authority_id)
+    if authority is not None and \
+            int(authority.revision or 0) == int(scan.collector_authority_revision or 0):
         authorization = {
             "status": "AUTHORIZED",
+            "basis": "collection_recorded",
+            "authority_id": authority.id,
+            "authority_revision": int(authority.revision or 0),
             "permission": authority.permission,
             "target_kind": authority.target_kind,
             "approved_by": authority.approved_by,
             "approved_at": authority.approved_at.isoformat(),
             "expires_at": authority.expires_at.isoformat(),
-            "note": "an unrevoked authority covered this exact target; "
-                    "expiry is reported, not re-judged here",
+            "revoked_at": authority.revoked_at.isoformat() if authority.revoked_at else None,
+            "note": "the collection recorded this authority at collection "
+                    "time; expiry and any later revocation are reported, "
+                    "not re-judged here",
         }
-    else:
+    elif authority is not None:
         authorization = {
             "status": "NOT_RECORDED",
-            "note": "no unrevoked collector authority matches this target "
-                    "exactly — truth assessment must account for this",
+            "basis": "revision_mismatch",
+            "note": "the collection named an authority whose recorded "
+                    "revision no longer matches the approved revision — "
+                    "truth assessment must account for this",
         }
+    elif getattr(scan, "collector_authority_id", None):
+        authorization = {
+            "status": "NOT_RECORDED",
+            "basis": "recorded_authority_missing",
+            "note": "the collection named an authority that no longer "
+                    "exists — truth assessment must account for this",
+        }
+    else:
+        # Unstamped (legacy rows, or no covering authority at collection
+        # time). A live authority for this target is shown as an
+        # INFERENCE ONLY — coverage at collection time cannot be proven.
+        candidate = db.execute(
+            select(CollectorAuthority)
+            .where(CollectorAuthority.tenant_id == row.tenant_id,
+                   CollectorAuthority.entry == scan.target_location,
+                   CollectorAuthority.revoked_at.is_(None))
+            .order_by(CollectorAuthority.approved_at.desc())
+        ).scalars().first()
+        authorization = {
+            "status": "NOT_RECORDED",
+            "basis": "collection_did_not_name_authority",
+            "note": "the collection did not record which authority it ran "
+                    "under — coverage at collection time cannot be proven; "
+                    "truth assessment must account for this",
+        }
+        if candidate is not None:
+            authorization["candidate_authority"] = {
+                "authority_id": candidate.id,
+                "authority_revision": int(candidate.revision or 0),
+                "approved_at": candidate.approved_at.isoformat(),
+                "note": "an unrevoked authority matches this target today — "
+                        "an inference, NOT proof it covered the collection",
+            }
 
     finding, redacted = project_finding(row.finding_data)
     verified = _chain_link_verified(row)

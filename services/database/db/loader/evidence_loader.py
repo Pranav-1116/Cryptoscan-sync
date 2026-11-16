@@ -226,6 +226,12 @@ class EvidenceLoader:
             )
             self.session.add(scan)
             self.session.flush()
+            # Name the collector authority IN FORCE for this target now —
+            # the provenance surface validates the stamp, never guesses
+            # from whatever authority exists later.
+            from db.loader.collector_stamp import stamp_collection_authority
+
+            stamp_collection_authority(self.session, scan)
 
         rows: list[EvidenceRecord] = []
         for rec in evidence_records:
