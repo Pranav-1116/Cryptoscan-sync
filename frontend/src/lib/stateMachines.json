@@ -4229,6 +4229,39 @@
         "services/database/db/models/binary_scan_job.py",
         "services/binary_intelligence/binary_intelligence/durable_queue.py"
       ]
+    },
+    {
+      "id": "security_state.outcome",
+      "label": "Secret resolution outcome",
+      "domain": "platform",
+      "kind": "verdict",
+      "description": "Outcome of one secret-reference resolution probe (vault rotation-staleness watch).",
+      "fields": [
+        "security_state.VaultResolutionRecord.outcome"
+      ],
+      "vocabulary": "observed",
+      "vocabulary_source": "api.security.vault.ResolutionRecord.outcome (OK | FAILED)",
+      "states": [
+        {
+          "id": "OK",
+          "class": "done",
+          "meaning": "The reference resolved; the staleness age restarts here."
+        },
+        {
+          "id": "FAILED",
+          "class": "failure",
+          "meaning": "The reference did not resolve; recorded, never coerced to OK."
+        }
+      ],
+      "transitions": [],
+      "invariants": [
+        "A FAILED resolution never refreshes the staleness age \u2014 last_ok counts OK only.",
+        "The watch reports the outcome verbatim; a broken durable side loses bookkeeping, never behavior."
+      ],
+      "sources": [
+        "services/database/db/models/security_state.py",
+        "services/api/api/security/vault.py"
+      ]
     }
   ]
 }

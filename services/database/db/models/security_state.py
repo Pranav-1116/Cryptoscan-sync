@@ -21,6 +21,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 from db.models.base import BaseModel
 
 
+# Auth probing is keyed by (user, source) across the whole install — a
+# tenant-scoped row here would split one attacker's probes into
+# per-tenant silos the monitor cannot correlate.
+# platform-scope: platform security-bookkeeping plane (auth probe correlation)
 class SecurityAuthEvent(BaseModel):
     """One failed authentication, durable across restarts.
 
@@ -40,6 +44,10 @@ class SecurityAuthEvent(BaseModel):
     occurred_at: Mapped[float] = mapped_column(Float, nullable=False)
 
 
+# Vault references are platform-wide settings secrets (database, signing,
+# collector creds); the staleness watch answers "what has THIS PROCESS
+# been running on" — per-install, not per-tenant estate.
+# platform-scope: platform credential plane (rotation staleness watch)
 class VaultResolutionRecord(BaseModel):
     """One secret-resolution observation for the rotation-staleness watch.
 

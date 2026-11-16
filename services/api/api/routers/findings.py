@@ -40,6 +40,7 @@ from api.security.evidence_projection import project_finding
 from db.models.evidence_record import EvidenceRecord
 from db.models.scan import Scan
 from db.repositories.evidence_repository import EvidenceRepository
+from db.tenancy import filtered_get
 
 router = APIRouter(tags=["findings"])
 logger = logging.getLogger(__name__)
@@ -171,10 +172,10 @@ def finding_provenance(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    row = db.get(EvidenceRecord, evidence_id)
+    row = filtered_get(db, EvidenceRecord, evidence_id)
     if row is None:
         raise HTTPException(status_code=404, detail="no such finding")
-    scan = db.get(Scan, row.scan_id)
+    scan = filtered_get(db, Scan, row.scan_id)
     if scan is None:
         raise HTTPException(status_code=404, detail="finding's scan is gone")
 
@@ -190,7 +191,7 @@ def finding_provenance(
 
     authority = None
     if getattr(scan, "collector_authority_id", None):
-        authority = db.get(CollectorAuthority, scan.collector_authority_id)
+        authority = filtered_get(db, CollectorAuthority, scan.collector_authority_id)
     if authority is not None and \
             int(authority.revision or 0) == int(scan.collector_authority_revision or 0):
         authorization = {
