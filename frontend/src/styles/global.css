@@ -1219,36 +1219,34 @@ html[dir="rtl"] .lang-switch button { font-family: var(--sans); }
 .fd-sec.verify { border-color: var(--line-strong); }
 
 /* ─────────────────────────────────────────────────────────────────────
-   Enterprise console refresh — warm graphite / chartreuse signal system
-   These tokens deliberately avoid the generic blue SaaS treatment. Motion
-   owns spatial transitions; CSS owns only durable states and responsive form.
+   Quantum Indigo & Electric Violet theme — Palette 5 (PQC & Enterprise)
+   Midnight indigo surfaces · electric amethyst accents · WCAG AA verified
    ───────────────────────────────────────────────────────────────────── */
 :root {
-  --bg: #11110f;
-  --bg-2: #171713;
-  --panel: #1d1d18;
-  --panel-2: #25251f;
-  --line: #34352c;
-  --line-strong: #555744;
-  --text: #f1f0e8;
-  --dim: #b1b2a5;
-  /* §5 (round 66) AA fix: #777a6c measured 3.51:1 on --panel-2 — the small
-     caption text it carries needs 4.5:1. #98988a holds 5.27:1 on --panel-2
-     and 6.48:1 on --bg, still clearly below --dim in the hierarchy. */
-  --faint: #98988a;
-  --accent: #d8ff4f;
-  --cyan: #d8ff4f;
-  --blue: #bde75a;
-  --violet: #d2a7f5;
-  --green: #74e2a0;
-  --amber: #f2c36b;
-  --orange: #e9916f;
-  --red: #f18c77;
-  --slate: #96988b;
+  --bg: #0b0d17;
+  --bg-2: #101322;
+  --panel: #14182b;
+  --panel-2: #1a1f36;
+  --line: #252b48;
+  --line-strong: #3b446e;
+  --text: #f0f3fa;
+  --dim: #a4b0cb;
+  --faint: #8896ba;
+  --accent: #a78bfa;
+  --cyan: #a78bfa;
+  --blue: #a78bfa;
+  --violet: #c4b5fd;
+  --magenta: #c4b5fd;
+  --on-accent: #0b0d17;
+  --green: #34d399;
+  --amber: #fbbf24;
+  --orange: #fb923c;
+  --red: #f87171;
+  --slate: #8896ba;
   --display: "Space Grotesk", "Avenir Next", "Trebuchet MS", sans-serif;
-  --sans: "Manrope", "Avenir Next", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  --r: 8px;
+  --sans: "Inter", "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --r: 6px;
 }
 
 :root[data-theme="light"] {
@@ -1362,8 +1360,8 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
   text-align: start;
   transition: color .16s ease, background-color .16s ease;
 }
-.sidebar button.nav-group:hover { color: var(--text); background: rgba(216,255,79,.08); }
-.sidebar button.nav-group.active { color: var(--text); background: rgba(216,255,79,.12); }
+.sidebar button.nav-group:hover { color: var(--text); background: rgba(167,139,250,.08); }
+.sidebar button.nav-group.active { color: var(--text); background: rgba(167,139,250,.14); }
 .sidebar button.nav-group.active .nav-icon { color: var(--accent); }
 .sidebar button.nav-group .nav-text { flex: 1; }
 .sidebar .nav-count {
@@ -1405,10 +1403,10 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
   gap: 11px;
   transition: color .16s ease, background-color .16s ease;
 }
-.sidebar a.nav:hover { color: var(--text); background: rgba(216,255,79,.08); }
+.sidebar a.nav:hover { color: var(--text); background: rgba(167,139,250,.08); }
 .sidebar a.nav.active {
   color: var(--text);
-  background: rgba(216,255,79,.12);
+  background: rgba(167,139,250,.14);
   box-shadow: inset 3px 0 0 var(--accent);
   border-left: 0;
 }
@@ -1418,7 +1416,7 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
 .livehead {
   margin: -28px clamp(-64px, -4vw, -20px) 28px;
   padding: 12px clamp(20px, 4vw, 64px);
-  background: rgba(23,23,19,.92);
+  background: rgba(16,19,34,.92);
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(16px);
 }
@@ -1518,7 +1516,7 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 14px;
-  box-shadow: 12px 12px 0 rgba(216,255,79,.035);
+  box-shadow: 12px 12px 0 rgba(167,139,250,.04);
 }
 .pipeline-strip-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .pipeline-strip h2 { margin: 7px 0 0; font-size: clamp(20px, 3vw, 30px); letter-spacing: -.04em; }
