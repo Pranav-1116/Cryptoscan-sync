@@ -36,6 +36,31 @@ def _prune(bucket: deque[float], now: float) -> None:
         bucket.popleft()
 
 
+def hydrate(rows: Any) -> int:
+    """Seed the window from durable stamps (the restart path).
+
+    ``rows`` yields ``(user, source, occurred_at)`` — the same bounded
+    insertion rules apply (MAX_KEYS / MAX_PER_KEY), and every bucket is
+    re-pruned against the live clock afterwards: stale suspicion is never
+    claimed, but a probe that continued across a deploy keeps its history.
+    Returns the number of stamps restored.
+    """
+    ordered = sorted(rows, key=lambda row: float(row[2]))
+    restored = 0
+    with _LOCK:
+        for user, source, stamp in ordered:
+            key = (user or "unknown", source or "unknown")
+            if key not in _FAILURES and len(_FAILURES) >= MAX_KEYS:
+                oldest = min(_FAILURES, key=lambda k: _FAILURES[k][0] if _FAILURES[k] else 0)
+                _FAILURES.pop(oldest, None)
+            bucket = _FAILURES.setdefault(key, deque(maxlen=MAX_PER_KEY))
+            bucket.append(float(stamp))
+            restored += 1
+        for bucket in _FAILURES.values():
+            _prune(bucket, time.time())
+    return restored
+
+
 def record_failure(user: str, source: str, *, now: float | None = None) -> dict[str, Any]:
     """Record one failed authentication. Returns the key's current state
     (window count + whether it is now suspicious)."""

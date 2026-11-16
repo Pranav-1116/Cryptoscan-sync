@@ -57,11 +57,51 @@ class ResolutionLog:
 
     def add(self, provider: str, reference: str, outcome: str, *,
             kind: str = "probe") -> None:
-        self.records.append(ResolutionRecord(
+        record = ResolutionRecord(
             provider=provider, reference=reference, outcome=outcome,
             resolved_at=datetime.now(timezone.utc).isoformat(),
             kind=kind,
-        ))
+        )
+        self.records.append(record)
+        self._persist(record)
+
+    def add_record(self, record: "ResolutionRecord") -> None:
+        """Append an already-stamped observation (startup resolutions carry
+        the moment they were resolved, not the moment they are logged)."""
+        self.records.append(record)
+        self._persist(record)
+
+    @staticmethod
+    def _persist(record: "ResolutionRecord") -> None:
+        """Best-effort durable copy — bookkeeping must never break a probe."""
+        try:
+            from api.security import security_state_store
+
+            security_state_store.persist_resolution(
+                record.provider, record.reference, record.outcome,
+                kind=record.kind, resolved_at=record.resolved_at)
+        except Exception:  # noqa: BLE001 - the in-memory log is the fast path
+            pass
+
+    def hydrate(self, rows: Any) -> int:
+        """Rebuild from durable observations (the restart path). Restores
+        exactly the records the process would have accumulated — ``held``
+        ages survive a deploy instead of restarting at zero. Returns the
+        count restored."""
+        restored = 0
+        for row in rows:
+            try:
+                self.records.append(ResolutionRecord(
+                    provider=str(row.get("provider") or ""),
+                    reference=str(row.get("reference") or ""),
+                    resolved_at=str(row.get("resolved_at") or ""),
+                    outcome=str(row.get("outcome") or ""),
+                    kind=str(row.get("kind") or "probe"),
+                ))
+                restored += 1
+            except Exception:  # noqa: BLE001 - one bad row must not lose the rest
+                continue
+        return restored
 
     def report(self) -> list[dict[str, Any]]:
         return [
@@ -302,7 +342,7 @@ def resolve_settings_secrets(*, providers: tuple[SecretProvider, ...] = DEFAULT_
     # keep the process-wide verification history current (staleness watch).
     # Startup resolutions are what the process RUNS ON — kind "held".
     for record in log.records:
-        RESOLUTION_LOG.records.append(ResolutionRecord(
+        RESOLUTION_LOG.add_record(ResolutionRecord(
             provider=record.provider, reference=record.reference,
             resolved_at=record.resolved_at, outcome=record.outcome,
             kind="held"))

@@ -9,10 +9,18 @@ observations only.
 """
 from __future__ import annotations
 
+import pytest
+
 from api.security import auth_monitor
 
 
-def setup_function():
+@pytest.fixture(autouse=True)
+def _fresh_window():
+    """The window is process state — isolate every test (class methods
+    included: ``setup_function`` does not run for those) from buckets left
+    by other suites that exercise real logins."""
+    auth_monitor.reset()
+    yield
     auth_monitor.reset()
 
 

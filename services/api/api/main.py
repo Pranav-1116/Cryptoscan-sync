@@ -220,6 +220,20 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
                 if entry.strip()
             ]
             install_egress_guard(allowlist)
+        # Durable security bookkeeping (migration 0163): rebuild the
+        # suspicious-access window and the vault staleness watch from their
+        # database side BEFORE the probes below add this boot's own records.
+        # Best-effort: a database that is down starts with empty monitors,
+        # never with a boot failure.
+        try:
+            from api.security.security_state_store import hydrate_all
+
+            restored = hydrate_all()
+            if restored.get("auth_events") or restored.get("resolution_records"):
+                logger.info("security_state_hydrated", extra=restored)
+        except Exception as hydrate_exc:  # noqa: BLE001 - bookkeeping only
+            logger.warning("security_state_hydrate_failed",
+                           extra={"error_type": type(hydrate_exc).__name__})
         # External secret references (advanced/75 P0#1, round 31): resolve
         # vault:// file: env: references in credential settings at startup.
         # Fail-loud: a half-resolved credential set must not boot.

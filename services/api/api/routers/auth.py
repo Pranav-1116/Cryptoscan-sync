@@ -151,6 +151,11 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
             from api.security.auth_monitor import record_failure
 
             record_failure(body.username, client)
+            # durable copy: the window survives a restart (best-effort —
+            # a database that is down loses bookkeeping, never the refusal)
+            from api.security import security_state_store
+
+            security_state_store.persist_auth_failure(body.username, client)
         except Exception as monitor_exc:  # noqa: BLE001 — never block a refusal
             logger.warning("auth_monitor_record_failed",
                            extra={"error_type": type(monitor_exc).__name__})

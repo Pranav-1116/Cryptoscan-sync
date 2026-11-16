@@ -57,6 +57,34 @@
       "reviewed_by": "security-engineering",
       "reviewed_at": "2026-10-16",
       "reason": "The auth-monitor probe inside _auth_lines: the window is process state and must never take /metrics down with it. The failure is logged (auth_monitor_metrics_unavailable) and the degraded result is explicit — the gauges are absent, never zero-by-default. (Line-keyed; re-key if the file shifts.)"
+    },
+    {
+      "location": "services/api/api/security/vault.py:83",
+      "owner": "iam",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-16",
+      "reason": "ResolutionLog._persist's durable copy is best-effort: persist_resolution logs its own database failures (resolution_persist_failed); this outer handler covers the store-module-unavailable edge so the in-memory log stays the authoritative fast path. The degraded result is an unpersisted observation, never a fabricated one."
+    },
+    {
+      "location": "services/api/api/security/vault.py:102",
+      "owner": "iam",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-16",
+      "reason": "ResolutionLog.hydrate skips an unparseable durable row instead of aborting the rebuild: one bad row must not lose the rest of the restart history. Rows that do parse restore exactly; no record is fabricated for the skipped one."
+    },
+    {
+      "location": "services/graph_engine/graph_engine/core/dependency_stores.py:154",
+      "owner": "observability",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-16",
+      "reason": "The projection-watermark write inside sync_dependency_stores: bookkeeping must never fail the projection sync itself. The failure is logged (projection_watermark_write_failed) and the sync report names it explicitly (search.watermark.error) — the degraded result is an absent lag gauge downstream, never a fabricated freshness."
+    },
+    {
+      "location": "services/graph_engine/graph_engine/search/dependency_search.py:286",
+      "owner": "observability",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-16",
+      "reason": "read_watermark returns None when the watermark document is missing or the store cannot answer: never-synced is the honest state and the lag gauge is then absent, never zero. The caller (_projection_lines) logs its own degradation path."
     }
   ]
 }

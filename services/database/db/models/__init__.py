@@ -308,3 +308,11 @@ from db.models.content_object import ContentObject, ContentObjectBody  # noqa: E
 from db.models.evidence_content_link import EvidenceContentLink  # noqa: E402,F401
 from db.models.snapshot_delta import SnapshotDelta  # noqa: E402,F401
 from db.models.storage_policy import StoragePolicy, StorageQuota, RestoreTestRecord  # noqa: E402,F401
+
+# --- Security bookkeeping durability (migration 0163): the suspicious-access
+# window and vault staleness watch survive restarts instead of living only
+# in process memory.
+from db.models.security_state import (  # noqa: E402,F401
+    SecurityAuthEvent,
+    VaultResolutionRecord,
+)
