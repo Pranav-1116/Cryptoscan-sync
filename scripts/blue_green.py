@@ -18,8 +18,11 @@ orchestrates two slots behind one entry point:
 
 Every step works against an injected slot driver, so the orchestration is
 testable without Docker. The CLI's compose driver writes an upstream
-pointer file (the nginx template reads it) and reloads nginx — the same
-mechanism a bank's F5/HAProxy pair uses, one adapter away.
+pointer file (the nginx template reads it) and reloads nginx; the
+shipped ``HAProxyDriver`` (``--driver haproxy``) is the reference second
+adapter — slot = server in one backend, flip = the Runtime API over the
+admin socket. A bank's F5 pair is the same five methods against
+iControl REST.
 
     python3 scripts/blue_green.py prepare --slot green
     python3 scripts/blue_green.py activate --slot green
@@ -174,6 +177,129 @@ class PointerFileDriver:
         return text.removeprefix("api-") if text else None
 
 
+class HAProxyDriver:
+    """HAProxy driver — the reference second adapter the runbook promises.
+
+    Slot = a server in one HAProxy backend (``api-blue`` / ``api-green``),
+    flip = the Runtime API over the admin socket: ``start`` puts a slot
+    into the pool at weight 0 (health-checked, zero traffic — the green
+    slot runs alongside without serving), ``activate`` gives it the
+    weight and drains the other (connection drain, not a cut), ``stop``
+    removes it from rotation. ``active`` is read back from the pool
+    state, never assumed: a split pool (both slots holding weight)
+    raises — that is a state this contract forbids, not a guess to make.
+
+    ``show stat`` CSV is the source for status and weight; an
+    unreachable socket raises, never fakes a healthy answer. Tests
+    inject ``connect``; production uses the admin unix socket.
+    """
+
+    def __init__(self, *, backend: str = "cryptoscan-api",
+                 blue_server: str = "api-blue", green_server: str = "api-green",
+                 socket_path: str = "/var/run/haproxy/admin.sock",
+                 connect=None, weight: int = 100):
+        self.backend = backend
+        self.servers = {"blue": blue_server, "green": green_server}
+        self.socket_path = socket_path
+        self.weight = int(weight)
+        self._connect = connect or self._unix_connect
+
+    def _unix_connect(self):
+        import socket as socket_mod
+
+        sock = socket_mod.socket(socket_mod.AF_UNIX, socket_mod.SOCK_STREAM)
+        sock.settimeout(30)
+        sock.connect(self.socket_path)
+        return sock
+
+    def _send(self, command: str) -> str:
+        try:
+            sock = self._connect()
+        except Exception as exc:  # noqa: BLE001 - re-raised with context below
+            raise RuntimeError(
+                f"haproxy runtime API unreachable at {self.socket_path}: {exc}"
+            ) from exc
+        try:
+            sock.sendall((command.strip() + "\n").encode("utf-8"))
+            chunks = []
+            while True:
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            return b"".join(chunks).decode("utf-8", errors="replace")
+        finally:
+            try:
+                sock.close()
+            except Exception:  # noqa: BLE001 - closing must not mask the result
+                pass
+
+    def _slot(self, slot: str) -> str:
+        if slot not in self.servers:
+            raise ValueError("slot is 'blue' or 'green'")
+        return f"{self.backend}/{self.servers[slot]}"
+
+    def _pool_state(self) -> dict[str, dict[str, str]]:
+        """server-name -> {status, weight} from ``show stat`` — read back,
+        never assumed."""
+        text = self._send("show stat")
+        rows: dict[str, dict[str, str]] = {}
+        header: list[str] | None = None
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            if line.startswith("#"):
+                header = [col.strip() for col in line.lstrip("# ").split(",")]
+                continue
+            if header is None:
+                continue
+            values = line.split(",")
+            record = dict(zip(header, values))
+            if record.get("pxname") == self.backend:
+                rows[record.get("svname") or ""] = record
+        return rows
+
+    def start(self, slot: str) -> None:
+        # into the pool at weight 0: health-checked, zero traffic
+        self._send(f"enable server {self._slot(slot)}")
+        self._send(f"set server {self._slot(slot)} weight 0")
+
+    def stop(self, slot: str) -> None:
+        self._send(f"disable server {self._slot(slot)}")
+
+    def health(self, slot: str) -> bool:
+        state = self._pool_state().get(self.servers.get(slot, ""), {})
+        return str(state.get("status") or "").upper() == "UP"
+
+    def activate(self, slot: str) -> None:
+        target = self._slot(slot)
+        other = self._slot("blue" if slot == "green" else "green")
+        # flip: give the target the weight, drain the other (existing
+        # connections finish; new traffic goes to the target)
+        self._send(f"set server {target} state ready")
+        self._send(f"set server {target} weight {self.weight}")
+        self._send(f"set server {other} weight 0")
+        self._send(f"set server {other} state drain")
+
+    def active(self) -> str | None:
+        rows = self._pool_state()
+        holding = []
+        for slot, name in self.servers.items():
+            state = rows.get(name) or {}
+            try:
+                weight = float(state.get("weight") or 0)
+            except (TypeError, ValueError):
+                weight = 0.0
+            status = str(state.get("status") or "").upper()
+            if weight > 0 and status not in ("MAINT", "DOWN", "DRAIN"):
+                holding.append(slot)
+        if len(holding) > 1:
+            raise RuntimeError(
+                "both slots hold traffic — a split pool violates the "
+                "single-active contract; fix the pool before flipping")
+        return holding[0] if holding else None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("step", choices=["prepare", "activate", "verify", "rollback", "status"])
@@ -181,10 +307,21 @@ def main() -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--project", default="cryptoscan")
     ap.add_argument("--pointer", default=str(ROOT / "deploy" / "upstream.active"))
+    ap.add_argument("--driver", choices=["pointer", "haproxy"], default="pointer",
+                    help="deployment substrate: the compose/nginx pointer or "
+                         "an HAProxy pool via its runtime API socket")
+    ap.add_argument("--haproxy-backend", default="cryptoscan-api")
+    ap.add_argument("--haproxy-socket",
+                    default="/var/run/haproxy/admin.sock")
     args = ap.parse_args()
 
-    orchestrator = BlueGreen(PointerFileDriver(project=args.project,
-                                               pointer=Path(args.pointer)))
+    if args.driver == "haproxy":
+        driver = HAProxyDriver(backend=args.haproxy_backend,
+                               socket_path=args.haproxy_socket)
+    else:
+        driver = PointerFileDriver(project=args.project,
+                                   pointer=Path(args.pointer))
+    orchestrator = BlueGreen(driver)
     if args.step == "status":
         report = orchestrator.status()
     else:

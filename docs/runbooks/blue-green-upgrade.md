@@ -36,9 +36,16 @@ window before the window opens.
 The orchestrator (`scripts/blue_green.py:BlueGreen`) is substrate-agnostic:
 the included `PointerFileDriver` targets the compose stack (slot =
 `api-blue`/`api-green` compose services, flip = pointer file + nginx
-reload). A bank running F5/HAProxy writes one adapter with the same five
-methods (`start/stop/health/activate/active`) — the state machine does not
-change.
+reload). The repo also ships `HAProxyDriver` (`--driver haproxy`) — the
+reference second adapter: slot = a server in one HAProxy backend, flip =
+the Runtime API over the admin socket (`enable`/`disable server`,
+`set server … weight/state`, `show stat` read-back). A green slot is
+started at weight 0 (health-checked, zero traffic); `activate` gives it
+the weight and drains the other — connection drain, not a cut. `active`
+is read back from the pool: a split pool (both slots holding weight)
+raises rather than guessing. An F5 pair is the same five methods
+(`start/stop/health/activate/active`) against iControl REST — the state
+machine does not change.
 
 ## Rolling vs blue-green
 
