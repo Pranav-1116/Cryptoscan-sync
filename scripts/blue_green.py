@@ -231,7 +231,7 @@ class HAProxyDriver:
         finally:
             try:
                 sock.close()
-            except Exception:  # noqa: BLE001 - closing must not mask the result
+            except OSError:  # closing must not mask the result
                 pass
 
     def _slot(self, slot: str) -> str:
