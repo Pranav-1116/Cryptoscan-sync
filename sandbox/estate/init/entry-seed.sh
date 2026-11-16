@@ -5,7 +5,12 @@
 # with the real migrations. SQLite dev databases are exempt (create_all path
 # inside the seeder).
 set -e
-pip install -q sqlalchemy 'psycopg[binary]' pydantic alembic
+# Two Postgres drivers, deliberately:
+#  - psycopg[binary] (v3) for the seeder's own SQLAlchemy sessions
+#  - psycopg2-binary      for Alembic: migrations/env.py normalizes every URL
+#    to postgresql+psycopg2://, so a psycopg3-only image crashes at connect
+#    time ("No module named 'psycopg2'") just after env.py loads.
+pip install -q sqlalchemy 'psycopg[binary]' psycopg2-binary pydantic alembic
 # migrations/env.py imports the ORM (from db.models.base import Base) — the repo
 # layout puts that package under services/database, so the container must have
 # it on PYTHONPATH exactly like the API image does via its .pth file.
