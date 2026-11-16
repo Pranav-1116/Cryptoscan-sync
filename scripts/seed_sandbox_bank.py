@@ -147,8 +147,26 @@ SCAN_STORY.append({"system_key": "ibank", "location": "git://meridianbank.intern
                    "operator": "p.suresh", "started": NOW, "failed": None})  # QUEUED
 
 
-def seed(db_url: str, reset: bool) -> None:
+def _engine_with_retry(db_url: str, attempts: int = 20, delay_s: float = 3.0):
+    """Wait out a fresh stack: Postgres healthy != API migrations finished."""
+    import time
+    from sqlalchemy.exc import SQLAlchemyError
     engine = create_engine(db_url)
+    for attempt in range(1, attempts + 1):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+                return engine
+        except SQLAlchemyError as exc:
+            if attempt == attempts:
+                raise
+            print(f"database not ready ({exc.__class__.__name__}); retry {attempt}/{attempts}", flush=True)
+            time.sleep(delay_s)
+    return engine
+
+
+def seed(db_url: str, reset: bool) -> None:
+    engine = _engine_with_retry(db_url)
     with Session(engine) as db:
         if reset:
             # remove exactly what this script created, youngest dependency first

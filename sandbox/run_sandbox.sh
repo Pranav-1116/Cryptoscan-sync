@@ -28,10 +28,13 @@ wait_healthy() {
 
 case "${1:-up}" in
   up)
-    "${COMPOSE[@]}" up -d postgres redis api
-    wait_healthy cryptoscan-postgres 45
-    wait_healthy cryptoscan-api 60
-    "${COMPOSE[@]}" up -d ${SBX_SERVICES%% sandbox-seed}   # estate only, not the seed profile
+    # One up for everything (profiled sandbox-seed stays out), then gate the
+    # seed on Postgres AND the API being healthy: on a fresh stack the API
+    # creates/migrates the schema, and seeding before that finishes fails
+    # with "relation does not exist".
+    "${COMPOSE[@]}" up -d
+    wait_healthy cryptoscan-postgres 60
+    wait_healthy cryptoscan-api 90
     "${COMPOSE[@]}" run --rm sandbox-seed
     echo
     echo "sandbox ready. Estate DNS (inside cryptoscan-net):"
