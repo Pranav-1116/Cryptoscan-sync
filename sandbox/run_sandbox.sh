@@ -28,14 +28,23 @@ wait_healthy() {
 
 case "${1:-up}" in
   up)
-    # One up for everything (profiled sandbox-seed stays out), then gate the
-    # seed on Postgres AND the API being healthy: on a fresh stack the API
-    # creates/migrates the schema, and seeding before that finishes fails
-    # with "relation does not exist".
-    "${COMPOSE[@]}" up -d
+    # Wave 1 — data plane only. The seed talks straight to Postgres and even
+    # creates the schema itself, so a sick API can never block the sandbox.
+    "${COMPOSE[@]}" up -d postgres redis
     wait_healthy cryptoscan-postgres 60
-    wait_healthy cryptoscan-api 90
+    "${COMPOSE[@]}" up -d ${SBX_SERVICES%% sandbox-seed}   # fake estate, no API dependency
     "${COMPOSE[@]}" run --rm sandbox-seed
+
+    # Wave 2 — app plane. api/worker/frontend need each other healthy; if the
+    # API is mid-migration (fresh volumes) or broken, this warns but never
+    # aborts the sandbox bring-up.
+    "${COMPOSE[@]}" up -d api
+    if wait_healthy cryptoscan-api 90 && [ "$(docker inspect -f '{{.State.Health.Status}}' cryptoscan-api 2>/dev/null)" = "healthy" ]; then
+      "${COMPOSE[@]}" up -d worker estate-daemon monitor frontend nginx 2>/dev/null || true
+    else
+      echo "WARNING: cryptoscan-api is not healthy — console will 502. Inspect with:" >&2
+      echo "  docker logs cryptoscan-api --tail 80" >&2
+    fi
     echo
     echo "sandbox ready. Estate DNS (inside cryptoscan-net):"
     echo "  internet-banking.bank.sandbox  mobile-api.bank.sandbox  swift-gateway.bank.sandbox"

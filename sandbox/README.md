@@ -32,10 +32,19 @@ this stack must never reach a production network.
 ## Run it
 
 ```bash
-# from the repo root — one command brings up core + estate and seeds the DB.
+# from the repo root — one command brings up the core stack + the estate and
+# seeds the DB.
 bash sandbox/run_sandbox.sh up        # docker compose stacks the files for you
 bash sandbox/run_sandbox.sh status    # container overview
 ```
+
+Startup is split into two waves: the **data plane** (Postgres, Redis, the fake
+estate, and the seeder) runs first. The seeder creates the schema itself if
+the database is empty, so a slow or broken API can no longer block the
+sandbox. The **app plane** (API, worker, frontend, nginx) comes second; if
+`cryptoscan-api` is unhealthy you'll see a warning with the exact log command,
+and the console will 502 until the API is fixed — but dashboards data is
+already seeded and the estate is up.
 
 Seeding runs in a throwaway `python:3.12-slim` container (service
 `sandbox-seed`) that installs sqlalchemy/psycopg itself and talks to the

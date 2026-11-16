@@ -165,8 +165,29 @@ def _engine_with_retry(db_url: str, attempts: int = 20, delay_s: float = 3.0):
     return engine
 
 
+def _ensure_schema(engine) -> None:
+    """Bootstrap the schema if empty (fresh local stacks).
+
+    Production Postgres is migrated by alembic; this is only a safety net for
+    sandboxes where the API never came up. create_all() is a no-op when the
+    tables already exist, so it is safe to call unconditionally.
+    """
+    from db.connection.session import Base
+    import db.models.scan  # noqa: F401 - register models on the metadata
+    import db.models.evidence_record  # noqa: F401
+    import db.models.crypto_asset  # noqa: F401
+    import db.models.certificate  # noqa: F401
+    import db.models.certificate_usage  # noqa: F401
+    import db.models.drift_event  # noqa: F401
+    import db.models.baseline  # noqa: F401
+    import db.models.system  # noqa: F401
+    Base.metadata.create_all(engine)
+    print("schema ensured (existing tables untouched)")
+
+
 def seed(db_url: str, reset: bool) -> None:
     engine = _engine_with_retry(db_url)
+    _ensure_schema(engine)
     with Session(engine) as db:
         if reset:
             # remove exactly what this script created, youngest dependency first
