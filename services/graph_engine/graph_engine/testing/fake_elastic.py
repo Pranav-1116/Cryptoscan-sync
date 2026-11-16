@@ -1,8 +1,9 @@
 """In-memory Elasticsearch test double over the query shapes the adapter sends.
 
 It does not parse the query DSL and cannot qualify a real Elasticsearch
-deployment. It understands exactly the bool/filter/multi_match shapes
-``ElasticDependencySearch`` builds, and enforces the store's tenant-isolation
+deployment. It understands exactly the bool/filter/multi_match/must_not
+shapes ``ElasticDependencySearch`` builds, and enforces the store's
+tenant-isolation
 contract from the other side: every query body must carry a ``term`` filter
 on ``tenant_id``. A query without one raises — isolation is enforced by the
 query layer, never assumed from index layout.
@@ -86,6 +87,12 @@ class FakeElasticClient:
         for key, value in terms.items():
             if str(doc.get(key)) != value:
                 return False
+        bool_ = (body.get("query") or {}).get("bool") or {}
+        for clause in bool_.get("must_not") or []:
+            term = clause.get("term") or {}
+            for key, value in term.items():
+                if str(doc.get(key)) == str(value):
+                    return False
         text = _multi_match_text(body)
         if text and not any(
             text in str(doc.get(field) or "").lower()
@@ -96,6 +103,11 @@ class FakeElasticClient:
         if wanted is not None and wanted not in str(doc.get("object_id") or "").lower():
             return False
         return True
+
+    def get(self, index: str, id: str) -> dict[str, Any]:
+        if id not in self.docs:
+            raise KeyError(id)
+        return {"_id": id, "_source": self.docs[id]}
 
     def search(self, index: str, body: dict[str, Any]) -> dict[str, Any]:
         self.bodies.append(body)

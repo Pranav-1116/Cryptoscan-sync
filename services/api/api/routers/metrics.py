@@ -386,6 +386,17 @@ def _projection_lines() -> list[str]:
                 "cryptoscan_graph_projection_documents", docs or 0,
                 "Documents held by the search projection",
                 'projection="elasticsearch"'))
+            # Projection lag: seconds since the newest authoritative
+            # observation the projection has synced. Absent — never a
+            # fabricated zero — when nothing has ever been projected.
+            watermark = search.read_watermark(sync_tenant()) if search is not None else None
+            epoch = (watermark or {}).get("source_as_of_epoch")
+            if epoch is not None:
+                out.append(_gauge(
+                    "cryptoscan_graph_projection_lag_seconds",
+                    max(0.0, float(time.time()) - float(epoch)),
+                    "Seconds since the projection's newest authoritative observation",
+                    'projection="elasticsearch"'))
         except Exception as docs_exc:  # noqa: BLE001 — one store must not silence the rest
             logger.warning("projection_doc_count_unavailable",
                            extra={"error_type": type(docs_exc).__name__})

@@ -85,7 +85,7 @@ def sync_dependency_stores(
 
     Stores that are unconfigured or unreachable are reported, never faked.
     """
-    from shared_models.relationship_lifecycle import clock
+    from shared_models.relationship_lifecycle import clock, utc
 
     from graph_engine.core.engine import GraphEngine
     from graph_engine.history.edge_history import edge_key
@@ -141,6 +141,38 @@ def sync_dependency_stores(
                 search_store.index_edge(tenant, edge)
                 counts["edges"] += 1
             report["search"] = counts
+            # Watermark: when this projection last synced and the newest
+            # authoritative observation the payload carried — the pair a
+            # lag gauge computes now - source_as_of from. Bookkeeping must
+            # never fail the sync itself.
+            newest_epoch: float | None = None
+            newest_stamp: Any = None
+            for stamp in observed.values():
+                try:
+                    epoch = stamp if isinstance(stamp, (int, float)) \
+                        else utc(stamp).timestamp()
+                except Exception:  # noqa: BLE001 - unparseable stamp, skip
+                    continue
+                if newest_epoch is None or epoch > newest_epoch:
+                    newest_epoch = epoch
+                    newest_stamp = stamp
+            source_as_of = newest_stamp if newest_epoch is not None else when
+            try:
+                search_store.index_watermark(
+                    tenant,
+                    source_as_of=source_as_of,
+                    synced_at=when,
+                    counts=counts,
+                )
+                report["search"]["watermark"] = {
+                    "source_as_of": str(source_as_of),
+                    "synced_at": str(when),
+                }
+            except Exception as wm_exc:  # noqa: BLE001 - bookkeeping only
+                logger.debug("projection_watermark_write_failed", exc_info=True)
+                report["search"]["watermark"] = {
+                    "error": type(wm_exc).__name__,
+                }
         except Exception as exc:
             logger.debug("dependency_search_sync_failed", exc_info=True)
             report["search"] = {**counts, "error": str(exc)}

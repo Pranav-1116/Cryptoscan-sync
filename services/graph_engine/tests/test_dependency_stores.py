@@ -49,12 +49,21 @@ def test_sync_projects_edges_into_history_and_documents_into_search():
     # Two edges in the canonical universe: the declared CALLS plus the
     # scanner-derived USES edge the engine draws from the asset row.
     assert report["history"]["written"] == 2
-    assert report["search"] == {"systems": 2, "assets": 1, "edges": 2}
+    search_report = dict(report["search"])
+    watermark = search_report.pop("watermark")
+    assert search_report == {"systems": 2, "assets": 1, "edges": 2}
+    # The watermark records the sync pair a lag gauge reads; the payload's
+    # edge rows carry no stamps, so source_as_of falls back to the sync time.
+    assert "source_as_of" in watermark and "synced_at" in watermark
     rows = history.history("t1", "payments-api", "ledger-db", "CALLS")
     assert rows[0]["event_type"] == "OBSERVED" and rows[0]["lifecycle_state"] == "ACTIVE"
     uses = history.history("t1", "ledger-db", "asset:asset-1", "USES")
     assert uses and uses[0]["event_type"] == "OBSERVED"
     assert search.count("t1") == 5
+    # Bookkeeping docs never inflate the count or surface in search.
+    assert search.read_watermark("t1")["kind"] == "watermark"
+    assert all(row.get("kind") != "watermark"
+               for row in search.search("t1", "")["hits"])
 
 
 def test_projection_is_one_way_and_never_mutates_the_authoritative_payload():
@@ -114,7 +123,9 @@ def test_rebuild_from_the_authoritative_payload_is_idempotent():
     payload = _payload()
     when = datetime(2026, 10, 16, tzinfo=timezone.utc)
     sync_dependency_stores(payload, history=history, search=search, tenant_id="t1", now=when)
-    assert search.purge_tenant("t1") == 5
+    # Purge clears the projection completely: 5 content docs + the sync
+    # watermark. A rebuild then rewrites both.
+    assert search.purge_tenant("t1") == 6
     history.purge_edge("t1", "payments-api", "ledger-db", "CALLS")
     history.purge_edge("t1", "ledger-db", "asset:asset-1", "USES")
     assert search.count("t1") == 0 and history.history("t1", "payments-api", "ledger-db", "CALLS") == []

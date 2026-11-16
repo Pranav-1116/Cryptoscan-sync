@@ -17,6 +17,7 @@ from typing import Any
 
 from shared_models.dependency_semantics import edge_relation, system_id
 from shared_models.relationship_lifecycle import FIELDS as LIFECYCLE_FIELDS
+from shared_models.relationship_lifecycle import utc
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,9 @@ class ElasticDependencySearch:
             "query": {
                 "bool": {
                     "filter": filters,
+                    # Bookkeeping docs (sync watermark) are read through
+                    # read_watermark, never surfaced as graph content.
+                    "must_not": [{"term": {"kind": "watermark"}}],
                 }
             },
             "size": max(1, min(int(limit), 100)),
@@ -235,8 +239,62 @@ class ElasticDependencySearch:
         response = self.client.delete_by_query(index=self.index, body=body)
         return int(response.get("deleted") or 0)
 
+    def index_watermark(
+        self,
+        tenant_id: str,
+        *,
+        source_as_of: Any,
+        synced_at: Any,
+        counts: dict[str, Any] | None = None,
+    ) -> str:
+        """Record when this projection last synced and what it last saw.
+
+        The watermark is bookkeeping about the projection itself — a
+        ``kind="watermark"`` doc the count and search surfaces exclude, so
+        lag measurement never inflates the document gauges or leaks into
+        search results. ``source_as_of`` is the newest authoritative
+        observation stamp carried by the synced payload; ``lag_seconds``
+        consumers compute ``now - source_as_of`` from it.
+        """
+        tenant = _require_tenant(tenant_id)
+
+        def _epoch(value: Any) -> float:
+            if isinstance(value, (int, float)):
+                return float(value)
+            parsed = utc(value)
+            return parsed.timestamp()
+
+        doc = {
+            "tenant_id": tenant,
+            "kind": "watermark",
+            "identity": "sync",
+            "name": "projection sync watermark",
+            "source_as_of": str(source_as_of),
+            "source_as_of_epoch": _epoch(source_as_of),
+            "synced_at": str(synced_at),
+            "synced_at_epoch": _epoch(synced_at),
+            "counts": dict(counts or {}),
+        }
+        return self._index_doc(tenant, "watermark", "sync", doc)
+
+    def read_watermark(self, tenant_id: str) -> dict[str, Any] | None:
+        """The tenant's sync watermark, or None when never synced. Never faked."""
+        tenant = _require_tenant(tenant_id)
+        try:
+            response = self.client.get(
+                index=self.index, id=doc_id(tenant, "watermark", "sync"))
+        except Exception:
+            return None
+        if not response:
+            return None
+        source = response.get("_source")
+        return dict(source) if source else None
+
     def count(self, tenant_id: str) -> int:
         tenant = _require_tenant(tenant_id)
-        body = {"query": {"bool": {"filter": [_tenant_filter(tenant)]}}}
+        body = {"query": {"bool": {
+            "filter": [_tenant_filter(tenant)],
+            "must_not": [{"term": {"kind": "watermark"}}],
+        }}}
         response = self.client.count(index=self.index, body=body)
         return int(response.get("count") or 0)
