@@ -55,3 +55,24 @@ All of them come from the bank's PKI. CryptoScan never generates them.
   stays set through every transition — the temporary relaxation
   (`ssl_verify_client optional`) is only for the initial client rollout
   and is itself a change to close.
+
+## Rotation drill (rehearse before the incident)
+
+`scripts/mtls_rotation_drill.py` executes this runbook's ordering
+against a real TLS stack that demands client certificates — throwaway
+PKI in a temp directory, real handshakes, one report:
+
+```bash
+python3 scripts/mtls_rotation_drill.py --out drill-report.json
+```
+
+It proves, live: the gate **demands** certificates (a bare client gets
+`TLSV13_ALERT_CERTIFICATE_REQUIRED`), a re-issued server cert locks
+nobody out, client re-issue keeps old certs working, the CA **overlap**
+keeps both generations connected, retiring the old root rejects old-CA
+clients as intended — and it OBSERVES the failure mode the ordering
+prevents (swap the CA first → every client locked out) so the drill can
+detect it. The drill runs in the test suite on every certify
+(`test_mtls_rotation_drill.py`); run it manually before any real
+rotation window. It never touches production material — the bank's PKI
+issues those ("CryptoScan never generates them").
