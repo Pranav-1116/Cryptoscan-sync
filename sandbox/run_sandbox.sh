@@ -73,7 +73,18 @@ case "${1:-up}" in
     docker compose -f docker-compose.yml restart api 2>/dev/null || true
     ;;
   estate) "${COMPOSE[@]}" up -d ${SBX_SERVICES%% sandbox-seed} ;;
-  down)
+  console)
+    # Bring up the web console: api must be healthy first (frontend depends on
+    # it), then frontend (:3003) and the nginx gateway (:8088).
+    "${COMPOSE[@]}" up -d api
+    for _ in $(seq 1 45); do
+      [ "$(docker inspect -f '{{.State.Health.Status}}' cryptoscan-api 2>/dev/null)" = "healthy" ] && break
+      sleep 2
+    done
+    "${COMPOSE[@]}" up -d frontend nginx
+    echo "console:  http://127.0.0.1:${FRONTEND_PORT:-3003}"
+    echo "gateway:  http://127.0.0.1:${NGINX_PORT:-8088}"
+    ;;down)
     # Sandbox-only teardown: stop/remove just the fake-estate containers plus
     # the sandbox_certs volume. Never interacts with the main stack's
     # containers or named volumes.
@@ -83,5 +94,5 @@ case "${1:-up}" in
     echo "sandbox estate removed; main stack untouched"
     ;;
   status) "${COMPOSE[@]}" ps ;;
-  *) echo "usage: $0 [up|seed|reset|migrate|db-rebuild|estate|down|status]" >&2; exit 2 ;;
+  *) echo "usage: $0 [up|seed|reset|migrate|db-rebuild|estate|console|down|status]" >&2; exit 2 ;;
 esac
