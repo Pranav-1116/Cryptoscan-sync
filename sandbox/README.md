@@ -17,14 +17,19 @@ IPs below. DNS names on `cryptoscan-net` keep working too.)
 
 | IP            | DNS name                       | Port        | Poses as                                    |
 | ------------- | ------------------------------ | ----------- | ------------------------------------------- |
-| `10.210.0.10` | `internet-banking.bank.sandbox`| 443 (TLS)   | Internet banking portal — TLS 1.2/1.3, RSA-2048 |
-| `10.210.0.11` | `mobile-api.bank.sandbox`      | 443 (TLS)   | Mobile app backend — TLS 1.2/1.3, RSA-2048  |
-| `10.210.0.12` | `swift-gateway.bank.sandbox`   | 443 (TLS)   | SWIFT/ISO 20022 hub — RSA-3072              |
-| `10.210.0.13` | `legacy-branch.bank.sandbox`   | 443 (TLS)   | **Weak on purpose**: TLS 1.0/1.1 + RSA-1024, expiring soon |
-| `10.210.0.14` | `hsm-sim.bank.sandbox`         | 8443 (TLS)  | payShield-style HSM admin — JSON over TLS   |
-| `10.210.0.15` | `core-banking-db.bank.sandbox` | 5432 (STARTTLS) | PostgreSQL ledger with SSL **on**       |
-| `10.210.0.16` | `payments-bastion.bank.sandbox`| 22 (SSH)    | **Weak on purpose**: sha1 KEX, ssh-rsa, CBC ciphers |
+| `10.210.0.2`  | `internet-banking.bank.sandbox`| 443 (TLS)   | Internet banking portal — TLS 1.2/1.3, RSA-2048 |
+| `10.210.0.3`  | `mobile-api.bank.sandbox`      | 443 (TLS)   | Mobile app backend — TLS 1.2/1.3, RSA-2048  |
+| `10.210.0.4`  | `swift-gateway.bank.sandbox`   | 443 (TLS)   | SWIFT/ISO 20022 hub — RSA-3072              |
+| `10.210.0.5`  | `legacy-branch.bank.sandbox`   | 443 (TLS)   | **Weak on purpose**: TLS 1.0/1.1 + RSA-1024, expiring soon |
+| `10.210.0.6`  | `hsm-sim.bank.sandbox`         | 8443 (TLS)  | payShield-style HSM admin — JSON over TLS   |
+| `10.210.0.7`  | `core-banking-db.bank.sandbox` | 5432 (STARTTLS) | PostgreSQL ledger with SSL **on**       |
+| `10.210.0.8`  | `payments-bastion.bank.sandbox`| 22 (SSH)    | **Weak on purpose**: sha1 KEX, ssh-rsa, CBC ciphers |
 | *(seeds the main Redis)* |                   | 6379        | Session, UPI/SWIFT rate and FX cache keys   |
+
+IPs are consecutive on purpose: a discovery sweep of **`10.210.0.0/29`**
+(plus `10.210.0.8/32` for the bastion) touches almost no dead addresses, so
+the console wizard finishes well inside its 60-second budget. Never aim the
+UI sweep at the whole /24 — every dead address costs a full ARP timeout.
 
 Every certificate carries both its DNS name and its IP as SANs, so scanning
 by IP produces clean, realistic cert records — no artificial name mismatches.
@@ -93,46 +98,54 @@ scan targets (visible under **Network → Targets**, and picked up by the due
 **2. Get the target list** — `bash sandbox/run_sandbox.sh targets` prints it,
 or copy from the table above.
 
-**3. Detect protocols** — **Network** page, endpoint probe box:
+**3. One-click discovery sweep** — **Scanners** page → select the **Network**
+workflow → target **`10.210.0.0/29`** → Run. The wizard sweeps the estate,
+TLS-scans every open endpoint it finds, and shows the discovered services
+within ~15 seconds. Sweep `10.210.0.8/32` separately to include the bastion.
+(Why /29 and not /24: the wizard's request budget is 60 s and every dead
+address in a sweep costs a full connect timeout — a real bank's discovery
+jobs run scheduled and ranged for the same reason.)
+
+**4. Detect protocols** — **Network** page, endpoint probe box:
 
 ```
-10.210.0.10:443, 10.210.0.11:443, 10.210.0.12:443,
-10.210.0.13:443, 10.210.0.14:8443, 10.210.0.16:22
+10.210.0.2:443, 10.210.0.3:443, 10.210.0.4:443,
+10.210.0.5:443, 10.210.0.6:8443, 10.210.0.8:22
 ```
 
 The probe detects what each endpoint actually speaks (TLS vs SSH) before any
 scan runs — port is never assumed to equal protocol.
 
-**4. Run the live TLS scan** — every finding, certificate and usage persists
+**5. Run the live TLS scan** — every finding, certificate and usage persists
 with hash-chained evidence:
 
 ```bash
 TOKEN=<your API token>
 curl -s -X POST http://127.0.0.1:8010/api/v1/network-scans \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"hosts":["10.210.0.10:443","10.210.0.11:443","10.210.0.12:443",
-                 "10.210.0.13:443","10.210.0.14:8443"],
+  -d '{"hosts":["10.210.0.2:443","10.210.0.3:443","10.210.0.4:443",
+                 "10.210.0.5:443","10.210.0.6:8443"],
        "scan_versions":true,"scan_ciphers":true,"check_chain_sent":true}'
 ```
 
-Expect: strong TLS 1.2/1.3 on .10–.12; **TLS 1.0/1.1 + RSA-1024 + near-expiry
-findings on .13** — the scanner catching the legacy branch, live.
+Expect: strong TLS 1.2/1.3 on .2–.4; **TLS 1.0/1.1 + RSA-1024 + near-expiry
+findings on .5** — the scanner catching the legacy branch, live.
 
-**5. Scan the database and the bastion:**
+**6. Scan the database and the bastion:**
 
 ```bash
 # PostgreSQL STARTTLS (port 5432 → sslmode handshake → server cert)
 curl -s -X POST http://127.0.0.1:8010/api/v1/network-scans \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"hosts":["10.210.0.15:5432"],"starttls":"postgresql"}'
+  -d '{"hosts":["10.210.0.7:5432"],"starttls":"postgresql"}'
 
 # SSH key-exchange + host-key posture of the legacy jump host
 curl -s -X POST http://127.0.0.1:8010/api/v1/network/ssh-scan \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"hosts":["10.210.0.16:22"]}'
+  -d '{"hosts":["10.210.0.8:22"],"include_kex":true,"strict_kex":true}'
 ```
 
-**6. Watch the BOMs fill with collected (not seeded) data** — open
+**7. Watch the BOMs fill with collected (not seeded) data** — open
 **Certificates** (the estate's real certs, incl. the RSA-1024 one),
 **CBOM** and **NBOM** workspaces, then run the TLS scan a second time and
 check **Drift** for scan-to-scan deltas. The six BOM workspaces

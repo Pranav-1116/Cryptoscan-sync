@@ -20,13 +20,13 @@ gen() { # name cn ip days keyspec
   echo "generated $name -> $cn / $ip ($days days)"
 }
 
-gen internet-banking internet-banking.bank.sandbox 10.210.0.10 398 rsa:2048
-gen mobile-api       mobile-api.bank.sandbox       10.210.0.11 398 rsa:2048
-gen swift-gateway    swift-gateway.bank.sandbox    10.210.0.12 365 rsa:3072
-gen hsm-sim          hsm-sim.bank.sandbox          10.210.0.14 730 rsa:2048
-gen core-db          core-banking-db.bank.sandbox  10.210.0.15 398 rsa:2048
+gen internet-banking internet-banking.bank.sandbox 10.210.0.2 398 rsa:2048
+gen mobile-api       mobile-api.bank.sandbox       10.210.0.3 398 rsa:2048
+gen swift-gateway    swift-gateway.bank.sandbox    10.210.0.4 365 rsa:3072
+gen hsm-sim          hsm-sim.bank.sandbox          10.210.0.6 730 rsa:2048
+gen core-db          core-banking-db.bank.sandbox  10.210.0.7 398 rsa:2048
 # Weak on purpose: 1024-bit key, 30 days left after backdating via -days 31.
-gen legacy-branch    legacy-branch.bank.sandbox    10.210.0.13  31 rsa:1024
+gen legacy-branch    legacy-branch.bank.sandbox    10.210.0.5  31 rsa:1024
 
 chmod 0644 /certs/*.key /certs/*.crt
 echo "sandbox certificates ready"

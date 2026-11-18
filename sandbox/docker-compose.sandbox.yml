@@ -46,7 +46,7 @@ services:
       cryptoscan-net:
         aliases: [internet-banking.bank.sandbox]
       sandbox-net:
-        ipv4_address: 10.210.0.10
+        ipv4_address: 10.210.0.2
     restart: unless-stopped
 
   mobile-api:
@@ -60,7 +60,7 @@ services:
       cryptoscan-net:
         aliases: [mobile-api.bank.sandbox]
       sandbox-net:
-        ipv4_address: 10.210.0.11
+        ipv4_address: 10.210.0.3
     restart: unless-stopped
 
   swift-gateway:
@@ -74,7 +74,7 @@ services:
       cryptoscan-net:
         aliases: [swift-gateway.bank.sandbox]
       sandbox-net:
-        ipv4_address: 10.210.0.12
+        ipv4_address: 10.210.0.4
     restart: unless-stopped
 
   legacy-branch:
@@ -88,7 +88,7 @@ services:
       cryptoscan-net:
         aliases: [legacy-branch.bank.sandbox]
       sandbox-net:
-        ipv4_address: 10.210.0.13
+        ipv4_address: 10.210.0.5
     restart: unless-stopped
 
   hsm-sim:
@@ -105,7 +105,7 @@ services:
       cryptoscan-net:
         aliases: [hsm-sim.bank.sandbox]
       sandbox-net:
-        ipv4_address: 10.210.0.14
+        ipv4_address: 10.210.0.6
     restart: unless-stopped
 
   payments-bastion:
@@ -117,7 +117,7 @@ services:
       cryptoscan-net:
         aliases: [payments-bastion.bank.sandbox]
       sandbox-net:
-        ipv4_address: 10.210.0.16
+        ipv4_address: 10.210.0.8
     restart: unless-stopped
 
   core-banking-db:
@@ -142,7 +142,7 @@ services:
       cryptoscan-net:
         aliases: [core-banking-db.bank.sandbox]
       sandbox-net:
-        ipv4_address: 10.210.0.15
+        ipv4_address: 10.210.0.7
     restart: unless-stopped
 
   bank-redis-seed:

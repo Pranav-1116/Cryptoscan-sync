@@ -154,13 +154,13 @@ SCAN_STORY.append({"system_key": "ibank", "location": "git://meridianbank.intern
 # older script version still get scope on the next plain `seed` run.
 SANDBOX_CIDR = "10.210.0.0/24"
 LIVE_TARGETS = [
-    ("10.210.0.10:443", "internet-banking"),
-    ("10.210.0.11:443", "mobile-api"),
-    ("10.210.0.12:443", "swift-gateway"),
-    ("10.210.0.13:443", "legacy-branch"),
-    ("10.210.0.14:8443", "hsm-sim"),
-    ("10.210.0.15:5432", "core-banking-db"),
-    ("10.210.0.16:22", "payments-bastion"),
+    ("10.210.0.2:443", "internet-banking"),
+    ("10.210.0.3:443", "mobile-api"),
+    ("10.210.0.4:443", "swift-gateway"),
+    ("10.210.0.5:443", "legacy-branch"),
+    ("10.210.0.6:8443", "hsm-sim"),
+    ("10.210.0.7:5432", "core-banking-db"),
+    ("10.210.0.8:22", "payments-bastion"),
 ]
 
 
@@ -184,6 +184,15 @@ def _seed_authorized_scope(db) -> None:
         ))
         print(f"declared authorized network scope: {SANDBOX_CIDR}")
     added = 0
+    wanted = {ep for ep, _n in LIVE_TARGETS}
+    # Retire targets from older sandbox layouts (e.g. the .10-.16 numbering):
+    # anything onboarding-registered inside the sandbox CIDR but no longer
+    # part of the estate must not linger in the due-scan rotation.
+    for row in db.query(NetworkScanTarget).filter(NetworkScanTarget.source == "onboarding").all():
+        host = row.endpoint.rsplit(":", 1)[0].strip("[]")
+        if host.startswith("10.210.0.") and row.endpoint not in wanted:
+            db.delete(row)
+            print(f"retired stale sandbox target: {row.endpoint}")
     for endpoint, name in LIVE_TARGETS:
         row = db.query(NetworkScanTarget).filter(NetworkScanTarget.endpoint == endpoint).first()
         if not row:

@@ -46,11 +46,13 @@ case "${1:-up}" in
       echo "  docker logs cryptoscan-api --tail 80" >&2
     fi
     echo
-    echo "sandbox ready. Live-scan targets (paste into the Network page):"
-    echo "  TLS:  10.210.0.10:443  10.210.0.11:443  10.210.0.12:443"
-    echo "        10.210.0.13:443 (legacy)  10.210.0.14:8443 (hsm-sim)"
-    echo "  DB:   10.210.0.15:5432 (starttls=postgresql)"
-    echo "  SSH:  10.210.0.16:22 (payments-bastion, legacy KEX)"
+    echo "sandbox ready. One-click sweep target (Scanners -> Network):"
+    echo "  10.210.0.0/29      (covers .0-.7: all TLS + the database; bastion is .8)"
+    echo "Live-scan targets (paste into the Network page):"
+    echo "  TLS:  10.210.0.2:443  10.210.0.3:443  10.210.0.4:443"
+    echo "        10.210.0.5:443 (legacy)  10.210.0.6:8443 (hsm-sim)"
+    echo "  DB:   10.210.0.7:5432 (starttls=postgresql)"
+    echo "  SSH:  10.210.0.8:22 (payments-bastion, legacy KEX)"
     echo "  DNS also works: internet-banking.bank.sandbox, ..."
     echo "  console: http://127.0.0.1:3003   (run '$0 targets' to reprint)"
     ;;
@@ -103,18 +105,24 @@ case "${1:-up}" in
     # Paste-ready target list for the console's Network page / API calls.
     cat <<'EOF'
 Meridian Bank sandbox estate — live scan targets
-Authorized scope to declare first:  10.210.0.0/24
+Authorized scope (declared automatically by the seeder):  10.210.0.0/24
+
+One-click discovery sweep (Scanners page → Network → active):
+  10.210.0.0/29     covers .0–.7 — all TLS endpoints + the database
+                    (never sweep the whole /24 from the UI: dead addresses
+                    each cost an ARP timeout and the wizard gives up at 60s)
+  10.210.0.8/32     the SSH bastion, swept as a single host
 
 TLS endpoints (host:port, one per line):
-10.210.0.10:443     internet-banking   TLS 1.2/1.3, ECDHE only (strong)
-10.210.0.11:443     mobile-api         TLS 1.2/1.3 (strong)
-10.210.0.12:443     swift-gateway      TLS 1.2/1.3, RSA-3072 cert
-10.210.0.13:443     legacy-branch      TLS 1.0/1.1 enabled, RSA-1024, expiring (weak on purpose)
-10.210.0.14:8443    hsm-sim            TLS payment-HSM simulator
-10.210.0.15:5432    core-banking-db    PostgreSQL STARTTLS (set starttls=postgresql or auto)
+10.210.0.2:443      internet-banking   TLS 1.2/1.3, ECDHE only (strong)
+10.210.0.3:443      mobile-api         TLS 1.2/1.3 (strong)
+10.210.0.4:443      swift-gateway      TLS 1.2/1.3, RSA-3072 cert
+10.210.0.5:443      legacy-branch      TLS 1.0/1.1 enabled, RSA-1024, expiring (weak on purpose)
+10.210.0.6:8443     hsm-sim            TLS payment-HSM simulator
+10.210.0.7:5432     core-banking-db    PostgreSQL STARTTLS (set starttls=postgresql or auto)
 
 SSH endpoint:
-10.210.0.16:22      payments-bastion   legacy KEX/host-key algs (sha1, ssh-rsa, CBC)
+10.210.0.8:22       payments-bastion   legacy KEX/host-key algs (sha1, ssh-rsa, CBC)
 
 DNS aliases (same targets, by name):
 internet-banking.bank.sandbox  mobile-api.bank.sandbox  swift-gateway.bank.sandbox
