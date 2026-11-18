@@ -1436,7 +1436,7 @@ function CbomNetworkCollect() {
       endpoint: String((f as Record<string, unknown>).endpoint ?? "?"),
       status: String((f as Record<string, unknown>).status ?? "?"),
     })));
-    setNote(`Collected ${certs.length} certificate${certs.length === 1 ? "" : "s"} from ${findings.length} endpoint${findings.length === 1 ? "" : "s"}${alerts.length ? ` · ${alerts.length} alert${alerts.length === 1 ? "" : "s"}` : ""} — persisted to the certificate inventory; the tabs below read them now.`);
+    setNote(`Collected ${certs.length} certificate${certs.length === 1 ? "" : "s"} from ${findings.length} endpoint${findings.length === 1 ? "" : "s"}${alerts.length ? ` · ${alerts.length} alert${alerts.length === 1 ? "" : "s"}` : ""} — now listed in the Cryptographic Asset Inventory, Certificate & PKI Inventory and TLS / SSH / IPsec tabs below, and on the Network page.`);
   }
 
   return (

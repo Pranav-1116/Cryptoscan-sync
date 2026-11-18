@@ -12,6 +12,7 @@ from api.dependencies import (
 )
 from api.security.network_collection import (NetworkHostRequest, admit_network, checked_hosts, meter_network, network_run, persist_network, network_coverage, network_context)
 from db.repositories.intelligence_repository import IntelligenceRepository
+from db.tenancy import current_tenant
 from network_scanner.core.scanner import NetworkTlsScanner
 
 router = APIRouter(prefix="/network-scans", tags=["network-scans"])
@@ -47,6 +48,11 @@ def trigger_network_scan(
         )
         result = persist_network(db, result, run)
         run.succeed(coverage=network_coverage(result))
+    # project the observation into the live-inventory snapshot so the Network
+    # and Certificate dashboards reflect this scan, not only full scan cycles
+    from api.live_scan.runner import get_live_scan_runner
+
+    get_live_scan_runner().record_network_result(result, tenant_id=current_tenant())
     return result
 
 

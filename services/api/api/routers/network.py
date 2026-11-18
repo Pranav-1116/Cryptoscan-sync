@@ -100,6 +100,19 @@ def _guard_network_stop(db: Session) -> dict:
         ) from exc
 
 
+def _record_network_snapshot(result: dict) -> None:
+    """Project a persisted network observation into the live-inventory
+    snapshot so the Network/Certificate dashboards reflect this scan, not
+    only full live-scan cycles. Best-effort — the durable scan run is the
+    record; the snapshot is a projection."""
+    try:
+        from api.live_scan.runner import get_live_scan_runner
+
+        get_live_scan_runner().record_network_result(result, tenant_id=current_tenant())
+    except Exception:  # noqa: BLE001 — projection must not fail the request
+        logger.warning("network_snapshot_bridge_failed", exc_info=True)
+
+
 def _enforce_scope_if_configured(
     db: Session,
     endpoints: list[str],
@@ -499,6 +512,12 @@ def discover_subnet_endpoints(
             stored = persist_network(
                 db, {**scanned, "discovery": result}, run, kind="discovery_tls", phase_admission=tls_admission
             )
+            _record_network_snapshot({
+                **scanned,
+                "cidr": result.get("cidr"),
+                "endpoints": result.get("endpoints"),
+                "services": result.get("services"),
+            })
             result = {
                 **result,
                 "scan": {key: scanned.get(key) for key in ("probe_telemetry", "certificates", "alerts")},
@@ -509,6 +528,7 @@ def discover_subnet_endpoints(
         else:
             # Discovery is durable but does not masquerade as a TLS probe.
             result = persist_network(db, result, run, kind="discovery")
+            _record_network_snapshot(result)
         if body.register and endpoints:
             admit_network(endpoints, protocol="tcp")
             from network_scanner.discovery.registration import register_targets

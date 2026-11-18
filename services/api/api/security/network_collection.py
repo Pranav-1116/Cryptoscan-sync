@@ -7,7 +7,9 @@ kill switch. An admission authorizes the checked phase, not future phases.
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import ipaddress
+import logging
 from typing import Literal
 
 from fastapi import Depends, HTTPException
@@ -25,6 +27,8 @@ from network_scanner.core.scanner import normalize_endpoint
 from shared_models.network_registry import classify_port, classify_service
 
 MAX_HOSTS = 256
+
+logger = logging.getLogger(__name__)
 
 
 class NetworkHostRequest(BaseModel):
@@ -219,6 +223,7 @@ def persist_network(db, result, run, *, kind="hosts", phase_admission=None, coll
     for usage in result.get("usages") or []:
         if usage.get("fingerprint_sha256") and usage.get("location"):
             usages.upsert_usage(usage["fingerprint_sha256"], usage["location"], usage.get("usage_type") or "UNKNOWN")
+    _materialize_workspace_rows(db, result)
     chain_receipt = (
         append_to_chain(db, evidence, run_id=row.id, tenant_id=current_tenant(), user=None) if evidence else None
     )
@@ -231,3 +236,124 @@ def network_coverage(result):
         "network_run_id": result["run_id"],
         "probe_status": (result.get("probe_telemetry") or {}).get("status", "NOT_EVALUATED"),
     }
+
+
+def _materialize_workspace_rows(db, result) -> None:
+    """Project live TLS findings into the CBOM/NBOM workspace stores.
+
+    The durable evidence (scan run, certificate inventory, usages, hash
+    chain) is staged by ``persist_network`` itself; the BOM workspaces read
+    the crypto-asset and runtime-finding stores, so without this projection
+    a real network observation never surfaces where operators look for it.
+    Derived and rebuildable from the run ledger — a projection failure is
+    logged, it never fails the scan that produced the evidence.
+    """
+    try:
+        _materialize_workspace_rows_inner(db, result)
+    except Exception:  # noqa: BLE001 — projection must not sink the run
+        logger.exception("network_workspace_projection_failed")
+
+
+def _materialize_workspace_rows_inner(db, result) -> None:
+    from db.repositories.asset_repository import AssetRepository
+    from db.repositories.crypto_repository import CryptoRepository
+    from db.repositories.runtime_finding_repository import RuntimeFindingRepository
+
+    findings = result.get("findings") or []
+    if not isinstance(findings, list):
+        return
+    tenant_id = current_tenant()
+    assets = AssetRepository(db)
+    states = CryptoRepository(db)
+    runtime = RuntimeFindingRepository(db)
+    now = datetime.now(timezone.utc).isoformat()
+    runtime_rows: list[dict] = []
+    for finding in findings:
+        if not isinstance(finding, dict) or str(finding.get("status") or "") != "OK":
+            continue
+        endpoint = str(finding.get("endpoint") or "").strip()
+        crypto = finding.get("crypto") or {}
+        if not endpoint or not isinstance(crypto, dict):
+            continue
+        tls_version = crypto.get("tls_version")
+        cipher = crypto.get("cipher_suite")
+        if not tls_version and not cipher:
+            continue  # not a TLS observation — SSH/IPsec findings keep their own stores
+        # 1) the negotiated cipher stack — one asset per endpoint
+        algorithm = str(finding.get("algorithm") or crypto.get("encryption_algorithm") or "").strip()
+        if algorithm:
+            row, _created = assets.upsert_network_asset({
+                "algorithm": algorithm,
+                "purpose": "NETWORK_ENCRYPTION",
+                "mode": crypto.get("mode"),
+                "key_size": crypto.get("key_size"),
+                "file_path": f"tls://{endpoint}",
+                "source_language": "TLS",
+                "scanner_ids": [str(finding.get("scanner_id") or "network-tls-scanner-v1.0")],
+                "tenant_id": tenant_id,
+                "extra": {
+                    "endpoint": endpoint,
+                    "cipher_suite": cipher,
+                    "tls_version": tls_version,
+                    "key_exchange": crypto.get("key_exchange_algorithm"),
+                    "authentication": crypto.get("authentication_algorithm"),
+                    "observation": "live TLS handshake",
+                },
+            })
+            states.upsert_state({
+                "asset_id": f"crypto:{row.id}",
+                "tenant_id": tenant_id,
+                "algorithms": [algorithm.upper()],
+                "last_event": "MONITOR_OBSERVED",
+                "last_seen": now,
+            })
+        # 2) the leaf certificate's public key — one asset per endpoint
+        chain = finding.get("certificates") or []
+        leaf = chain[0] if chain and isinstance(chain[0], dict) else {}
+        pk_algo = str(leaf.get("public_key_algorithm") or "").strip()
+        if pk_algo:
+            row, _created = assets.upsert_network_asset({
+                "algorithm": pk_algo,
+                "purpose": "CERTIFICATE",
+                "key_size": leaf.get("public_key_size"),
+                "file_path": endpoint,
+                "source_language": "PEM",
+                "scanner_ids": [str(finding.get("scanner_id") or "network-tls-scanner-v1.0")],
+                "tenant_id": tenant_id,
+                "extra": {
+                    "endpoint": endpoint,
+                    "subject": leaf.get("subject"),
+                    "signature_algorithm": leaf.get("signature_algorithm"),
+                    "fingerprint_sha256": leaf.get("fingerprint_sha256"),
+                    "observation": "live TLS handshake",
+                },
+            })
+            states.upsert_state({
+                "asset_id": f"crypto:{row.id}",
+                "tenant_id": tenant_id,
+                "algorithms": [pk_algo.upper()],
+                "last_event": "MONITOR_OBSERVED",
+                "last_seen": now,
+            })
+        # 3) protocol observation — feeds the TLS/SSH/IPsec tab and NBOM
+        weak = bool(tls_version) and not str(tls_version).startswith(("TLSv1.2", "TLSv1.3", "TLS1.2", "TLS1.3"))
+        runtime_rows.append({
+            "scanner_id": str(finding.get("scanner_id") or "network-tls-scanner-v1.0"),
+            "kind": "session",
+            "hostname": endpoint,
+            "tls_version": tls_version,
+            "cipher_suite": cipher,
+            "algorithm": algorithm or None,
+            "key_size": crypto.get("key_size"),
+            "status": crypto.get("status"),
+            "quantum_impact": crypto.get("quantum_impact"),
+            "weak_tls": weak,
+            "extra": {
+                "mode": crypto.get("mode"),
+                "key_exchange": crypto.get("key_exchange_algorithm"),
+                "authentication": crypto.get("authentication_algorithm"),
+                "endpoint": endpoint,
+            },
+        })
+    if runtime_rows:
+        runtime.upsert_many(runtime_rows)

@@ -251,6 +251,40 @@ def _db_load_snapshot(tenant_id: str | None = None) -> dict[str, Any] | None:
         return None
 
 
+def _merge_network_data(prev: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
+    """Union of two network observation payloads keyed by stable identity.
+
+    A targeted scan replaces the same endpoint's prior observation and adds
+    new endpoints, so the dashboards accumulate every real observation
+    instead of showing only the most recent call. Lists are capped so a
+    long-lived estate cannot grow the settings row without bound.
+    """
+    merged = dict(new)
+    for field, ident_key, cap in (("findings", "endpoint", 1000),
+                                  ("services", "endpoint", 1000),
+                                  ("certificates", "fingerprint_sha256", 500)):
+        combined: dict[str, Any] = {}
+        order: list[str] = []
+        for item in (prev.get(field) or []) + (new.get(field) or []):
+            if not isinstance(item, dict):
+                continue
+            ident = item.get(ident_key)
+            if not ident:
+                continue
+            if ident not in combined:
+                order.append(ident)
+            combined[ident] = item
+        if combined:
+            merged[field] = [combined[k] for k in order[-cap:]]
+    endpoints = list(dict.fromkeys(
+        (prev.get("endpoints") or []) + (new.get("endpoints") or [])))[:1000]
+    if endpoints:
+        merged["endpoints"] = endpoints
+    if prev.get("cidr") and not new.get("cidr"):
+        merged["cidr"] = prev["cidr"]
+    return merged
+
+
 #: privacy enforcement: the fail-safe default (no PII / secrets / private keys,
 #: redaction on, data minimization on) applies whenever no org policy is stored.
 def _privacy_policy_obj() -> Any | None:
@@ -1159,6 +1193,69 @@ class LiveScanRunner:
         return True
 
     # ------------------------------------------------------------------ inventory
+    def record_network_result(self, result: dict[str, Any], *, tenant_id: str | None = None) -> None:
+        """Fold a targeted network observation (POST /network-scans, discovery
+        sweeps) into the tenant snapshot so the Network/Certificate dashboards
+        reflect every real scan — not only full live-scan cycles.
+
+        Dashboard projection over already-persisted scan evidence: failures
+        are logged, never raised to the scan path.
+        """
+        try:
+            with self._lock:
+                key = self._tenant_cache_key(tenant_id)
+                base = (self._tenant_snapshots.get(key)
+                        or _db_load_snapshot(tenant_id=tenant_id) or {})
+                snap = dict(base)
+                results = dict(snap.get("results") or {})
+                prev_data = (results.get("network") or {}).get("data") or {}
+                merged = _merge_network_data(prev_data if isinstance(prev_data, dict) else {}, result)
+                results["network"] = {
+                    "status": "OK",
+                    "ok": True,
+                    "summary": {
+                        "endpoints": len(merged.get("findings") or []),
+                        "discovered": len(merged.get("endpoints") or []),
+                        "certificates": len(merged.get("certificates") or []),
+                    },
+                    "data": merged,
+                }
+                snap["results"] = results
+                snap["ts"] = datetime.now(timezone.utc).isoformat()
+                self._tenant_snapshots[key] = snap
+                if not self.running:
+                    self.last_snapshot = snap
+                    self.last_run_at = snap["ts"]
+                current_inv = self.inventory(tenant_id=tenant_id)
+                # Sections whose scanner payloads were trimmed from a restored
+                # snapshot keep their last page-ready rows; network and
+                # certificate sections are always rebuilt from the merged
+                # observation above.
+                prev_inv = base.get("inventory") if isinstance(base.get("inventory"), dict) else {}
+                for section, value in prev_inv.items():
+                    if section in {"network", "certificates", "cert_center", "_prev", "scans"}:
+                        continue
+                    if not current_inv.get(section) and value:
+                        current_inv[section] = value
+                trimmed = {
+                    **snap,
+                    "results": {
+                        k: {kk: vv for kk, vv in res.items() if kk != "data"}
+                        for k, res in snap["results"].items()
+                        if isinstance(res, dict)
+                    },
+                    "inventory": current_inv,
+                }
+                trimmed = _privacy_scrub(trimmed, _privacy_policy_obj())
+                _db_persist(trimmed, tenant_id=tenant_id)
+                self._publish("live_scan.inventory_updated", {
+                    "source": "network-scan",
+                    "endpoints": len(merged.get("findings") or []),
+                })
+        except Exception as exc:  # noqa: BLE001 — projection must not sink the scan
+            logger.warning("network_snapshot_bridge_failed",
+                           extra={"error_type": type(exc).__name__})
+
     def inventory(self, tenant_id: str | None = None) -> dict[str, Any]:
         """Build page-ready structures for the dashboard pages from the most
         recent live snapshot (in-memory with full payloads, else the persisted

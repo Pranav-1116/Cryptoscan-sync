@@ -253,3 +253,61 @@ class AssetRepository(BaseRepository[CryptoAsset]):
         existing.extra = {**(existing.extra or {}), **extra}
         self.session.flush()
         return existing, False
+
+    # --------------------------------------------------------- network inventory
+
+    def upsert_network_asset(self, asset: dict) -> tuple[CryptoAsset, bool]:
+        """Idempotent insert/update for live network TLS observations.
+
+        One row per (purpose, file_path): an endpoint's negotiated cipher
+        stack (``tls://host:port``) and its leaf certificate's public key
+        (``host:port``) are each ONE observed asset whose algorithm/mode/key
+        size refresh on every scan — the workspace shows current posture,
+        while the scan-run ledger keeps the full history. Same stable-ref
+        semantics as ``upsert_cloud_asset``: re-collection updates in place
+        instead of stacking duplicates.
+        """
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat()
+        extra = dict(asset.get("extra") or {})
+        extra["last_seen_at"] = now
+        from db.import_provenance import import_clause
+        existing = self.session.execute(
+            select(CryptoAsset).where(
+                CryptoAsset.file_path == asset["file_path"],
+                CryptoAsset.purpose == asset.get("purpose"),
+                ~import_clause(),
+            )
+        ).scalar_one_or_none()
+        if existing is None:
+            extra["first_seen_at"] = now
+            row = CryptoAsset(
+                algorithm=asset["algorithm"],
+                purpose=asset.get("purpose"),
+                mode=asset.get("mode"),
+                key_size=asset.get("key_size"),
+                asset_key=crypto_asset_key_from_row(asset) or None,
+                file_path=asset["file_path"],
+                line_number=0,
+                source_language=asset.get("source_language"),
+                confidence="HIGH",
+                scanner_ids=asset.get("scanner_ids") or [],
+                libraries=asset.get("libraries") or [],
+                tenant_id=asset.get("tenant_id"),
+                extra=extra,
+            )
+            self.session.add(row)
+            self.session.flush()
+            return row, True
+        existing.algorithm = asset["algorithm"]
+        existing.asset_key = crypto_asset_key_from_row(asset) or None
+        existing.mode = asset.get("mode")
+        existing.key_size = asset.get("key_size")
+        existing.purpose = asset.get("purpose")
+        existing.source_language = asset.get("source_language")
+        existing.confidence = "HIGH"
+        existing.scanner_ids = asset.get("scanner_ids") or existing.scanner_ids
+        existing.extra = {**(existing.extra or {}), **extra}
+        self.session.flush()
+        return existing, False
