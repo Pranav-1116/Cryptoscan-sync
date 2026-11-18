@@ -12,7 +12,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 COMPOSE=(docker compose -f docker-compose.yml -f sandbox/docker-compose.sandbox.yml)
-SBX_SERVICES="internet-banking mobile-api swift-gateway legacy-branch hsm-sim core-banking-db certgen bank-redis-seed sandbox-seed"
+SBX_SERVICES="internet-banking mobile-api swift-gateway legacy-branch hsm-sim core-banking-db payments-bastion certgen bank-redis-seed sandbox-seed"
 
 wait_healthy() {
   local container="$1" max="${2:-40}"
@@ -46,10 +46,13 @@ case "${1:-up}" in
       echo "  docker logs cryptoscan-api --tail 80" >&2
     fi
     echo
-    echo "sandbox ready. Estate DNS (inside cryptoscan-net):"
-    echo "  internet-banking.bank.sandbox  mobile-api.bank.sandbox  swift-gateway.bank.sandbox"
-    echo "  legacy-branch.bank.sandbox     hsm-sim.bank.sandbox:8443  core-banking-db.bank.sandbox"
-    echo "  console: http://127.0.0.1:3003"
+    echo "sandbox ready. Live-scan targets (paste into the Network page):"
+    echo "  TLS:  10.210.0.10:443  10.210.0.11:443  10.210.0.12:443"
+    echo "        10.210.0.13:443 (legacy)  10.210.0.14:8443 (hsm-sim)"
+    echo "  DB:   10.210.0.15:5432 (starttls=postgresql)"
+    echo "  SSH:  10.210.0.16:22 (payments-bastion, legacy KEX)"
+    echo "  DNS also works: internet-banking.bank.sandbox, ..."
+    echo "  console: http://127.0.0.1:3003   (run '$0 targets' to reprint)"
     ;;
   seed)   "${COMPOSE[@]}" run --rm sandbox-seed ;;
   reset)  "${COMPOSE[@]}" run --rm -e SEED_ARGS="--reset" sandbox-seed ;;
@@ -91,8 +94,33 @@ case "${1:-up}" in
     "${COMPOSE[@]}" stop ${SBX_SERVICES} 2>/dev/null || true
     "${COMPOSE[@]}" rm -f ${SBX_SERVICES} 2>/dev/null || true
     docker volume rm "$(basename "$PWD" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')_sandbox_certs" 2>/dev/null || true
+    # Drop the fake bank LAN if nothing (e.g. the api) is still attached.
+    docker network rm cryptoscan-sandbox-net 2>/dev/null || true
     echo "sandbox estate removed; main stack untouched"
     ;;
   status) "${COMPOSE[@]}" ps ;;
-  *) echo "usage: $0 [up|seed|reset|migrate|db-rebuild|estate|console|down|status]" >&2; exit 2 ;;
+  targets)
+    # Paste-ready target list for the console's Network page / API calls.
+    cat <<'EOF'
+Meridian Bank sandbox estate — live scan targets
+Authorized scope to declare first:  10.210.0.0/24
+
+TLS endpoints (host:port, one per line):
+10.210.0.10:443     internet-banking   TLS 1.2/1.3, ECDHE only (strong)
+10.210.0.11:443     mobile-api         TLS 1.2/1.3 (strong)
+10.210.0.12:443     swift-gateway      TLS 1.2/1.3, RSA-3072 cert
+10.210.0.13:443     legacy-branch      TLS 1.0/1.1 enabled, RSA-1024, expiring (weak on purpose)
+10.210.0.14:8443    hsm-sim            TLS payment-HSM simulator
+10.210.0.15:5432    core-banking-db    PostgreSQL STARTTLS (set starttls=postgresql or auto)
+
+SSH endpoint:
+10.210.0.16:22      payments-bastion   legacy KEX/host-key algs (sha1, ssh-rsa, CBC)
+
+DNS aliases (same targets, by name):
+internet-banking.bank.sandbox  mobile-api.bank.sandbox  swift-gateway.bank.sandbox
+legacy-branch.bank.sandbox     hsm-sim.bank.sandbox:8443  core-banking-db.bank.sandbox
+payments-bastion.bank.sandbox
+EOF
+    ;;
+  *) echo "usage: $0 [up|seed|reset|migrate|db-rebuild|estate|console|targets|down|status]" >&2; exit 2 ;;
 esac

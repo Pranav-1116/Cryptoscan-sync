@@ -9,15 +9,25 @@ this stack must never reach a production network.
 
 ### 1. Simulated banking estate (Docker)
 
-| Container / DNS name             | Port in-net | Poses as                                    |
-| -------------------------------- | ----------- | ------------------------------------------- |
-| `internet-banking.bank.sandbox`  | 443 (TLS)   | Internet banking portal — TLS 1.2/1.3, RSA-2048 |
-| `mobile-api.bank.sandbox`        | 443 (TLS)   | Mobile app backend — TLS 1.2/1.3, RSA-2048  |
-| `swift-gateway.bank.sandbox`     | 443 (TLS)   | SWIFT/ISO 20022 hub — RSA-3072              |
-| `legacy-branch.bank.sandbox`     | 443 (TLS)   | **Weak on purpose**: TLS 1.0/1.1 + RSA-1024, expiring soon |
-| `hsm-sim.bank.sandbox`           | 8443 (TLS)  | payShield-style HSM admin — JSON over TLS   |
-| `core-banking-db.bank.sandbox`   | 5432        | PostgreSQL ledger with customers/accounts/cards |
-| *(seeds the main Redis)*         | 6379        | Session, UPI/SWIFT rate and FX cache keys   |
+The estate lives on its own fake bank LAN — the `cryptoscan-sandbox-net`
+bridge with the fixed RFC1918 subnet **10.210.0.0/24** — so every system has
+a stable IP you can configure as a scan target, exactly like a real estate.
+(The CryptoScan API container is joined to this LAN; its scanner reaches the
+IPs below. DNS names on `cryptoscan-net` keep working too.)
+
+| IP            | DNS name                       | Port        | Poses as                                    |
+| ------------- | ------------------------------ | ----------- | ------------------------------------------- |
+| `10.210.0.10` | `internet-banking.bank.sandbox`| 443 (TLS)   | Internet banking portal — TLS 1.2/1.3, RSA-2048 |
+| `10.210.0.11` | `mobile-api.bank.sandbox`      | 443 (TLS)   | Mobile app backend — TLS 1.2/1.3, RSA-2048  |
+| `10.210.0.12` | `swift-gateway.bank.sandbox`   | 443 (TLS)   | SWIFT/ISO 20022 hub — RSA-3072              |
+| `10.210.0.13` | `legacy-branch.bank.sandbox`   | 443 (TLS)   | **Weak on purpose**: TLS 1.0/1.1 + RSA-1024, expiring soon |
+| `10.210.0.14` | `hsm-sim.bank.sandbox`         | 8443 (TLS)  | payShield-style HSM admin — JSON over TLS   |
+| `10.210.0.15` | `core-banking-db.bank.sandbox` | 5432 (STARTTLS) | PostgreSQL ledger with SSL **on**       |
+| `10.210.0.16` | `payments-bastion.bank.sandbox`| 22 (SSH)    | **Weak on purpose**: sha1 KEX, ssh-rsa, CBC ciphers |
+| *(seeds the main Redis)* |                   | 6379        | Session, UPI/SWIFT rate and FX cache keys   |
+
+Every certificate carries both its DNS name and its IP as SANs, so scanning
+by IP produces clean, realistic cert records — no artificial name mismatches.
 
 ### 2. Seeded scan history (one command)
 
@@ -39,12 +49,12 @@ bash sandbox/run_sandbox.sh status    # container overview
 ```
 
 Startup is split into two waves: the **data plane** (Postgres, Redis, the fake
-estate, and the seeder) runs first. The seeder creates the schema itself if
-the database is empty, so a slow or broken API can no longer block the
-sandbox. The **app plane** (API, worker, frontend, nginx) comes second; if
-`cryptoscan-api` is unhealthy you'll see a warning with the exact log command,
-and the console will 502 until the API is fixed — but dashboards data is
-already seeded and the estate is up.
+estate, and the seeder) runs first. The seeder applies the Alembic migrations
+itself, so a slow or broken API can no longer block the sandbox. The **app
+plane** (API, worker, frontend, nginx) comes second; if `cryptoscan-api` is
+unhealthy you'll see a warning with the exact log command, and the console
+will 502 until the API is fixed — but dashboard data is already seeded and
+the estate is up.
 
 Seeding runs in a throwaway `python:3.12-slim` container (service
 `sandbox-seed`) that installs sqlalchemy/psycopg itself and talks to the
@@ -67,10 +77,68 @@ openssl s_client -connect internet-banking.bank.sandbox:443 -servername internet
 openssl s_client -connect legacy-branch.bank.sandbox:443 -tls1_1 </dev/null     # connects — that's the finding
 ```
 
-Then run a network scan from the console targeting e.g.
-`internet-banking.bank.sandbox`, `mobile-api.bank.sandbox`,
-`swift-gateway.bank.sandbox`, `legacy-branch.bank.sandbox`,
-`hsm-sim.bank.sandbox:8443` to compare live evidence with the seeded history.
+## Run it like a real bank (live scanning)
+
+The seeded data is the bank's *history*. The steps below are the *real
+onboarding flow* — you point CryptoScan at IPs and it collects everything
+live. This is what a deployment at an actual bank looks like.
+
+**1. Declare the estate scope** — a bank first tells CryptoScan which
+network it owns. In the console: **Network → Crypto Scope**, add
+`10.210.0.0/24` as an authorized scope entry.
+
+**2. Get the target list** — `bash sandbox/run_sandbox.sh targets` prints it,
+or copy from the table above.
+
+**3. Detect protocols** — **Network** page, endpoint probe box:
+
+```
+10.210.0.10:443, 10.210.0.11:443, 10.210.0.12:443,
+10.210.0.13:443, 10.210.0.14:8443, 10.210.0.16:22
+```
+
+The probe detects what each endpoint actually speaks (TLS vs SSH) before any
+scan runs — port is never assumed to equal protocol.
+
+**4. Run the live TLS scan** — every finding, certificate and usage persists
+with hash-chained evidence:
+
+```bash
+TOKEN=<your API token>
+curl -s -X POST http://127.0.0.1:8010/api/v1/network-scans \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"hosts":["10.210.0.10:443","10.210.0.11:443","10.210.0.12:443",
+                 "10.210.0.13:443","10.210.0.14:8443"],
+       "scan_versions":true,"scan_ciphers":true,"check_chain_sent":true}'
+```
+
+Expect: strong TLS 1.2/1.3 on .10–.12; **TLS 1.0/1.1 + RSA-1024 + near-expiry
+findings on .13** — the scanner catching the legacy branch, live.
+
+**5. Scan the database and the bastion:**
+
+```bash
+# PostgreSQL STARTTLS (port 5432 → sslmode handshake → server cert)
+curl -s -X POST http://127.0.0.1:8010/api/v1/network-scans \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"hosts":["10.210.0.15:5432"],"starttls":"postgresql"}'
+
+# SSH key-exchange + host-key posture of the legacy jump host
+curl -s -X POST http://127.0.0.1:8010/api/v1/network/ssh-scan \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"hosts":["10.210.0.16:22"]}'
+```
+
+**6. Watch the BOMs fill with collected (not seeded) data** — open
+**Certificates** (the estate's real certs, incl. the RSA-1024 one),
+**CBOM** and **NBOM** workspaces, then run the TLS scan a second time and
+check **Drift** for scan-to-scan deltas. The six BOM workspaces
+(SBOM · CBOM · HBOM · NBOM · VBOM · TechBOM) reconcile the seeded software/
+hardware/vendor inventory with what the network scans just observed.
+
+> If a scan is refused with a scope/admission error, revisit step 1 — the
+> platform fail-closes on targets outside authorized scope, same as it would
+> in the bank.
 
 ## Tear down and clean up
 

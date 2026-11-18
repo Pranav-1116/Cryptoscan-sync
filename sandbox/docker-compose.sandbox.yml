@@ -8,11 +8,22 @@
 # Must be run from the repo root, stacked after the main file:
 #   docker compose -f docker-compose.yml -f sandbox/docker-compose.sandbox.yml up -d
 #
-# It joins `cryptoscan-net`, so CryptoScan scanners can reach every fake bank
-# system by DNS name (internet-banking.bank.sandbox, …). Everything here is
-# throwaway; never point it at a production network.
+# Two networks:
+#   cryptoscan-net — the stack's own network; estate DNS names live here
+#     (internet-banking.bank.sandbox, …).
+#   sandbox-net — the fake bank's LAN: fixed RFC1918 subnet 10.210.0.0/24
+#     with a stable IP per system, so the platform can be pointed at REAL IP
+#     targets exactly like a bank sweep (the SSRF guard admits RFC1918).
+#     The `api` service is joined to it below — without that, scans by IP
+#     cannot reach the estate. Everything here is throwaway; never point it
+#     at a production network.
 
 services:
+
+  # Join the API (where the network scanner runs) onto the fake bank LAN.
+  api:
+    networks:
+      - sandbox-net
 
   certgen:
     image: alpine/openssl:3.3.2
@@ -34,6 +45,8 @@ services:
     networks:
       cryptoscan-net:
         aliases: [internet-banking.bank.sandbox]
+      sandbox-net:
+        ipv4_address: 10.210.0.10
     restart: unless-stopped
 
   mobile-api:
@@ -46,6 +59,8 @@ services:
     networks:
       cryptoscan-net:
         aliases: [mobile-api.bank.sandbox]
+      sandbox-net:
+        ipv4_address: 10.210.0.11
     restart: unless-stopped
 
   swift-gateway:
@@ -58,6 +73,8 @@ services:
     networks:
       cryptoscan-net:
         aliases: [swift-gateway.bank.sandbox]
+      sandbox-net:
+        ipv4_address: 10.210.0.12
     restart: unless-stopped
 
   legacy-branch:
@@ -70,6 +87,8 @@ services:
     networks:
       cryptoscan-net:
         aliases: [legacy-branch.bank.sandbox]
+      sandbox-net:
+        ipv4_address: 10.210.0.13
     restart: unless-stopped
 
   hsm-sim:
@@ -85,17 +104,35 @@ services:
     networks:
       cryptoscan-net:
         aliases: [hsm-sim.bank.sandbox]
+      sandbox-net:
+        ipv4_address: 10.210.0.14
+    restart: unless-stopped
+
+  payments-bastion:
+    build:
+      context: ./sandbox/estate/ssh-bastion
+      dockerfile: Dockerfile
+    container_name: cryptoscan-sbx-payments-bastion
+    networks:
+      cryptoscan-net:
+        aliases: [payments-bastion.bank.sandbox]
+      sandbox-net:
+        ipv4_address: 10.210.0.16
     restart: unless-stopped
 
   core-banking-db:
     image: postgres:15-alpine
     container_name: cryptoscan-sbx-core-db
+    depends_on: [certgen]
+    entrypoint: ["/bin/sh", "/init/core-db-entry.sh"]
     environment:
       POSTGRES_USER: core
       POSTGRES_PASSWORD: sandbox-only-password
       POSTGRES_DB: ledger
     volumes:
       - ./sandbox/estate/init/core-banking-db.sql:/docker-entrypoint-initdb.d/01-core.sql:ro
+      - ./sandbox/estate/init/core-db-entry.sh:/init/core-db-entry.sh:ro
+      - sandbox_certs:/certs:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U core -d ledger"]
       interval: 5s
@@ -104,6 +141,8 @@ services:
     networks:
       cryptoscan-net:
         aliases: [core-banking-db.bank.sandbox]
+      sandbox-net:
+        ipv4_address: 10.210.0.15
     restart: unless-stopped
 
   bank-redis-seed:
@@ -137,3 +176,15 @@ services:
 
 volumes:
   sandbox_certs:
+
+networks:
+  # The fake bank's LAN. Fixed subnet so every system keeps a stable IP you
+  # can paste into CryptoScan as a scan target; 10.210.0.0/24 is RFC1918 and
+  # passes the platform's SSRF guard (loopback/link-local are refused, internal
+  # ranges are what this scanner exists for).
+  sandbox-net:
+    name: cryptoscan-sandbox-net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.210.0.0/24
