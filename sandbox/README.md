@@ -156,6 +156,57 @@ hardware/vendor inventory with what the network scans just observed.
 > `10.210.0.0/24` declared, every estate IP passes; a target outside that
 > range is refused with a scope violation, same as in the bank.
 
+## The living bank — how the whole thing works
+
+A real CryptoScan deployment at a bank has three moving parts, and the
+sandbox reproduces all three:
+
+```
+   REAL BANK                                    SANDBOX
+┌────────────────────────┐                  ┌──────────────────────────────┐
+│ servers, HSMs, DBs,    │  scan targets    │ estate containers on         │
+│ apps, vendors          │ ◄─────────────── │ 10.210.0.0/24 (nginx TLS,    │
+└─────────┬──────────────┘                  │ postgres+SSL, OpenSSH, HSM)  │
+          │ agents/observers               └──────────┬───────────────────┘
+          ▼                                           ▼
+┌────────────────────────┐   POST ingestion/    ┌──────────────────────────┐
+│ bank collectors/agents │ ──observations────► │ sandbox-collect (the     │
+└────────────────────────┘                     │ "bank agent")            │
+                                               └──────────┬───────────────┘
+┌─────────────────────────────────────────────────────────▼───────────────┐
+│ CryptoScan: evidence store → hash chain → graph → 6 BOM projections     │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Data lineage per BOM** — every workspace reads from collected rows, and
+each row arrives through the channel a real bank would use:
+
+| BOM | Content | Sandbox channel |
+| --- | --- | --- |
+| NBOM | endpoints, protocols, posture | live network scans (you trigger) |
+| CBOM | ciphers, TLS versions, certificates, HSM key slots | live TLS/SSH scans + collector handshakes |
+| SBOM | packages & versions per system | collector reads the REAL package DB inside each estate container (apk/pip) |
+| HBOM | hosts, devices, firmware | collector: docker inspection + HSM banner |
+| VBOM | vendors & observed product versions | collector derives from observed banners/packages |
+| TechBOM | the unified projection | re-materialized by the platform from all of the above |
+
+**The dynamic loop:**
+
+```bash
+bash sandbox/run_sandbox.sh collect     # one live pass: docker + TLS + SSH + DB + HSM
+```
+
+Each `collect` run pushes one observation to `POST /api/v1/ingestion/observations`.
+The platform stores it **only if something changed** (content fingerprint),
+and the BOM workspaces re-project from the newest observation — so edit the
+estate (upgrade a package, change a cert, stop a container), run `collect`
+again, and watch the BOMs and drift views move. That is exactly the cadence
+of a real deployment: agents observe, the platform projects, drift appears
+when reality moves.
+
+The seeded history (scan back-story, baselines, drift) remains as the bank's
+past quarter; scans and `collect` runs are the living present.
+
 ## Tear down and clean up
 
 ```bash

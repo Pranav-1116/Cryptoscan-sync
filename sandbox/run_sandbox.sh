@@ -101,6 +101,14 @@ case "${1:-up}" in
     echo "sandbox estate removed; main stack untouched"
     ;;
   status) "${COMPOSE[@]}" ps ;;
+  collect)
+    # The living-bank collector: one pass over the estate through real
+    # channels, pushed to the ingestion API; every BOM re-projects from it.
+    # Needs the console login once per run (prompted if not in env).
+    if [ -z "${CRYPTOSCAN_USERNAME:-}" ]; then read -r -p "console username: " CRYPTOSCAN_USERNAME; export CRYPTOSCAN_USERNAME; fi
+    if [ -z "${CRYPTOSCAN_PASSWORD:-}" ]; then read -r -s -p "console password: " CRYPTOSCAN_PASSWORD; echo; export CRYPTOSCAN_PASSWORD; fi
+    "${COMPOSE[@]}" run --rm -e CRYPTOSCAN_USERNAME -e CRYPTOSCAN_PASSWORD sandbox-collect
+    ;;
   targets)
     # Paste-ready target list for the console's Network page / API calls.
     cat <<'EOF'
@@ -130,5 +138,5 @@ legacy-branch.bank.sandbox     hsm-sim.bank.sandbox:8443  core-banking-db.bank.s
 payments-bastion.bank.sandbox
 EOF
     ;;
-  *) echo "usage: $0 [up|seed|reset|migrate|db-rebuild|estate|console|targets|down|status]" >&2; exit 2 ;;
+  *) echo "usage: $0 [up|seed|reset|migrate|db-rebuild|estate|console|targets|collect|down|status]" >&2; exit 2 ;;
 esac
