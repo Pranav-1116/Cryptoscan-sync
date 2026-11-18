@@ -112,14 +112,14 @@ export default function HostQualification() {
   const locked = busy || !reference.trim();
   return <Panel title="Approved-host qualification" sub="Named-human assignments → original public evidence → frozen index → separate externally signed reviews. No remote execution or automatic production approval." className="mt">
     <p>Use only the bank-approved return channel and authorized hosts. This authenticated API is <strong>not proof of bank-approved secure transport</strong>. No people have been contacted or hosts dispatched by this screen.</p>
-    <p>Public qualification evidence only — <strong>do not upload credentials, private keys or private operational logs</strong>. Screening rejects some known patterns; it cannot guarantee secret-free content.</p>
+    <p><strong>Do not upload credentials, private keys or private logs.</strong></p>
     <div className="row" style={{ gap: 8 }}>
       <button className="btn sm" disabled={busy} onClick={() => list()}>Load campaigns</button>
       {cursor && <button className="btn sm" disabled={busy} onClick={() => list(cursor)}>Next page</button>}
       <input className="inp" aria-label="Campaign record ID" value={identifier} onChange={e => setIdentifier(e.target.value)} />
       <button className="btn sm" disabled={busy || !identifier} onClick={() => open(identifier)}>Open / refresh</button>
     </div>
-    {campaigns.length === 0 && <p className="faint">No campaign list loaded. No assignment, evidence or acceptance inferred.</p>}
+    {campaigns.length === 0 && <p className="faint">No campaign list loaded.</p>}
     <ul>{campaigns.map(c => <li key={c.record.subject_id}><button className="btn sm" disabled={busy} onClick={() => open(c.record.subject_id)}>{c.record.payload.policy.campaign_id} — {c.state}</button></li>)}</ul>
     {error && <p role="alert">{error} A failed request does not prove an earlier submission was rolled back; refresh before retrying.</p>}
     <label>Change / evidence reference<input className="inp" aria-label="Change / evidence reference" value={reference} onChange={e => setReference(e.target.value)} maxLength={120} /></label>
@@ -135,11 +135,11 @@ export default function HostQualification() {
       <p>Return channel approval reference: {payload.return_channel_reference} (recorded reference, not transport attestation).</p>
       <h3>{payload.policy.campaign_id} · revision {current.record.revision}</h3>
       <Badge tone={current.state === "BLOCKED" ? "red" : "amber"}>{current.state}</Badge>
-      <p>Scoped record verification is not hardware-origin proof, organizational independence or production clearance. Production remains blocked pending separate approval.</p>
+      <p>Not production clearance — separate approval required.</p>
       <p className="mono">{current.dispatch} · {current.channel}</p>
       <ul>{current.blockers.map((b, n) => <li key={n}>{b}</li>)}</ul>
       <h4>Named responsibilities</h4>
-      {Object.keys(current.assignees).length === 0 && <p>Unassigned. Real active tenant users are required; no demonstration identities are supplied.</p>}
+      {Object.keys(current.assignees).length === 0 && <p>Unassigned.</p>}
       <ul>{Object.entries(current.assignees).map(([role, a]) => <li key={role}>{role}: {a.display_name || a.username || "User unavailable"} ({a.user_id})</li>)}</ul>
       <details><summary>Assign humans (trust authority, before first original)</summary>
         <p>Role-to-assignee JSON: linux_operator, windows_operator, verifier, independent_assessor, bank_acceptor. Each needs user_id; reviewers also need reviewer_id matching their pinned policy key. Reviewers must be separate from operators, approver and each other. Assigning does not notify anyone or prove organizational independence.</p>

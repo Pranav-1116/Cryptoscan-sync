@@ -48,7 +48,7 @@ describe("Network visualization", () => {
     expect(await screen.findByText("chain not reported")).toBeInTheDocument();
     expect(screen.getByText("chain valid")).toBeInTheDocument();
     expect(screen.getByText("chain invalid")).toBeInTheDocument();
-    expect(screen.getByText(/A share of observed endpoints is not a share of the network/)).toBeInTheDocument();
+    expect(screen.getByText(/Observed TLS endpoints only/)).toBeInTheDocument();
     expect(screen.getByText("1 of 3 observed endpoints")).toBeInTheDocument();
     expect(screen.queryByText(/%/)).not.toBeInTheDocument();
   });

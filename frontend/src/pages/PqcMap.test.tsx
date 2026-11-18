@@ -115,7 +115,7 @@ describe("PQC migration plan register", () => {
     await screen.findByText("Migration path");
     expect(screen.getByText(/No inventory yet/)).toBeInTheDocument();
     // candidates are declared reference data, labelled as such
-    expect(screen.getByText(/declared reference data, not estate observations/)).toBeInTheDocument();
+    expect(screen.getByTitle(/declared reference data, not estate observations/)).toBeInTheDocument();
     expect(screen.getByText("ML-KEM-768")).toBeInTheDocument();
   });
 

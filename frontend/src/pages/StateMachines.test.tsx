@@ -12,7 +12,7 @@ describe("State machines explorer", () => {
   it("states the register's rules up front", () => {
     renderWithProviders(<StateMachines />);
     expect(screen.getByRole("heading", { name: "State machines" })).toBeInTheDocument();
-    expect(screen.getByText(/observed from code, never invented/)).toBeInTheDocument();
+    expect(screen.getByTitle(/observed from code, never invented/)).toBeInTheDocument();
     expect(screen.getByText(/unknown is never zero/)).toBeInTheDocument();
     expect(screen.getByText(/Capability is never usage/)).toBeInTheDocument();
   });

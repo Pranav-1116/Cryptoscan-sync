@@ -65,7 +65,7 @@ describe("per-system risk explainability (§4.6)", () => {
     mockFetch({ ...ok, "/api/v1/risk/systems": systemsResponse });
     renderWithProviders(<Risk />);
     fireEvent.click(await screen.findByText("payments-core"));
-    expect(await screen.findByText(/score decomposition/)).toBeInTheDocument();
+    expect(await screen.findByTitle(/score decomposition/)).toBeInTheDocument();
     // the eight blueprint factors with level bars and live weights
     expect(screen.getByText("Technical (failing findings + drift)")).toBeInTheDocument();
     expect(screen.getByText("PQC exposure")).toBeInTheDocument();

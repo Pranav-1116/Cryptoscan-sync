@@ -379,7 +379,7 @@ export default function Scanners() {
             <span style={{ fontSize: "12px", fontFamily: "var(--mono)", color: "var(--cyan)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Discovery Workflow</span>
             <h1 style={{ fontSize: "26px", fontWeight: 700, margin: "6px 0 8px" }}>New Scan</h1>
             <p style={{ margin: 0, fontSize: "14px", color: "var(--dim)" }}>
-              Choose an available workflow. Unavailable scanner families cannot be started from this page.
+              Choose a workflow.
             </p>
           </div>
 
@@ -540,7 +540,7 @@ export default function Scanners() {
                 }}
               />
               <div style={{ fontSize: "12px", color: "var(--dim)", marginTop: "6px" }}>
-                Runs in SUBMITTED mode — it attests the attributes a collector reported for the key (connectivity, HSM origin, non-exportable sign challenge). Live provider verification requires CRYPTOSCAN_HSM_LIVE and credentials on the API instance. This run leaves a durable job record — status, the admission decision and bounded coverage — under its run ID.
+                Submitted mode — live verification needs CRYPTOSCAN_HSM_LIVE.
               </div>
             </div>
             </> : selectedTarget === "Certificate" ? <>
@@ -588,7 +588,7 @@ export default function Scanners() {
                 }}
               />
               <div style={{ fontSize: "12px", color: "var(--dim)", marginTop: "6px" }}>
-                The server verifies the CIDR against your tenant's declared scope and scan safety policy. A passive selection never starts an active sweep.
+                CIDR is checked against your approved scope.
               </div>
             </div>
 
@@ -618,7 +618,7 @@ export default function Scanners() {
               I authorize active probes of this declared network scope.
             </label>}
             </> : <p style={{ margin: 0, fontSize: 13, color: "var(--dim)" }}>
-              Registers all declared onboarding scope into domain tables and stores an asset estimate. This does not run specialized scans. Configure environments, scope and a tested connector in onboarding first.
+              Registers onboarding scope and estimates assets. Requires a tested connector.
             </p>}
           </div>
 

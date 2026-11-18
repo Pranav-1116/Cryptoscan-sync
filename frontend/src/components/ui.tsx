@@ -17,6 +17,49 @@ export function Corners() {
   );
 }
 
+/* Minimal wording: subtitles and panel taglines show one short clause; the
+ * full sentence stays available on hover (title attribute), so nothing is
+ * lost but the screen is not a wall of caveats. */
+const CLAUSE_MARKS = [". ", " — ", " – ", "; ", " (", " -- "];
+export function concise(text: string, max = 64): string {
+  const t = String(text ?? "").trim();
+  if (t.length <= max) return t;
+  let cut = t.length;
+  for (const m of CLAUSE_MARKS) {
+    const i = t.indexOf(m, 10);
+    if (i >= 10 && i < cut) cut = i;
+  }
+  let out = t.slice(0, cut).trim();
+  if (out.length < 16 && cut < t.length && max - out.length > 20) {
+    // a bare label ("GA", "Binary Intelligence") — keep the next clause too
+    const rest = t.slice(cut).replace(/^[\s.—–;(-]+/, "");
+    const next = concise(rest, max - out.length - 3);
+    out = next ? `${out} · ${next}` : out;
+  }
+  if (out.length > max && out.includes(" · ")) {
+    const segs = out.split(" · ");
+    let acc = segs[0];
+    for (const seg of segs.slice(1)) {
+      if ((acc + " · " + seg).length > max) break;
+      acc += " · " + seg;
+    }
+    out = acc;
+  }
+  if (out.length > max + 20) {
+    const sp = out.lastIndexOf(" ", max + 16);
+    out = out.slice(0, sp > 40 ? sp : max + 16).replace(/[,:;]$/, "") + "…";
+  }
+  return out.replace(/[.,:;]$/, "");
+}
+
+/* Panel/page titles keep the name, not the tagline ("Scope — explicit
+ * authorization only" → "Scope"). */
+export function conciseTitle(title: string): string {
+  const t = String(title ?? "");
+  const i = t.indexOf(" — ");
+  return i > 3 ? t.slice(0, i) : t;
+}
+
 export function Panel({ title, sub, children, frame = true, className = "", style }: {
   title?: ReactNode; sub?: string; children: ReactNode; frame?: boolean; className?: string; style?: React.CSSProperties;
 }) {
@@ -24,8 +67,10 @@ export function Panel({ title, sub, children, frame = true, className = "", styl
   const body = (
     <>
       {frame && <Corners />}
-      {title && <h3>{title}</h3>}
-      {sub && <p className="sub">{sub}</p>}
+      {title && (typeof title === "string"
+        ? <h3 title={conciseTitle(title) !== title ? title : undefined}>{conciseTitle(title)}</h3>
+        : <h3>{title}</h3>)}
+      {sub && <p className="sub" title={concise(sub) !== sub ? sub : undefined}>{concise(sub)}</p>}
       {/* One panel's render failure must not blank the page (Critical:
           error boundaries). Mounted here so EVERY panel is isolated. */}
       <PanelErrorBoundary label={typeof title === "string" ? title : undefined}>
@@ -350,7 +395,7 @@ export function PageHead({ crumb, title, sub, right }: { crumb: string; title: s
         {/* Page titles resolve out of ciphertext on route change -- the
             console's one piece of thematic motion. See lib/motion.tsx. */}
         <h1><DecryptText text={title} className="mono-settle" /></h1>
-        {sub && <div className="sub">{sub}</div>}
+        {sub && <div className="sub" title={concise(sub, 90) !== sub ? sub : undefined}>{concise(sub, 90)}</div>}
       </div>
       {right && <div className="row">{right}</div>}
     </div>

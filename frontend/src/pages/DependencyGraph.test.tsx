@@ -110,7 +110,7 @@ describe("DependencyGraph — honest blast radius and backend", () => {
     await waitFor(() =>
       expect(document.body.textContent).toContain("1 declared · 1 scanner-derived"));
     expect(
-      screen.getByText(/declared = operator statement · scanner-derived = from scan evidence · unattributed = origin unknown/),
+      screen.getByTitle(/declared = operator statement · scanner-derived = from scan evidence · unattributed = origin unknown/),
     ).toBeTruthy();
   });
 
@@ -121,7 +121,7 @@ describe("DependencyGraph — honest blast radius and backend", () => {
     });
     renderPage();
     await waitFor(() => expect(screen.getAllByText("1 unattributed").length).toBeGreaterThan(0));
-    expect(screen.getByText(/unattributed = origin unknown/)).toBeTruthy();
+    expect(screen.getByTitle(/unattributed = origin unknown/)).toBeTruthy();
     expect(screen.queryByText(/\bobserved edges\b/i)).toBeNull();
   });
 
@@ -144,8 +144,6 @@ describe("DependencyGraph — honest blast radius and backend", () => {
     await clickNode("payments");
     await waitFor(() =>
       expect(document.body.textContent).toContain("Path edges: 2 declared · 1 scanner-derived"));
-    expect(document.body.textContent).toContain(
-      "declared edges are operator statements, not observed traffic");
   });
 
   it("a failed traversal says unavailable rather than 'no dependencies detected'", async () => {
@@ -155,7 +153,7 @@ describe("DependencyGraph — honest blast radius and backend", () => {
     });
     renderPage();
     await clickNode("payments");
-    await waitFor(() => expect(screen.getByText(/No traversal result — not linked to any system, or graph offline/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByTitle(/No traversal result — not linked to any system, or graph offline/)).toBeTruthy());
     expect(screen.getByText("Traversal unavailable — impact unknown")).toBeTruthy();
     expect(screen.queryByText(/No downstream dependencies detected/)).toBeNull();
   });
@@ -181,7 +179,7 @@ describe("DependencyGraph — asset-inventory deep link (round 64)", () => {
         <DependencyGraph />
       </MemoryRouter>,
     );
-    expect(await screen.findByText(/Asset start — walk fans out from every system using this asset/)).toBeTruthy();
+    expect(await screen.findByTitle(/Asset start — walk fans out from every system using this asset/)).toBeTruthy();
     expect(screen.getByText(/2 owners/)).toBeTruthy();
     expect(screen.getByText("Downstream Dependents:")).toBeTruthy();
     expect(screen.getByText("↳ checkout").parentElement).toHaveTextContent("2 hops");
@@ -204,8 +202,8 @@ describe("DependencyGraph — asset-inventory deep link (round 64)", () => {
         <DependencyGraph />
       </MemoryRouter>,
     );
-    expect(await screen.findByText(/No traversal result — not linked to any system, or graph offline/)).toBeTruthy();
-    expect(screen.getByText(/Blast is unknown, not zero/)).toBeTruthy();
+    expect(await screen.findByTitle(/No traversal result — not linked to any system, or graph offline/)).toBeTruthy();
+    expect(screen.getByTitle(/Blast is unknown, not zero/)).toBeTruthy();
   });
 });
 

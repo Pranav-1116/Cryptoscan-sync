@@ -153,7 +153,6 @@ export default function Reports() {
           {exitHash && <Badge tone="green">SHA-256 {exitHash.slice(0, 16)}…</Badge>}
         </div>
         {exitMsg && <div style={{ marginTop: 8, fontSize: 12, color: exitMsg.ok ? "var(--green)" : "var(--red)", background: exitMsg.ok ? "color-mix(in srgb, var(--green) 8%, transparent)" : "color-mix(in srgb, var(--red) 8%, transparent)", border: `1px solid ${exitMsg.ok ? "var(--green)" : "var(--red)"}`, borderRadius: "var(--r)", padding: "8px 10px" }}>{exitMsg.text}</div>}
-        <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 8, background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 10px" }}>SC-4 (client acceptance) stays unmet until a name is entered — acceptance is human sign-off, never inferred. Verify any report by recomputing canonical-JSON SHA-256.</div>
       </Panel>
 
       <Panel title="Pin a scan's report now" sub="Content-addressed version authority — exact payload (signed PDF + scan→BOM chain) hashed SHA-256; identical pins collapse" style={{ marginTop: 14 }}>
@@ -166,11 +165,10 @@ export default function Reports() {
           <button disabled={pinBusy || !pinScan.trim()} onClick={() => void runPin()} style={{ fontSize: 12, padding: "7px 14px", borderRadius: "var(--r)", background: pinScan.trim() ? "var(--cyan)" : "var(--panel-2)", color: pinScan.trim() ? "#fff" : "var(--faint)", border: "1px solid var(--line)", fontWeight: 700, cursor: pinScan.trim() ? "pointer" : "not-allowed" }}>{pinBusy ? "Pinning…" : "Pin report"}</button>
         </div>
         {pinMsg && <div style={{ marginTop: 8, fontSize: 12, color: pinMsg.ok ? "var(--green)" : "var(--red)", background: pinMsg.ok ? "color-mix(in srgb, var(--green) 8%, transparent)" : "color-mix(in srgb, var(--red) 8%, transparent)", border: `1px solid ${pinMsg.ok ? "var(--green)" : "var(--red)"}`, borderRadius: "var(--r)", padding: "8px 10px" }}>{pinMsg.text}</div>}
-        <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 8 }}>Schedules render “latest completed scan of target”; a pin freezes the EXACT scan you name. Pinned report cites scan's pinned CBOM snapshot (or says none exists).</div>
       </Panel>
 
       <Panel title="Generated reports" sub="Signed snapshots — each run produces a deterministic, HMAC-sealed PDF" style={{ marginTop: 14 }}>
-        {snapshots.length === 0 ? <p style={{ fontSize: 12, color: "var(--dim)", textAlign: "center", background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)", padding: 16, margin: 0 }}>No reports yet. A schedule fires once a scan exists for its target; you can also run a compliance report on demand in Resilience. Every snapshot is sealed with HMAC — nothing fabricated.</p> : (
+        {snapshots.length === 0 ? <p style={{ fontSize: 12, color: "var(--dim)", textAlign: "center", background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)", padding: 16, margin: 0 }}>No reports yet.</p> : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 12 }}>
             {snapshots.map((r: any) => (
               <div key={r.id ?? r.snapshot_id} style={{ padding: 14, background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", borderLeft: `3px solid ${r.pdf_signature ? "var(--green)" : "var(--slate)"}` }}>

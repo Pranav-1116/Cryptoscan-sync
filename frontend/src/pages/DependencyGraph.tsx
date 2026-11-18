@@ -128,9 +128,8 @@ export default function DependencyGraph(){
         <div style={{display:"flex", gap:12, alignItems:"center"}}>
           <span style={{width:36,height:36, borderRadius:10, display:"grid", placeItems:"center", background:"color-mix(in srgb, var(--accent) 14%, transparent)", border:"1px solid var(--accent)"}}><IconComponent size={16} style={{color:"var(--accent)"}}/></span>
           <div>
-            <div style={{fontSize:10, letterSpacing:.12, fontFamily:"var(--mono)", color:"var(--accent)"}}>DETERMINISTIC TOPOLOGY · LIVE BFS · NO INFERENCE</div>
             <h1 style={{fontSize:22, fontWeight:700, margin:"2px 0 2px", lineHeight:1}}>Cryptographic Dependency Graph</h1>
-            <div style={{fontSize:12, color:"var(--dim)"}}>Systems → libraries → certs → HSMs — edges by reported provenance · <span style={{color:"var(--accent)"}}>{nodes.length} nodes</span> · <span style={{color:"var(--violet)"}}>{edges.length} edges</span></div>
+            <div style={{fontSize:12, color:"var(--dim)"}}><span style={{color:"var(--accent)"}}>{nodes.length} nodes</span> · <span style={{color:"var(--violet)"}}>{edges.length} edges</span></div>
           </div>
         </div>
         <div style={{display:"flex", gap:10, alignItems:"center", flexWrap:"wrap"}}>
@@ -159,7 +158,7 @@ export default function DependencyGraph(){
           <div style={{fontSize:22, fontWeight:800, color:"var(--cyan)", margin:"4px 0 2px"}}>{loading?"…": (graphStats?.edges ?? edges.length)}</div>
           <div style={{fontSize:11, color:"var(--dim)"}}>{loading?"…": (provenanceSummary || "no edges yet")}</div>
           {!loading && edges.length>0 && <Bar value={Math.min(1, edges.length/Math.max(1,(graphStats?.nodes ?? nodes.length)))} tone="cyan"/>}
-          <div style={{fontSize:10, color:"var(--faint)", marginTop:4}}>declared = operator statement · scanner-derived = from scan evidence · unattributed = origin unknown</div>
+          <div style={{fontSize:10, color:"var(--faint)", marginTop:4, cursor:"help"}} title="declared = operator statement · scanner-derived = from scan evidence · unattributed = origin unknown">ⓘ provenance</div>
         </div>
         <div className="panel" style={{padding:"12px 14px", borderTop: loading || graphData.backend ? "2px solid var(--green)" : "2px solid var(--line-strong)"}}>
           <div style={{fontSize:10, color:"var(--dim)", letterSpacing:.08, display:"flex", gap:6, alignItems:"center"}}><span className="dot" style={{background: loading || graphData.backend ? "var(--green)":"var(--slate)", width:6,height:6,borderRadius:99}}/>ENGINE</div>
@@ -307,13 +306,13 @@ export default function DependencyGraph(){
         <div className="panel" style={{padding:"14px 16px", borderTop:"2px solid var(--red)"}}>
           <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", gap:8, flexWrap:"wrap", marginBottom:8, padding:"8px 10px", background:"var(--bg-2)", borderRadius:"var(--r)", border:"1px solid var(--line)"}}>
             <div style={{display:"flex", alignItems:"center", gap:8}}><IconTarget size={14} style={{color:"var(--red)"}}/><span style={{fontSize:12, fontWeight:700}}>Blast Radius & Impact</span><Badge tone={blastRadius? "red":"slate"}>{blastRadius? `${blastRadius.systems?.length??0} impacted`:"select node"}</Badge></div>
-            <span style={{fontSize:11, color:"var(--dim)"}}>Exact BFS · downstream</span>
+
           </div>
 
           {selectedNode ? (
             <div style={{display:"flex", flexDirection:"column", gap:14}}>
               {selectedNode.kind==="asset" && (
-                <div style={{fontSize:12, color:"var(--dim)", lineHeight:1.5}}>Asset start — walk fans out from every system using this asset (declared SystemAsset links).{" "}<Link to="/assets" style={{color:"var(--accent)"}}>Back to assets</Link>{blastRadius?.owning_systems?.length ? ` · ${blastRadius.owning_systems.length} owners` : ""}</div>
+                <div style={{fontSize:12, color:"var(--dim)", lineHeight:1.5}}><span title="Asset start — walk fans out from every system using this asset (declared SystemAsset links)">From asset</span>{" · "}<Link to="/assets" style={{color:"var(--accent)"}}>Back to assets</Link>{blastRadius?.owning_systems?.length ? ` · ${blastRadius.owning_systems.length} owners` : ""}</div>
               )}
               <div style={{padding:12, background:"var(--bg-2)", border:"1px solid var(--line)", borderRadius:"var(--r)", borderLeft:`3px solid ${gcol(selectedNode.kind)}`}}>
                 <div style={{fontSize:11, color:"var(--dim)", textTransform:"uppercase", letterSpacing:.06}}>Selected</div>
@@ -345,7 +344,7 @@ export default function DependencyGraph(){
                   </div>
                   {blastRadius.provenance_counts && (
                     <div style={{fontSize:11, color:"var(--dim)", lineHeight:1.5, padding:"8px 10px", background:"var(--panel-2)", border:"1px solid var(--line)", borderRadius:"var(--r)"}}>
-                      Path edges: {Object.entries(blastRadius.provenance_counts as Record<string,number>).filter(([,v])=>Number(v)>0).map(([k,v])=> `${Number(v)} ${String(k).toLowerCase().replace(/_/g,"-")}`).join(" · ") || "none"} — declared edges are operator statements, not observed traffic.
+                      Path edges: {Object.entries(blastRadius.provenance_counts as Record<string,number>).filter(([,v])=>Number(v)>0).map(([k,v])=> `${Number(v)} ${String(k).toLowerCase().replace(/_/g,"-")}`).join(" · ") || "none"}
                     </div>
                   )}
                   {blastRadius.systems && blastRadius.systems.length>0 && (
@@ -362,12 +361,12 @@ export default function DependencyGraph(){
                   )}
                 </div>
               ) : (
-                <div style={{padding:14, background:"var(--bg-2)", borderRadius:"var(--r)", fontSize:12.5, color:"var(--dim)", border:"1px solid var(--line)"}}>No traversal result — not linked to any system, or graph offline. Blast is unknown, not zero.</div>
+                <div style={{padding:14, background:"var(--bg-2)", borderRadius:"var(--r)", fontSize:12.5, color:"var(--dim)", border:"1px solid var(--line)"}} title="No traversal result — not linked to any system, or graph offline. Blast is unknown, not zero.">Blast radius unknown</div>
               )}
               <Link to="/what-if" className="btn sm primary" style={{textDecoration:"none", display:"block", textAlign:"center"}}>Explore What-If Migration</Link>
             </div>
           ) : (
-            <div style={{textAlign:"center", padding:40, color:"var(--dim)", fontSize:13}}>Select a node from the topology on the left to calculate blast radius.</div>
+            <div style={{textAlign:"center", padding:40, color:"var(--dim)", fontSize:13}}>Select a node</div>
           )}
         </div>
       </div>

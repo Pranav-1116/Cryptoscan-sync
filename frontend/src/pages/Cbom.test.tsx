@@ -179,7 +179,7 @@ describe("Cbom — pinned snapshots", () => {
     });
     renderPage();
     fireEvent.change(await screen.findByLabelText("Scan"), { target: { value: "scan-snap-9" } });
-    await waitFor(() => expect(screen.getByText(/No snapshots pinned for this scan yet/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/No snapshots pinned yet/)).toBeTruthy());
 
     fireEvent.click(screen.getByRole("button", { name: "Pin Snapshot" }));
     const post = fetchSpy.mock.calls.find(([p, init]) => String(p).includes("/cbom/scan/scan-snap-9/snapshot") && init?.method === "POST");

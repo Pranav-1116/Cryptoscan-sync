@@ -505,7 +505,7 @@ function CbomContent() {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, marginBottom: 18 }}>
-        <Panel title="Top algorithms" sub="by crypto-asset count — what the estate actually uses" style={{ padding: "14px 16px" }}>
+        <Panel title="Top algorithms" sub="By asset count" style={{ padding: "14px 16px" }}>
           {byAlgorithm.length ? byAlgorithm.map(([algorithm, n]) => (
             <div key={algorithm} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
               <span style={{ width: 130, fontSize: 11, color: "var(--dim)", fontFamily: "var(--mono)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{algorithm}</span>
@@ -808,7 +808,7 @@ function CbomContent() {
         )}
         {selectedScan && snapshotsLoaded && snapshots.length === 0 && (
           <p style={{ margin: "12px 0 0", fontSize: 12.5, color: "var(--dim)" }}>
-            No snapshots pinned for this scan yet — pinning freezes the current rendering for export and audit.
+            No snapshots pinned yet.
           </p>
         )}
 
@@ -1032,7 +1032,7 @@ function CbomAssets() {
   );
   return (
     <>
-      <Panel title="Cryptographic Asset Inventory" sub="every row is a stored record — click an asset for parameters, evidence and migration relevance">
+      <Panel title="Cryptographic Asset Inventory" sub="Click an asset for details">
         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
           <input value={q} onChange={(e) => setQ(e.target.value)}
             placeholder="search by algorithm, location or implementation"
@@ -1146,7 +1146,7 @@ function CbomAlgorithms() {
   const read = useApi(apiCbomWorkspaceAlgorithms);
   const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
   return (
-    <Panel title="Algorithm Intelligence" sub="per-algorithm rollups over the stored crypto-asset records">
+    <Panel title="Algorithm Intelligence" sub="Per-algorithm rollups">
       <WsState read={read} noun="algorithm inventory">
         <WsTable head={["Algorithm", "Assets", "Operations", "Key sizes", "Usage states", "PQC family", "Evidence"]} colSpan={7}
           rows={rows.map((r) => (
@@ -1169,7 +1169,7 @@ function CbomLibraries() {
   const read = useApi(apiCbomWorkspaceLibraries);
   const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
   return (
-    <Panel title="Crypto Library & Provider Inventory" sub="a library capability is never promoted to use — the claim lives on the asset rows with their own evidence">
+    <Panel title="Crypto Library & Provider Inventory" sub="Libraries recorded on assets">
       <WsState read={read} noun="library inventory">
         <WsTable head={["Library / provider", "Algorithms supported", "Usage state", "Basis", "Assets referencing"]} colSpan={5}
           rows={rows.map((r) => (
@@ -1190,7 +1190,7 @@ function CbomCertificates() {
   const read = useApi(apiCbomWorkspaceCertificates);
   const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
   return (
-    <Panel title="Certificate & PKI Inventory" sub="certificate metadata and validity as collected — public-key metadata only">
+    <Panel title="Certificate & PKI Inventory" sub="Certificates and validity">
       <WsState read={read} noun="certificate inventory">
         <WsTable head={["Subject", "Issuer", "Public key", "Validity", "Expiry", "Revocation", "Renewal", "PQC family"]} colSpan={8}
           rows={rows.slice(0, 200).map((c) => (
@@ -1214,7 +1214,7 @@ function CbomKeys() {
   const read = useApi(apiCbomWorkspaceKeys);
   const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
   return (
-    <Panel title="Key Metadata Inventory" sub="type, size and parameter set only — key material is never collected into this view">
+    <Panel title="Key Metadata Inventory" sub="Type, size and parameters — no key material">
       <WsState read={read} noun="key-metadata inventory">
         <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
           <Badge tone="slate">{String(read.data?.total ?? 0)} with key metadata</Badge>
@@ -1240,7 +1240,7 @@ function CbomOperations() {
   const read = useApi(apiCbomWorkspaceOperations);
   const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
   return (
-    <Panel title="Cryptographic Operations" sub="static references and observed operations kept in separate counts">
+    <Panel title="Cryptographic Operations" sub="Static references vs observed operations">
       <WsState read={read} noun="operation inventory">
         <WsTable head={["Operation", "Static references", "Observed operations", "Usage state", "Basis"]} colSpan={5}
           rows={rows.map((r) => (
@@ -1261,7 +1261,7 @@ function CbomProtocols() {
   const read = useApi(apiCbomWorkspaceProtocols);
   const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
   return (
-    <Panel title="TLS / SSH / IPsec Cryptography" sub="supported, configured and negotiated are kept apart — a scan that saw a protocol proves nothing about what is in use">
+    <Panel title="TLS / SSH / IPsec Cryptography" sub="Supported, configured and negotiated">
       <WsState read={read} noun="protocol observations">
         <WsTable head={["Protocol", "Version", "Cipher suite", "Algorithm", "Host", "Seen", "Registry verdict", "Quantum impact"]} colSpan={8}
           rows={rows.slice(0, 200).map((r, i) => (
@@ -1287,7 +1287,7 @@ function CbomPqc() {
   const certKeys = (read.data?.certificate_keys ?? {}) as Record<string, number>;
   const waves = (read.data?.migration_waves ?? []) as Array<Record<string, unknown>>;
   return (
-    <Panel title="PQC Readiness" sub="algorithm-family classification and registered migration waves — support is never use">
+    <Panel title="PQC Readiness" sub="Algorithm families and migration waves">
       <WsState read={read} noun="PQC assessment">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
           {Object.entries(families).map(([k, v]) => <span key={k}><PqcBadge family={k} /> {v}</span>)}
@@ -1319,7 +1319,7 @@ function CbomDependencies() {
   const edges = (read.data?.edges ?? []) as Array<Record<string, string>>;
   const roots = (read.data?.roots ?? []) as string[];
   return (
-    <Panel title="Crypto Dependencies" sub="asset → implementation edges; an edge without a stored relationship is not drawn">
+    <Panel title="Crypto Dependencies" sub="Asset → implementation">
       <WsState read={read} noun="dependency inventory">
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
           <Badge tone="violet">{edges.length} edges</Badge>
@@ -1343,7 +1343,7 @@ function CbomEvidence() {
   const read = useApi(apiCbomWorkspaceEvidence);
   const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
   return (
-    <Panel title="Evidence & Provenance" sub="one evidence vocabulary: Measured, Imported, Inferred, Unknown, Contradicted — with the observation method named">
+    <Panel title="Evidence & Provenance" sub="How each record was observed">
       <WsState read={read} noun="evidence inventory">
         <WsTable head={["Algorithm", "Observation method", "Observations", "Evidence status", "First seen", "Last seen", "Freshness"]} colSpan={7}
           rows={rows.slice(0, 200).map((r, i) => (
@@ -1366,7 +1366,7 @@ function CbomHistory() {
   const read = useApi(apiCbomWorkspaceHistory);
   const rows = (read.data?.rows ?? []) as Array<Record<string, any>>;
   return (
-    <Panel title="CBOM History" sub="first and last observation per stored fact — events are immutable records">
+    <Panel title="CBOM History" sub="First and last seen per fact">
       <WsState read={read} noun="history">
         <WsTable head={["Algorithm", "Location", "First seen", "Last seen", "Observations", "Freshness"]} colSpan={6}
           rows={rows.slice(0, 200).map((r, i) => (
@@ -1389,7 +1389,7 @@ function CbomExport() {
   const formats = (read.data?.formats ?? []) as Array<Record<string, unknown>>;
   const signed = (read.data?.signed_variants ?? []) as string[];
   return (
-    <Panel title="Export & Validation" sub="validators run over the stored document; a signature is integrity provenance, not a risk score">
+    <Panel title="Export & Validation" sub="Validate and export">
       <WsState read={read} noun="export inventory">
         <WsTable head={["Format", "Validator", "State"]} colSpan={3}
           rows={formats.map((f, i) => (
@@ -1436,7 +1436,7 @@ function CbomNetworkCollect() {
       endpoint: String((f as Record<string, unknown>).endpoint ?? "?"),
       status: String((f as Record<string, unknown>).status ?? "?"),
     })));
-    setNote(`Collected ${certs.length} certificate${certs.length === 1 ? "" : "s"} from ${findings.length} endpoint${findings.length === 1 ? "" : "s"}${alerts.length ? ` · ${alerts.length} alert${alerts.length === 1 ? "" : "s"}` : ""} — now listed in the Cryptographic Asset Inventory, Certificate & PKI Inventory and TLS / SSH / IPsec tabs below, and on the Network page.`);
+    setNote(`Collected ${certs.length} certificate${certs.length === 1 ? "" : "s"} from ${findings.length} endpoint${findings.length === 1 ? "" : "s"}${alerts.length ? ` · ${alerts.length} alert${alerts.length === 1 ? "" : "s"}` : ""} — added to the tabs below and the Network page.`);
   }
 
   return (
@@ -1445,7 +1445,7 @@ function CbomNetworkCollect() {
         <div>
           <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em" }}>LIVE NETWORK COLLECTION</div>
           <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 2 }}>
-            Scan live TLS endpoints into this CBOM — the same active collection path the Scanners page runs.
+            Scan TLS endpoints into this CBOM
           </div>
         </div>
         <button className="btn outline" style={{ fontSize: 12, padding: "6px 12px" }} onClick={() => setOpen(!open)} aria-expanded={open}>

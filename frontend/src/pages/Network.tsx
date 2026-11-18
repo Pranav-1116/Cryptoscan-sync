@@ -439,14 +439,14 @@ function NetworkCryptoScopePanel() {
   };
   return (
     <Panel
-      title="Approved Network Scope — explicit authorization only"
-      sub="Indha exact destination / port / protocol / operation / time window mattum observe pannu — bank must approve every target (spec §3)"
+      title="Approved network scope"
+      sub="Only approved destinations are observed"
     >
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
         <Badge tone={tone as any}>{status.state}</Badge>
         <span className="dim" style={{ fontSize: 12 }}>{status.reason}</span>
         <span className="dim" style={{ marginLeft: "auto", fontSize: 11 }}>
-          {scope ? `saved ${scope.saved_at ? new Date(scope.saved_at as string).toLocaleString() : ""} by ${scope.saved_by || "—"}` : "no scope yet — scans are refused until configured"}
+          {scope ? `saved ${scope.saved_at ? new Date(scope.saved_at as string).toLocaleString() : ""} by ${scope.saved_by || "—"}` : ""}
         </span>
         <button className="btn sm" onClick={() => setEditing((e) => !e)}>{editing ? "Cancel edit" : "Configure scope"}</button>
         {scopeRes.source === "live" ? <LiveBadge source="live" label="SCOPE LIVE" /> : <Badge tone="amber">OFFLINE</Badge>}
@@ -454,7 +454,7 @@ function NetworkCryptoScopePanel() {
 
       {!scope && !editing ? (
         <div style={{ padding: "14px", border: "1px dashed var(--line)", borderRadius: "var(--r)", background: "color-mix(in srgb, var(--amber) 6%, transparent)", fontSize: 12, color: "var(--dim)" }}>
-          No approved scope configured — CryptoScan will <b>refuse</b> network probes (including <code>10.0.0.0/8</code>) until you save explicit destinations. Click <b>Configure scope</b> to add approved host:port entries like <code>10.20.10.15:443</code>.
+          No scope yet — add approved <code>host:port</code> entries with <b>Configure scope</b>.
         </div>
       ) : null}
 
@@ -488,8 +488,6 @@ function NetworkCryptoScopePanel() {
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, fontSize: 11, color: "var(--faint)" }}>
         <span className="mono">name: <b style={{ color: "var(--text)" }}>{scope?.name || "—"}</b></span>
-        <span>· only these destinations will be observed</span>
-        <span>· CIDR like <code>10.0.0.0/8</code> is never scanned implicitly</span>
       </div>
 
       {editing && (
@@ -539,8 +537,8 @@ function SafetyStopPanel() {
   };
   return (
     <Panel
-      title="Observation safety — emergency stop"
-      sub="IDS alert → STOP, never disable the IDS: active probes are refused before any socket opens; passive ingest and config import keep running"
+      title="Emergency stop"
+      sub="Halts active probes; passive ingest keeps running"
       className="mt"
     >
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -550,9 +548,6 @@ function SafetyStopPanel() {
           {busy ? "…" : state?.engaged ? "Release stop" : "Stop observation"}
         </button>
         {msg && <span className="dim" style={{ fontSize: 11 }}>{msg}</span>}
-      </div>
-      <div className="faint" style={{ fontSize: 10.5, marginTop: 8 }}>
-        One local switch per tenant · passive metadata ingest stays available · not a distributed kill switch
       </div>
     </Panel>
   );
@@ -725,9 +720,6 @@ function NetworkRiskPanel() {
                 <Badge tone="slate">{pqc.summary.classical_only} classical</Badge>
                 <Badge tone="amber">{pqc.summary.not_observed} not observed</Badge>
               </div>
-              <div className="faint" style={{ fontSize: 10.5, marginTop: 6 }}>
-                classical key agreement only → recorded traffic is harvest-now-decrypt-later exposed; certificates are judged separately
-              </div>
             </div>
           )}
 
@@ -828,7 +820,7 @@ function EvidenceIntegrityPanel() {
       {notice && <div style={{ color: "var(--red, #f87171)", fontSize: 11, marginTop: 8 }}>{notice}</div>}
       {anchorStatus && !anchorStatus.key.configured && (
         <div className="faint" style={{ fontSize: 10.5, marginTop: 8 }}>
-          anchoring refused until CRYPTOSCAN_ANCHOR_KEY is set outside the database — an unsigned anchor is a claim, not evidence
+          anchoring needs CRYPTOSCAN_ANCHOR_KEY
         </div>
       )}
       {verification && (
@@ -1195,7 +1187,7 @@ function NetworkCryptoIntelligencePanel() {
 
       {records.length === 0 ? (
         <div className="dim" style={{ fontSize: 13, padding: "12px 4px" }}>
-          No observations yet — approve a scope above, then start the observation worker or record a listener.
+          No observations yet.
           Empty means <b>NOT_OBSERVED</b>, never “no crypto”.
         </div>
       ) : (
@@ -1295,7 +1287,7 @@ export default function Network() {
       <PageHead
         crumb="discovery / network"
         title="Network topology"
-        sub="Live TLS posture mapped from observed endpoints — subnet → host → service, no inference"
+        sub="Live TLS posture by subnet, host and service"
         right={
           <>
             {live && <LiveBadge source="live" label="LIVE" />}
@@ -1337,7 +1329,7 @@ export default function Network() {
               { key: "invalid", label: "chain invalid", value: chainInvalid, tone: "red" },
               { key: "unreported", label: "chain not reported", value: chainUnknown, tone: "slate" },
             ]}
-            note="Composition of the observed TLS endpoints only. A share of observed endpoints is not a share of the network."
+            note="Observed TLS endpoints only"
           />
         </div>
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
@@ -1468,7 +1460,7 @@ export default function Network() {
           />
           {!assets.length && (
             <div className="dim" style={{ fontSize: 13, marginTop: 12, textAlign: "center", padding: "16px 0" }}>
-              No network data yet — run a live network scan (set a host:port target) in Operations → Realtime scanners.
+              No network data yet — run a scan from Scanners or CBOM.
             </div>
           )}
         </div>
