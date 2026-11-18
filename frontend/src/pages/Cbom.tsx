@@ -20,6 +20,7 @@ import {
   apiCbomScanSnapshots,
   apiCbomSnapshot,
   apiCbomSnapshotDiff,
+  apiNetworkTlsScan,
   apiScansRecent,
   apiTechBomLive,
   fmtSnapshotId,
@@ -427,6 +428,8 @@ function CbomContent() {
           </div>
         </div>
       </div>
+
+      <CbomNetworkCollect />
 
       <div role="tablist" aria-label="CBOM sections" style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "2px 0 16px" }}>
         {CBOM_TABS.map((t) => (
@@ -1402,6 +1405,91 @@ function CbomExport() {
           </div>
         )}
       </WsState>
+    </Panel>
+  );
+}
+
+/* ── Live network collection (not a spec tab — an action panel) ──────────
+   Enter host:port targets, run the real network TLS scan, and the collected
+   certificates/usages land in this workspace's inventories. Counts and
+   statuses only — the panel never renders key material. */
+function CbomNetworkCollect() {
+  const [open, setOpen] = useState(false);
+  const [targets, setTargets] = useState("");
+  const [deep, setDeep] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [rows, setRows] = useState<{ endpoint: string; status: string }[]>([]);
+
+  async function run() {
+    const hosts = targets.split(/[\n,]/).map((s) => s.trim()).filter(Boolean);
+    if (!hosts.length) { setError("Add at least one host:port target."); return; }
+    setBusy(true); setError(null); setNote(null); setRows([]);
+    const res = await apiNetworkTlsScan(hosts, deep ? { scan_versions: true, scan_ciphers: true, check_chain_sent: true } : {});
+    setBusy(false);
+    if (res.source !== "live" || !res.data) { setError("Scan refused or unreachable — check scope authorization and try again."); return; }
+    const findings = Array.isArray(res.data.findings) ? res.data.findings : [];
+    const certs = Array.isArray(res.data.certificates) ? res.data.certificates : [];
+    const alerts = Array.isArray(res.data.alerts) ? res.data.alerts : [];
+    setRows(findings.map((f) => ({
+      endpoint: String((f as Record<string, unknown>).endpoint ?? "?"),
+      status: String((f as Record<string, unknown>).status ?? "?"),
+    })));
+    setNote(`Collected ${certs.length} certificate${certs.length === 1 ? "" : "s"} from ${findings.length} endpoint${findings.length === 1 ? "" : "s"}${alerts.length ? ` · ${alerts.length} alert${alerts.length === 1 ? "" : "s"}` : ""} — persisted to the certificate inventory; the tabs below read them now.`);
+  }
+
+  return (
+    <Panel style={{ padding: 14, marginBottom: 16, borderTop: "2px solid var(--accent)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em" }}>LIVE NETWORK COLLECTION</div>
+          <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 2 }}>
+            Scan live TLS endpoints into this CBOM — the same active collection path the Scanners page runs.
+          </div>
+        </div>
+        <button className="btn outline" style={{ fontSize: 12, padding: "6px 12px" }} onClick={() => setOpen(!open)} aria-expanded={open}>
+          {open ? "Hide" : "Scan endpoints →"}
+        </button>
+      </div>
+      {open && (
+        <div style={{ marginTop: 12 }}>
+          <textarea
+            value={targets}
+            onChange={(e) => setTargets(e.target.value)}
+            rows={3}
+            aria-label="TLS scan targets"
+            placeholder={"host:port — one per line or comma-separated\ne.g. 10.0.10.21:443\n      payments-gw.example:8443"}
+            style={{ width: "100%", padding: "8px 10px", borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--panel-2)", color: "var(--text)", fontFamily: "var(--mono)", fontSize: 12 }}
+          />
+          <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 8, flexWrap: "wrap" }}>
+            <label style={{ fontSize: 11.5, color: "var(--dim)", display: "flex", alignItems: "center", gap: 6 }}>
+              <input type="checkbox" checked={deep} onChange={(e) => setDeep(e.target.checked)} />
+              enumerate versions + ciphers (slower, richer)
+            </label>
+            <button className="btn primary" onClick={() => void run()} disabled={busy} style={{ fontSize: 12, padding: "8px 14px", borderRadius: "var(--r)" }}>
+              {busy ? "Scanning…" : "Run live scan"}
+            </button>
+          </div>
+          {error && <div style={{ marginTop: 10, fontSize: 12, color: "var(--red)" }}>{error}</div>}
+          {note && <div style={{ marginTop: 10, fontSize: 12, color: "var(--green)" }}>{note}</div>}
+          {rows.length > 0 && (
+            <table style={{ width: "100%", marginTop: 10, borderCollapse: "collapse", fontSize: 12 }}>
+              <thead><tr style={{ textAlign: "left", color: "var(--faint)", fontSize: 11 }}>
+                <th style={{ padding: "4px 8px" }}>Endpoint</th><th style={{ padding: "4px 8px" }}>Probe status</th>
+              </tr></thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.endpoint} style={{ borderTop: "1px solid var(--line)" }}>
+                    <td style={{ padding: "5px 8px", fontFamily: "var(--mono)", fontSize: 11.5 }}>{r.endpoint}</td>
+                    <td style={{ padding: "5px 8px" }}><Badge tone={r.status === "OK" ? "pass" : "fail"}>{r.status}</Badge></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
     </Panel>
   );
 }

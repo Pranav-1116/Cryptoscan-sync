@@ -189,11 +189,13 @@ services:
       CRYPTOSCAN_API: "http://api:8010"
       CRYPTOSCAN_USERNAME: "${CRYPTOSCAN_USERNAME:-}"
       CRYPTOSCAN_PASSWORD: "${CRYPTOSCAN_PASSWORD:-}"
+      # set to a number of seconds (e.g. 300) to run as a continuous agent
+      COLLECT_INTERVAL_SECONDS: "${COLLECT_INTERVAL_SECONDS:-}"
     volumes:
       - ./sandbox/collect:/collect:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks: [cryptoscan-net, sandbox-net]
-    restart: "no"
+    restart: unless-stopped
 
 volumes:
   sandbox_certs:

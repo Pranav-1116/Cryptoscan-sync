@@ -103,6 +103,24 @@ case "${1:-up}" in
     echo "sandbox estate removed; main stack untouched"
     ;;
   status) "${COMPOSE[@]}" ps ;;
+  agent)
+    # Continuous bank-agent mode: the collector re-observes the estate every
+    # COLLECT_INTERVAL_SECONDS (default 300). Needs the console credentials in
+    # .env once:
+    #   CRYPTOSCAN_USERNAME=admin
+    #   CRYPTOSCAN_PASSWORD=...
+    #   COLLECT_INTERVAL_SECONDS=300
+    if ! grep -q "^COLLECT_INTERVAL_SECONDS=" .env 2>/dev/null; then
+      echo "COLLECT_INTERVAL_SECONDS=300" >> .env
+      echo "added COLLECT_INTERVAL_SECONDS=300 to .env"
+    fi
+    if ! grep -q "^CRYPTOSCAN_USERNAME=" .env 2>/dev/null; then
+      echo "add CRYPTOSCAN_USERNAME + CRYPTOSCAN_PASSWORD to .env first (your console login)" >&2
+      exit 1
+    fi
+    "${COMPOSE[@]}" up -d sandbox-collect
+    echo "agent running — observations stream in on the interval; BOMs re-project from the newest"
+    ;;
   collect)
     # The living-bank collector: one pass over the estate through real
     # channels, pushed to the ingestion API; every BOM re-projects from it.
@@ -140,5 +158,5 @@ legacy-branch.bank.sandbox     hsm-sim.bank.sandbox:8443  core-banking-db.bank.s
 payments-bastion.bank.sandbox
 EOF
     ;;
-  *) echo "usage: $0 [up|seed|reset|migrate|db-rebuild|estate|console|targets|collect|down|status]" >&2; exit 2 ;;
+  *) echo "usage: $0 [up|seed|reset|migrate|db-rebuild|estate|console|targets|collect|agent|down|status]" >&2; exit 2 ;;
 esac

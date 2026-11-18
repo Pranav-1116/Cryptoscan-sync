@@ -5820,6 +5820,24 @@ export const apiNetworkCryptoProbe = (
 ): Promise<ApiResult<CryptoProbeResponse>> =>
   call("/api/v1/network/crypto-probe", { method: "POST", body: JSON.stringify({ endpoints, ...options }) });
 
+/* Live TLS scan of operator-supplied host:port targets (POST /network-scans).
+   The response carries the raw findings plus the persisted certificate
+   inventory; the workspace renders counts only — never key material. */
+export interface NetworkTlsScanResult {
+  findings?: Array<Record<string, unknown>>;
+  certificates?: Array<Record<string, unknown>>;
+  alerts?: Array<Record<string, unknown>>;
+  probe_telemetry?: Record<string, unknown>;
+  job_id?: string;
+  run_id?: string;
+}
+
+export const apiNetworkTlsScan = (
+  hosts: string[],
+  options: { scan_versions?: boolean; scan_ciphers?: boolean; check_chain_sent?: boolean; starttls?: string } = {},
+): Promise<ApiResult<NetworkTlsScanResult>> =>
+  call("/api/v1/network-scans", { method: "POST", body: JSON.stringify({ hosts, ...options }) });
+
 export interface NetworkRiskFinding {
   rule_id: string;
   severity: "critical" | "high" | "medium" | "low" | "info";

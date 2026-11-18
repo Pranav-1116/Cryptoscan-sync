@@ -206,6 +206,22 @@ each row arrives through the channel a real bank would use:
 bash sandbox/run_sandbox.sh collect     # one live pass: docker + TLS + SSH + DB + HSM
 ```
 
+**Driving each BOM from the console (no terminal):**
+
+| BOM | UI action | Where the data comes from |
+| --- | --- | --- |
+| **NBOM** | Scanners → Network workflow → sweep `10.210.0.0/29` (+ `10.210.0.8/32`) | live port/protocol discovery |
+| **CBOM** | CBOM workspace → **Live network collection** panel → enter `host:port` targets → Run live scan | real TLS handshakes; certs/usages persist into the workspace tabs |
+| **SBOM** | agent-fed: `bash sandbox/run_sandbox.sh agent` once, then the workspace updates on every pass | real apk/pip package DBs read inside each estate container |
+| **HBOM** | same agent feed; HBOM workspace → "Pin estate HBOM" to freeze a version | docker inspection + the HSM's real banner (firmware, key slots) |
+| **VBOM** | same agent feed | vendors derived from observed product versions |
+| **TechBOM** | TechBOM workspace → "Capture snapshot" after any scan/collect | platform re-projection over all of the above |
+
+Agent mode is the real-bank cadence: put `CRYPTOSCAN_USERNAME` /
+`CRYPTOSCAN_PASSWORD` (your console login) in `.env`, run
+`bash sandbox/run_sandbox.sh agent` once, and the collector re-observes the
+estate every 5 minutes — change the estate and the BOMs follow on their own.
+
 Each `collect` run pushes one observation to `POST /api/v1/ingestion/observations`.
 The platform stores it **only if something changed** (content fingerprint),
 and the BOM workspaces re-project from the newest observation — so edit the
