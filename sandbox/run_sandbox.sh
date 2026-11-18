@@ -96,7 +96,9 @@ case "${1:-up}" in
     "${COMPOSE[@]}" stop ${SBX_SERVICES} 2>/dev/null || true
     "${COMPOSE[@]}" rm -f ${SBX_SERVICES} 2>/dev/null || true
     docker volume rm "$(basename "$PWD" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')_sandbox_certs" 2>/dev/null || true
-    # Drop the fake bank LAN if nothing (e.g. the api) is still attached.
+    # Detach the API (it rides this LAN for live scans), then drop the fake
+    # bank LAN itself so the next `up` recreates it cleanly.
+    docker network disconnect cryptoscan-sandbox-net cryptoscan-api 2>/dev/null || true
     docker network rm cryptoscan-sandbox-net 2>/dev/null || true
     echo "sandbox estate removed; main stack untouched"
     ;;

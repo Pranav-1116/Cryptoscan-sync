@@ -209,3 +209,7 @@ networks:
     ipam:
       config:
         - subnet: 10.210.0.0/24
+          # Dynamic members (the API joins this LAN too) only ever get
+          # .128-.255 — the estate's static .2-.8 can never be stolen out
+          # from under it ("Address already in use" on up).
+          ip_range: 10.210.0.128/25
