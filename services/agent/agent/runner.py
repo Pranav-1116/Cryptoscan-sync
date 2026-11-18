@@ -79,6 +79,27 @@ def state_hash(observation: Mapping[str, Any]) -> str:
     return hashlib.sha256(json.dumps(material, sort_keys=True).encode("utf-8")).hexdigest()
 
 
+def signed_view(document: Mapping[str, Any]) -> dict[str, Any]:
+    """The exact document the platform verifies (``ingestion.signed_document``).
+
+    The platform does not verify the posted body as-is: it rebuilds the observation from
+    its known fields (with their defaults) and checks the signature over that. Signing
+    anything else — e.g. the body with ``state_hash`` — reports ``INVALID``.
+    """
+    view: dict[str, Any] = {
+        "schema": "cryptoscan.live-observation/1",
+        "estate": document.get("estate") or "default",
+        "scope": document.get("scope"),
+        "inventory_id": document.get("inventory_id") or "default",
+        "observed_at": document.get("observed_at"),
+    }
+    for name in ("assets", "evidence", "relationships", "collectors", "coverage"):
+        view[name] = list(document.get(name) or [])
+    if document.get("contributor"):
+        view["contributor"] = document["contributor"]
+    return view
+
+
 class DirectorySource:
     """Merge per-plane observation files a collector set has written to one directory.
 
@@ -252,8 +273,7 @@ class Agent:
             from shared_models import release_signature
 
             key = release_signature.load_private_key(self.config.sign_key)
-            body = {name: value for name, value in document.items() if name != "signature"}
-            document["signature"] = release_signature.sign_document(body, key)
+            document["signature"] = release_signature.sign_document(signed_view(document), key)
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
         if self.config.token:
             headers["Authorization"] = f"Bearer {self.config.token}"

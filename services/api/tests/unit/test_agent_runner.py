@@ -198,8 +198,14 @@ def test_the_agent_signs_its_observation_when_a_key_is_given(source_dir, tmp_pat
 
     document = json.loads(transport.calls[0][2])
     assert document["signature"]["key_id"].startswith("ed25519:")
+    # verified exactly as the platform verifies it: over ingestion.signed_document(body),
+    # not over the posted body (which also carries state_hash)
+    from api.routers.ingestion import LiveObservationRequest, signed_document
+
+    rebuilt = signed_document(LiveObservationRequest(**document))
     verdict = release_signature.verify_document(
-        document, trusted_key=release_signature.load_public_key(keys["public_key"])
+        {**rebuilt, "signature": document["signature"]},
+        trusted_key=release_signature.load_public_key(keys["public_key"]),
     )
     assert verdict["status"] == release_signature.VALID
 

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -126,6 +126,15 @@ class Agent(BaseModel, TenantScoped):
     """A deployed ZELNX agent (on-prem / air-gapped / hybrid environments)."""
 
     __tablename__ = "cp_agents"
+    __table_args__ = (
+        # One live agent per name per tenant (case-insensitive); a retired name
+        # may be enrolled again. coalesce() makes platform-scoped (NULL-tenant)
+        # agents collide too — a plain unique index would let NULLs repeat.
+        Index("uq_cp_agents_live_name", func.coalesce(text("tenant_id"), text("''")),
+              func.lower(text("name")), unique=True,
+              postgresql_where=text("status <> 'retired'"),
+              sqlite_where=text("status <> 'retired'")),
+    )
 
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     region: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)

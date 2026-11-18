@@ -40,8 +40,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api import estate_change_feed
-from api.dependencies import get_current_user, get_db_session
+from api import estate_change_feed, estate_contributions
+from api.dependencies import get_current_user, get_db_session, require_roles
 from api.routers import estate_graph
 from db.repositories.scan_run_repository import ScanRunRepository
 from db.tenancy import current_tenant
@@ -88,6 +88,15 @@ class LiveObservationRequest(BaseModel):
     scope: str | None = Field(default=None, max_length=160)
     inventory_id: str = Field(default="default", max_length=160)
     observed_at: str | None = Field(default=None, max_length=64)
+    contributor: str | None = Field(
+        default=None,
+        max_length=120,
+        description=(
+            "the agent this observation belongs to (e.g. mrdn-prod-dc1-swiftgw01). A named "
+            "contributor replaces only its own slice of the estate; omitted, the push replaces "
+            "the estate-wide base slice"
+        ),
+    )
     state_hash: str | None = Field(
         default=None,
         max_length=128,
@@ -148,12 +157,54 @@ def signed_document(body: LiveObservationRequest) -> dict[str, Any]:
         "relationships": body.relationships,
         "collectors": body.collectors,
         "coverage": body.coverage,
+        # only present when named, so a document signed before contributors existed
+        # still verifies byte-for-byte
+        **({"contributor": body.contributor} if body.contributor else {}),
     }
 
 
-def _authenticity(document: dict[str, Any], signature: dict[str, Any] | None) -> dict[str, Any]:
+def _enrolled_signer(db: Session | None, signature: dict[str, Any] | None) -> tuple[Any, Any]:
+    """``(agent, public_key)`` when the signature names an activated agent's key.
+
+    Activation (``POST /control/agents/activate``) registers each Cryptava agent's own
+    Ed25519 public key. A signature from that key verifies against the key the platform
+    holds — not against the key the document carries — so it can reach ``VALID`` without
+    a deployment-wide trust variable.
+    """
+    if db is None or not isinstance(signature, dict):
+        return None, None
+    try:
+        from db.repositories.control_plane_repository import ControlPlaneRepository
+
+        embedded = str(signature.get("public_key") or "")
+        if not embedded:
+            return None, None
+        claimed = release_signature.key_id(
+            release_signature.public_key_b64(release_signature.load_public_key(embedded))
+        )
+        agent = ControlPlaneRepository(db).find_agent_by_key_id(claimed)
+        if agent is None:
+            return None, None
+        registered = ((agent.config or {}).get("identity") or {}).get("public_key")
+        if not registered:
+            return None, None
+        return agent, release_signature.load_public_key(registered)
+    except Exception:  # noqa: BLE001 — an unreadable registry entry is "not enrolled"
+        logger.warning("enrolled_signer_lookup_failed", exc_info=True)
+        return None, None
+
+
+def _authenticity(
+    document: dict[str, Any],
+    signature: dict[str, Any] | None,
+    *,
+    db: Session | None = None,
+) -> dict[str, Any]:
     keys = trusted_keys()
     trusted = keys[0] if keys else None
+    agent, agent_key = _enrolled_signer(db, signature)
+    if agent_key is not None:
+        trusted = agent_key
     verdict = release_signature.verify_document(
         {**document, "signature": signature} if signature else document,
         trusted_key=trusted,
@@ -170,7 +221,10 @@ def _authenticity(document: dict[str, Any], signature: dict[str, Any] | None) ->
         "store_authorised_for_authenticity": verdict.get("status") == release_signature.VALID,
     }
     findings: list[str] = []
-    if not keys:
+    if agent is not None:
+        out["signed_by_agent"] = {"agent_id": agent.id, "name": agent.name}
+        out["trust_source"] = "enrolled-agent-key"
+    if not keys and agent is None:
         findings.append(
             f"{NO_TRUSTED_KEY}: no collector key is configured on this deployment "
             f"({TRUST_KEY_ENV}), so no observation can reach {release_signature.VALID} here"
@@ -285,6 +339,45 @@ def _last_observation(db: Session) -> Any:
 # --------------------------------------------------------------------------- #
 
 
+def _resolve_contributor(
+    body: LiveObservationRequest, user: str, authenticity: dict[str, Any]
+) -> str | None:
+    """Who this observation speaks for — never a name the caller merely asserted.
+
+    An activated Cryptava agent authenticates with a machine key named
+    ``cryptava:<agent>`` and signs with its registered key. Either binding fixes the
+    contributor to that agent: a key for ``swiftgw01`` cannot overwrite ``ibank01``'s slice.
+    """
+    import re
+
+    from api.routers.control_plane import AGENT_NAME_PATTERN, agent_name_from_principal
+
+    claimed = (body.contributor or "").strip() or None
+    by_key = agent_name_from_principal(user)
+    by_signature = (authenticity.get("signed_by_agent") or {}).get("name")
+    for bound, how in ((by_key, "API key"), (by_signature, "signing key")):
+        if bound and claimed and bound != claimed:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": "contributor_mismatch",
+                    "reason": (
+                        f"this observation claims to be from {claimed!r} but its {how} belongs to "
+                        f"agent {bound!r}; an agent can only replace its own slice of the estate"
+                    ),
+                    "stored": False,
+                },
+            )
+    contributor = claimed or by_key or by_signature
+    if contributor and not re.fullmatch(AGENT_NAME_PATTERN, contributor):
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "contributor_invalid",
+                    "reason": f"{contributor!r} is not a valid agent name", "stored": False},
+        )
+    return contributor
+
+
 @router.post("/observations")
 def push_observation(
     body: LiveObservationRequest,
@@ -294,8 +387,9 @@ def push_observation(
 ) -> JSONResponse:
     """Store this observation only if the estate changed, and say which one happened."""
     document = signed_document(body)
-    authenticity = _authenticity(document, body.signature)
+    authenticity = _authenticity(document, body.signature, db=db)
     _require_bound_identity(request, body.signature)
+    contributor = _resolve_contributor(body, user, authenticity)
     if signatures_required() and authenticity["status"] != release_signature.VALID:
         raise HTTPException(
             status_code=401,
@@ -309,23 +403,34 @@ def push_observation(
             },
         )
 
-    try:
-        graph = build_graph(
-            {
-                "estate": body.estate,
-                "scope": body.scope,
-                "assets": body.assets,
-                "evidence": body.evidence,
-                "relationships": body.relationships,
-                "collectors": body.collectors,
-                "coverage": body.coverage,
-            }
+    repo = ScanRunRepository(db)
+    previous = repo.list_runs(limit=1, target_kind=LIVE_RUN_KIND, owner=current_tenant())
+    previous_payload = ((previous[0].result or {}).get("estate_discovery") or {}) if previous else {}
+    base, contributions = estate_contributions.stored_slices(previous_payload)
+    incoming = estate_contributions.slice_from(body.model_dump())
+    if contributor:
+        contributions[contributor] = estate_contributions.contribution_entry(
+            incoming,
+            meta={
+                "observed_at": body.observed_at,
+                "received_at": datetime.now(timezone.utc).isoformat(),
+                "authenticity": authenticity.get("status"),
+                "key_id": authenticity.get("key_id"),
+                "agent_id": (authenticity.get("signed_by_agent") or {}).get("agent_id"),
+            },
         )
+    else:
+        base = incoming
+    composed = estate_contributions.compose(base, contributions)
+
+    try:
+        graph = build_graph({"estate": body.estate, "scope": body.scope, **composed})
     except ValueError as exc:
         raise HTTPException(
             status_code=422,
             detail={
                 "error": "observation_rejected",
+                "contributor": contributor,
                 "reason": str(exc),
                 "note": (
                     "evidence must target a declared asset, and a relationship needs a basis plus "
@@ -336,8 +441,6 @@ def push_observation(
         ) from exc
 
     projection_id = graph.fingerprint()
-    repo = ScanRunRepository(db)
-    previous = repo.list_runs(limit=1, target_kind=LIVE_RUN_KIND, owner=current_tenant())
     warnings: list[str] = []
     previous_id: str | None = None
     if previous:
@@ -357,6 +460,11 @@ def push_observation(
         "relationships": len(body.relationships),
         "collectors": len(body.collectors),
         "coverage_rows": len(body.coverage),
+    }
+    contribution_view = {
+        "contributor": contributor,
+        "contributors": sorted(contributions),
+        "composed_assets": len(composed["assets"]),
     }
 
     # -- no change: keep the connection, not the estate ---------------------- #
@@ -385,6 +493,7 @@ def push_observation(
                 "authenticity": authenticity,
                 "projection_id": projection_id,
                 "counts": counts,
+                "contribution": contribution_view,
                 "heartbeat": heartbeat,
                 "warnings": warnings,
                 "note": (
@@ -396,19 +505,25 @@ def push_observation(
         )
 
     # -- changed: store the observation through the estate engine ------------ #
-    request = estate_graph.EstateDiscoverRequest(
+    # model_construct: the composed estate was already validated by build_graph above, and
+    # many agents together may exceed a single request's list limits
+    request = estate_graph.EstateDiscoverRequest.model_construct(
         estate=body.estate,
         scope=body.scope,
         inventory_id=body.inventory_id,
-        assets=body.assets,
-        evidence=body.evidence,
-        relationships=body.relationships,
-        collectors=body.collectors,
-        coverage=body.coverage,
+        assets=composed["assets"],
+        evidence=composed["evidence"],
+        relationships=composed["relationships"],
+        collectors=composed["collectors"],
+        coverage=composed["coverage"],
         include_boms=body.include_boms,
         persist=body.persist,
+        complete=True,
     )
-    result = estate_graph.run_discovery(db, user, request, graph=graph)
+    extra = (
+        {"base": base, "contributions": contributions} if contributions else None
+    )
+    result = estate_graph.run_discovery(db, user, request, graph=graph, extra_payload=extra)
     detection = result.get("detection") or {}
     impact = live_estate.bom_impact(detection.get("changes") or [])
     heartbeat = (
@@ -435,6 +550,7 @@ def push_observation(
             "projection_id": projection_id,
             "run_id": result.get("run_id"),
             "counts": counts,
+            "contribution": contribution_view,
             "coverage": result.get("coverage"),
             "unknown": result.get("unknown"),
             "detection": detection or None,
@@ -452,6 +568,63 @@ def push_observation(
             "limits": live_estate.LIMITS,
         },
     )
+
+
+# --------------------------------------------------------------------------- #
+# contributors: which agent supplied which slice of the twin
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/contributors")
+def list_contributors(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Every agent slice in the current twin, with what it contributed and when."""
+    runs = ScanRunRepository(db).list_runs(limit=1, target_kind=LIVE_RUN_KIND, owner=current_tenant())
+    payload = ((runs[0].result or {}).get("estate_discovery") or {}) if runs else {}
+    base, contributions = estate_contributions.stored_slices(payload)
+    return {
+        "schema": "cryptoscan.estate-contributors/1",
+        "run_id": runs[0].id if runs else None,
+        "base": {key: len(base.get(key) or []) for key in ("assets", "evidence", "relationships")},
+        "contributors": estate_contributions.summary(contributions),
+    }
+
+
+@router.delete("/contributors/{name}")
+def remove_contributor(
+    name: str,
+    user: str = Depends(require_roles("superadmin", "admin", "ciso")),
+    db: Session = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Drop one agent's slice (a decommissioned host) and store the recomposed twin."""
+    runs = ScanRunRepository(db).list_runs(limit=1, target_kind=LIVE_RUN_KIND, owner=current_tenant())
+    payload = ((runs[0].result or {}).get("estate_discovery") or {}) if runs else {}
+    base, contributions = estate_contributions.stored_slices(payload)
+    if name not in contributions:
+        raise HTTPException(status_code=404, detail={"error": "contributor_not_found", "name": name})
+    contributions.pop(name)
+    composed = estate_contributions.compose(base, contributions)
+    graph = build_graph({"estate": payload.get("estate"), "scope": payload.get("scope"), **composed})
+    request = estate_graph.EstateDiscoverRequest.model_construct(
+        estate=payload.get("estate") or "default",
+        scope=payload.get("scope"),
+        inventory_id=payload.get("inventory_id") or "default",
+        assets=composed["assets"],
+        evidence=composed["evidence"],
+        relationships=composed["relationships"],
+        collectors=composed["collectors"],
+        coverage=composed["coverage"],
+        include_boms=False,
+        persist=True,
+        complete=True,
+    )
+    result = estate_graph.run_discovery(
+        db, user, request, graph=graph,
+        extra_payload={"base": base, "contributions": contributions},
+    )
+    return {"removed": name, "run_id": result.get("run_id"), "contributors": sorted(contributions)}
 
 
 # --------------------------------------------------------------------------- #

@@ -1,0 +1,46 @@
+[Unit]
+Description=Cryptava — CryptoScan host agent (HBOM/SBOM/CBOM/NBOM/VBOM/TechBOM)
+Documentation=file:///opt/cryptava/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cryptava run
+Restart=always
+RestartSec=30
+Environment=PYTHONUNBUFFERED=1
+
+# Read everything, change nothing. Root is needed only to read other services'
+# sockets, memory maps and config files; the capability set below is all it keeps.
+User=root
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/cryptava
+StateDirectory=cryptava
+StateDirectoryMode=0700
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# a collection is a background job: it must never compete with the bank's workload
+Nice=10
+IOSchedulingClass=idle
+CPUQuota=25%
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

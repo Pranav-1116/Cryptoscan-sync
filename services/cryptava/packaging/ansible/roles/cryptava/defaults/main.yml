@@ -1,0 +1,23 @@
+---
+# Console the agents report to, and the CA that signs its certificate.
+cryptava_server: "https://cryptoscan.bank.example"
+cryptava_ca_file: ""
+cryptava_estate: "default"
+# Unique per host. The default gives e.g. mrdn-prod-dc1-swiftgw01.
+cryptava_bank: "mrdn"
+cryptava_environment: "prod"
+cryptava_datacenter: "dc1"
+cryptava_name: "{{ cryptava_bank }}-{{ cryptava_environment }}-{{ cryptava_datacenter }}-{{ inventory_hostname_short }}"
+cryptava_owner: ""
+cryptava_interval: 3600
+cryptava_probe_listeners: true
+cryptava_probe_exclude_ports: []
+cryptava_cert_dirs: []
+# Optional approved business mapping (TechBOM), e.g.
+# cryptava_system: {name: "SWIFT Gateway", owner: "Payments Ops",
+#                   applications: [{name: "Alliance Access", services: ["java", "nginx"]}]}
+cryptava_system: {}
+# Admin API key used only for enrolment (keep it in Ansible Vault). Never written to disk.
+cryptava_provision_key: ""
+# Where the agent source is on the control node.
+cryptava_source: "{{ role_path }}/../../../../cryptava"

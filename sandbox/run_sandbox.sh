@@ -125,9 +125,34 @@ case "${1:-up}" in
     # The living-bank collector: one pass over the estate through real
     # channels, pushed to the ingestion API; every BOM re-projects from it.
     # Needs the console login once per run (prompted if not in env).
+    # docker compose reads .env itself; only ask for what .env does not hold
+    for key in CRYPTOSCAN_USERNAME CRYPTOSCAN_PASSWORD; do
+      if [ -z "${!key:-}" ] && [ -f .env ]; then
+        val="$(grep -E "^${key}=" .env | tail -1 | cut -d= -f2-)"
+        [ -n "$val" ] && export "$key=$val"
+      fi
+    done
     if [ -z "${CRYPTOSCAN_USERNAME:-}" ]; then read -r -p "console username: " CRYPTOSCAN_USERNAME; export CRYPTOSCAN_USERNAME; fi
     if [ -z "${CRYPTOSCAN_PASSWORD:-}" ]; then read -r -s -p "console password: " CRYPTOSCAN_PASSWORD; echo; export CRYPTOSCAN_PASSWORD; fi
     "${COMPOSE[@]}" run --rm -e CRYPTOSCAN_USERNAME -e CRYPTOSCAN_PASSWORD sandbox-collect
+    ;;
+  agents)
+    # Cryptava: the real host agent on four bank hosts (swift-gateway,
+    # internet-banking, core-banking-db, payments-bastion). Each enrols itself
+    # under a unique name (mrdn-sbx-dc1-...), signs its observations with its own
+    # key and reports every 5 minutes. `agents stop` stops them; their enrolment
+    # survives in named volumes.
+    AGENTS="cryptava-swift-gateway cryptava-internet-banking cryptava-core-banking-db cryptava-payments-bastion"
+    if [ "${2:-}" = "stop" ]; then "${COMPOSE[@]}" --profile agents stop $AGENTS; exit 0; fi
+    if [ "${2:-}" = "status" ]; then
+      for a in $AGENTS; do echo "== $a"; docker exec "cryptoscan-$a" sh -c 'PYTHONPATH=/opt/cryptava python3 -m cryptava status' 2>/dev/null | head -40 || echo "   not running"; done
+      exit 0
+    fi
+    if [ -z "${CRYPTOSCAN_USERNAME:-}" ]; then read -r -p "console username: " CRYPTOSCAN_USERNAME; export CRYPTOSCAN_USERNAME; fi
+    if [ -z "${CRYPTOSCAN_PASSWORD:-}" ]; then read -r -s -p "console password: " CRYPTOSCAN_PASSWORD; echo; export CRYPTOSCAN_PASSWORD; fi
+    "${COMPOSE[@]}" --profile agents up -d $AGENTS
+    echo "Cryptava agents started. Follow one:  docker logs -f cryptoscan-cryptava-swift-gateway"
+    echo "Fleet view: console -> Platform -> Agent fleet.  Status:  $0 agents status"
     ;;
   targets)
     # Paste-ready target list for the console's Network page / API calls.
@@ -158,5 +183,5 @@ legacy-branch.bank.sandbox     hsm-sim.bank.sandbox:8443  core-banking-db.bank.s
 payments-bastion.bank.sandbox
 EOF
     ;;
-  *) echo "usage: $0 [up|seed|reset|migrate|db-rebuild|estate|console|targets|collect|agent|down|status]" >&2; exit 2 ;;
+  *) echo "usage: $0 [up|seed|reset|migrate|db-rebuild|estate|console|targets|collect|agent|agents|down|status]" >&2; exit 2 ;;
 esac

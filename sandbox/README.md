@@ -233,6 +233,32 @@ when reality moves.
 The seeded history (scan back-story, baselines, drift) remains as the bank's
 past quarter; scans and `collect` runs are the living present.
 
+### Cryptava agents — one agent per bank host
+
+The `collect` pass looks at the estate from outside. Cryptava is the agent a real
+bank installs **on each server**: it reads that machine from the inside and sends
+one signed observation per host. Four agents run next to the busiest hosts:
+
+```bash
+bash sandbox/run_sandbox.sh agents          # start the 4 agents (uses CRYPTOSCAN_USERNAME/PASSWORD from .env, or asks)
+bash sandbox/run_sandbox.sh agents status   # what each agent last sent
+bash sandbox/run_sandbox.sh agents stop
+```
+
+| Agent name | Host | Business system |
+| --- | --- | --- |
+| `mrdn-sbx-dc1-swiftgw01` | swift-gateway (10.210.0.4) | SWIFT Gateway |
+| `mrdn-sbx-dc1-ibank01` | internet-banking (10.210.0.2) | Internet Banking |
+| `mrdn-sbx-dc1-coredb01` | core-banking-db (10.210.0.7) | Core Banking |
+| `mrdn-sbx-dc1-paybastion01` | payments-bastion (10.210.0.8) | SWIFT Gateway |
+
+Each agent enrols itself once (your login is used only for that), gets its own
+signing key, and then sends every 5 minutes. They appear under **Platform → Agent
+fleet** as `connected`, and every observation they send is checked as
+`authenticity = VALID`. Their findings are added next to the `collect` pass and
+never overwrite it. See `services/cryptava/README.md` for what each of the six
+BOMs contains and how to install the agent on a real server.
+
 ## Dependencies — crypto map and cascade (Twin & dependencies)
 
 The seed also records the bank's dependency register, so both dependency

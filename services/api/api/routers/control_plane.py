@@ -24,6 +24,7 @@ from typing import Any
 from db.repositories.control_plane_repository import ControlPlaneRepository
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session, require_roles
@@ -423,8 +424,18 @@ def rotate_credential(credential_id: str,
 
 
 # ------------------------------------------------------------------ agents
+#: An agent name is a hostname-like label: letters, digits, dot, dash, underscore.
+#: The recommended shape is ``<bank>-<env>-<dc>-<hostname>`` (mrdn-prod-dc1-swiftgw01).
+AGENT_NAME_PATTERN = r"^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,118}[A-Za-z0-9])?$"
+AGENT_NAME_HINT = "<bank>-<env>-<dc>-<hostname>, e.g. mrdn-prod-dc1-swiftgw01"
+
+#: what an activated agent's machine credential may touch — and nothing else
+AGENT_KEY_SCOPES = ["/ingestion/observations", "/control/agents/heartbeat"]
+AGENT_KEY_PREFIX = "cryptava:"
+
+
 class EnrollAgentRequest(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=120)
     region: str | None = None
     environment: str | None = None
     platform: str = "linux"
@@ -432,22 +443,227 @@ class EnrollAgentRequest(BaseModel):
     tenant_id: str | None = None
 
 
+def _clean_agent_name(raw: str) -> str:
+    import re
+
+    name = (raw or "").strip()
+    if not re.fullmatch(AGENT_NAME_PATTERN, name):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "agent_name_invalid",
+                "message": (
+                    f"'{name}' is not a valid agent name. Use letters, digits, '.', '-' or '_' "
+                    f"(no spaces), up to 120 characters — for example {AGENT_NAME_HINT}."
+                ),
+            },
+        )
+    return name
+
+
+def _effective_tenant(explicit: str | None) -> str | None:
+    if explicit:
+        return explicit
+    try:
+        from db.tenancy import current_tenant
+
+        return current_tenant()
+    except Exception:  # pragma: no cover — tenancy module always present
+        return None
+
+
 @router.post("/agents/enroll", status_code=status.HTTP_201_CREATED)
 def enroll_agent(body: EnrollAgentRequest,
                  user: str = Depends(require_roles("superadmin", "admin", "ciso")),
                  db: Session = Depends(get_db_session)):
+    name = _clean_agent_name(body.name)
+    tenant = _effective_tenant(body.tenant_id)
+    existing = _repo(db).find_agent_by_name(name, tenant_id=tenant)
+    if existing is not None:
+        # Names are unique: two live agents answering to one name would make every
+        # fleet view, alert and stored observation ambiguous.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "agent_name_taken",
+                "message": (
+                    f"An agent named '{existing.name}' already exists. Agent names must be "
+                    f"unique — pick another name ({AGENT_NAME_HINT}), or retire the old "
+                    "agent first if this host was rebuilt."
+                ),
+                "existing_agent_id": existing.id,
+                "existing_status": existing.status,
+            },
+        )
     # one-time enrollment token: only its SHA-256 fingerprint is stored.
     token = secrets.token_urlsafe(32)
     fingerprint = hashlib.sha256(token.encode()).hexdigest()
-    agent = _repo(db).enroll_agent(
-        body.name, fingerprint, region=body.region, environment=body.environment,
-        platform=body.platform, resource_limits=body.resource_limits, tenant_id=body.tenant_id)
-    _audit(db, user, "control.agent_enrolled", target_id=agent.id, detail={"name": body.name})
-    _publish("agent.enrolled", {"agent_id": agent.id, "name": body.name})
-    db.commit()
+    try:
+        agent = _repo(db).enroll_agent(
+            name, fingerprint, region=body.region, environment=body.environment,
+            platform=body.platform, resource_limits=body.resource_limits, tenant_id=body.tenant_id)
+        _audit(db, user, "control.agent_enrolled", target_id=agent.id, detail={"name": name})
+        db.commit()
+    except IntegrityError:
+        # a concurrent enrolment took the name first (uq_cp_agents_live_name)
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "agent_name_taken",
+                    "message": f"An agent named '{name}' was enrolled at the same moment. "
+                               "Agent names must be unique — pick another name.",
+                    "existing_agent_id": getattr(
+                        _repo(db).find_agent_by_name(name, tenant_id=tenant), "id", None)},
+        ) from None
+    _publish("agent.enrolled", {"agent_id": agent.id, "name": name})
     # the token is returned exactly once and never persisted in plaintext
-    return {"agent_id": agent.id, "enrollment_token": token,
-            "note": "Store this token now — it is shown once and only its hash is retained."}
+    return {"agent_id": agent.id, "name": name, "enrollment_token": token,
+            "note": "Store this token now — it is shown once and only its hash is retained.",
+            "activate": {
+                "command": (f"cryptava enroll --server <console-url> --agent-id {agent.id} "
+                            "--token <enrollment_token>"),
+                "path": "/api/v1/control/agents/activate",
+            }}
+
+
+class ActivateAgentRequest(BaseModel):
+    agent_id: str = Field(min_length=1, max_length=64)
+    enrollment_token: str = Field(min_length=16, max_length=256)
+    public_key: str = Field(min_length=40, max_length=64,
+                            description="the agent's raw Ed25519 public key, base64")
+    hostname: str | None = Field(default=None, max_length=255)
+    platform: str | None = Field(default=None, max_length=40)
+    version: str | None = Field(default=None, max_length=40)
+
+
+@router.post("/agents/activate", status_code=status.HTTP_201_CREATED)
+def activate_agent(body: ActivateAgentRequest, request: Request,
+                   db: Session = Depends(get_db_session)):
+    """Exchange a one-time enrolment token for the agent's machine identity.
+
+    The token *is* the credential here (the route is outside the session gate, like an
+    invite link). On success the agent's own Ed25519 public key is registered — so its
+    signed observations verify against a key the platform holds — and a machine API key
+    is issued that may only post observations and heartbeats. The token is burned.
+    """
+    import hmac
+    from datetime import datetime, timezone
+
+    repo = _repo(db)
+    agent = repo.get_agent(body.agent_id)
+    denied = HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={"error": "activation_refused",
+                "message": "Unknown agent, wrong token, or the token was already used. "
+                           "Enrol the agent again in the console to get a new one-time token."},
+    )
+    if agent is None or agent.status == "retired" or not agent.enrollment_token_fingerprint:
+        raise denied
+    presented = hashlib.sha256(body.enrollment_token.encode()).hexdigest()
+    if not hmac.compare_digest(presented, agent.enrollment_token_fingerprint):
+        _audit(db, f"{AGENT_KEY_PREFIX}{agent.name}", "control.agent_activation_denied",
+               target_id=agent.id, outcome="FAILURE")
+        db.commit()
+        raise denied
+
+    from shared_models import release_signature
+
+    try:
+        public = release_signature.load_public_key(body.public_key.strip())
+        public_b64 = release_signature.public_key_b64(public)
+    except Exception as exc:  # noqa: BLE001 — a bad key is a refusal, not a crash
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": "public_key_invalid",
+                    "message": f"public_key must be a raw 32-byte Ed25519 key in base64 ({exc})"},
+        ) from exc
+    key_id = release_signature.key_id(public_b64)
+
+    from db.repositories.api_key_repository import ApiKeyRepository
+
+    keys = ApiKeyRepository(db)
+    previous = (agent.config or {}).get("identity") or {}
+    if previous.get("api_key_id"):
+        try:
+            keys.revoke(previous["api_key_id"])
+        except Exception:  # noqa: BLE001 — a stale key that cannot be revoked is logged
+            logger.warning("agent_previous_key_not_revoked", exc_info=True)
+    row, raw_key = keys.create(
+        name=f"{AGENT_KEY_PREFIX}{agent.name}"[:100],
+        created_by="cryptava-activation",
+        roles=["scanner"],
+        scopes=AGENT_KEY_SCOPES,
+        allowed_methods=["POST"],
+        tenant_id=agent.tenant_id,
+    )
+    identity = {
+        "public_key": public_b64,
+        "key_id": key_id,
+        "api_key_id": row.id,
+        "activated_at": datetime.now(timezone.utc).isoformat(),
+        "hostname": body.hostname,
+        "platform": body.platform,
+    }
+    repo.activate_agent(agent, identity=identity, key_id=key_id)
+    if body.version:
+        agent.version = body.version
+    client = getattr(request, "client", None)
+    if client is not None and getattr(client, "host", None):
+        agent.last_seen_ip = str(client.host)[:64]
+    _audit(db, f"{AGENT_KEY_PREFIX}{agent.name}", "control.agent_activated", target_id=agent.id,
+           detail={"key_id": key_id, "hostname": body.hostname})
+    _publish("agent.activated", {"agent_id": agent.id, "name": agent.name, "key_id": key_id})
+    db.commit()
+    return {
+        "agent_id": agent.id,
+        "name": agent.name,
+        "api_key": raw_key,
+        "key_id": key_id,
+        "contributor": agent.name,
+        "observations_path": "/api/v1/ingestion/observations",
+        "heartbeat_path": "/api/v1/control/agents/heartbeat",
+        "scopes": AGENT_KEY_SCOPES,
+        "note": "The API key is shown once. The enrolment token is now burned.",
+    }
+
+
+@router.post("/agents/{agent_id}/enrollment-token", status_code=status.HTTP_201_CREATED)
+def reissue_agent_token(agent_id: str,
+                        user: str = Depends(require_roles("superadmin", "admin", "ciso")),
+                        db: Session = Depends(get_db_session)):
+    """A fresh one-time token for an existing agent — a rebuilt host keeps its name.
+
+    The agent's current machine key stays valid until the new token is used; activation
+    then revokes it and registers the rebuilt host's new signing key.
+    """
+    agent = _repo(db).get_agent(agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Unknown agent")
+    if agent.status == "retired":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"error": "agent_retired",
+                    "message": "This agent is retired. Enrol the host again under its name instead."},
+        )
+    token = secrets.token_urlsafe(32)
+    agent.enrollment_token_fingerprint = hashlib.sha256(token.encode()).hexdigest()
+    _audit(db, user, "control.agent_token_reissued", target_id=agent.id, detail={"name": agent.name})
+    db.commit()
+    return {"agent_id": agent.id, "name": agent.name, "enrollment_token": token,
+            "note": "Store this token now — it is shown once and only its hash is retained.",
+            "activate": {
+                "command": (f"cryptava enroll --server <console-url> --agent-id {agent.id} "
+                            "--token <enrollment_token> --force"),
+                "path": "/api/v1/control/agents/activate",
+            }}
+
+
+def agent_name_from_principal(user: str | None) -> str | None:
+    """``apikey:cryptava:<name>`` → ``<name>``; anything else → None."""
+    marker = f"apikey:{AGENT_KEY_PREFIX}"
+    if user and str(user).startswith(marker):
+        return str(user)[len(marker):] or None
+    return None
 
 
 class AgentHeartbeatRequest(BaseModel):
@@ -467,6 +683,14 @@ def agent_heartbeat(body: AgentHeartbeatRequest,
     agent = repo.get_agent(body.agent_id)
     if agent is None:
         raise HTTPException(status_code=404, detail="Unknown agent")
+    # an activated agent's machine key may only speak for that agent
+    bound = agent_name_from_principal(user)
+    if bound is not None and bound != agent.name:
+        _audit(db, user, "control.agent_heartbeat_denied", target_id=body.agent_id, outcome="FAILURE")
+        db.commit()
+        raise HTTPException(status_code=403, detail="This agent key belongs to a different agent")
+    if agent.status == "retired":
+        raise HTTPException(status_code=403, detail="This agent is retired")
     # agents authenticate via their enrollment token fingerprint
     if body.enrollment_token and agent.enrollment_token_fingerprint:
         fp = hashlib.sha256(body.enrollment_token.encode()).hexdigest()
@@ -478,7 +702,8 @@ def agent_heartbeat(body: AgentHeartbeatRequest,
                                    link=body.link, ip=body.ip, buffered=body.offline_events_buffered)
     db.commit()
     return {"agent_id": body.agent_id, "status": updated.status, "healthy": updated.healthy,
-            "link": updated.link, "target_version": updated.target_version}
+            "link": updated.link, "target_version": updated.target_version,
+            "config": updated.config and {k: v for k, v in updated.config.items() if k != "identity"}}
 
 
 @router.get("/agents")
@@ -509,6 +734,16 @@ def upgrade_agent(agent_id: str, body: AgentUpgradeRequest,
     updated = _repo(db).set_agent_target_version(agent_id, target, action=body.action)
     if updated is None:
         raise HTTPException(status_code=404, detail="Agent not found")
+    if body.action == "retire":
+        # a retired agent stops speaking for the estate: its machine key is revoked
+        identity = (updated.config or {}).get("identity") or {}
+        if identity.get("api_key_id"):
+            try:
+                from db.repositories.api_key_repository import ApiKeyRepository
+
+                ApiKeyRepository(db).revoke(identity["api_key_id"])
+            except Exception:  # noqa: BLE001
+                logger.warning("agent_key_not_revoked_on_retire", exc_info=True)
     _audit(db, user, "control.agent_upgrade", target_id=agent_id,
            detail={"action": body.action, "target": target})
     _publish("agent.upgrade_scheduled", {"agent_id": agent_id, "action": body.action, "target": target})

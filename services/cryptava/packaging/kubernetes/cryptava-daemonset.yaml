@@ -1,0 +1,81 @@
+# Cryptava on every Kubernetes node. The node's filesystem is mounted read-only at
+# /host; hostPID + hostNetwork let it see every process, socket and listener on the node.
+# Each node enrols itself under a unique name: <prefix>-<node name>.
+#
+#   kubectl create namespace cryptava
+#   kubectl -n cryptava create secret generic cryptava-provision \
+#       --from-literal=key=<admin API key used only for enrolment>
+#   kubectl apply -f cryptava-daemonset.yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cryptava
+  namespace: cryptava
+data:
+  CRYPTAVA_SERVER: "https://cryptoscan.bank.example"
+  CRYPTAVA_ESTATE: "meridian"
+  CRYPTAVA_ROOT: "/host"
+  CRYPTAVA_INTERVAL: "3600"
+  CRYPTAVA_TAGS: '{"environment": "prod", "datacenter": "dc1"}'
+  NAME_PREFIX: "mrdn-prod-dc1"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cryptava
+  namespace: cryptava
+  labels: {app.kubernetes.io/name: cryptava}
+spec:
+  selector:
+    matchLabels: {app.kubernetes.io/name: cryptava}
+  updateStrategy: {type: RollingUpdate, rollingUpdate: {maxUnavailable: 10%}}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: cryptava}
+    spec:
+      hostPID: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      priorityClassName: system-node-critical
+      tolerations: [{operator: Exists}]
+      automountServiceAccountToken: false
+      containers:
+        - name: cryptava
+          image: registry.bank.example/cryptoscan/cryptava:1.0.0
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - export CRYPTAVA_NAME="${NAME_PREFIX}-${NODE_NAME}"; exec /usr/local/bin/cryptava-entrypoint
+          envFrom:
+            - configMapRef: {name: cryptava}
+          env:
+            - name: NODE_NAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - name: CRYPTAVA_HOSTNAME
+              valueFrom: {fieldRef: {fieldPath: spec.nodeName}}
+            - name: CRYPTAVA_PRIMARY_IP
+              valueFrom: {fieldRef: {fieldPath: status.hostIP}}
+            - name: CRYPTAVA_PROVISION_KEY
+              valueFrom: {secretKeyRef: {name: cryptava-provision, key: key}}
+          securityContext:
+            runAsUser: 0
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              add: [DAC_READ_SEARCH, SYS_PTRACE]
+          resources:
+            requests: {cpu: 20m, memory: 64Mi}
+            limits: {cpu: 250m, memory: 512Mi}
+          volumeMounts:
+            - {name: host-root, mountPath: /host, readOnly: true, mountPropagation: HostToContainer}
+            - {name: state, mountPath: /var/lib/cryptava}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: host-root
+          hostPath: {path: /}
+        - name: state
+          hostPath: {path: /var/lib/cryptava, type: DirectoryOrCreate}
+        - name: tmp
+          emptyDir: {}

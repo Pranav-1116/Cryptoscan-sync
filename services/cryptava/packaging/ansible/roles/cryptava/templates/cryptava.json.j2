@@ -1,0 +1,12 @@
+{{ {
+  "server": cryptava_server,
+  "ca_file": (cryptava_ca_file or None),
+  "estate": cryptava_estate,
+  "name": cryptava_name,
+  "interval": cryptava_interval | int,
+  "probe_listeners": cryptava_probe_listeners | bool,
+  "probe_exclude_ports": cryptava_probe_exclude_ports,
+  "cert_dirs": cryptava_cert_dirs,
+  "tags": {"environment": cryptava_environment, "datacenter": cryptava_datacenter, "owner": cryptava_owner},
+  "system": (cryptava_system or None)
+} | to_nice_json }}

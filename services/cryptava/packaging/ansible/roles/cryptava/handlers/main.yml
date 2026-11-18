@@ -1,0 +1,6 @@
+---
+- name: restart cryptava
+  ansible.builtin.systemd:
+    name: cryptava
+    state: restarted
+    daemon_reload: true

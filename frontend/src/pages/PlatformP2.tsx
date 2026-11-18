@@ -8,7 +8,7 @@ import {
   apiRunRealBenchmark, apiBenchmarkRuns,
   apiGovernanceDecide, apiLakeExportLive, apiLakeVerify,
   apiPluginEnable, apiPluginDisable, apiAnomalyAck,
-  apiControlAgents, apiAgentUpgrade,
+  apiControlAgents, apiAgentUpgrade, apiEnrollAgent, apiReissueAgentToken,
   apiOtAuthorize, apiOtCancelWindow,
   apiExceptions, apiExceptionDecision,
   LiveBadge,
@@ -94,6 +94,27 @@ export default function PlatformP2() {
     runAction(`plugin-${pk}-${enable}`, () => (enable ? apiPluginEnable(pk) : apiPluginDisable(pk)), plugins.run);
   const agentAction = (id: string, action: "upgrade" | "rollback" | "retire") =>
     runAction(`agent-${id}-${action}`, () => apiAgentUpgrade(id, action), agents.run);
+  // Cryptava enrolment: the one-time token is shown once, with the exact install command
+  const [enrolName, setEnrolName] = React.useState("");
+  const [issued, setIssued] = React.useState<{ agent_id: string; name: string; enrollment_token: string } | null>(null);
+  const enrolAgent = async () => {
+    const name = enrolName.trim();
+    if (!name) return;
+    setBusyId("agent-enrol");
+    try {
+      const res = await apiEnrollAgent(name);
+      if (res.ok && res.data) { setIssued(res.data); setEnrolName(""); await agents.run(); }
+      else flash("err", res.error || "enrolment failed");
+    } finally { setBusyId(""); }
+  };
+  const reissueToken = async (id: string) => {
+    setBusyId(`agent-${id}-token`);
+    try {
+      const res = await apiReissueAgentToken(id);
+      if (res.ok && res.data) setIssued(res.data);
+      else flash("err", res.error || "could not issue a token");
+    } finally { setBusyId(""); }
+  };
   const runOtAuthorize = async () => {
     setBusyId("ot-authorize");
     try {
@@ -478,20 +499,56 @@ export default function PlatformP2() {
           })()}
         </Panel>
 
-        <Panel title="Agent fleet" sub="control-plane agents · version vs target · heartbeat · signed-update scheduling">
+        <Panel title="Agent fleet" sub="Cryptava agents · unique names · signed observations">
+          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <input className="input mono" style={{ flex: "1 1 240px" }} aria-label="agent name"
+              placeholder="mrdn-prod-dc1-swiftgw01" value={enrolName}
+              title="Unique name: <bank>-<env>-<dc>-<hostname>"
+              onChange={(e) => setEnrolName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void enrolAgent(); }} />
+            <button className="btn" disabled={!enrolName.trim() || busyId === "agent-enrol"} onClick={() => void enrolAgent()}>
+              {busyId === "agent-enrol" ? "…" : "enrol agent"}
+            </button>
+          </div>
+          {issued && (
+            <div className="agent-token" role="status" style={{ border: "1px solid var(--border)", borderRadius: 8, padding: 10, marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                <strong className="mono">{issued.name}</strong>
+                <span className="muted" title="Only its hash is stored. It works once, to activate the agent.">token shown once</span>
+              </div>
+              <pre className="mono" style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", margin: "8px 0", fontSize: 12 }}>
+                {`sudo ./install.sh --server ${window.location.origin} \\
+  --agent-id ${issued.agent_id} \\
+  --token ${issued.enrollment_token}`}
+              </pre>
+              <span style={{ display: "flex", gap: 6 }}>
+                <button className="btn" onClick={() => {
+                  void navigator.clipboard?.writeText(
+                    `sudo ./install.sh --server ${window.location.origin} --agent-id ${issued.agent_id} --token ${issued.enrollment_token}`,
+                  ).then(() => flash("ok", "copied"), () => flash("err", "copy failed"));
+                }}>copy</button>
+                <button className="btn" onClick={() => setIssued(null)}>done</button>
+              </span>
+            </div>
+          )}
           {agentRows.length ? (
             <Table
               head={["name", "region", "version", "target", "health", "status", ""]}
               total={agentRows.length} rows={agentRows.slice(0, 12).map((a) => {
                 const outdated = a.target_version && a.version !== a.target_version;
                 return [
-                  <span className="mono" style={{ fontWeight: 600 }}>{String(a.name ?? a.id).slice(0, 22)}</span>,
+                  <span className="mono" style={{ fontWeight: 600 }} title={String(a.name ?? a.id)}>{String(a.name ?? a.id).slice(0, 28)}</span>,
                   <span className="muted">{String(a.region ?? "—")}</span>,
                   <span className="num">{String(a.version ?? "—")}</span>,
                   <span className="num" style={{ color: outdated ? "var(--amber)" : undefined }}>{String(a.target_version ?? "—")}</span>,
                   <Badge tone={a.healthy ? "green" : "red"}>{a.healthy ? "healthy" : "unhealthy"}</Badge>,
-                  <Badge tone={String(a.status) === "enrolled" ? "green" : "amber"}>{String(a.status ?? "?")}</Badge>,
+                  <Badge tone={String(a.status) === "connected" ? "green" : String(a.status) === "retired" ? "red" : "amber"}>{String(a.status ?? "?")}</Badge>,
                   <span style={{ display: "flex", gap: 6 }}>
+                    <button className="btn" disabled={busyId === `agent-${a.id}-token` || String(a.status) === "retired"}
+                      title="New one-time token (rebuilt host keeps its name)"
+                      onClick={() => void reissueToken(String(a.id))}>
+                      {busyId === `agent-${a.id}-token` ? "…" : "new token"}
+                    </button>
                     <button className="btn" disabled={busyId === `agent-${a.id}-upgrade`}
                       title={outdated ? "schedule signed update to target version" : "already at target"}
                       onClick={() => agentAction(String(a.id), "upgrade")}>

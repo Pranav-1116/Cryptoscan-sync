@@ -63,6 +63,9 @@ UNPROTECTED_PREFIXES = (
     # no session; the HMAC signature (+ optional token) IS the credential
     # — verified in the route, same shape as the feed exemption.
     "/api/v1/chatops/command",
+    # Cryptava agent activation: the one-time enrolment token IS the credential
+    # (hash-compared in the route, then burned) — same shape as invite accept.
+    "/api/v1/control/agents/activate",
 )
 
 # Static assets are served under hashed filenames, so these DO match as bare

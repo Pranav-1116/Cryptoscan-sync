@@ -655,6 +655,7 @@ def run_discovery(
     body: EstateDiscoverRequest,
     *,
     graph: Any | None = None,
+    extra_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Discover the estate once and project the BOMs from the same evidence graph.
 
@@ -678,6 +679,10 @@ def run_discovery(
         "collectors": body.collectors,
         "coverage": body.coverage,
     }
+    if extra_payload:
+        # per-agent slices (api.estate_contributions): the lists above are their
+        # composition, so every reader that rebuilds the twin still reads one estate
+        payload.update(extra_payload)
     # the observation before this one, read *before* this run is stored — comparing
     # a run with itself would report "no change" forever
     previous_run = None

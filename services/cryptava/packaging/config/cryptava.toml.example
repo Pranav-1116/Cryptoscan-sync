@@ -1,0 +1,40 @@
+# /etc/cryptava/cryptava.toml — Cryptava host agent configuration.
+# No secrets belong here: the agent's identity and keys live in /var/lib/cryptava (0700).
+# Any key can be overridden with an environment variable CRYPTAVA_<KEY>.
+
+# The CryptoScan console this agent reports to.
+server = "https://cryptoscan.bank.example"
+# CA bundle that signs the console's TLS certificate (the bank's internal CA).
+# ca_file = "/etc/pki/tls/certs/bank-internal-ca.pem"
+
+# Which estate this host belongs to (one console can hold several).
+estate = "meridian"
+
+# Seconds between full collections; heartbeats keep the agent "online" in between.
+interval = 3600
+heartbeat_interval = 60
+jitter = 120
+
+# Probe this host's own listeners (TLS handshake, SSH banner, PostgreSQL SSLRequest).
+# Probes connect to this machine only. Exclude ports that must never be touched.
+probe_listeners = true
+probe_exclude_ports = []
+
+# Extra places to look for certificates and Java archives.
+cert_dirs = []
+# jar_dirs = ["/opt", "/srv", "/app"]
+
+[tags]
+environment = "prod"
+datacenter = "dc1"
+owner = "Payments Platform"
+
+# Optional: the bank-approved business mapping for this host (TechBOM).
+# Sent as CONFIGURED evidence with an APPROVED_MAPPING basis — never presented as observed.
+# [system]
+# name = "SWIFT Gateway"
+# owner = "Payments Operations"
+# criticality = "tier-0"
+# [[system.applications]]
+# name = "Alliance Access"
+# services = ["java", "nginx"]

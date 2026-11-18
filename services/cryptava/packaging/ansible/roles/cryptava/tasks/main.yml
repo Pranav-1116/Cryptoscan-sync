@@ -1,0 +1,64 @@
+---
+- name: Python 3.9+ is present
+  ansible.builtin.command: python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)"
+  changed_when: false
+
+- name: Agent code
+  ansible.builtin.copy:
+    src: "{{ cryptava_source }}/"
+    dest: /opt/cryptava/cryptava/
+    owner: root
+    group: root
+    mode: "u=rwX,go=rX"
+  notify: restart cryptava
+
+- name: Command wrapper
+  ansible.builtin.copy:
+    dest: /usr/local/bin/cryptava
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      export PYTHONPATH=/opt/cryptava
+      exec python3 -m cryptava "$@"
+
+- name: Directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /etc/cryptava, mode: "0755"}
+    - {path: /var/lib/cryptava, mode: "0700"}
+
+- name: Configuration (JSON works on every Python 3.9+)
+  ansible.builtin.template:
+    src: cryptava.json.j2
+    dest: /etc/cryptava/cryptava.json
+    mode: "0644"
+  notify: restart cryptava
+
+- name: Is this host enrolled?
+  ansible.builtin.stat:
+    path: /var/lib/cryptava/identity.json
+  register: cryptava_identity
+
+- name: Enrol (one step; re-issues a token if the name already exists, e.g. a rebuilt host)
+  ansible.builtin.command: cryptava enroll --name {{ cryptava_name | quote }}
+  environment:
+    CRYPTAVA_PROVISION_KEY: "{{ cryptava_provision_key }}"
+  when: not cryptava_identity.stat.exists
+  no_log: true
+
+- name: Service unit
+  ansible.builtin.copy:
+    src: "{{ cryptava_source }}/../packaging/systemd/cryptava.service"
+    dest: /etc/systemd/system/cryptava.service
+    mode: "0644"
+  notify: restart cryptava
+
+- name: Service running
+  ansible.builtin.systemd:
+    name: cryptava
+    enabled: true
+    state: started
+    daemon_reload: true

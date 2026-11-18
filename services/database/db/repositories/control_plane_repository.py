@@ -127,6 +127,48 @@ class ControlPlaneRepository:
     def get_agent(self, agent_id: str, *, tenant_id: str | None = None) -> Agent | None:
         return self._get_tenant_row(Agent, agent_id, tenant_id)
 
+    def find_agent_by_name(self, name: str, *, tenant_id: str | None = None,
+                           include_retired: bool = False) -> Agent | None:
+        """The agent already using ``name`` (case-insensitive), if any.
+
+        Agent names are the operator's handle on a machine (``mrdn-prod-dc1-swiftgw01``):
+        two live agents answering to one name would make every fleet view, alert and
+        observation ambiguous, so enrolment refuses a duplicate. A *retired* agent no
+        longer answers to its name, which lets a rebuilt host be enrolled again.
+        """
+        from sqlalchemy import func
+
+        clean = (name or "").strip().lower()
+        if not clean:
+            return None
+        stmt = select(Agent).where(func.lower(Agent.name) == clean)
+        if tenant_id is not None:
+            stmt = stmt.where(Agent.tenant_id == tenant_id)
+        else:
+            stmt = stmt.where(Agent.tenant_id.is_(None))
+        if not include_retired:
+            stmt = stmt.where(Agent.status != "retired")
+        return self.session.execute(stmt).scalars().first()
+
+    def activate_agent(self, agent: Agent, *, identity: dict, key_id: str) -> Agent:
+        """Bind an agent to its signing key and burn the one-time enrolment token."""
+        merged = dict(agent.config or {})
+        merged["identity"] = identity
+        agent.config = merged
+        agent.cert_serial = key_id
+        agent.enrollment_token_fingerprint = None
+        agent.status = "connecting"
+        agent.link = "connecting"
+        self.session.flush()
+        return agent
+
+    def find_agent_by_key_id(self, key_id: str) -> Agent | None:
+        """The non-retired agent whose registered signing key has this id."""
+        if not key_id:
+            return None
+        stmt = select(Agent).where(Agent.cert_serial == key_id).where(Agent.status != "retired")
+        return self.session.execute(stmt).scalars().first()
+
     def get_agent_by_fingerprint(self, fingerprint: str) -> Agent | None:
         return self.session.execute(
             select(Agent).where(Agent.enrollment_token_fingerprint == fingerprint)

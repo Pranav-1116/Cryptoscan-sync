@@ -2435,6 +2435,33 @@ export async function apiControlAgents(): Promise<ApiResult<any[]>> {
   } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
 }
 
+async function _postAgent(path: string, body: unknown): Promise<ApiResult<any>> {
+  try {
+    const resp = await tenantFetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30000),
+      credentials: "include",
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const d = data.detail;
+      const error = typeof d === "string" ? d : (d?.message || d?.error || `HTTP ${resp.status}`);
+      return { source: "live", ok: false, error: String(error), data: null } as ApiResult<any>;
+    }
+    return { source: "live", ok: true, data };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: null } as ApiResult<any>; }
+}
+
+/** Enrol a Cryptava agent under a unique name; returns a one-time activation token. */
+export const apiEnrollAgent = (name: string, environment?: string) =>
+  _postAgent(`/api/v1/control/agents/enroll`, { name, environment: environment || null, platform: "linux" });
+
+/** A fresh one-time token for an existing agent (rebuilt host keeps its name). */
+export const apiReissueAgentToken = (agentId: string) =>
+  _postAgent(`/api/v1/control/agents/${encodeURIComponent(agentId)}/enrollment-token`, {});
+
 /** Schedule a deterministic signed-update / rollback / retire for an agent. */
 export const apiAgentUpgrade = (agentId: string, action: "upgrade" | "rollback" | "retire", targetVersion?: string) =>
   _postAction(`/api/v1/control/agents/${encodeURIComponent(agentId)}/upgrade`, { action, target_version: targetVersion });

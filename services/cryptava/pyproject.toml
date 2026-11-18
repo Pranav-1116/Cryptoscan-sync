@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cryptava"
+version = "1.0.0"
+description = "Cryptava — the CryptoScan host agent: HBOM, SBOM, CBOM, NBOM, VBOM and TechBOM from one read-only collector"
+requires-python = ">=3.9"
+readme = "README.md"
+license = { text = "Proprietary" }
+# deliberately empty: the agent runs on bank servers with the system Python only
+dependencies = []
+
+[project.optional-dependencies]
+fast-signing = ["cryptography>=41"]
+test = ["pytest>=7"]
+
+[project.scripts]
+cryptava = "cryptava.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cryptava*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

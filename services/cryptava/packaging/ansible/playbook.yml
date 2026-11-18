@@ -1,0 +1,11 @@
+---
+# ansible-playbook -i inventory.ini playbook.yml --ask-vault-pass
+- name: Install Cryptava on every bank server
+  hosts: all
+  become: true
+  vars:
+    cryptava_server: "https://cryptoscan.bank.example"
+    cryptava_estate: "meridian"
+    # cryptava_provision_key: "{{ vault_cryptava_provision_key }}"
+  roles:
+    - cryptava
