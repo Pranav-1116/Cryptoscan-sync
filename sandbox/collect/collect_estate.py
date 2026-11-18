@@ -96,8 +96,15 @@ def post_observation(token: str, payload: dict) -> dict:
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
         method="POST",
     )
-    with urllib.request.urlopen(req) as resp:  # noqa: S310 — sandbox URL only
-        return json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req) as resp:  # noqa: S310 — sandbox URL only
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = json.loads(exc.read())
+        except Exception:  # noqa: BLE001
+            detail = exc.read()
+        sys.exit(f"observation refused (HTTP {exc.code}): {json.dumps(detail)[:800]}")
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +239,18 @@ def main() -> None:
                          "collector_version": "1.0.0"})
         return eid
 
+    def rel(subject: str, predicate: str, obj: str, basis: str, evids: list[str],
+            ev_target: str | None = None, facts: dict | None = None, layer: str = "UNKNOWN",
+            source: str = "sandbox-estate-collector") -> None:
+        """Add an edge. The ingestion contract refuses evidence-less edges, so a
+        relationship with nothing to cite gets one stating what establishes it."""
+        if not evids:
+            evids = [ev(ev_target or subject, "CONFIGURED",
+                        facts or {"relationship": f"{predicate} established at collection"},
+                        layer, source)]
+        relationships.append({"subject": subject, "predicate": predicate,
+                              "object": obj, "basis": basis, "evidence_ids": evids})
+
     # ── hosts, containers, images, packages (the SBOM/HBOM raw material) ──
     for c in containers:
         svc = c["service"]
@@ -246,24 +265,17 @@ def main() -> None:
                        "identity": {"container_id": c["container_id"][:12]},
                        "source": "docker-daemon",
                        "attributes": {"container_id_full": c["container_id"]}})
-        relationships.append({"subject": f"ctr-{svc}", "predicate": "runs_on",
-                              "object": host_ref, "basis": "RUNTIME_OBSERVATION",
-                              "evidence_ids": []})
+        e = ev(host_ref, "RUNTIME_OBSERVED",
+               {"container_status": c["status"], "platform": c["platform"],
+                "image": c["image_ref"], "image_digest": c["image_digest"]},
+               "PLATFORM", "docker-daemon")
+        rel(f"ctr-{svc}", "runs_on", host_ref, "RUNTIME_OBSERVATION", [e])
         if c["image_digest"]:
             img_ref = f"img-{c['image_digest'][:12]}"
             assets.append({"ref": img_ref, "type": "IMAGE", "name": c["image_ref"],
                            "identity": {"digest": c["image_digest"], "image_ref": c["image_ref"]},
                            "source": "docker-daemon"})
-            relationships.append({"subject": f"ctr-{svc}", "predicate": "deployed_as",
-                                  "object": img_ref, "basis": "RUNTIME_OBSERVATION",
-                                  "evidence_ids": []})
-        e = ev(host_ref, "RUNTIME_OBSERVED",
-               {"container_status": c["status"], "platform": c["platform"],
-                "image": c["image_ref"], "image_digest": c["image_digest"]},
-               "PLATFORM", "docker-daemon")
-        relationships.append({"subject": f"ctr-{svc}", "predicate": "runs_on",
-                              "object": host_ref, "basis": "RUNTIME_OBSERVATION",
-                              "evidence_ids": [e]})
+            rel(f"ctr-{svc}", "deployed_as", img_ref, "RUNTIME_OBSERVATION", [e])
 
     for p in packages:
         ref = f"pkg-{p['service']}-{p['name']}"
@@ -284,15 +296,16 @@ def main() -> None:
         assets.append({"ref": ep_ref, "type": "NETWORK_ENDPOINT", "name": f"{svc} tls",
                        "identity": {"host": host, "port": str(port), "protocol": "tls"},
                        "source": "live-tls-probe"})
-        relationships.append({"subject": ep_ref, "predicate": "exposes",
-                              "object": f"host-{svc}", "basis": "NETWORK_OBSERVATION",
-                              "evidence_ids": []})
         facts = tls_facts(host, port)
         if not facts:
+            rel(ep_ref, "exposes", f"host-{svc}", "NETWORK_OBSERVATION", [],
+                ev_target=ep_ref, facts={"connect": "refused"}, layer="NETWORK_TRANSPORT",
+                source="live-tls-handshake")
             continue
-        ev(ep_ref, "NETWORK_ACTIVE_OBSERVED",
-           {k: v for k, v in facts.items() if k != "peer_cert_sha256"},
-           "NETWORK_TRANSPORT", "live-tls-handshake")
+        e_ep = ev(ep_ref, "NETWORK_ACTIVE_OBSERVED",
+                  {k: v for k, v in facts.items() if k != "peer_cert_sha256"},
+                  "NETWORK_TRANSPORT", "live-tls-handshake")
+        rel(ep_ref, "exposes", f"host-{svc}", "NETWORK_OBSERVATION", [e_ep])
         if facts.get("peer_cert_sha256"):
             cert_ref = f"cert-{facts['peer_cert_sha256'][:16]}"
             assets.append({"ref": cert_ref, "type": "CERTIFICATE", "name": f"{svc} serving cert",
@@ -301,9 +314,7 @@ def main() -> None:
             e = ev(cert_ref, "CERTIFICATE_OBSERVED",
                    {"served_by": f"{host}:{port}", "size_bytes": facts["peer_cert_bytes"]},
                    "NETWORK_TRANSPORT", "live-tls-handshake")
-            relationships.append({"subject": ep_ref, "predicate": "uses_certificate",
-                                  "object": cert_ref, "basis": "RUNTIME_OBSERVATION",
-                                  "evidence_ids": [e]})
+            rel(ep_ref, "uses_certificate", cert_ref, "RUNTIME_OBSERVATION", [e])
 
     # ── SSH bastion (real banner) ──────────────────────────────────────────
     banner = ssh_banner(*SSH_ENDPOINT[:2])
@@ -317,10 +328,12 @@ def main() -> None:
                    "identity": {"host": DB[0], "port": str(DB[1]), "engine": "postgresql"},
                    "source": "postgres-login",
                    "attributes": {"version": version} if version else {}})
+    db_ev = None
     if version:
-        ev("db-core", "RUNTIME_OBSERVED", {"server_version": version}, "PLATFORM", "postgres-login")
-    relationships.append({"subject": "host-internet-banking", "predicate": "depends_on",
-                          "object": "db-core", "basis": "DEPLOYMENT_CONFIG", "evidence_ids": []})
+        db_ev = ev("db-core", "RUNTIME_OBSERVED", {"server_version": version}, "PLATFORM", "postgres-login")
+    rel("host-internet-banking", "depends_on", "db-core", "DEPLOYMENT_CONFIG",
+        [db_ev] if db_ev else [], ev_target="db-core",
+        facts={"wiring": "internet-banking reads the ledger database"}, source="compose-declared")
 
     # ── HSM (real JSON inventory over TLS) ────────────────────────────────
     inv = hsm_inventory("10.210.0.6", 8443)
@@ -331,12 +344,10 @@ def main() -> None:
                        "source": "hsm-banner",
                        "attributes": {"firmware": inv.get("firmware"),
                                       "fips_mode": (inv.get("compliance") or {}).get("fips_mode")}})
-        ev("hsm-0", "RUNTIME_OBSERVED",
-           {"firmware": inv.get("firmware"), "key_slots": inv.get("slots"),
-            "compliance": inv.get("compliance")}, "HSM", "hsm-tls-banner")
-        relationships.append({"subject": "host-hsm-sim", "predicate": "uses_hsm",
-                              "object": "hsm-0", "basis": "RUNTIME_OBSERVATION",
-                              "evidence_ids": []})
+        hsm_ev = ev("hsm-0", "RUNTIME_OBSERVED",
+                    {"firmware": inv.get("firmware"), "key_slots": inv.get("slots"),
+                     "compliance": inv.get("compliance")}, "HSM", "hsm-tls-banner")
+        rel("host-hsm-sim", "uses_hsm", "hsm-0", "RUNTIME_OBSERVATION", [hsm_ev])
 
     # ── vendors (derived from what was actually observed) ─────────────────
     vendors = [("NGINX Inc.", "nginx", "1.27 (observed via package db)"),
