@@ -1699,3 +1699,54 @@ summary:focus-visible,
   background: var(--panel-2);
   border-color: var(--line-strong);
 }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Sidebar fixes
+   1. A closed section/group must actually hide: the class rules above set
+      display:flex, which overrode the [hidden] attribute.
+   2. The collapsed rail shows icons only — every label is hidden (plain
+      links included) and nothing may spill sideways.
+   ───────────────────────────────────────────────────────────────────── */
+.sidebar .nav-items[hidden],
+.sidebar .nav-sub[hidden] { display: none !important; }
+
+.sidebar { overflow-x: hidden; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 6px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+
+.shell.collapsed .sidebar { padding-inline: 10px; }
+.shell.collapsed .sidebar .nav-text,
+.shell.collapsed .sidebar .nav-count,
+.shell.collapsed .sidebar .nav-caret { display: none !important; }
+.shell.collapsed .sidebar a.nav,
+.shell.collapsed .sidebar button.nav-group {
+  justify-content: center;
+  padding: 10px 0;
+  gap: 0;
+  white-space: nowrap;
+}
+.shell.collapsed .sidebar .nav-items { padding: 4px 0; }
+.shell.collapsed .sidebar .nav-items + .nav-label { display: block; height: 1px; margin: 6px 8px; background: var(--line); font-size: 0; }
+.shell.collapsed .sidebar .start-scan-btn { padding: 9px 0 !important; font-size: 0 !important; gap: 0 !important; }
+
+/* compact rail on narrow screens (sidebar not collapsed but only 76px wide) */
+@media (max-width: 900px) and (min-width: 561px) {
+  .sidebar { padding-inline: 10px; }
+  .sidebar .nav-text,
+  .sidebar .nav-count,
+  .sidebar .nav-caret { display: none !important; }
+  .sidebar a.nav,
+  .sidebar button.nav-group { justify-content: center; padding: 10px 0; gap: 0; }
+  .sidebar .nav-sub { margin-inline-start: 0; padding-inline-start: 0; border-inline-start: 0; }
+  .sidebar .scope-group { display: none; }
+  .sidebar > div:first-child { flex-direction: column; gap: 10px; margin-inline: 0 !important; }
+  .sidebar .start-scan-btn { padding: 9px 0 !important; font-size: 0 !important; gap: 0 !important; }
+}
+
+/* phones: the sidebar is a wrapped top bar, where every section flows in */
+@media (max-width: 560px) {
+  .sidebar .nav-items[hidden] { display: contents !important; }
+  .sidebar { overflow-x: visible; }
+}
+.shell.collapsed .sidebar > div:first-child { flex-direction: column; gap: 10px; margin-inline: 0 !important; }

@@ -5,6 +5,7 @@
 
 import { watchPrivateScope } from "./privateScope";
 import { gatedFetch, GateResetError } from "./requestGate";
+import { prettyJson, readableJsonBlob } from "./prettyJson";
 
 export type ApiSource = "live" | "offline";
 
@@ -250,8 +251,16 @@ export async function downloadAuthenticatedResource(path: string, fallbackFilena
     const disposition = response.headers.get("content-disposition") || "";
     const advertised = disposition.match(/filename="?([^";]+)"?/i)?.[1];
     const filename = (advertised || fallbackFilename).replace(/[^a-zA-Z0-9._-]/g, "_");
-    const blob = await response.blob();
+    let blob = await response.blob();
     guard(); // Fetch/body readers may ignore abort. Never release old-context bytes.
+    // JSON exports (CycloneDX CBOM/SBOM, evidence packs) arrive minified on one
+    // line; save them indented so they open readably. Whitespace only — values
+    // are copied through unchanged (see prettyJson). JSONL stays one-per-line.
+    if (/\.json$/i.test(filename) && blob.size < 64 * 1024 * 1024 && typeof blob.text === "function") {
+      const formatted = prettyJson(await blob.text());
+      guard();
+      if (formatted !== null) blob = new Blob([formatted], { type: blob.type || "application/json" });
+    }
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     try {
@@ -3009,7 +3018,7 @@ export const apiSbomReport = (artifactId: string, fmt = "markdown"): Promise<Res
 export async function downloadSbomReport(artifactId: string): Promise<void> {
   const resp = await apiSbomReport(artifactId, "markdown");
   if (!resp.ok) throw new Error(`report failed: ${resp.status}`);
-  const blob = await resp.blob();
+  const blob = await readableJsonBlob(await resp.blob());
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -3031,7 +3040,7 @@ export async function downloadSbomArtifact(artifactId: string): Promise<void> {
   if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
   const cd = resp.headers.get("content-disposition") || "";
   const match = cd.match(/filename="?([^";]+)"?/);
-  const blob = await resp.blob();
+  const blob = await readableJsonBlob(await resp.blob());
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -4067,7 +4076,7 @@ export async function downloadBankingArtifact(what: "action-plan" | "servicenow"
   if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
   const cd = resp.headers.get("content-disposition") || "";
   const match = cd.match(/filename="?([^";]+)"?/);
-  const blob = await resp.blob();
+  const blob = await readableJsonBlob(await resp.blob());
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -4129,7 +4138,7 @@ export async function downloadBankingArtifactIntl(
   if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
   const cd = resp.headers.get("content-disposition") || "";
   const match = cd.match(/filename="?([^";]+)"?/);
-  const blob = await resp.blob();
+  const blob = await readableJsonBlob(await resp.blob());
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -4178,7 +4187,7 @@ export async function downloadDoraRegister(format: "json" | "csv", entity = ""):
   });
   if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
   const cd = resp.headers.get("content-disposition") || "";
-  const blob = await resp.blob();
+  const blob = await readableJsonBlob(await resp.blob());
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -4193,7 +4202,7 @@ export async function downloadGroupRoadmap(): Promise<void> {
   });
   if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
   const cd = resp.headers.get("content-disposition") || "";
-  const blob = await resp.blob();
+  const blob = await readableJsonBlob(await resp.blob());
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -4319,7 +4328,7 @@ export async function downloadTelecomPack(carrierCode: string, format: "json" | 
   });
   if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
   if (format === "json") {
-    const blob = await resp.blob();
+    const blob = await readableJsonBlob(await resp.blob());
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -4329,7 +4338,7 @@ export async function downloadTelecomPack(carrierCode: string, format: "json" | 
     return;
   }
   const cd = resp.headers.get("content-disposition") || "";
-  const blob = await resp.blob();
+  const blob = await readableJsonBlob(await resp.blob());
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -4354,7 +4363,7 @@ export async function downloadSupervisorPack(): Promise<void> {
     ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
   });
   if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
-  const blob = await resp.blob();
+  const blob = await readableJsonBlob(await resp.blob());
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -4462,7 +4471,7 @@ export async function generateExitReport(
       return { ok: true, hash: String(report.report_hash || "") };
     }
     const hash = resp.headers.get("X-Report-Hash") || "";
-    const blob = await resp.blob();
+    const blob = await readableJsonBlob(await resp.blob());
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -4498,7 +4507,7 @@ export async function downloadEngagementArchive(
       return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
     }
     const files = Number(resp.headers.get("X-Archive-Files") || 0);
-    const blob = await resp.blob();
+    const blob = await readableJsonBlob(await resp.blob());
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -6566,7 +6575,7 @@ export async function downloadBom(kind: string, fmt: "cyclonedx" | "json" = "cyc
     const disposition = resp.headers.get("content-disposition") || "";
     const match = /filename="([^"]+)"/.exec(disposition);
     const filename = match ? match[1] : `cryptoscan-${kind.toLowerCase()}.${fmt === "cyclonedx" ? "cdx.json" : "json"}`;
-    const blob = await resp.blob();
+    const blob = await readableJsonBlob(await resp.blob());
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
