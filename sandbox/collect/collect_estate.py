@@ -67,8 +67,21 @@ def login() -> str:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req) as resp:  # noqa: S310 — sandbox URL only
-        body = json.loads(resp.read())
+    try:
+        with urllib.request.urlopen(req) as resp:  # noqa: S310 — sandbox URL only
+            body = json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = json.loads(exc.read())
+        except Exception:  # noqa: BLE001
+            detail = {}
+        sys.exit(
+            f"login refused (HTTP {exc.code}) for user {USER!r}: "
+            f"{detail.get('detail') or detail.get('message') or exc.reason}. "
+            "Use the same username/password you sign into the console with."
+        )
+    except urllib.error.URLError as exc:
+        sys.exit(f"CryptoScan API unreachable at {API}: {exc.reason} — is the stack up?")
     token = body.get("token")
     if not token:
         sys.exit(f"login failed: {body.get('message') or body}")
