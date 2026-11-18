@@ -71,7 +71,7 @@ export default function Compliance() {
       {/* Hero */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 520px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--green) 12%, transparent)", border: "1px solid var(--green)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--green)", letterSpacing: ".06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--green) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--green) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--green)", letterSpacing: ".06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--green)" }} /> GOVERNANCE · CONTINUOUS COMPLIANCE · WORM RETENTION
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -121,21 +121,21 @@ export default function Compliance() {
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${failCount ? "var(--red)" : evaluated ? "var(--green)" : "var(--slate)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>ACTIVE VIOLATIONS</div><div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: failCount ? "var(--red)" : evaluated ? "var(--green)" : "var(--dim)" }}>{evidence.phase === "loading" ? "…" : evaluated ? failCount : "—"}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>{evaluated ? (unknownCount ? `${failCount} failed · ${unknownCount} unknown` : "Requiring remediation") : "No evaluation — no claim"}</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: failCount ? "color-mix(in srgb, var(--red) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${failCount ? "var(--red)" : "var(--line)"}`, color: failCount ? "var(--red)" : "var(--faint)" }}><IconInfo size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: failCount ? "color-mix(in srgb, var(--red) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${failCount ? "var(--red)" : "var(--line)"} 35%, var(--line))`, color: failCount ? "var(--red)" : "var(--faint)" }}><IconInfo size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={evaluated ? failCount / Math.max(1, totalCount) : 0} tone={failCount ? "red" : "slate"} /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Unknown ≠ FAIL — own status</div></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${retentionYears != null ? "var(--green)" : "var(--slate)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>WORM RETENTION POLICY</div><div style={{ fontSize: 22, fontWeight: 800, margin: "6px 0 2px", lineHeight: 1 }}>{evidence.phase === "loading" ? "…" : retentionYears != null ? `${retentionYears} Years` : "Not configured"}</div><div style={{ fontSize: 11, color: retentionYears != null ? "var(--green)" : "var(--dim)" }}>{retentionYears != null ? "Configured · enforcement per-write" : "Default is not enforcement"}</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: retentionYears != null ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${retentionYears != null ? "var(--green)" : "var(--line)"}`, color: retentionYears != null ? "var(--green)" : "var(--faint)" }}><IconClock size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: retentionYears != null ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${retentionYears != null ? "var(--green)" : "var(--line)"} 35%, var(--line))`, color: retentionYears != null ? "var(--green)" : "var(--faint)" }}><IconClock size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={retentionYears != null ? 1 : 0} tone={retentionYears != null ? "green" : "slate"} /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Missing is “not configured”, not “7 years”</div></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--cyan)" }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>FRAMEWORK COVERAGE</div><div style={{ fontSize: 22, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: "var(--cyan)" }}>{mappedFrameworks} of {Object.keys(STANDARD_CONTROL_KEYS).length} mapped</div><div style={{ fontSize: 11, color: "var(--dim)" }}>SOC2 platform controls only</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--cyan) 14%, transparent)", border: "1px solid var(--cyan)", color: "var(--cyan)" }}><IconHardware size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--cyan) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--cyan) 35%, var(--line))", color: "var(--cyan)" }}><IconHardware size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={mappedFrameworks / Object.keys(STANDARD_CONTROL_KEYS).length} tone="cyan" /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Other mappings = not implemented</div></div>
         </div>

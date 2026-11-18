@@ -35,7 +35,7 @@ export default function Migration() {
       {/* Hero */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 520px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--amber) 12%, transparent)", border: "1px solid var(--amber)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--amber)", letterSpacing: ".06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--amber) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--amber) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--amber)", letterSpacing: ".06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--amber)" }} /> OUTPUT · MIGRATION PLANNING · 3-WAVE ROADMAP
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -74,28 +74,28 @@ export default function Migration() {
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid var(--red)` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>WAVE 1 · HARVEST-NOW</div><div style={{ fontSize: 26, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{(waves["1"]?.site_count ?? waves["1"]?.sites?.length ?? 0) as number}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>{waves["1"]?.focus ?? "HNDL-critical first"}</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--red) 14%, transparent)", border: "1px solid var(--red)", color: "var(--red)" }}><IconClock size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--red) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 35%, var(--line))", color: "var(--red)" }}><IconClock size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={total ? ((waves["1"]?.site_count ?? waves["1"]?.sites?.length ?? 0) as number) / Math.max(1, total) : 0} tone="red" /></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid var(--amber)` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>WAVE 2 · SHOR-VULNERABLE</div><div style={{ fontSize: 26, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{(waves["2"]?.site_count ?? waves["2"]?.sites?.length ?? 0) as number}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>{waves["2"]?.focus ?? "asymmetric at risk"}</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--amber) 14%, transparent)", border: "1px solid var(--amber)", color: "var(--amber)" }}><IconSecurity size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--amber) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--amber) 35%, var(--line))", color: "var(--amber)" }}><IconSecurity size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={total ? ((waves["2"]?.site_count ?? waves["2"]?.sites?.length ?? 0) as number) / Math.max(1, total) : 0} tone="amber" /></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid var(--violet)` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>WAVE 3 · GROVER SYMMETRIC</div><div style={{ fontSize: 26, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{(waves["3"]?.site_count ?? waves["3"]?.sites?.length ?? 0) as number}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>{waves["3"]?.focus ?? "symmetric / Grover"}</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)", color: "var(--violet)" }}><IconComponent size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--violet) 35%, var(--line))", color: "var(--violet)" }}><IconComponent size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={total ? ((waves["3"]?.site_count ?? waves["3"]?.sites?.length ?? 0) as number) / Math.max(1, total) : 0} tone="violet" /></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${data.mosca?.computable ? "var(--green)" : "var(--slate)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>MOSCA RISK MODEL</div><div style={{ fontSize: 16, fontWeight: 800, margin: "6px 0 2px", lineHeight: 1 }}>{data.mosca?.computable ? `CRQC in ${data.mosca?.z_years_to_crqc ?? "?"}y` : "NOT COMPUTABLE"}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>{data.mosca?.threat_year ? `threat year ${data.mosca.threat_year}` : data.mosca?.reason ?? "shelf-life vs migration time"}</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: data.mosca?.computable ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${data.mosca?.computable ? "var(--green)" : "var(--line)"}`, color: data.mosca?.computable ? "var(--green)" : "var(--faint)" }}><IconInfo size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: data.mosca?.computable ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${data.mosca?.computable ? "var(--green)" : "var(--line)"} 35%, var(--line))`, color: data.mosca?.computable ? "var(--green)" : "var(--faint)" }}><IconInfo size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><div style={{ fontSize: 10, color: "var(--faint)" }}>{data.mosca?.computable ? "years until a cryptographically relevant quantum computer, from the model — no fixed scale" : "not computable from the returned inputs"}</div></div>
         </div>

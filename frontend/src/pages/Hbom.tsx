@@ -218,7 +218,7 @@ export default function Hbom() {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 420px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid var(--accent)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: estateLive ? "var(--green)" : "var(--accent)" }} /> BOMS · HBOM · HARDWARE ROOTS
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -278,7 +278,7 @@ export default function Hbom() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{devices.length}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Current scan-run view</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconTarget size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", color: "var(--accent)" }}><IconTarget size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{liveByType.length ? liveByType[0][0] : "—"} top</span><span style={{ color: live ? "var(--green)" : "var(--faint)" }}>{live ? "● LIVE" : "offline"}</span></div>
@@ -298,7 +298,7 @@ export default function Hbom() {
               <div style={{ fontSize: 32, fontWeight: 800, color: ec ? "var(--green)" : "var(--faint)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{estateRead ? ec : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Unified persisted DB truth</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: (meta?.component_count ?? 0) ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${(meta?.component_count ?? 0) ? "var(--green)" : "var(--line)"}`, color: (meta?.component_count ?? 0) ? "var(--green)" : "var(--faint)" }}><IconCertificate size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: (meta?.component_count ?? 0) ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${(meta?.component_count ?? 0) ? "var(--green)" : "var(--line)"} 35%, var(--line))`, color: (meta?.component_count ?? 0) ? "var(--green)" : "var(--faint)" }}><IconCertificate size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>ENV {meta?.environment || "—"}</span><span style={{ color: "var(--green)" }}>content-addressed</span></div>
@@ -316,7 +316,7 @@ export default function Hbom() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{estateRead ? meta?.hsm_count ?? 0 : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Hardware security modules</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: (meta?.hsm_count ?? 0) ? "color-mix(in srgb, var(--violet) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${(meta?.hsm_count ?? 0) ? "var(--violet)" : "var(--line)"}`, color: (meta?.hsm_count ?? 0) ? "var(--violet)" : "var(--faint)" }}><IconCrypto size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: (meta?.hsm_count ?? 0) ? "color-mix(in srgb, var(--violet) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${(meta?.hsm_count ?? 0) ? "var(--violet)" : "var(--line)"} 35%, var(--line))`, color: (meta?.hsm_count ?? 0) ? "var(--violet)" : "var(--faint)" }}><IconCrypto size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
@@ -335,7 +335,7 @@ export default function Hbom() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{snapshots.length}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Verbatim + SHA-256 self-check</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: snapshots.length ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${snapshots.length ? "var(--green)" : "var(--line)"}`, color: snapshots.length ? "var(--green)" : "var(--faint)" }}><IconClock size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: snapshots.length ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${snapshots.length ? "var(--green)" : "var(--line)"} 35%, var(--line))`, color: snapshots.length ? "var(--green)" : "var(--faint)" }}><IconClock size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{snapshotsLoaded ? "content-addressed" : "not loaded"}</span><span style={{ color: snapshots.length ? "var(--green)" : "var(--faint)" }}>{snapshots.length ? "auditable" : "none pinned"}</span></div>

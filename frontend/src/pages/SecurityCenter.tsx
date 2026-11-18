@@ -55,7 +55,7 @@ export default function SecurityCenter() {
       {/* Hero */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 520px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--red) 12%, transparent)", border: "1px solid var(--red)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--red)", letterSpacing: ".06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--red) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--red)", letterSpacing: ".06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--red)" }} /> GOVERNANCE · 24/7 SECURITY OPERATIONS CENTER · LIVE SSE
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -88,7 +88,7 @@ export default function SecurityCenter() {
       </div>
 
       {dropped && (
-        <div style={{ background: "color-mix(in srgb, var(--red) 10%, transparent)", border: "1px solid var(--red)", padding: "10px 14px", borderRadius: "var(--r)", marginBottom: 16, display: "flex", gap: 10, alignItems: "center" }}>
+        <div style={{ background: "color-mix(in srgb, var(--red) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 35%, var(--line))", padding: "10px 14px", borderRadius: "var(--r)", marginBottom: 16, display: "flex", gap: 10, alignItems: "center" }}>
           <span style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", background: "var(--red)", color: "#fff" }}><IconInfo size={14} /></span>
           <div><b style={{ fontSize: 13 }}>Attention — security posture regressed.</b><span style={{ fontSize: 12, color: "var(--dim)", marginLeft: 8 }}>score dropped {scorePrevious ?? "—"} → {score} (Δ {scoreDelta}). Review the live threat feed below.</span></div>
         </div>
@@ -106,21 +106,21 @@ export default function SecurityCenter() {
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${(livePosture?.threats_open ?? openThreats) ? "var(--red)" : "var(--green)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>OPEN THREATS</div><div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: (livePosture?.threats_open ?? openThreats) ? "var(--red)" : "var(--green)" }}>{livePosture?.threats_open ?? openThreats}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>unacknowledged anomaly flags</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: (livePosture?.threats_open ?? openThreats) ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid ${(livePosture?.threats_open ?? openThreats) ? "var(--red)" : "var(--green)"}`, color: (livePosture?.threats_open ?? openThreats) ? "var(--red)" : "var(--green)" }}><IconTarget size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: (livePosture?.threats_open ?? openThreats) ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid color-mix(in srgb, ${(livePosture?.threats_open ?? openThreats) ? "var(--red)" : "var(--green)"} 35%, var(--line))`, color: (livePosture?.threats_open ?? openThreats) ? "var(--red)" : "var(--green)" }}><IconTarget size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><div style={{ fontSize: 10, color: "var(--faint)" }}>{livePosture?.threats_critical ?? criticalThreats} critical/high · open flags are a count, not a rate</div></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${(livePosture?.failed_logins ?? failedLogins) ? "var(--amber)" : "var(--green)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>FAILED LOGINS (RECENT)</div><div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{livePosture?.failed_logins ?? failedLogins}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>auth failures in audit ledger</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: (livePosture?.failed_logins ?? failedLogins) ? "color-mix(in srgb, var(--amber) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${(livePosture?.failed_logins ?? failedLogins) ? "var(--amber)" : "var(--line)"}`, color: (livePosture?.failed_logins ?? failedLogins) ? "var(--amber)" : "var(--faint)" }}><IconInfo size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: (livePosture?.failed_logins ?? failedLogins) ? "color-mix(in srgb, var(--amber) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${(livePosture?.failed_logins ?? failedLogins) ? "var(--amber)" : "var(--line)"} 35%, var(--line))`, color: (livePosture?.failed_logins ?? failedLogins) ? "var(--amber)" : "var(--faint)" }}><IconInfo size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><div style={{ fontSize: 10, color: "var(--faint)" }}>count of recent ledger failures — no threshold is implied</div></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${(livePosture?.agents_healthy ?? agentsHealthy) ? "var(--green)" : "var(--amber)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>AGENTS HEALTHY</div><div style={{ fontSize: 22, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{livePosture?.agents_healthy ?? agentsHealthy}/{livePosture?.agents_total ?? agentRows.length}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>{agentsWarning ? `${agentsWarning} warning/degraded` : "all healthy"}</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: (livePosture?.agents_healthy ?? agentsHealthy) ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${(livePosture?.agents_healthy ?? agentsHealthy) ? "var(--green)" : "var(--line)"}`, color: (livePosture?.agents_healthy ?? agentsHealthy) ? "var(--green)" : "var(--faint)" }}><IconHardware size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: (livePosture?.agents_healthy ?? agentsHealthy) ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${(livePosture?.agents_healthy ?? agentsHealthy) ? "var(--green)" : "var(--line)"} 35%, var(--line))`, color: (livePosture?.agents_healthy ?? agentsHealthy) ? "var(--green)" : "var(--faint)" }}><IconHardware size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={agentRows.length ? (livePosture?.agents_healthy ?? agentsHealthy) / Math.max(1, livePosture?.agents_total ?? agentRows.length) : 0} tone={(livePosture?.agents_healthy ?? agentsHealthy) ? "green" : "slate"} /></div>
         </div>

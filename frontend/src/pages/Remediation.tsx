@@ -92,7 +92,7 @@ function RemediationView() {
       {/* Hero */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 520px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--amber) 12%, transparent)", border: "1px solid var(--amber)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--amber)", letterSpacing: ".06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--amber) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--amber) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--amber)", letterSpacing: ".06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--amber)" }} /> GOVERNANCE · REMEDIATION LIFECYCLE · VERIFIED FIX
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -133,7 +133,7 @@ function RemediationView() {
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${proposedCount ? "var(--slate)" : "var(--amber)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>PROPOSED — AWAITING OWNER</div><div style={{ fontSize: 28, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{proposedCount}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>opened, not yet owned</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: proposedCount ? "color-mix(in srgb, var(--slate) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${proposedCount ? "var(--slate)" : "var(--line)"}`, color: proposedCount ? "var(--slate)" : "var(--faint)" }}><IconClock size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: proposedCount ? "color-mix(in srgb, var(--slate) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${proposedCount ? "var(--slate)" : "var(--line)"} 35%, var(--line))`, color: proposedCount ? "var(--slate)" : "var(--faint)" }}><IconClock size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={totalTasks ? proposedCount / totalTasks : 0} tone="slate" /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Take ownership to start work</div></div>
         </div>
@@ -147,14 +147,14 @@ function RemediationView() {
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${verifiedCount ? "var(--green)" : "var(--slate)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>VERIFIED — MACHINE PROOF</div><div style={{ fontSize: 28, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: verifiedCount ? "var(--green)" : "var(--dim)" }}>{verifiedCount}</div><div style={{ fontSize: 11, color: verifiedCount ? "var(--green)" : "var(--dim)" }}>rescan evidence confirms fix</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: verifiedCount ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${verifiedCount ? "var(--green)" : "var(--line)"}`, color: verifiedCount ? "var(--green)" : "var(--faint)" }}><IconHardware size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: verifiedCount ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${verifiedCount ? "var(--green)" : "var(--line)"} 35%, var(--line))`, color: verifiedCount ? "var(--green)" : "var(--faint)" }}><IconHardware size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={verifiedPct} tone={verifiedCount ? "green" : "slate"} /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{verifiedCount ? "Estate agrees — not just declaration" : "No verified fixes yet"}</div></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${failedCount ? "var(--red)" : "var(--slate)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>FAILED / REGRESSION</div><div style={{ fontSize: 28, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: failedCount ? "var(--red)" : "var(--dim)" }}>{failedCount}</div><div style={{ fontSize: 11, color: failedCount ? "var(--red)" : "var(--dim)" }}>{failedCount ? "rescan still shows problem" : "no regressions"}</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: failedCount ? "color-mix(in srgb, var(--red) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${failedCount ? "var(--red)" : "var(--line)"}`, color: failedCount ? "var(--red)" : "var(--faint)" }}><IconComponent size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: failedCount ? "color-mix(in srgb, var(--red) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${failedCount ? "var(--red)" : "var(--line)"} 35%, var(--line))`, color: failedCount ? "var(--red)" : "var(--faint)" }}><IconComponent size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={totalTasks ? failedCount / totalTasks : 0} tone={failedCount ? "red" : "slate"} /></div>
         </div>

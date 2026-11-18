@@ -117,7 +117,7 @@ export default function Sbom() {
       <BomCrossNav current="SBOM" />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 460px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--violet) 12%, transparent)", border: "1px solid var(--violet)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--violet)", letterSpacing: "0.06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--violet) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--violet) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--violet)", letterSpacing: "0.06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--violet)" }} /> BOMS · SBOM · SOFTWARE SUPPLY CHAIN
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -193,7 +193,7 @@ export default function Sbom() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: readOk ? "var(--text)" : "var(--slate)" }}>{readOk ? total : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{readOk ? "Software inventory" : "SBOM not read"}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)", color: "var(--violet)" }}><IconTarget size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--violet) 35%, var(--line))", color: "var(--violet)" }}><IconTarget size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={pctOfEstate ?? 0} tone="violet" />
@@ -207,7 +207,7 @@ export default function Sbom() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: readOk ? "var(--text)" : "var(--slate)" }}>{readOk ? uniqueSuppliers : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{readOk ? `Top supplier ${bySupplier[0]?.[0]?.slice(0,14) || "—"} · ${bySupplier[0]?.[1] ?? 0}` : "suppliers not read"}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconCloud size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", color: "var(--accent)" }}><IconCloud size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={namedShare ?? 0} tone={namedShare == null ? "slate" : "cyan"} />
@@ -223,7 +223,7 @@ export default function Sbom() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: readOk ? "var(--text)" : "var(--slate)" }}>{readOk && vendorCount != null ? vendorCount : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Via VBOM mapping</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: vendorCount ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${vendorCount ? "var(--green)" : "var(--line)"}`, color: vendorCount ? "var(--green)" : "var(--faint)" }}><IconHardware size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: vendorCount ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${vendorCount ? "var(--green)" : "var(--line)"} 35%, var(--line))`, color: vendorCount ? "var(--green)" : "var(--faint)" }}><IconHardware size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={vendorCount ? Math.min(1, vendorCount/20) : 0} tone={vendorCount ? "green" : "slate"} />

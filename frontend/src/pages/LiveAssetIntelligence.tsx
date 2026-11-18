@@ -901,7 +901,7 @@ export default function LiveAssetIntelligence() {
       {/* Visual Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 460px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid var(--accent)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: rt.connected ? "var(--green)" : "var(--accent)" }} /> INTELLIGENCE · TECHNOLOGY BOM · ONE ASSET MODEL
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -947,7 +947,7 @@ export default function LiveAssetIntelligence() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{total}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Across all layers</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconComponent size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", color: "var(--accent)" }}><IconComponent size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ height: 6, display: "flex", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
@@ -963,7 +963,7 @@ export default function LiveAssetIntelligence() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{counts.sbom ?? 0}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Software components</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)", color: "var(--violet)" }}>SB</span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--violet) 35%, var(--line))", color: "var(--violet)" }}>SB</span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={sbomPct} tone="violet" />
@@ -977,7 +977,7 @@ export default function LiveAssetIntelligence() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{counts.cbom ?? 0}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Crypto assets</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconCrypto size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", color: "var(--accent)" }}><IconCrypto size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={cbomPct} tone="cyan" />
@@ -1005,7 +1005,7 @@ export default function LiveAssetIntelligence() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{(counts.vendor ?? 0) + (counts.certificates ?? 0)}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{counts.vendor ?? 0} vendors · {counts.certificates ?? 0} certs</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--green) 14%, transparent)", border: "1px solid var(--green)", color: "var(--green)" }}><IconCertificate size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--green) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--green) 35%, var(--line))", color: "var(--green)" }}><IconCertificate size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", gap: 4 }}><span style={{ flex: 1 }}><Bar value={(counts.vendor ?? 0) / layerTotal} tone="green" /></span><span style={{ flex: 1 }}><Bar value={(counts.certificates ?? 0) / layerTotal} tone="green" /></span></div>

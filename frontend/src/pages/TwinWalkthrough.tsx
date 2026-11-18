@@ -589,7 +589,7 @@ export default function TwinWalkthrough() {
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
       <div style={{ marginBottom: 14 }}>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--violet) 12%, transparent)", border: "1px solid var(--violet)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--violet)", letterSpacing: ".06em" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--violet) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--violet) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--violet)", letterSpacing: ".06em" }}>
           <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--violet)" }} /> OUTPUT · DIGITAL TWIN · THIRTEEN-SCREEN WALKTHROUGH
         </div>
         <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em" }}>One asset, thirteen investigations</h1>

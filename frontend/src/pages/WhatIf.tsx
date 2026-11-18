@@ -33,7 +33,7 @@ export default function WhatIf() {
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 520px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--violet) 12%, transparent)", border: "1px solid var(--violet)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--violet)", letterSpacing: ".06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--violet) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--violet) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--violet)", letterSpacing: ".06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--violet)" }} /> OUTPUT · WHAT-IF SIMULATOR · READ-ONLY ANALYSIS
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -101,7 +101,7 @@ export default function WhatIf() {
             <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${d.migration_plan?.risk === "HIGH" ? "var(--red)" : d.migration_plan?.risk === "MEDIUM" ? "var(--amber)" : "var(--green)"}` }}>
               <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                 <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>MIGRATION RISK</div><div style={{ fontSize: 20, fontWeight: 800, margin: "6px 0 2px", lineHeight: 1 }}>{d.migration_plan?.risk ?? "UNKNOWN"}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>{steps.length} ordered steps</div></div>
-                <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: d.migration_plan?.risk === "HIGH" ? "color-mix(in srgb, var(--red) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${d.migration_plan?.risk === "HIGH" ? "var(--red)" : "var(--line)"}`, color: d.migration_plan?.risk === "HIGH" ? "var(--red)" : "var(--faint)" }}><IconClock size={16} /></span>
+                <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: d.migration_plan?.risk === "HIGH" ? "color-mix(in srgb, var(--red) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${d.migration_plan?.risk === "HIGH" ? "var(--red)" : "var(--line)"} 35%, var(--line))`, color: d.migration_plan?.risk === "HIGH" ? "var(--red)" : "var(--faint)" }}><IconClock size={16} /></span>
               </div>
               <div style={{ padding: "0 16px 12px" }}><Bar value={d.migration_plan?.risk === "HIGH" ? 0.9 : d.migration_plan?.risk === "MEDIUM" ? 0.55 : 0.3} tone={d.migration_plan?.risk === "HIGH" ? "red" : d.migration_plan?.risk === "MEDIUM" ? "amber" : "green"} /></div>
             </div>

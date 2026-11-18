@@ -283,7 +283,7 @@ export default function Drift() {
       {/* Header — visual */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 420px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid var(--accent)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: criticalCount ? "var(--red)" : openCount ? "var(--amber)" : "var(--green)" }} /> PERSISTED DRIFT EVENTS · TENANT-SCOPED
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -327,7 +327,7 @@ export default function Drift() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : total === null ? "—" : total.toLocaleString()}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{events.length} loaded · server total</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconHardware size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", color: "var(--accent)" }}><IconHardware size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{scope ? `tenant ${scope.slice(0, 8)}` : "server scope"}</span><span style={{ color: "var(--accent)" }}>● persisted</span></div>
@@ -343,7 +343,7 @@ export default function Drift() {
               <div style={{ fontSize: 32, fontWeight: 800, color: criticalCount ? "var(--red)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : total === null ? "—" : criticalCount}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>All dispositions · loaded pages</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: criticalCount ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid ${criticalCount ? "var(--red)" : "var(--green)"}`, color: criticalCount ? "var(--red)" : "var(--green)" }}>{criticalCount ? <IconTrendUp size={16} /> : <IconSecurity size={16} />}</span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: criticalCount ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid color-mix(in srgb, ${criticalCount ? "var(--red)" : "var(--green)"} 35%, var(--line))`, color: criticalCount ? "var(--red)" : "var(--green)" }}>{criticalCount ? <IconTrendUp size={16} /> : <IconSecurity size={16} />}</span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{total === null ? "count unknown" : criticalCount ? `${Math.round(analytics.criticalPct * 100)}% of loaded` : "no critical in loaded pages"}</span><span style={{ color: criticalCount ? "var(--red)" : "var(--dim)" }}>{criticalCount ? "triage now" : "not an estate verdict"}</span></div>
@@ -358,7 +358,7 @@ export default function Drift() {
               <div style={{ fontSize: 32, fontWeight: 800, color: openCount ? "var(--amber)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : total === null ? "—" : openCount}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{analytics.byStatus.ACKNOWLEDGED} acknowledged</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: openCount ? "color-mix(in srgb, var(--amber) 12%, transparent)" : "color-mix(in srgb, var(--green) 12%, transparent)", border: `1px solid ${openCount ? "var(--amber)" : "var(--green)"}`, color: openCount ? "var(--amber)" : "var(--green)" }}><IconClock size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: openCount ? "color-mix(in srgb, var(--amber) 12%, transparent)" : "color-mix(in srgb, var(--green) 12%, transparent)", border: `1px solid color-mix(in srgb, ${openCount ? "var(--amber)" : "var(--green)"} 35%, var(--line))`, color: openCount ? "var(--amber)" : "var(--green)" }}><IconClock size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
@@ -377,7 +377,7 @@ export default function Drift() {
               <div style={{ fontSize: 15, fontWeight: 800, margin: "8px 0 2px", color: comparisonState === "COMPARED" ? "var(--green)" : comparisonState ? "var(--amber)" : "var(--dim)", lineHeight: 1.2 }}>{comparisonState ? comparisonLabel[comparisonState] || comparisonState : "Unavailable"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{comparison ? `${comparison.scan_id.slice(0, 8)} · ${comparison.status}` : comparisonError ? "comparison error" : "no scan returned"}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)", color: "var(--violet)" }}><IconCertificate size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--violet) 35%, var(--line))", color: "var(--violet)" }}><IconCertificate size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, height: 8, background: "var(--bg-2)", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
@@ -547,10 +547,10 @@ export default function Drift() {
               {selectedEvent.resolution_status === "RESOLVED" && <div style={{ fontSize: 11, color: "var(--faint)" }}>Administrative closure — not remediation VERIFIED</div>}
               {selectedEvent.resolution_status === "ACKNOWLEDGED" && <div style={{ fontSize: 11, color: "var(--faint)" }}>Analyst triage — neither resolves nor verifies remediation</div>}
               {selectedEvent.verification_status === "VERIFIED" && (
-                <div style={{ padding: "10px 12px", background: "color-mix(in srgb, var(--green) 10%, transparent)", border: "1px solid var(--green)", borderRadius: "var(--r)", fontSize: 12, color: "var(--green)" }}>✓ Condition verified by rescan {selectedEvent.verified_by_scan_id || "unknown"} at {timestamp(selectedEvent.verified_at)} — gone from evidence.</div>
+                <div style={{ padding: "10px 12px", background: "color-mix(in srgb, var(--green) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--green) 35%, var(--line))", borderRadius: "var(--r)", fontSize: 12, color: "var(--green)" }}>✓ Condition verified by rescan {selectedEvent.verified_by_scan_id || "unknown"} at {timestamp(selectedEvent.verified_at)} — gone from evidence.</div>
               )}
               {selectedEvent.verification_status === "CONDITION_PRESENT" && (
-                <div style={{ padding: "10px 12px", background: "color-mix(in srgb, var(--red) 10%, transparent)", border: "1px solid var(--red)", borderRadius: "var(--r)", fontSize: 12, color: "var(--red)" }}>CONDITION STILL PRESENT in rescan {selectedEvent.verified_by_scan_id || "unknown"} — closure closed nothing.</div>
+                <div style={{ padding: "10px 12px", background: "color-mix(in srgb, var(--red) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 35%, var(--line))", borderRadius: "var(--r)", fontSize: 12, color: "var(--red)" }}>CONDITION STILL PRESENT in rescan {selectedEvent.verified_by_scan_id || "unknown"} — closure closed nothing.</div>
               )}
               {selectedEvent.acknowledged_at && <div style={{ fontSize: 11, color: "var(--dim)" }}>Acknowledged {timestamp(selectedEvent.acknowledged_at)} by {selectedEvent.acknowledged_by || "unknown"}</div>}
               {selectedEvent.resolved_at && <div style={{ fontSize: 11, color: "var(--dim)" }}>Closed {timestamp(selectedEvent.resolved_at)} by {selectedEvent.resolved_by || "unknown"}</div>}
@@ -566,8 +566,8 @@ export default function Drift() {
                 </div>
                 <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>Requires server-side auditor/admin authorization. Resolution closes the record; it does not verify a fix.</p>
               </> : null}
-              {actionEventId === selectedEvent.drift_id && actionError && <p role="alert" style={{ color: "var(--amber)", fontSize: 12, padding: "8px 12px", background: "color-mix(in srgb, var(--amber) 10%, transparent)", border: "1px solid var(--amber)", borderRadius: "var(--r)" }}>{actionError}</p>}
-              {actionEventId === selectedEvent.drift_id && actionSuccess && <p role="status" style={{ color: "var(--green)", fontSize: 12, padding: "8px 12px", background: "color-mix(in srgb, var(--green) 10%, transparent)", border: "1px solid var(--green)", borderRadius: "var(--r)" }}>{actionSuccess}</p>}
+              {actionEventId === selectedEvent.drift_id && actionError && <p role="alert" style={{ color: "var(--amber)", fontSize: 12, padding: "8px 12px", background: "color-mix(in srgb, var(--amber) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--amber) 35%, var(--line))", borderRadius: "var(--r)" }}>{actionError}</p>}
+              {actionEventId === selectedEvent.drift_id && actionSuccess && <p role="status" style={{ color: "var(--green)", fontSize: 12, padding: "8px 12px", background: "color-mix(in srgb, var(--green) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--green) 35%, var(--line))", borderRadius: "var(--r)" }}>{actionSuccess}</p>}
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", padding: "14px 16px", borderTop: "1px solid var(--line)", marginTop: 14, background: "var(--bg-2)" }}>

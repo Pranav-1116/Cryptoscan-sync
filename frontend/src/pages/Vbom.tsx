@@ -121,7 +121,7 @@ export default function Vbom() {
       <BomCrossNav current="VBOM" />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 460px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--green) 12%, transparent)", border: "1px solid var(--green)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--green)", letterSpacing: "0.06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--green) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--green) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--green)", letterSpacing: "0.06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--green)" }} /> BOMS · VBOM · SUPPLY-CHAIN VENDORS
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -178,7 +178,7 @@ export default function Vbom() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: vendorRead ? "var(--text)" : "var(--slate)" }}>{vendorRead ? vendorCount ?? 0 : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{vendorRead ? "In vendor inventory" : "register not read"}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--green) 14%, transparent)", border: "1px solid var(--green)", color: "var(--green)" }}><IconTarget size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--green) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--green) 35%, var(--line))", color: "var(--green)" }}><IconTarget size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={linkedShare ?? 0} tone="green" />
@@ -192,7 +192,7 @@ export default function Vbom() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: vendorRead ? "var(--text)" : "var(--slate)" }}>{vendorRead ? linkage.length : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{coveredSystems} systems covered</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: linkage.length ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${linkage.length ? "var(--accent)" : "var(--line)"}`, color: linkage.length ? "var(--accent)" : "var(--faint)" }}><IconCrypto size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: linkage.length ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${linkage.length ? "var(--accent)" : "var(--line)"} 35%, var(--line))`, color: linkage.length ? "var(--accent)" : "var(--faint)" }}><IconCrypto size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={linkedShare ?? 0} tone={linkage.length ? "cyan" : "slate"} />
@@ -207,7 +207,7 @@ export default function Vbom() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: bomRead ? "var(--text)" : "var(--slate)" }}>{bomRead ? total ?? 0 : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{bomRead ? "Materialized vendor layer" : "Technology BOM not read"}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconComponent size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", color: "var(--accent)" }}><IconComponent size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={vendorShare ?? 0} tone={vendorShare == null ? "slate" : "cyan"} />

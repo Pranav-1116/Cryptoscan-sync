@@ -389,7 +389,7 @@ function CbomContent() {
       <BomCrossNav current="CBOM" />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 460px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid var(--accent)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--accent)" }} /> BOMS · CBOM · CRYPTOGRAPHIC ASSETS
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -453,7 +453,7 @@ function CbomContent() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{techState ? cryptoTotal : "…"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Crypto-asset layer</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconTarget size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", color: "var(--accent)" }}><IconTarget size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={cryptoShare} tone="cyan" />
@@ -481,7 +481,7 @@ function CbomContent() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: linkedTotal ? "var(--cyan)" : undefined }}>{count(linkedTotal)}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>2+ BOMs · association</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: linkedTotal ? "color-mix(in srgb, var(--cyan) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${linkedTotal ? "var(--cyan)" : "var(--line)"}`, color: linkedTotal ? "var(--cyan)" : "var(--faint)" }}><IconSearch size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: linkedTotal ? "color-mix(in srgb, var(--cyan) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${linkedTotal ? "var(--cyan)" : "var(--line)"} 35%, var(--line))`, color: linkedTotal ? "var(--cyan)" : "var(--faint)" }}><IconSearch size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={linkedPct} tone={linkedTotal ? "cyan" : "slate"} />
@@ -495,7 +495,7 @@ function CbomContent() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: heroConflict ? "var(--red)" : undefined }}>{count(conflictTotal)}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{conflictTotal == null ? "No live query result" : heroConflict ? "Value disagreements" : "No disagreements"}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: heroConflict ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid ${heroConflict ? "var(--red)" : "var(--green)"}`, color: heroConflict ? "var(--red)" : "var(--green)" }}><IconSecurity size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: heroConflict ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid color-mix(in srgb, ${heroConflict ? "var(--red)" : "var(--green)"} 35%, var(--line))`, color: heroConflict ? "var(--red)" : "var(--green)" }}><IconSecurity size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={identities ? Math.min(1, (conflictTotal ?? 0) / Math.max(1, identities)) : 0} tone={heroConflict ? "red" : "green"} />
@@ -747,7 +747,7 @@ function CbomContent() {
       <div className="panel" style={{ padding: 16, marginTop: 16, borderTop: "2px solid var(--accent)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)" }}><IconSecurity size={14} style={{ color: "var(--accent)" }} /></span>
+            <span style={{ width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))" }}><IconSecurity size={14} style={{ color: "var(--accent)" }} /></span>
             <div>
               <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 8 }}>Pinned Snapshots</h3>
               <div style={{ fontSize: 11, color: "var(--dim)" }}>SHA-256 content-addressed · scan-bound · verbatim proof</div>

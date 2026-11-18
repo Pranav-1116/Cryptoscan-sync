@@ -65,7 +65,7 @@ export default function Priorities() {
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 520px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--red) 12%, transparent)", border: "1px solid var(--red)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--red)", letterSpacing: ".06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--red) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--red)", letterSpacing: ".06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--red)" }} /> GOVERNANCE · PRIORITIES · REVENUE × SEVERITY × AGILITY
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -99,21 +99,21 @@ export default function Priorities() {
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--slate)" }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>OPEN ITEMS</div><div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{total}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>drift + runtime findings</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--slate) 14%, transparent)", border: "1px solid var(--slate)", color: "var(--slate)" }}><IconComponent size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--slate) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--slate) 35%, var(--line))", color: "var(--slate)" }}><IconComponent size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><div style={{ fontSize: 10, color: "var(--faint)" }}>{cov ? `drift ${cov.open_drift_events} · runtime ${cov.runtime_findings}` : "counting inputs…"}</div></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${critical ? "var(--red)" : "var(--slate)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>CRITICAL</div><div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: critical ? "var(--red)" : "var(--dim)" }}>{critical}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>immediate triage</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: critical ? "color-mix(in srgb, var(--red) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${critical ? "var(--red)" : "var(--line)"}`, color: critical ? "var(--red)" : "var(--faint)" }}><IconSecurity size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: critical ? "color-mix(in srgb, var(--red) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${critical ? "var(--red)" : "var(--line)"} 35%, var(--line))`, color: critical ? "var(--red)" : "var(--faint)" }}><IconSecurity size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={total ? critical / Math.max(1, total) : 0} tone={critical ? "red" : "slate"} /></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${high ? "var(--amber)" : "var(--slate)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>HIGH / ALERT</div><div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: high ? "var(--amber)" : "var(--dim)" }}>{high}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>elevated urgency</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: high ? "color-mix(in srgb, var(--amber) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${high ? "var(--amber)" : "var(--line)"}`, color: high ? "var(--amber)" : "var(--faint)" }}><IconClock size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: high ? "color-mix(in srgb, var(--amber) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${high ? "var(--amber)" : "var(--line)"} 35%, var(--line))`, color: high ? "var(--amber)" : "var(--faint)" }}><IconClock size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={total ? high / Math.max(1, total) : 0} tone={high ? "amber" : "slate"} /></div>
         </div>

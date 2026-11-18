@@ -85,7 +85,7 @@ export default function Hardware() {
       {/* ── HERO ─────────────────────────────────────────────── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16, marginBottom: 16 }}>
         <div style={{ flex: "1 1 460px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--amber) 12%, transparent)", border: "1px solid var(--amber)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--amber)", letterSpacing: "0.06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--amber) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--amber) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--amber)", letterSpacing: "0.06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: live ? "var(--green)" : "var(--amber)" }} /> DISCOVERY · HARDWARE · ROOT OF TRUST
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -132,7 +132,7 @@ export default function Hardware() {
               <div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{totalDevices}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{Object.keys(deviceTypes).join(" · ") || "No discovery yet"}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--amber) 14%, transparent)", border: "1px solid var(--amber)", color: "var(--amber)" }}><IconHardware size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--amber) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--amber) 35%, var(--line))", color: "var(--amber)" }}><IconHardware size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={totalDevices ? Math.min(1, totalDevices / 10) : 0} tone="amber" />
@@ -147,7 +147,7 @@ export default function Hardware() {
               <div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: hwMeasured ? "var(--text)" : "var(--slate)" }}>{hwMeasured ? `${rotPresent}/4` : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{!hwMeasured ? "no hardware summary yet" : rotPresent === 4 ? "Complete" : rotPresent >= 2 ? "Partial" : "Minimal"}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: rotPresent >= 3 ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${rotPresent >= 3 ? "var(--green)" : "var(--line)"}`, color: rotPresent >= 3 ? "var(--green)" : "var(--faint)" }}><IconSecurity size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: rotPresent >= 3 ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${rotPresent >= 3 ? "var(--green)" : "var(--line)"} 35%, var(--line))`, color: rotPresent >= 3 ? "var(--green)" : "var(--faint)" }}><IconSecurity size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={hwMeasured ? rotPresent / 4 : 0} tone={rotPresent >= 3 ? "green" : rotPresent >= 2 ? "amber" : "slate"} />
@@ -162,7 +162,7 @@ export default function Hardware() {
               <div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{firmware.length}</div>
               <div style={{ fontSize: 12, color: firmwareDrift ? "var(--red)" : "var(--dim)" }}>{firmwareDrift ? `${firmwareDrift} drift` : firmwareOk ? `${firmwareOk} aligned` : "No baseline"}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: firmwareDrift ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid ${firmwareDrift ? "var(--red)" : "var(--green)"}`, color: firmwareDrift ? "var(--red)" : "var(--green)" }}><IconTarget size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: firmwareDrift ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid color-mix(in srgb, ${firmwareDrift ? "var(--red)" : "var(--green)"} 35%, var(--line))`, color: firmwareDrift ? "var(--red)" : "var(--green)" }}><IconTarget size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", height: 6, borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
@@ -180,7 +180,7 @@ export default function Hardware() {
               <div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{totalCatalog}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{requiredCount} required · {allowedCount} allowed</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)", color: "var(--violet)" }}><IconComponent size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--violet) 35%, var(--line))", color: "var(--violet)" }}><IconComponent size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>

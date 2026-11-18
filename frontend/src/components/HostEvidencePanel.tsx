@@ -324,7 +324,7 @@ export default function HostEvidencePanel() {
   return <><section className="panel" aria-label="Approved offline host evidence" style={{ marginTop: 16, padding: 16, borderTop: "2px solid var(--accent)" }}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)" }}><IconHardware size={14} style={{ color: "var(--accent)" }} /></span>
+        <span style={{ width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))" }}><IconHardware size={14} style={{ color: "var(--accent)" }} /></span>
         <div>
           <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Host Evidence — Offline Collector</h3>
           <div style={{ fontSize: 11, color: "var(--dim)" }}>Approved scope · offline files only · no Git · unprivileged run</div>

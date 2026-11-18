@@ -317,7 +317,7 @@ button { font-family: inherit; }
   align-self: flex-start;
   font-family: var(--sans); font-size: 11px; letter-spacing: 0.06em;
   text-transform: uppercase; color: var(--accent); font-weight: 700;
-  background: rgba(167, 139, 250, 0.12);
+  background: rgba(157, 146, 216, 0.12);
   border-radius: 5px;
   padding: 3px 8px;
   margin-bottom: 8px;
@@ -632,8 +632,8 @@ select.inp option { background: var(--panel); color: var(--text); }
 .matrix .cell { border-radius: 12px; padding: 18px; border: 1px solid var(--line); text-align: center; }
 .matrix .cell b { font-size: 30px; display: block; }
 .matrix .cell span { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; color: var(--dim); text-transform: uppercase; }
-.matrix .cell.hh { background: rgba(248, 113, 113, 0.10); border-color: rgba(248, 113, 113, 0.4); }
-.matrix .cell.hl { background: rgba(251, 191, 36, 0.07); border-color: rgba(251, 191, 36, 0.3); }
+.matrix .cell.hh { background: rgba(217, 136, 128, 0.10); border-color: rgba(217, 136, 128, 0.35); }
+.matrix .cell.hl { background: rgba(207, 174, 106, 0.07); border-color: rgba(207, 174, 106, 0.28); }
 .matrix .cell.lh { background: color-mix(in srgb, var(--accent) 7%, transparent); border-color: var(--line-strong); }
 .matrix .cell.ll { background: rgba(52, 211, 153, 0.06); border-color: rgba(52, 211, 153, 0.25); }
 
@@ -1248,16 +1248,18 @@ html[dir="rtl"] .lang-switch button { font-family: var(--sans); }
   --text: #f0f3fa;
   --dim: #a4b0cb;
   --faint: #8896ba;
-  --accent: #a78bfa;
-  --cyan: #a78bfa;
-  --blue: #a78bfa;
-  --violet: #c4b5fd;
-  --magenta: #c4b5fd;
+  /* Muted, desaturated hues tuned to the indigo surfaces — they sit in the
+     background instead of shouting over it. All hold >= 5.8:1 on --panel-2. */
+  --accent: #9d92d8;
+  --cyan: #9d92d8;
+  --blue: #9d92d8;
+  --violet: #b2a9df;
+  --magenta: #b2a9df;
   --on-accent: #0b0d17;
-  --green: #34d399;
-  --amber: #fbbf24;
-  --orange: #fb923c;
-  --red: #f87171;
+  --green: #72b896;
+  --amber: #cfae6a;
+  --orange: #d49a72;
+  --red: #d98880;
   --slate: #8896ba;
   --display: "Space Grotesk", "Avenir Next", "Trebuchet MS", sans-serif;
   --sans: "Inter", "Manrope", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -1383,7 +1385,7 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
   transition: all .15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 :root[data-theme="light"] .sidebar button.nav-group { border-bottom-color: rgba(26, 27, 22, 0.07); }
-.sidebar button.nav-group:hover { color: var(--text); background: rgba(167,139,250,.08); }
+.sidebar button.nav-group:hover { color: var(--text); background: rgba(157,146,216,.08); }
 .sidebar button.nav-group.active {
   color: #ffffff;
   background: linear-gradient(90deg, rgba(139,118,246,.38) 0%, rgba(139,118,246,.16) 100%);
@@ -1404,7 +1406,7 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
   padding: 1px 7px;
   line-height: 1.5;
 }
-.sidebar button.nav-group[aria-expanded="true"] .nav-count { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); background: rgba(167, 139, 250, 0.1); }
+.sidebar button.nav-group[aria-expanded="true"] .nav-count { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); background: rgba(157, 146, 216, 0.1); }
 .sidebar .nav-caret { color: var(--faint); flex: 0 0 auto; transition: transform .18s cubic-bezier(0.16, 1, 0.3, 1); transform: rotate(-90deg); }
 .sidebar button.nav-group[aria-expanded="true"] .nav-caret { transform: none; }
 /* the pages inside a group: indented under it with a hairline */
@@ -1440,7 +1442,7 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
   transition: all .15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 :root[data-theme="light"] .sidebar a.nav { border-bottom-color: rgba(26, 27, 22, 0.07); }
-.sidebar a.nav:hover { color: var(--text); background: rgba(167,139,250,.08); }
+.sidebar a.nav:hover { color: var(--text); background: rgba(157,146,216,.08); }
 .sidebar a.nav.active {
   color: #ffffff;
   background: #7a5cf0;
@@ -1626,7 +1628,7 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 14px;
-  box-shadow: 12px 12px 0 rgba(167,139,250,.04);
+  box-shadow: 12px 12px 0 rgba(157,146,216,.04);
 }
 .pipeline-strip-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .pipeline-strip h2 { margin: 7px 0 0; font-size: clamp(20px, 3vw, 30px); letter-spacing: -.04em; }
@@ -1677,4 +1679,23 @@ summary:focus-visible,
 /* dependency cascade: stack the selector above the diagram on narrow screens */
 @media (max-width: 960px) {
   .cascade-grid { grid-template-columns: 1fr !important; }
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Calm surfaces (dark theme): colour inside cards blends with the indigo
+   background instead of glowing on top of it.
+   ───────────────────────────────────────────────────────────────────── */
+.frame .corner { display: none; }
+:root:not([data-theme="light"]) .bar { background: #0f1222; }
+:root:not([data-theme="light"]) .bar > i { opacity: .8; }
+:root:not([data-theme="light"]) .ring svg circle + circle { opacity: .85; }
+:root:not([data-theme="light"]) .badge.blue,
+:root:not([data-theme="light"]) .badge.green,
+:root:not([data-theme="light"]) .badge.amber,
+:root:not([data-theme="light"]) .badge.orange,
+:root:not([data-theme="light"]) .badge.red,
+:root:not([data-theme="light"]) .badge.violet,
+:root:not([data-theme="light"]) .badge.slate {
+  background: var(--panel-2);
+  border-color: var(--line-strong);
 }

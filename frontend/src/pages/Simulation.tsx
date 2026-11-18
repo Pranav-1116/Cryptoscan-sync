@@ -393,7 +393,7 @@ export default function Simulation() {
         <div style={{ flex: "1 1 520px", minWidth: 280 }}>
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999,
-            background: "color-mix(in srgb, var(--violet) 12%, transparent)", border: "1px solid var(--violet)",
+            background: "color-mix(in srgb, var(--violet) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--violet) 35%, var(--line))",
             fontSize: 11, fontFamily: "var(--mono)", color: "var(--violet)", letterSpacing: ".06em",
           }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--violet)" }} />

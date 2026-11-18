@@ -30,7 +30,7 @@ export default function Reports() {
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 520px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--cyan) 12%, transparent)", border: "1px solid var(--cyan)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--cyan)", letterSpacing: ".06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--cyan) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--cyan) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--cyan)", letterSpacing: ".06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--cyan)" }} /> OUTPUT · FRAMEWORK REPORTS · HMAC-SIGNED
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -62,28 +62,28 @@ export default function Reports() {
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--cyan)" }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>GENERATED REPORTS</div><div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{snapshots.length}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>{signedCount} HMAC-signed</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--cyan) 14%, transparent)", border: "1px solid var(--cyan)", color: "var(--cyan)" }}><IconSecurity size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--cyan) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--cyan) 35%, var(--line))", color: "var(--cyan)" }}><IconSecurity size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={snapshots.length ? signedCount / snapshots.length : 0} tone="cyan" /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Deterministic, signed, verifiable</div></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--violet)" }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>TEMPLATES</div><div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{templates.length}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>framework catalogs</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)", color: "var(--violet)" }}><IconTarget size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--violet) 35%, var(--line))", color: "var(--violet)" }}><IconTarget size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={Math.min(1, templates.length / 8)} tone="violet" /></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: "2px solid var(--green)" }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>SCHEDULED REPORTS</div><div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{schedules.length}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>next run on cron</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--green) 14%, transparent)", border: "1px solid var(--green)", color: "var(--green)" }}><IconClock size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--green) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--green) 35%, var(--line))", color: "var(--green)" }}><IconClock size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={schedules.length ? 0.7 : 0} tone={schedules.length ? "green" : "slate"} /></div>
         </div>
         <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${contentAddressed ? "var(--green)" : "var(--slate)"}` }}>
           <div style={{ padding: "16px 16px 10px", display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>CONTENT-ADDRESSED</div><div style={{ fontSize: 22, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{contentAddressed}/{snapshots.length || "—"}</div><div style={{ fontSize: 11, color: "var(--dim)" }}>payload SHA-256 — identical collapse</div></div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: contentAddressed ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${contentAddressed ? "var(--green)" : "var(--line)"}`, color: contentAddressed ? "var(--green)" : "var(--faint)" }}><IconInfo size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: contentAddressed ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${contentAddressed ? "var(--green)" : "var(--line)"} 35%, var(--line))`, color: contentAddressed ? "var(--green)" : "var(--faint)" }}><IconInfo size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={snapshots.length ? contentAddressed / snapshots.length : 0} tone={contentAddressed ? "green" : "slate"} /></div>
         </div>

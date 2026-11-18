@@ -57,7 +57,7 @@ export default function Agility() {
       {/* Header — visual */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 420px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid var(--accent)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--accent)" }} /> NIST SP 1800-38 · CRYPTO AGILITY FRAMEWORK
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -103,7 +103,7 @@ export default function Agility() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : tone === "slate" ? "var(--slate)" : "var(--red)" }}>{loading ? "…" : score == null ? "—" : `${score}`}<span style={{ fontSize: 16, color: "var(--faint)" }}>{score == null ? "" : " / 100"}</span></div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Aggregate across estate</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: tone === "green" ? "color-mix(in srgb, var(--green) 14%, transparent)" : tone === "amber" ? "color-mix(in srgb, var(--amber) 14%, transparent)" : "color-mix(in srgb, var(--red) 14%, transparent)", border: `1px solid ${tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : "var(--red)"}`, color: tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : "var(--red)" }}><IconSecurity size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: tone === "green" ? "color-mix(in srgb, var(--green) 14%, transparent)" : tone === "amber" ? "color-mix(in srgb, var(--amber) 14%, transparent)" : "color-mix(in srgb, var(--red) 14%, transparent)", border: `1px solid color-mix(in srgb, ${tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : "var(--red)"} 35%, var(--line))`, color: tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : "var(--red)" }}><IconSecurity size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{readOk ? `${systems.length} systems` : "not read"}</span><span style={{ color: tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : "var(--slate)" }}>{scoreWord}</span></div>
@@ -119,7 +119,7 @@ export default function Agility() {
               <div style={{ fontSize: 32, fontWeight: 800, color: hardCoded == null ? "var(--slate)" : rigidCount ? "var(--red)" : "var(--dim)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : pct(hardCoded)}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{readOk ? `${rigidCount} systems · code change required` : "not read"}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: rigidCount ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid ${rigidCount ? "var(--red)" : "var(--green)"}`, color: rigidCount ? "var(--red)" : "var(--green)" }}>{rigidCount ? <IconTrendUp size={16} /> : <IconSecurity size={16} />}</span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: rigidCount ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid color-mix(in srgb, ${rigidCount ? "var(--red)" : "var(--green)"} 35%, var(--line))`, color: rigidCount ? "var(--red)" : "var(--green)" }}>{rigidCount ? <IconTrendUp size={16} /> : <IconSecurity size={16} />}</span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>blocker systems</span><span style={{ color: rigidCount ? "var(--red)" : "var(--green)" }}>{rigidCount ? "action needed" : "clear"}</span></div>
@@ -135,7 +135,7 @@ export default function Agility() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: configurable == null ? "var(--slate)" : "var(--text)" }}>{loading ? "…" : pct(configurable)}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{readOk ? `${systems.length - rigidCount} systems above the rigid band` : "not read"}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconHardware size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", color: "var(--accent)" }}><IconHardware size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>re-configurable</span><span style={{ color: "var(--accent)" }}>● fast path</span></div>
@@ -151,7 +151,7 @@ export default function Agility() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: pqcReady == null ? "var(--slate)" : "var(--green)" }}>{loading ? "…" : pct(pqcReady)}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{readOk ? `${agileCount} systems ≥ 70 agility` : "not read"}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--green) 14%, transparent)", border: "1px solid var(--green)", color: "var(--green)" }}><IconCertificate size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--green) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--green) 35%, var(--line))", color: "var(--green)" }}><IconCertificate size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, height: 8, background: "var(--bg-2)", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>

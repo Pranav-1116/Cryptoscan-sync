@@ -121,7 +121,7 @@ function BankingRegulatoryPage() {
       {/* ── Hero ── */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 500px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--cyan) 12%, transparent)", border: "1px solid var(--cyan)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--cyan)", letterSpacing: ".06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--cyan) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--cyan) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--cyan)", letterSpacing: ".06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--cyan)" }} /> REGULATION · BANKING & SWIFT · HNDL · CSCF
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -162,7 +162,7 @@ function BankingRegulatoryPage() {
               <div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1, color: hndlAtRisk ? "var(--red)" : "var(--text)" }}>{loading ? "…" : hndl?.total ?? "—"}</div>
               <div style={{ fontSize: 12, color: hndlAtRisk ? "var(--red)" : "var(--dim)" }}>{loading ? "Loading…" : !hndl ? "HNDL evidence unavailable — not zero risk." : hndlAtRisk ? "Confidential records at risk" : hndl.at_risk === null ? "HNDL risk unknown — unresolved or unclassified evidence." : hndl.total === 0 ? "No HNDL candidates in returned scope — not proof of completeness." : "No HNDL exposure identified in returned scope — not proof of completeness."}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: hndlAtRisk ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--amber) 14%, transparent)", border: `1px solid ${hndlAtRisk ? "var(--red)" : "var(--amber)"}`, color: hndlAtRisk ? "var(--red)" : "var(--amber)" }}><IconClock size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: hndlAtRisk ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--amber) 14%, transparent)", border: `1px solid color-mix(in srgb, ${hndlAtRisk ? "var(--red)" : "var(--amber)"} 35%, var(--line))`, color: hndlAtRisk ? "var(--red)" : "var(--amber)" }}><IconClock size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Badge tone={hndl?.at_risk == null ? "slate" : hndlAtRisk ? "red" : "green"}>{hndl?.at_risk == null ? "at_risk not reported" : hndlAtRisk ? "at risk" : "no at-risk flag"}</Badge><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Harvest-Now-Decrypt-Later window</div></div>
         </div>
@@ -173,7 +173,7 @@ function BankingRegulatoryPage() {
               <div style={{ fontSize: 22, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : hsmFleet?.fleet ? `${hsmReady}/${hsmFleet.fleet.total}` : "—"}</div>
               <div style={{ fontSize: 11, color: "var(--dim)" }}>HSM declarations are not verified PQC readiness</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: hsmPct >= 0.6 ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid ${hsmPct >= 0.6 ? "var(--green)" : "var(--line)"}`, color: hsmPct >= 0.6 ? "var(--green)" : "var(--faint)" }}><IconComponent size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: hsmPct >= 0.6 ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${hsmPct >= 0.6 ? "var(--green)" : "var(--line)"} 35%, var(--line))`, color: hsmPct >= 0.6 ? "var(--green)" : "var(--faint)" }}><IconComponent size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={hsmPct} tone={hsmPct >= 0.6 ? "green" : hsmPct > 0 ? "amber" : "slate"} /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{hsmTotal ? `${Math.round(hsmPct*100)}% verified · declarations not proof` : "No fleet returned"}</div></div>
         </div>
@@ -184,7 +184,7 @@ function BankingRegulatoryPage() {
               <div style={{ fontSize: 14, fontWeight: 800, margin: "8px 0 2px", lineHeight: 1 }}>{loading ? "…" : swiftReady ? "Mapped — review required" : "Review Required"}</div>
               <div style={{ fontSize: 11, color: "var(--dim)" }}>gaps {swiftGaps} · unknown {swiftUnknown}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: swiftReady ? "color-mix(in srgb, var(--green) 14%, transparent)" : "color-mix(in srgb, var(--amber) 14%, transparent)", border: `1px solid ${swiftReady ? "var(--green)" : "var(--amber)"}`, color: swiftReady ? "var(--green)" : "var(--amber)" }}><IconSecurity size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: swiftReady ? "color-mix(in srgb, var(--green) 14%, transparent)" : "color-mix(in srgb, var(--amber) 14%, transparent)", border: `1px solid color-mix(in srgb, ${swiftReady ? "var(--green)" : "var(--amber)"} 35%, var(--line))`, color: swiftReady ? "var(--green)" : "var(--amber)" }}><IconSecurity size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><Bar value={controls.length ? controls.filter((c: any) => c.status === "satisfied").length / controls.length : 0} tone={swiftReady ? "green" : "amber"} /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>{controls.length ? `${controls.filter((c:any)=>c.status==="satisfied").length}/${controls.length} satisfied` : "No CSCF evaluation yet"}</div></div>
         </div>
@@ -195,7 +195,7 @@ function BankingRegulatoryPage() {
               <div style={{ fontSize: 30, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : jurisdictionsKnown ? jurisdictions.length : "Unavailable"}</div>
               <div style={{ fontSize: 11, color: "var(--dim)" }}>presence ≠ regulatory approval</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--cyan) 14%, transparent)", border: "1px solid var(--cyan)", color: "var(--cyan)" }}><IconCloud size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--cyan) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--cyan) 35%, var(--line))", color: "var(--cyan)" }}><IconCloud size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Mappings returned are not regulatory approval</div></div>
         </div>

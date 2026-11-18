@@ -65,7 +65,7 @@ export default function Pqc() {
       {/* Header — visual */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 420px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid var(--accent)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: "var(--accent)" }} /> NIST FIPS 203 / 204 / 205 · CNSA 2.0 ALIGNED
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -117,7 +117,7 @@ export default function Pqc() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : num(totalInScope)}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{rmOk ? "Counted by the IR 8547 roadmap" : "roadmap not read"}</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconTarget size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", color: "var(--accent)" }}><IconTarget size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{num(totalComponents)} components in the Technology BOM</span><span style={{ color: "var(--accent)" }}>● inventory</span></div>
@@ -136,7 +136,7 @@ export default function Pqc() {
               <div style={{ fontSize: 32, fontWeight: 800, color: weakLegacy == null ? "var(--slate)" : weakLegacy > 0 ? "var(--red)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : num(weakLegacy)}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>DES / 3DES / RC4 / MD5 / SHA-1</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: weakLegacy ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid ${weakLegacy ? "var(--red)" : "var(--green)"}`, color: weakLegacy ? "var(--red)" : "var(--green)" }}>{weakLegacy ? <IconTrendUp size={16} /> : <IconSecurity size={16} />}</span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: weakLegacy ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid color-mix(in srgb, ${weakLegacy ? "var(--red)" : "var(--green)"} 35%, var(--line))`, color: weakLegacy ? "var(--red)" : "var(--green)" }}>{weakLegacy ? <IconTrendUp size={16} /> : <IconSecurity size={16} />}</span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{weakPct == null ? "share not read" : weakLegacy ? `${Math.round(weakPct * 100)}% of in-scope instances` : "clean"}</span><span style={{ color: weakLegacy ? "var(--red)" : weakLegacy == null ? "var(--slate)" : "var(--green)" }}>{weakLegacy == null ? "not read" : weakLegacy ? "action needed" : "no action"}</span></div>
@@ -151,7 +151,7 @@ export default function Pqc() {
               <div style={{ fontSize: 32, fontWeight: 800, color: hndlTotal == null ? "var(--slate)" : hndlAtRisk ? "var(--red)" : hndlTotal ? "var(--amber)" : "var(--green)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : num(hndlTotal)}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Harvest-Now-Decrypt-Later records</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: hndlAtRisk ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--amber) 12%, transparent)", border: `1px solid ${hndlAtRisk ? "var(--red)" : "var(--amber)"}`, color: hndlAtRisk ? "var(--red)" : "var(--amber)" }}><IconClock size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: hndlAtRisk ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--amber) 12%, transparent)", border: `1px solid color-mix(in srgb, ${hndlAtRisk ? "var(--red)" : "var(--amber)"} 35%, var(--line))`, color: hndlAtRisk ? "var(--red)" : "var(--amber)" }}><IconClock size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
@@ -171,7 +171,7 @@ export default function Pqc() {
               <div style={{ fontSize: 18, fontWeight: 800, margin: "8px 0 2px", color: "var(--violet)" }}>NIST IR 8547</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>2030 Deprecation · 2035 Disallowance</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)", color: "var(--violet)" }}><IconCertificate size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--violet) 35%, var(--line))", color: "var(--violet)" }}><IconCertificate size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, height: 8, background: "var(--bg-2)", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
@@ -406,28 +406,28 @@ export default function Pqc() {
             </thead>
             <tbody>
               <tr>
-                <td><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--red) 14%, transparent)", border: "1px solid var(--red)", color: "var(--red)", fontSize: 10 }}>RSA</span><b>RSA (1024-4096)</b></span></td>
+                <td><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--red) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 35%, var(--line))", color: "var(--red)", fontSize: 10 }}>RSA</span><b>RSA (1024-4096)</b></span></td>
                 <td><span style={{ padding: "3px 8px", borderRadius: 99, background: "var(--panel-2)", border: "1px solid var(--line)", fontSize: 11 }}>Integer Factorization</span></td>
                 <td><span style={{ fontSize: 11, color: "var(--red)" }}>Shor's (poly-time)</span> <Bar value={1} tone="red" /></td>
                 <td style={{ fontFamily: "var(--mono)", fontSize: 11 }}>ML-DSA-65 / ML-KEM</td>
                 <td><Badge tone="red">DISALLOWED POST-2035</Badge></td>
               </tr>
               <tr>
-                <td><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--red) 14%, transparent)", border: "1px solid var(--red)", color: "var(--red)", fontSize: 10 }}>ECC</span><b>ECDSA / ECDH</b></span><span style={{ fontSize: 10, color: "var(--dim)", marginLeft: 6 }}>P-256, P-384, Ed25519</span></td>
+                <td><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--red) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 35%, var(--line))", color: "var(--red)", fontSize: 10 }}>ECC</span><b>ECDSA / ECDH</b></span><span style={{ fontSize: 10, color: "var(--dim)", marginLeft: 6 }}>P-256, P-384, Ed25519</span></td>
                 <td><span style={{ padding: "3px 8px", borderRadius: 99, background: "var(--panel-2)", border: "1px solid var(--line)", fontSize: 11 }}>ECDLP</span></td>
                 <td><span style={{ fontSize: 11, color: "var(--red)" }}>Shor's (poly-time)</span> <Bar value={1} tone="red" /></td>
                 <td style={{ fontFamily: "var(--mono)", fontSize: 11 }}>ML-DSA / ML-KEM</td>
                 <td><Badge tone="red">DISALLOWED POST-2035</Badge></td>
               </tr>
               <tr>
-                <td><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--red) 10%, transparent)", border: "1px solid var(--red)", color: "var(--red)", fontSize: 9 }}>DH</span><b>Diffie-Hellman / DSA</b></span></td>
+                <td><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--red) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--red) 35%, var(--line))", color: "var(--red)", fontSize: 9 }}>DH</span><b>Diffie-Hellman / DSA</b></span></td>
                 <td><span style={{ padding: "3px 8px", borderRadius: 99, background: "var(--panel-2)", border: "1px solid var(--line)", fontSize: 11 }}>Discrete Log</span></td>
                 <td><span style={{ fontSize: 11, color: "var(--red)" }}>Shor's</span> <Bar value={0.95} tone="red" /></td>
                 <td style={{ fontFamily: "var(--mono)", fontSize: 11 }}>ML-KEM-768</td>
                 <td><Badge tone="red">DISALLOWED POST-2030</Badge></td>
               </tr>
               <tr>
-                <td><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--amber) 14%, transparent)", border: "1px solid var(--amber)", color: "var(--amber)", fontSize: 9 }}>SYM</span><b>AES-128</b></span></td>
+                <td><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--amber) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--amber) 35%, var(--line))", color: "var(--amber)", fontSize: 9 }}>SYM</span><b>AES-128</b></span></td>
                 <td><span style={{ padding: "3px 8px", borderRadius: 99, background: "var(--panel-2)", border: "1px solid var(--line)", fontSize: 11 }}>SPN Symmetric</span></td>
                 <td><span style={{ fontSize: 11, color: "var(--amber)" }}>Grover's → 64-bit</span> <Bar value={0.5} tone="amber" /></td>
                 <td style={{ fontFamily: "var(--mono)", fontSize: 11 }}>AES-256 (128-bit margin)</td>
@@ -435,7 +435,7 @@ export default function Pqc() {
               </tr>
               <tr style={{ background: "color-mix(in srgb, var(--green) 6%, transparent)" }}>
                 <td><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><span style={{ width: 22, height: 22, borderRadius: 6, display: "grid", placeItems: "center", background: "var(--green)", color: "#fff", fontSize: 10 }}>✓</span><b>AES-256 / SHA-384 / SHA-512</b></span></td>
-                <td><span style={{ padding: "3px 8px", borderRadius: 99, background: "color-mix(in srgb, var(--green) 12%, transparent)", border: "1px solid var(--green)", fontSize: 11, color: "var(--green)" }}>Hash / Sponge</span></td>
+                <td><span style={{ padding: "3px 8px", borderRadius: 99, background: "color-mix(in srgb, var(--green) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--green) 35%, var(--line))", fontSize: 11, color: "var(--green)" }}>Hash / Sponge</span></td>
                 <td><span style={{ fontSize: 11, color: "var(--green)" }}>Grover-resistant</span> <Bar value={0.1} tone="green" /></td>
                 <td style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--green)" }}>FIPS 203/204/205 Ready</td>
                 <td><Badge tone="green">QUANTUM SECURE</Badge></td>

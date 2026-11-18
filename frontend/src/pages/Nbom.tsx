@@ -154,7 +154,7 @@ export default function Nbom() {
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16, flexWrap: "wrap", gap: 16 }}>
         <div style={{ flex: "1 1 460px", minWidth: 280 }}>
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid var(--accent)", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "4px 10px", borderRadius: 999, background: "color-mix(in srgb, var(--accent) 12%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", fontSize: 11, fontFamily: "var(--mono)", color: "var(--accent)", letterSpacing: "0.06em" }}>
             <span style={{ width: 6, height: 6, borderRadius: 99, background: !data ? "var(--slate)" : critical ? "var(--red)" : "var(--green)" }} /> BOMS · NBOM · NETWORK EXPOSURE
           </div>
           <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em", display: "flex", alignItems: "center", gap: 10 }}>
@@ -213,7 +213,7 @@ export default function Nbom() {
               <div style={{ fontSize: 32, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : data ? components.length.toLocaleString() : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Listeners · certs · tunnels</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid var(--accent)", color: "var(--accent)" }}><IconHardware size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--accent) 35%, var(--line))", color: "var(--accent)" }}><IconHardware size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{analytics.observed} observed</span><span style={{ color: analytics.unobserved ? "var(--amber)" : "var(--green)" }}>{analytics.unobserved ? `${analytics.unobserved} unobserved` : "all probed"}</span></div>
@@ -229,7 +229,7 @@ export default function Nbom() {
               <div style={{ fontSize: 32, fontWeight: 800, color: critical ? "var(--red)" : data ? "var(--text)" : "var(--slate)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : data ? critical : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>{totalFindings} total findings</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: critical ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid ${critical ? "var(--red)" : "var(--green)"}`, color: critical ? "var(--red)" : "var(--green)" }}><IconSecurity size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: critical ? "color-mix(in srgb, var(--red) 14%, transparent)" : "color-mix(in srgb, var(--green) 14%, transparent)", border: `1px solid color-mix(in srgb, ${critical ? "var(--red)" : "var(--green)"} 35%, var(--line))`, color: critical ? "var(--red)" : "var(--green)" }}><IconSecurity size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--dim)", marginBottom: 6 }}><span>{critical ? `${Math.round((critical / Math.max(1, totalFindings)) * 100)}% of findings` : "no critical"}</span><span style={{ color: critical ? "var(--red)" : "var(--green)" }}>{critical ? "patch now" : "clear"}</span></div>
@@ -244,7 +244,7 @@ export default function Nbom() {
               <div style={{ fontSize: 32, fontWeight: 800, color: analytics.unobserved ? "var(--amber)" : "var(--dim)", margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{loading ? "…" : data ? analytics.unobserved : "—"}</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Never successfully probed</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: analytics.unobserved ? "color-mix(in srgb, var(--amber) 12%, transparent)" : "color-mix(in srgb, var(--green) 12%, transparent)", border: `1px solid ${analytics.unobserved ? "var(--amber)" : "var(--green)"}`, color: analytics.unobserved ? "var(--amber)" : "var(--green)" }}><IconClock size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: analytics.unobserved ? "color-mix(in srgb, var(--amber) 12%, transparent)" : "color-mix(in srgb, var(--green) 12%, transparent)", border: `1px solid color-mix(in srgb, ${analytics.unobserved ? "var(--amber)" : "var(--green)"} 35%, var(--line))`, color: analytics.unobserved ? "var(--amber)" : "var(--green)" }}><IconClock size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 6 }}>
@@ -263,7 +263,7 @@ export default function Nbom() {
               <div style={{ fontSize: 15, fontWeight: 800, margin: "8px 0 2px", color: "var(--violet)", lineHeight: 1.2 }}>{summary?.migration_priority?.length ?? 0} ranked</div>
               <div style={{ fontSize: 12, color: "var(--dim)" }}>Severity × blast radius</div>
             </div>
-            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid var(--violet)", color: "var(--violet)" }}><IconCertificate size={16} /></span>
+            <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--violet) 14%, transparent)", border: "1px solid color-mix(in srgb, var(--violet) 35%, var(--line))", color: "var(--violet)" }}><IconCertificate size={16} /></span>
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, height: 8, background: "var(--bg-2)", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
@@ -328,7 +328,7 @@ export default function Nbom() {
 
         <Panel title="Observation health" sub="probed vs never-seen on the wire" style={{ padding: "14px 16px" }}>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            <span style={{ flex: 1, padding: "8px 10px", borderRadius: "var(--r)", background: "color-mix(in srgb, var(--green) 10%, transparent)", border: "1px solid var(--green)", textAlign: "center" }}><div style={{ fontSize: 11, color: "var(--dim)" }}>Observed</div><div style={{ fontSize: 18, fontWeight: 800, color: "var(--green)" }}>{analytics.observed}</div></span>
+            <span style={{ flex: 1, padding: "8px 10px", borderRadius: "var(--r)", background: "color-mix(in srgb, var(--green) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--green) 35%, var(--line))", textAlign: "center" }}><div style={{ fontSize: 11, color: "var(--dim)" }}>Observed</div><div style={{ fontSize: 18, fontWeight: 800, color: "var(--green)" }}>{analytics.observed}</div></span>
             <span style={{ flex: 1, padding: "8px 10px", borderRadius: "var(--r)", background: analytics.unobserved ? "color-mix(in srgb, var(--amber) 10%, transparent)" : "var(--panel-2)", border: `1px solid ${analytics.unobserved ? "var(--amber)" : "var(--line)"}`, textAlign: "center" }}><div style={{ fontSize: 11, color: "var(--dim)" }}>Unobserved</div><div style={{ fontSize: 18, fontWeight: 800, color: analytics.unobserved ? "var(--amber)" : "var(--green)" }}>{analytics.unobserved}</div></span>
           </div>
           <div style={{ height: 8, display: "flex", borderRadius: 99, overflow: "hidden", border: "1px solid var(--line)" }}>
