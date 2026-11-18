@@ -45,8 +45,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
       <div style={{ padding: 24, maxWidth: 720 }}>
         <h2 style={{ margin: "0 0 8px" }}>This page failed to render</h2>
         <p style={{ margin: "0 0 16px", opacity: 0.8 }}>
-          The rest of the console is still usable — pick another page from the
-          navigation, or retry this one.
+          <span title={"The rest of the console is still usable — pick another page from the navigation, or retry this one."}>{"The rest of the console is still usable"}</span>
         </p>
         <pre
           style={{

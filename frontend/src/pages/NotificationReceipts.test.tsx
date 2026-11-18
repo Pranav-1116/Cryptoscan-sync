@@ -35,7 +35,7 @@ describe("Read-only notification receipt inspection", () => {
     expect(screen.getByText("Expired claims: 1")).toBeTruthy();
     expect(await screen.findByText("receipt-new")).toBeTruthy();
     expect(screen.getByText(/Error recorded; details withheld/)).toBeTruthy();
-    expect(screen.getByText(/HTTP acknowledgement is not downstream ingestion or scheduler liveness/)).toBeTruthy();
+    expect(screen.getByTitle(/HTTP acknowledgement is not downstream ingestion or scheduler liveness/)).toBeTruthy();
     expect(fetch.mock.calls.every(([, init]) => !init?.method || init.method === "GET")).toBe(true);
   });
 
@@ -82,7 +82,7 @@ describe("Read-only notification receipt inspection", () => {
     });
     render(<NotificationReceipts />);
     expect(await screen.findByText("Receipt counts unavailable — not measured.")).toBeTruthy();
-    expect(await screen.findByText(/Receipt ledger unavailable — not measured/)).toBeTruthy();
+    expect(await screen.findByTitle(/Receipt ledger unavailable — not measured/)).toBeTruthy();
     expect(screen.queryByText("Pending receipts: 0")).toBeNull();
     expect(screen.queryByText(/No receipts match this view/)).toBeNull();
   });
@@ -94,7 +94,7 @@ describe("Read-only notification receipt inspection", () => {
     });
     render(<NotificationReceipts />);
     expect(await screen.findByText("Pending receipts: 0")).toBeTruthy();
-    expect(await screen.findByText(/No receipts match this view. This is not proof all events were delivered/)).toBeTruthy();
+    expect(await screen.findByTitle(/No receipts match this view. This is not proof all events were delivered/)).toBeTruthy();
   });
 
   it("refreshes both reads without issuing a write or retaining the older-page cursor", async () => {

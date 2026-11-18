@@ -276,9 +276,7 @@ export default function Identity() {
         <div className="panel" style={{ padding: "24px" }}>
           <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>Multi-Factor Authentication (TOTP)</h3>
           <p style={{ margin: "0 0 16px", fontSize: "12px", color: "var(--dim)" }}>
-            Enrol a time-based one-time password (TOTP, RFC 6238) authenticator for your account.
-            Hardware security keys (FIDO2/WebAuthn) are not implemented in this build — the platform
-            does not claim them.
+            <span title={"Enrol a time-based one-time password (TOTP, RFC 6238) authenticator for your account. Hardware security keys (FIDO2/WebAuthn) are not implemented in this build — the platform does not claim them."}>{"Enrol a time-based one-time password (TOTP, RFC 6238) authenticator for your account."}</span>
           </p>
 
           {!currentUser?.mfa_enabled ? (
@@ -326,7 +324,7 @@ export default function Identity() {
                 <IconOk className="ico" size={ICON_MD} /> <span>MFA is actively enforced on your session</span>
               </div>
               <p style={{ margin: 0, fontSize: "12.5px", color: "var(--dim)" }}>
-                To disable MFA, enter your current account password. This will terminate all other active enterprise sessions.
+                <span title={"To disable MFA, enter your current account password. This will terminate all other active enterprise sessions."}>{"To disable MFA, enter your current account password."}</span>
               </p>
               <div style={{ display: "flex", gap: "8px" }}>
                 <input
@@ -409,8 +407,7 @@ export default function Identity() {
       <div className="panel" style={{ padding: "24px" }}>
         <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>RBAC Role Catalogue</h3>
         <p style={{ margin: "0 0 16px", fontSize: "12px", color: "var(--dim)" }}>
-          The roles the platform actually enforces, with the server's own description of each.
-          Permissions are evaluated server-side on every request; this table grants nothing.
+          <span title={"The roles the platform actually enforces, with the server's own description of each. Permissions are evaluated server-side on every request; this table grants nothing."}>{"The roles the platform actually enforces, with the server's own description of each."}</span>
         </p>
         {sourceErrors.roles ? (
           <div role="alert" style={{ padding: "12px", fontSize: "12.5px", color: "var(--amber)", background: "color-mix(in srgb, var(--amber) 8%, transparent)", border: "1px solid var(--amber)", borderRadius: "var(--r)" }}>

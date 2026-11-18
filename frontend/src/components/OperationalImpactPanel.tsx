@@ -4,13 +4,13 @@ import { OperationalImpact } from "../lib/api";
 export default function OperationalImpactPanel({ impact }: { impact?: OperationalImpact | null }) {
   return <section aria-label="Operational dependency conditions" style={{ fontSize: 12 }}>
     <strong>Conditional operational review</strong>
-    <div>Dependency mode is not a failure verdict. Optional, failover and buffered edges remain in exposure review.</div>
-    {!impact ? <div>Operational modes unavailable for this stored answer. Missing metadata is unknown, not hard dependency or safe operation.</div> : <>
+    <div><span title={"Dependency mode is not a failure verdict. Optional, failover and buffered edges remain in exposure review."}>{"Dependency mode is not a failure verdict."}</span></div>
+    {!impact ? <div><span title={"Operational modes unavailable for this stored answer. Missing metadata is unknown, not hard dependency or safe operation."}>{"Operational modes unavailable for this stored answer."}</span></div> : <>
       <div>{Object.entries(impact.mode_counts).map(([mode, count]) => `${mode}: ${count}`).join(" · ")}</div>
       <div>{impact.scope}</div>
       <div>{impact.note}</div>
       <div>Non-current operational records excluded: {impact.non_current_edge_count}. This is not evidence of remediation.</div>
-      {impact.source_coverage == null && <div>Source completeness unknown; mode counts describe the loaded review subgraph only.</div>}
+      {impact.source_coverage == null && <div><span title={"Source completeness unknown; mode counts describe the loaded review subgraph only."}>{"Source completeness unknown"}</span></div>}
       {impact.edges.slice(0, 20).map((edge, i) => <details key={`${edge.from}-${edge.to}-${edge.record_id}-${i}`}>
         <summary>{edge.from} → {edge.to} · {edge.condition.mode} · {edge.consumer_scope} → {edge.provider_scope}</summary>
         <div>Assertion: {edge.condition.assertion_status} · not independently verified.</div>

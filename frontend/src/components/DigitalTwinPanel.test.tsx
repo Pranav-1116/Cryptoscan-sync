@@ -489,7 +489,7 @@ it("says a record search that found nothing is a gap in observation, not a denia
   fireEvent.click(screen.getByText("Search the record"));
 
   await waitFor(() => expect(screen.getByText("record · Kyber-1024")).toBeInTheDocument());
-  expect(screen.getByText(/not proof the bank has none of it/)).toBeInTheDocument();
+  expect(screen.getByText(/nothing in the record matches/)).toBeInTheDocument();
 });
 
 it("shows a held conflict with its evidence and refuses to resolve it", async () => {

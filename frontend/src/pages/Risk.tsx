@@ -102,8 +102,7 @@ function SystemDetail({ a, onClose }: { a: SystemRiskAssessment; onClose: () => 
         })}
       />
       <p className="sub" style={{ fontSize: 12, margin: "10px 0 4px" }}>
-        Raw signals the levels were derived from — every factor level is a pure
-        function of these persisted observations:
+        <span title={"Raw signals the levels were derived from — every factor level is a pure function of these persisted observations:"}>{"Raw signals the levels were derived from"}</span>
       </p>
       <div className="grid cols-2" style={{ gap: 4 }}>
         {SIGNAL_ROWS.map(([k, label]) => (

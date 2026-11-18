@@ -107,7 +107,7 @@ describe("Certificates page", () => {
     expect(screen.getByText("OWNER platform-team")).toBeTruthy();
     expect(screen.getByText("REVOCATION UNCHECKED")).toBeTruthy();
     // and the honest limit: no task linkage is invented
-    expect(screen.getByText(/no task linkage exists to show/i)).toBeTruthy();
+    expect(screen.getByTitle(/no task linkage exists to show/i)).toBeTruthy();
   });
 
   it("states honestly when no usage location is linked", async () => {
@@ -131,7 +131,7 @@ describe("Certificates page", () => {
     fireEvent.click(screen.getByText("Check revocation (OCSP / CRL)"));
     // both probes report UNDETERMINED — never a guessed "good"
     await waitFor(() => expect(screen.getAllByText("UNDETERMINED").length).toBe(2));
-    expect(screen.getByText(/never "good"/i)).toBeTruthy();
+    expect(screen.getByTitle(/never "good"/i)).toBeTruthy();
   });
 
   it("assigns ownership with a mandatory audited reason; 403 renders as the permission it needs", async () => {

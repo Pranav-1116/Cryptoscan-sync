@@ -51,7 +51,7 @@ export default function DigitalTwin() {
             Cryptographic Digital Twin
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 640 }}>
-            The live replica of the crypto estate — <b style={{ color: "var(--text)" }}>what it holds, how faithfully it tracks reality, and what happens under stress</b>. Scenarios project, never act.
+            Live replica of the crypto estate and how it behaves under stress.
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -69,7 +69,7 @@ export default function DigitalTwin() {
 
       <div style={{ display: "flex", gap: 10, alignItems: "center", padding: "10px 14px", background: "color-mix(in srgb, var(--violet) 8%, transparent)", border: "1px solid var(--violet)", borderRadius: "var(--r)", marginBottom: 14 }}>
         <span style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", background: "var(--violet)", color: "#fff" }}><IconTarget size={14} /></span>
-        <div><div style={{ fontSize: 12, fontWeight: 800, color: "var(--violet)" }}>REPLICA VIEW — SCENARIOS PROJECT, NEVER ACT</div><div style={{ fontSize: 11, color: "var(--dim)" }}>Every scenario runs deterministically over a read-only snapshot. Nothing is re-keyed, deployed or written. Gaps are honest unknowns.</div></div>
+        <div><div style={{ fontSize: 12, fontWeight: 800, color: "var(--violet)" }}>REPLICA VIEW — SCENARIOS PROJECT, NEVER ACT</div><div style={{ fontSize: 11, color: "var(--dim)" }}><span title={"Every scenario runs deterministically over a read-only snapshot. Nothing is re-keyed, deployed or written. Gaps are honest unknowns."}>{"Every scenario runs deterministically over a read-only snapshot."}</span></div></div>
         <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--faint)" }}>{scenarios.data?.scenario_count ?? 0} scenario types</span>
       </div>
 
@@ -133,7 +133,7 @@ export default function DigitalTwin() {
                 </div>
               </>
             )}
-            {!timeline && <p style={{ fontSize: 12, color: "var(--faint)", background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)", padding: 12, textAlign: "center", marginTop: 10 }}>Enter an asset id to read its journal — the twin's memory of every observed change.</p>}
+            {!timeline && <p style={{ fontSize: 12, color: "var(--faint)", background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)", padding: 12, textAlign: "center", marginTop: 10 }}><span title={"Enter an asset id to read its journal — the twin's memory of every observed change."}>{"Enter an asset id to read its journal"}</span></p>}
           </div>
         </Panel>
       </div>

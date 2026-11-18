@@ -133,8 +133,7 @@ function UserProfileTab() {
       <Row k="Timezone (view)" v={timezone} />
       {offline && (
         <p className="dim" style={{ fontSize: 11, marginTop: 8 }}>
-          Session details require the backend; showing local session data only.
-        </p>
+          <span title={"Session details require the backend; showing local session data only."}>{"Session details require the backend"}</span>       </p>
       )}
     </div>
   );
@@ -146,10 +145,7 @@ function AboutTab() {
     <div style={{ fontSize: "12.5px", lineHeight: 1.7 }}>
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>ZELNX · CryptoScan Intelligence Platform</div>
       <p className="dim">
-        Deterministic cryptographic discovery, inventory and compliance.
-        Evidence-chained observations, YAML policy, drift detection and a
-        Cryptographic Digital Twin. Scanners prove facts and rules decide
-        compliance.
+        <span title={"Deterministic cryptographic discovery, inventory and compliance. Evidence-chained observations, YAML policy, drift detection and a Cryptographic Digital Twin. Scanners prove facts and rules decide compliance."}>{"Deterministic cryptographic discovery, inventory and compliance."}</span>
       </p>
       <p className="dim" style={{ fontSize: 11 }}>
         Version 1.0.0 · Platform administration

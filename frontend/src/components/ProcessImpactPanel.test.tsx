@@ -50,5 +50,5 @@ it("shows bounds separately from full process/reason counts", () => {
   expect(screen.getByText(/500 returned of 502/)).toBeInTheDocument();
   fireEvent.click(screen.getByText(/Payments \(p\)/));
   expect(screen.getByText(/202 recorded inclusion reasons/)).toBeInTheDocument();
-  expect(screen.getByText(/process remains counted once by ID/)).toBeInTheDocument();
+  expect(screen.getByTitle(/process remains counted once by ID/)).toBeInTheDocument();
 });

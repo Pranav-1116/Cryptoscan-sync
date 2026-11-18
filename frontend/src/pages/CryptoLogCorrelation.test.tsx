@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { mockFetch } from "../test/setup";
 import CryptoLogCorrelation from "./CryptoLogCorrelation";
+import { withTitles } from "../test/withTitles";
 
 const renderCorrelation = () =>
   render(
@@ -46,7 +47,7 @@ describe("Event correlation", () => {
     });
     renderCorrelation();
     const empty = await screen.findByTestId("correlation-empty");
-    expect(empty).toHaveTextContent(/never proof that nothing relates/);
+    expect(withTitles(empty)).toMatch(/never proof that nothing relates/);
   });
 
   it("a failed correlation read is a failure, never an uncorrelated estate", async () => {

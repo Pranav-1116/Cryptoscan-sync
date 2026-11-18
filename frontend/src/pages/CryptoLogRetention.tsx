@@ -119,7 +119,7 @@ export default function CryptoLogRetention() {
             </div>
             {plan.rows.length === 0 ? (
               <div className="dim" data-testid="retention-plan-empty" style={{ marginTop: 8 }}>
-                No recorded events in this window — a gap in the record, never a clean estate.
+                <span title={"No recorded events in this window — a gap in the record, never a clean estate."}>{"No recorded events in this window"}</span>
               </div>
             ) : (
               <ol data-testid="retention-plan-rows" style={{ marginTop: 8, paddingLeft: 18, fontSize: 12, display: "grid", gap: 4 }}>

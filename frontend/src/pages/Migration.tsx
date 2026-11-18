@@ -43,11 +43,9 @@ export default function Migration() {
             Migration Planning
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 640 }}>
-            Deterministic <b style={{ color: "var(--text)" }}>post-quantum migration plan</b> from the live engine — 3 waves (HNDL-critical first), Mosca readiness, dependency-aware system order. <span style={{ color: "var(--amber)" }}>Nothing fabricated — empty until a scan produces sites.</span>
+            Post-quantum migration plan in three waves, HNDL-critical first.
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>HARVEST-NOW → SHOR → GROVER · MOSCA MODEL</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
             <span style={{ fontSize: 11, color: "var(--dim)" }}>{total} total sites · {vulnerable} vulnerable</span>
           </div>
         </div>
@@ -167,7 +165,7 @@ export default function Migration() {
                 </div>
               ))}
             </div>
-          ) : <p className="dim" style={{ fontSize: 12, background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)", padding: 12, textAlign: "center" }}>No workstreams yet — run a scan to inventory quantum-vulnerable crypto.</p>}
+          ) : <p className="dim" style={{ fontSize: 12, background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)", padding: 12, textAlign: "center" }}>No workstreams yet.</p>}
         </Panel>
         <Panel title="Plan summary" sub="engine output">
           <p style={{ fontSize: 12.5, color: "var(--text)", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: 10, marginTop: 0 }}>{data.summary ?? "No migration plan yet."}</p>

@@ -182,7 +182,7 @@ export default function CryptoLogAlerts() {
           </div>
         ) : rows.length === 0 ? (
           <div className="dim" data-testid="alerts-empty" style={{ marginTop: 12 }}>
-            No alerts recorded for this filter. An empty result is an empty result — this screen never invents alerts.
+            <span title={"No alerts recorded for this filter. An empty result is an empty result — this screen never invents alerts."}>{"No alerts recorded for this filter."}</span>
           </div>
         ) : (
           <div data-testid="alerts-rows" style={{ marginTop: 12, display: "grid", gap: 6 }}>
@@ -233,7 +233,7 @@ export default function CryptoLogAlerts() {
           <div data-testid="alert-not-proven" style={{ marginTop: 12 }}>
             <div className="dim" style={{ fontSize: 11, marginBottom: 4 }}>What is NOT proven</div>
             {detail.what_is_not_proven.length === 0 ? (
-              <div className="dim" style={{ fontSize: 12 }}>Nothing recorded — an empty boundary is not a clean boundary.</div>
+              <div className="dim" style={{ fontSize: 12 }}>Nothing recorded.</div>
             ) : (
               <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
                 {detail.what_is_not_proven.map((line, i) => <li key={i}>{line}</li>)}
@@ -248,7 +248,7 @@ export default function CryptoLogAlerts() {
               const drivers = (basis.severity_drivers ?? []) as unknown[];
               const explanation = basis.severity_basis as string | undefined;
               if (!explanation && drivers.length === 0) {
-                return <div className="dim">No severity basis recorded — an unexplained severity is not a severity.</div>;
+                return <div className="dim"><span title={"No severity basis recorded — an unexplained severity is not a severity."}>{"No severity basis recorded"}</span></div>;
               }
               return (
                 <div className="dim">

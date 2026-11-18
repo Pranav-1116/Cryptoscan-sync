@@ -148,7 +148,7 @@ export default function SystemHealth() {
         </p>
         {connectors === null && (
           <div style={{ fontSize: "13px", color: "var(--dim)" }}>
-            Connector probe unavailable or not authenticated — status Not measured, never inferred.
+            <span title={"Connector probe unavailable or not authenticated — status Not measured, never inferred."}>{"Connector probe unavailable or not authenticated"}</span>
           </div>
         )}
         {connectors !== null && connectors.length === 0 && (

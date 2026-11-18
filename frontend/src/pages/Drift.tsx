@@ -291,15 +291,8 @@ export default function Drift() {
             Cryptographic Drift
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
-            Recorded <b style={{ color: "var(--text)" }}>scan-to-baseline deviations</b> and their administrative dispositions. Every event is <span style={{ color: "var(--accent)" }}>persisted and attributed</span> — not an estate-wide verdict.
+            Scan-to-baseline deviations and their dispositions.
           </p>
-          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>BASELINE ≠ VERDICT</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span className="kicker" style={{ fontSize: 10 }}>DISPOSITION ≠ VERIFIED</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span style={{ fontSize: 11, color: "var(--dim)" }}>per-scan comparison</span>
-          </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
@@ -494,8 +487,8 @@ export default function Drift() {
                 </button>
               );
             })}
-            {!loading && !error && total === 0 && <div style={{ textAlign: "center", padding: 32, color: "var(--dim)", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px dashed var(--line-strong)" }}><div style={{ width: 40, height: 40, borderRadius: 10, display: "grid", placeItems: "center", background: "var(--panel)", border: "1px solid var(--line)", margin: "0 auto 10px" }}><IconSearch size={16} style={{ color: "var(--faint)" }} /></div><strong style={{ color: "var(--text)" }}>No drift events</strong><p style={{ fontSize: 12, margin: "6px 0 0" }}>No recorded events in this scope. Not evidence of baseline approval or clean comparison.</p></div>}
-            {!loading && !error && total !== null && total > 0 && !visible.length && <p style={{ color: "var(--dim)", fontSize: 12, textAlign: "center", padding: 16 }}>No matching events in loaded pages — other pages may contain matches. Try another family filter.</p>}
+            {!loading && !error && total === 0 && <div style={{ textAlign: "center", padding: 32, color: "var(--dim)", background: "var(--panel-2)", borderRadius: "var(--r)", border: "1px dashed var(--line-strong)" }}><div style={{ width: 40, height: 40, borderRadius: 10, display: "grid", placeItems: "center", background: "var(--panel)", border: "1px solid var(--line)", margin: "0 auto 10px" }}><IconSearch size={16} style={{ color: "var(--faint)" }} /></div><strong style={{ color: "var(--text)" }}>No drift events</strong><p style={{ fontSize: 12, margin: "6px 0 0" }}><span title={"No recorded events in this scope. Not evidence of baseline approval or clean comparison."}>{"No recorded events in this scope."}</span></p></div>}
+            {!loading && !error && total !== null && total > 0 && !visible.length && <p style={{ color: "var(--dim)", fontSize: 12, textAlign: "center", padding: 16 }}><span title={"No matching events in loaded pages — other pages may contain matches. Try another family filter."}>{"No matching events in loaded pages"}</span></p>}
           </div>
           {pageError && <p role="alert" style={{ color: "var(--amber)", fontSize: 12, padding: "0 14px" }}>{pageError}</p>}
           {canLoadMore && !error && <div style={{ padding: "8px 14px 14px" }}><button type="button" className="btn sm outline" onClick={() => void loadMore()} disabled={pageLoading} style={{ width: "100%" }}>{pageLoading ? "Loading…" : `Load more — ${total !== null ? `${total - events.length} remaining` : "next page"}`}</button></div>}
@@ -564,7 +557,7 @@ export default function Drift() {
                   {selectedEvent.resolution_status === "OPEN" && <button type="button" className="btn sm outline" disabled={!!action} onClick={() => void changeDisposition("acknowledge")} style={{ fontSize: 12 }}>{action === "acknowledge" ? "Acknowledging…" : "Acknowledge"}</button>}
                   <button type="button" className="btn sm primary" disabled={!!action || !notes.trim()} onClick={() => void changeDisposition("resolve")} style={{ fontSize: 12 }}>{action === "resolve" ? "Resolving…" : "Administratively resolve"}</button>
                 </div>
-                <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>Requires server-side auditor/admin authorization. Resolution closes the record; it does not verify a fix.</p>
+                <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}><span title={"Requires server-side auditor/admin authorization. Resolution closes the record; it does not verify a fix."}>{"Requires server-side auditor/admin authorization."}</span></p>
               </> : null}
               {actionEventId === selectedEvent.drift_id && actionError && <p role="alert" style={{ color: "var(--amber)", fontSize: 12, padding: "8px 12px", background: "color-mix(in srgb, var(--amber) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--amber) 35%, var(--line))", borderRadius: "var(--r)" }}>{actionError}</p>}
               {actionEventId === selectedEvent.drift_id && actionSuccess && <p role="status" style={{ color: "var(--green)", fontSize: 12, padding: "8px 12px", background: "color-mix(in srgb, var(--green) 10%, transparent)", border: "1px solid color-mix(in srgb, var(--green) 35%, var(--line))", borderRadius: "var(--r)" }}>{actionSuccess}</p>}

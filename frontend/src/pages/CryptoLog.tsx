@@ -219,7 +219,7 @@ export default function CryptoLog() {
               style={{ width: 8, height: 8, borderRadius: 99, border: "1.5px dashed var(--slate, #64748b)", marginTop: 4, flex: "0 0 auto" }}
             />
             <div className="dim" style={{ fontSize: 12, lineHeight: 1.5 }}>
-              No events were returned for this filter. This screen never invents events.
+              <span title={"No events were returned for this filter. This screen never invents events."}>{"No events were returned for this filter."}</span>
             </div>
           </div>
         ) : (
@@ -344,10 +344,7 @@ export default function CryptoLog() {
           <div data-testid="detail-assessment" style={{ marginTop: 12 }}>
             <div className="dim" style={{ fontSize: 11, marginBottom: 4 }}>Assessment context</div>
             <div className="dim" style={{ fontSize: 12 }}>
-              This panel shows the recorded event, not a verdict. Deterministic
-              rules (CL-001..CL-015) evaluate recorded events separately and open
-              investigations carrying what is proven and what is not — a pattern
-              never automatically becomes a confirmed compromise.
+              <span title={"This panel shows the recorded event, not a verdict. Deterministic rules (CL-001..CL-015) evaluate recorded events separately and open investigations carrying what is proven and what is not — a pattern never automatically becomes a confirmed compromise."}>{"This panel shows the recorded event, not a verdict."}</span>
             </div>
           </div>
 
@@ -355,8 +352,7 @@ export default function CryptoLog() {
             <div className="dim" style={{ fontSize: 11, marginBottom: 4 }}>Corrections</div>
             {corrections.length === 0 ? (
               <div className="dim" style={{ fontSize: 12 }}>
-                No corrections recorded. The original event is preserved byte-identical
-                until a correction supersedes it with its own provenance.
+                <span title={"No corrections recorded. The original event is preserved byte-identical until a correction supersedes it with its own provenance."}>{"No corrections recorded."}</span>
               </div>
             ) : (
               <div style={{ display: "grid", gap: 6 }}>

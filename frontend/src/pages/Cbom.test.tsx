@@ -422,7 +422,7 @@ describe("Cbom — durable import and private context fences", () => {
     fireEvent(window, new Event("zelinx:tenant"));
     expect(screen.getByLabelText("Import system name")).toHaveValue("");
     expect(screen.getByLabelText("CBOM JSON file")).toHaveValue("");
-    expect(screen.getByText(/unsubmitted drafts were cleared/)).toBeTruthy();
+    expect(screen.getByTitle(/unsubmitted drafts were cleared/)).toBeTruthy();
     await screen.findByText("No CBOM identities found");
   });
 

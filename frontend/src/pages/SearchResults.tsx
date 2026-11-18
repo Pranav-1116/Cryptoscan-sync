@@ -175,7 +175,7 @@ export default function SearchResults() {
       {total === 0 && q && !loading && (
         <Panel title="No matches" sub={`nothing found for “${q}”`}>
           <div className="dim" style={{ fontSize: 13.5 }}>
-            Try an algorithm (RSA, AES, ML-KEM), a protocol, a hardware class, or a finding id. Findings appear only after a real scan.
+            <span title={"Try an algorithm (RSA, AES, ML-KEM), a protocol, a hardware class, or a finding id. Findings appear only after a real scan."}>{"Try an algorithm (RSA, AES, ML-KEM), a protocol, a hardware class, or a finding id."}</span>
           </div>
         </Panel>
       )}

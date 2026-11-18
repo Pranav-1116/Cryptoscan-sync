@@ -88,6 +88,6 @@ describe("Database Performance workspace (§4)", () => {
   it("keeps an empty read as a collection gap", () => {
     renderWs({ databases: [] });
     fireEvent.click(screen.getByRole("tab", { name: "Databases" }));
-    expect(screen.getByText(/collection gap, not a healthy estate/)).toBeInTheDocument();
+    expect(screen.getByTitle(/collection gap, not a healthy estate/)).toBeInTheDocument();
   });
 });

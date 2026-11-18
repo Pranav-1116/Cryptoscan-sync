@@ -380,7 +380,7 @@ export default function CommandCenter() {
             </div>
           )}
           <div className="dim" style={{ fontSize: 11.5, marginTop: 8 }}>
-            Last-cycle failures exclude blocked and unconfigured scanners; these counts do not measure fleet health.
+            <span title={"Last-cycle failures exclude blocked and unconfigured scanners; these counts do not measure fleet health."}>{"Last-cycle failures exclude blocked and unconfigured scanners"}</span>
           </div>
           {lastScanEvent && rt.connected && <div style={{ marginTop: 6 }}><LiveBadge source="live" label="SSE LIVE" /></div>}
         </Panel>
@@ -393,7 +393,7 @@ export default function CommandCenter() {
               {firstScanBusy ? "Scanning this host…" : <><IconRunning className="ico" size={ICON_SM} /> Scan this host now</>}
             </button>
             <Link to="/onboarding" className="btn sm" style={{ textDecoration: "none" }}>Set up environments & scope →</Link>
-            <span className="dim" style={{ fontSize: 12.5 }}>This scan observes the local host; it does not establish estate-wide coverage.</span>
+            <span className="dim" style={{ fontSize: 12.5 }}><span title={"This scan observes the local host; it does not establish estate-wide coverage."}>{"This scan observes the local host"}</span></span>
           </div>
           {firstScanMsg && <div style={{ marginTop: 10 }}><Badge tone={firstScanMsg.ok ? "green" : "red"}>{firstScanMsg.ok ? <StatusMark ok muted /> : null}{firstScanMsg.text}</Badge></div>}
         </Panel>
@@ -417,7 +417,7 @@ export default function CommandCenter() {
             })}
           </div>
           <div className="dim" style={{ fontSize: 11.5, marginTop: 8 }}>
-            Bar length is relative to the largest category in this snapshot. Source: most recent local scanner output. These categories can overlap and are not a total asset count.
+            <span title={"Bar length is relative to the largest category in this snapshot. Source: most recent local scanner output. These categories can overlap and are not a total asset count."}>{"Bar length is relative to the largest category in this snapshot."}</span>
           </div>
         </Panel>
 
@@ -447,7 +447,7 @@ export default function CommandCenter() {
             <GapBar label="Hybrid readiness" reason="No hybrid-crypto measurement is recorded for this estate." />
             <GapBar label="Migration required" reason="Requires a scoped migration assessment per system." />
             <Kpi k="CBOM components flagged vulnerable" v={observed(flaggedComponents)} />
-            <span className="dim" style={{ fontSize: 11.5 }}>Flagged count is limited to classified components in the latest local CBOM; unknowns are not safe or ready.</span>
+            <span className="dim" style={{ fontSize: 11.5 }}><span title={"Flagged count is limited to classified components in the latest local CBOM; unknowns are not safe or ready."}>{"Flagged count is limited to classified components in the latest local CBOM"}</span></span>
           </div>
         </Panel>
 
@@ -508,7 +508,7 @@ export default function CommandCenter() {
             <GapBar label="migration progress" reason="Needs a migration plan with dated, per-system milestones." />
             <Kpi k="systems with CBOM" v={stats ? observed(count(coverage.with_cbom)) : "Not observed"} />
             <Kpi k="HBOM snapshot" v={bomObserved ? "Available" : "Not observed"} />
-            <span className="dim" style={{ fontSize: 11.5 }}>Systems with CBOM includes current and stale coverage; it is not PQC readiness.</span>
+            <span className="dim" style={{ fontSize: 11.5 }}><span title={"Systems with CBOM includes current and stale coverage; it is not PQC readiness."}>{"Systems with CBOM includes current and stale coverage"}</span></span>
           </div>
         </Panel>
 

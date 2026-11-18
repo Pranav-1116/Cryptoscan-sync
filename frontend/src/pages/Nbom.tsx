@@ -162,15 +162,8 @@ export default function Nbom() {
             Network Bill of Materials
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
-            What is <b style={{ color: "var(--text)" }}>exposed on the wire</b> — listeners, certificates, cipher suites, tunnels — with the dependency graph answering <span style={{ color: "var(--accent)" }}>what breaks when one component is replaced</span>.
+            Listeners, certificates, cipher suites and tunnels exposed on the wire.
           </p>
-          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>SEVERITY × BLAST RADIUS</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span className="kicker" style={{ fontSize: 10 }}>SCANNER-DERIVED</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span style={{ fontSize: 11, color: "var(--dim)" }}>not declared — probed</span>
-          </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>

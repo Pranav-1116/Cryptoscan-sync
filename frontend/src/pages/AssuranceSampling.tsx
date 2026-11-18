@@ -28,9 +28,7 @@ function AssuranceSamplingPage() {
       right={<><Badge tone="cyan">READ ONLY</Badge><Badge tone="amber">NO METRIC COMPUTED HERE</Badge></>} />
 
     <Panel title="Why this screen shows labels, not scores">
-      <p>The workbook is the question: here are the frozen predictions to label. Precision, recall and miss
-        counts are calculated only when a separate domain-owner review is published. This read-only screen
-        does not submit that review, and an unreviewed sample has no score.</p>
+      <p><span title={"The workbook is the question: here are the frozen predictions to label. Precision, recall and miss counts are calculated only when a separate domain-owner review is published. This read-only screen does not submit that review, and an unreviewed sample has no score."}>{"The workbook is the question: here are the frozen predictions to label."}</span></p>
       <p>A <code>HOLDOUT</code> phase reads the repeat sample, so the same units are not labelled twice from
         memory. Showing <code>UNREVIEWED</code> as anything other than unreviewed would be the exact error this
         workflow exists to prevent.</p>
@@ -54,8 +52,7 @@ function AssuranceSamplingPage() {
         {read.busy ? "Reading…" : "Read workbook"}
       </button>
       {read.error && <p role="alert">{read.error}</p>}
-      <p>Only an approved sample has a workbook; the server answers 404 for a sample that is still a proposal.
-        A HOLDOUT read has no repeat sample until one is seeded, and the error says so.</p>
+      <p><span title={"Only an approved sample has a workbook; the server answers 404 for a sample that is still a proposal. A HOLDOUT read has no repeat sample until one is seeded, and the error says so."}>{"Only an approved sample has a workbook"}</span></p>
     </Panel>
 
     {data && <Panel title={`Sample ${data.sample_id} · ${data.phase}`}>
@@ -74,8 +71,7 @@ function AssuranceSamplingPage() {
           </tr>)}
         </tbody>
       </table>
-      {data.units.length === 0 && <p role="status">No units in this phase. A holdout workbook before a repeat
-        sample exists is empty, not perfect.</p>}
+      {data.units.length === 0 && <p role="status"><span title={"No units in this phase. A holdout workbook before a repeat sample exists is empty, not perfect."}>{"No units in this phase."}</span></p>}
       <details><summary>Server payload, verbatim</summary><Json value={data} /></details>
     </Panel>}
   </div>;

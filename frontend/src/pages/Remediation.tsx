@@ -9,7 +9,7 @@ const STATUS_TONE: Record<string, string> = { PROPOSED: "slate", ACCEPTED: "cyan
 const STATUS_MEANING: Record<string, string> = { PROPOSED: "opened, not yet owned", ACCEPTED: "owned, work in progress", COMPLETED: "work declared done — awaiting/failed verification, NOT closure", VERIFIED: "machine-verified from rescan evidence", PARTIAL: "rescan still shows some of the original problem", FAILED: "rescan still shows the problem", REGRESSION: "rescan shows a worse violation than the original" };
 
 function VerificationBlock({ v }: { v: RemediationTask["latest_verification"] }) {
-  if (!v) return <span className="dim" style={{ fontSize: 11 }}>No verification yet — completion is a declaration, not proof.</span>;
+  if (!v) return <span className="dim" style={{ fontSize: 11 }}>No verification yet.</span>;
   return (
     <div style={{ display: "grid", gap: 4 }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -100,11 +100,9 @@ function RemediationView() {
             Remediation Tasks
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 640 }}>
-            Owned tasks bound to evidence — <b style={{ color: "var(--text)" }}>accept, complete, verify against rescan evidence</b>. <span style={{ color: "var(--amber)" }}>COMPLETED is a declaration, not closure</span> — machine verdicts decide.
+            Owned tasks — accept, complete, verify against rescan.
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>PROPOSED → ACCEPTED → COMPLETED → VERIFIED/PARTIAL/FAILED</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
             <Link to="/operator-decisions" style={{ fontSize: 11, color: "var(--amber)" }}>Operator decisions →</Link>
           </div>
         </div>
@@ -175,7 +173,7 @@ function RemediationView() {
       {loaded && !offline && tasks.length > 0 && (
         <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--line)", background: "var(--bg-2)" }}>
-            <div><h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}><IconComponent size={14} style={{ color: "var(--amber)" }} /> Tasks ({tasks.length}{total > tasks.length ? ` of ${total}` : ""})</h3><p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--dim)" }}>COMPLETED is a declaration — VERIFIED is a machine verdict from rescan evidence. Never conflated.</p></div>
+            <div><h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, display: "flex", alignItems: "center", gap: 8 }}><IconComponent size={14} style={{ color: "var(--amber)" }} /> Tasks ({tasks.length}{total > tasks.length ? ` of ${total}` : ""})</h3><p style={{ margin: "4px 0 0", fontSize: 11, color: "var(--dim)" }}><span title={"COMPLETED is a declaration — VERIFIED is a machine verdict from rescan evidence. Never conflated."}>{"COMPLETED is a declaration"}</span></p></div>
             <Badge tone={statusFilter ? "amber" : "slate"}>{statusFilter || "all"}</Badge>
           </div>
           <div style={{ overflowX: "auto" }}>

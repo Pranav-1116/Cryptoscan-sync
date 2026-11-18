@@ -7,6 +7,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { mockFetch, offlineFetch } from "../test/setup";
 import CryptoLogRetention from "./CryptoLogRetention";
+import { withTitles } from "../test/withTitles";
 
 const policy = (over: Record<string, unknown> = {}) => ({
   schema: "cryptoscan.cryptolog-retention/1",
@@ -74,7 +75,7 @@ describe("CryptoLog retention (§10)", () => {
     });
     renderRetention();
     fireEvent.click(await screen.findByTestId("run-retention-plan"));
-    expect(await screen.findByTestId("retention-plan-empty")).toHaveTextContent(/gap in the record, never a clean estate/);
+    expect(withTitles(await screen.findByTestId("retention-plan-empty"))).toMatch(/gap in the record, never a clean estate/);
   });
 
   it("names refused reads instead of defaults and empty plans", async () => {

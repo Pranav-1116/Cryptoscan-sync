@@ -183,7 +183,7 @@ export default function Alerts() {
 
       {live && visible.length === 0 && (
         <div className="dim" style={{ padding: 30, textAlign: "center" }}>
-          No unacked alerts in this view — run scans from Operations → Realtime scanners; findings aggregate here.
+          <span title={"No unacked alerts in this view — run scans from Operations → Realtime scanners; findings aggregate here."}>{"No unacked alerts in this view"}</span>
         </div>
       )}
       {!live && (
@@ -291,14 +291,13 @@ function FindingDetail({ finding, onClose }: { finding: AlertRow; onClose: () =>
             {g.remediate.map((step, i) => <li key={i}>{step}</li>)}
           </ul>
           <p style={{ marginTop: 8, color: "var(--amber)" }}>
-            Production changes are approval-gated under change control — the platform never auto-remediates.
+            <span title={"Production changes are approval-gated under change control — the platform never auto-remediates."}>{"Production changes are approval-gated under change control"}</span>
           </p>
         </section>
 
         <section className="fd-sec verify">
           <h4><span className="fd-num">6</span> Verification</h4>
-          <p>After remediation, re-run the relevant scanner and confirm the finding no longer appears. The
-             result is sealed into the hash-chained evidence lake for audit.</p>
+          <p><span title={"After remediation, re-run the relevant scanner and confirm the finding no longer appears. The result is sealed into the hash-chained evidence lake for audit."}>{"After remediation, re-run the relevant scanner and confirm the finding no longer appears."}</span></p>
           <Link to={g.verifyLink} className="mono" style={{ fontSize: 12, display: "inline-block", marginTop: 4 }}>
             go to the relevant surface to rescan and verify →
           </Link>

@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { mockFetch } from "../test/setup";
 import CryptoLog from "./CryptoLog";
+import { withTitles } from "../test/withTitles";
 
 const AS_OF = "2026-11-07T04:00:00Z";
 
@@ -98,7 +99,7 @@ describe("CryptoLog workspace (§9, Phase 6)", () => {
     });
     renderPage();
     const empty = await screen.findByTestId("cryptolog-empty");
-    expect(empty).toHaveTextContent(/never invents events/);
+    expect(withTitles(empty)).toMatch(/never invents events/);
     expect(screen.queryByTestId("cryptolog-row")).not.toBeInTheDocument();
   });
 
@@ -125,7 +126,7 @@ describe("CryptoLog workspace (§9, Phase 6)", () => {
     expect(screen.getByTestId("detail-evidence")).toHaveTextContent(/evidence_001/);
     expect(screen.getByTestId("detail-evidence")).toHaveTextContent(/integrity: VERIFIED/);
     expect(screen.getByTestId("detail-relationships")).toHaveTextContent(/asset_payments_001/);
-    expect(screen.getByTestId("detail-assessment")).toHaveTextContent(/never automatically becomes a confirmed compromise/);
+    expect(withTitles(screen.getByTestId("detail-assessment"))).toMatch(/never automatically becomes a confirmed compromise/);
     expect(screen.getByTestId("detail-corrections")).toHaveTextContent(/analyst-7/);
     expect(screen.getByTestId("detail-corrections")).toHaveTextContent(/ab12/);
   });

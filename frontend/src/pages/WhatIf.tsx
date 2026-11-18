@@ -41,11 +41,8 @@ export default function WhatIf() {
             What-If Migration Simulator
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 640 }}>
-            Model a crypto transition against the live estate — <b style={{ color: "var(--text)" }}>analysis only, nothing changed or deployed</b>. Five feasibility checks, projected status, ordered plan, honest unknowns.
+            Model a crypto transition against the live estate — nothing is changed.
           </p>
-          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>DETERMINISTIC ENGINE · DEPENDENCIES · LIBS · HW · VENDOR · CLOUD</span>
-          </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
@@ -62,7 +59,7 @@ export default function WhatIf() {
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "10px 14px", background: "color-mix(in srgb, var(--violet) 8%, transparent)", border: "1px solid var(--violet)", borderRadius: "var(--r)", marginBottom: 14 }}>
         <span style={{ width: 28, height: 28, borderRadius: 8, display: "grid", placeItems: "center", background: "var(--violet)", color: "#fff" }}><IconSecurity size={14} /></span>
-        <div><div style={{ fontSize: 12, fontWeight: 800, color: "var(--violet)" }}>SIMULATION ONLY — NO EXECUTION</div><div style={{ fontSize: 11, color: "var(--dim)" }}>Read-only deterministic engine. Never re-keys, deploys, writes config, or touches a live system. Execution is separate, governed.</div></div>
+        <div><div style={{ fontSize: 12, fontWeight: 800, color: "var(--violet)" }}>SIMULATION ONLY — NO EXECUTION</div><div style={{ fontSize: 11, color: "var(--dim)" }}><span title={"Read-only deterministic engine. Never re-keys, deploys, writes config, or touches a live system. Execution is separate, governed."}>{"Read-only deterministic engine."}</span></div></div>
       </div>
 
       <Panel title="Scenario" sub="Choose a cryptographic transition — the engine checks the whole estate" style={{ padding: 0, overflow: "hidden" } as any}>
@@ -184,7 +181,7 @@ export default function WhatIf() {
 
       {!d && !busy && (
         <Panel title="No simulation yet" sub="Results are computed live against the discovered estate" style={{ marginTop: 14 }}>
-          <p style={{ fontSize: 12, color: "var(--dim)", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: 12, margin: 0 }}>Run a scenario to query the deterministic feasibility engine. With an empty estate the engine honestly reports zero verified dependencies/support and an UNKNOWN verdict — nothing is estimated or fabricated, and no change is ever applied from this page.</p>
+          <p style={{ fontSize: 12, color: "var(--dim)", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: 12, margin: 0 }}><span title={"Run a scenario to query the deterministic feasibility engine. With an empty estate the engine honestly reports zero verified dependencies/support and an UNKNOWN verdict — nothing is estimated or fabricated, and no change is ever applied from this page."}>{"Run a scenario to query the deterministic feasibility engine."}</span></p>
         </Panel>
       )}
     </div>

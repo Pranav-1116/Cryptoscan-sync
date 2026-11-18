@@ -434,7 +434,7 @@ export default function DigitalTwinPanel() {
             <div>
               <div className="mono" style={{ fontSize: 10.5, color: "var(--cyan)" }}>PLACEMENT</div>
               {doc.placement.environments.length === 0 && (
-                <div className="dim" style={{ fontSize: 11, marginTop: 4 }}>no asset carries an environment — placement is unknown, not one environment</div>
+                <div className="dim" style={{ fontSize: 11, marginTop: 4 }}>no asset carries an environment</div>
               )}
               {doc.placement.environments.map((env) => (
                 <div key={env.name} style={{ marginTop: 6 }}>
@@ -646,8 +646,7 @@ export default function DigitalTwinPanel() {
               })}
               {record.matched === 0 && (
                 <div className="dim" style={{ fontSize: 10.5, marginTop: 4 }}>
-                  nothing in the record matches — that is a gap in what has been observed, not proof the
-                  bank has none of it
+                  nothing in the record matches
                 </div>
               )}
               <div className="faint" style={{ fontSize: 9.5, marginTop: 4 }}>{record.meaning}</div>
@@ -1474,7 +1473,7 @@ export default function DigitalTwinPanel() {
                   </div>
                   {!algorithmView.found && (
                     <div className="faint" style={{ fontSize: 9.5 }}>
-                      no observation asserts it — not a statement that the estate does not use it
+                      no observation asserts it
                     </div>
                   )}
                   {Object.entries(algorithmView.by_asset_type_in_use).map(([type, count]) => (

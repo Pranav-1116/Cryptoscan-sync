@@ -7,6 +7,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { mockFetch, offlineFetch } from "../test/setup";
 import CryptoLogIntegrity from "./CryptoLogIntegrity";
+import { withTitles } from "../test/withTitles";
 
 const checkpointRow = (over: Record<string, unknown> = {}) => ({
   checkpoint_ref: "cp_001",
@@ -53,7 +54,7 @@ describe("CryptoLog integrity monitor (§5, §9)", () => {
   it("states an empty register honestly — an absent checkpoint is not a verified chain", async () => {
     mockFetch({ "/api/v1/cryptolog/integrity/checkpoints": { rows: [], total_count: 0 } });
     renderIntegrity();
-    expect(await screen.findByTestId("checkpoints-empty")).toHaveTextContent(/never invents checkpoints/);
+    expect(withTitles(await screen.findByTestId("checkpoints-empty"))).toMatch(/never invents checkpoints/);
   });
 
   it("names a failed register read instead of drawing zero checkpoints", async () => {

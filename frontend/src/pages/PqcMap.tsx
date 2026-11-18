@@ -99,7 +99,7 @@ export function MigrationPlanRegister() {
         </div>
         {loadState === "failed" && (
           <div className="dim" style={{ fontSize: 12.5 }}>
-            The plan register did not load. A failed read is a failure — never an empty plan.
+            <span title={"The plan register did not load. A failed read is a failure — never an empty plan."}>{"The plan register did not load."}</span>
           </div>
         )}
         {loadState === "ok" && waves.length === 0 && (

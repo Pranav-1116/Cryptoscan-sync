@@ -79,8 +79,8 @@ describe("HSM & KMS Performance workspace (§7)", () => {
 
   it("keeps an empty read honest", () => {
     render(<HsmWorkspace data={{ devices: [], measurements: {}, note: "" }} />);
-    expect(screen.getByText(/absence of telemetry is not a healthy device/)).toBeInTheDocument();
+    expect(screen.getByTitle(/absence of telemetry is not a healthy device/)).toBeInTheDocument();
     render(<HsmWorkspace data={{ devices: [{ device: "hsm-x", samples: 0, trend: [] }], measurements: {}, note: "" }} />);
-    expect(screen.getByText(/a missing trend is a collection gap, not a flat line/)).toBeInTheDocument();
+    expect(screen.getByTitle(/a missing trend is a collection gap, not a flat line/)).toBeInTheDocument();
   });
 });

@@ -129,11 +129,9 @@ function BankingRegulatoryPage() {
             Banking & Regulatory Cryptography
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 640 }}>
-            <b style={{ color: "var(--text)" }}>Evidence screening for review</b> — HNDL exposure, HSM fleet posture, SWIFT CSP crosswalk & ISO 20022 metadata. <span style={{ color: "var(--cyan)" }}>Bank acceptance and regulatory approval are never inferred.</span>
+            HNDL exposure, HSM posture, SWIFT CSP and ISO 20022 evidence for review.
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>SWIFT CSCF 2025 · HNDL 5Y · NIST IR 8547</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
             <span style={{ fontSize: 11, color: "var(--dim)" }}>{jurisdictionsKnown ? `${jurisdictions.length} jurisdictions mapped` : "jurisdictions —"}</span>
           </div>
         </div>
@@ -220,7 +218,7 @@ function BankingRegulatoryPage() {
           ) : (
             <div style={{ padding: 24, textAlign: "center", color: "var(--faint)", fontSize: 13, background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)" }}>
               <div style={{ fontWeight: 700, color: "var(--text)" }}>No SWIFT CSP controls evaluated yet</div>
-              <div style={{ fontSize: 12, marginTop: 4 }}>Evidence crosswalk populates from live platform state — empty is not a pass</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}><span title={"Evidence crosswalk populates from live platform state — empty is not a pass"}>{"Evidence crosswalk populates from live platform state"}</span></div>
             </div>
           )}
         </Panel>
@@ -247,7 +245,7 @@ function BankingRegulatoryPage() {
               )}
             </div>
           )}
-          <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 8, borderTop: "1px solid var(--line)", paddingTop: 8 }}>Payloads never establish cryptographic validity — metadata inspection only</div>
+          <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 8, borderTop: "1px solid var(--line)", paddingTop: 8 }}><span title={"Payloads never establish cryptographic validity — metadata inspection only"}>{"Payloads never establish cryptographic validity"}</span></div>
         </Panel>
       </div>
 
@@ -275,7 +273,7 @@ function BankingRegulatoryPage() {
                   <div style={{ fontSize: 11, color: "var(--dim)", display: "flex", alignItems: "center", gap: 6 }}><IconClock size={11} /> Deadline: {m.deadline || "Post-2030"}</div>
                 </div>
               ))}
-              {!milestones.length && <div style={{ fontSize: 12, color: "var(--dim)", gridColumn: "1/-1", padding: 12, textAlign: "center" }}>No milestones returned for this jurisdiction — framework not yet mapped.</div>}
+              {!milestones.length && <div style={{ fontSize: 12, color: "var(--dim)", gridColumn: "1/-1", padding: 12, textAlign: "center" }}><span title={"No milestones returned for this jurisdiction — framework not yet mapped."}>{"No milestones returned for this jurisdiction"}</span></div>}
             </div>
           </div>
         ) : planState === "loading" ? (
@@ -285,7 +283,7 @@ function BankingRegulatoryPage() {
             Supervisory framework not read — {planError}. Nothing is shown for {selectedJurisdiction.toUpperCase()} rather than a partial plan.
           </div>
         ) : (
-          <div style={{ padding: 16, textAlign: "center", color: "var(--faint)", fontSize: 13, background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)" }}>Select a jurisdiction to load its supervisory framework — evidence, not attestation.</div>
+          <div style={{ padding: 16, textAlign: "center", color: "var(--faint)", fontSize: 13, background: "var(--panel-2)", border: "1px dashed var(--line)", borderRadius: "var(--r)" }}><span title={"Select a jurisdiction to load its supervisory framework — evidence, not attestation."}>{"Select a jurisdiction to load its supervisory framework"}</span></div>
         )}
       </Panel>
     </div>

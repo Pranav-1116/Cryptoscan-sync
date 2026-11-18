@@ -65,8 +65,7 @@ export default function CryptoLogStream() {
               style={{ width: 8, height: 8, borderRadius: 99, border: "1.5px dashed var(--slate, #64748b)", marginTop: 4, flex: "0 0 auto" }}
             />
             <div className="dim" style={{ fontSize: 12, lineHeight: 1.5 }}>
-              No events recorded. An empty stream is absence of recorded events —
-              never a quiet estate — and this stream never invents events.
+              No events recorded.
             </div>
           </div>
         ) : (

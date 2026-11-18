@@ -372,7 +372,7 @@ describe("simulation workspace", () => {
     expect(await screen.findByText("PQC pilot")).toBeInTheDocument();
     expect(screen.getByText(/none of these rows counts as estate state/)).toBeInTheDocument();
     // an empty blocker list is not a clean bill of health
-    expect(screen.getByText(/an empty list is not evidence that the change is safe/)).toBeInTheDocument();
+    expect(screen.getByTitle(/an empty list is not evidence that the change is safe/)).toBeInTheDocument();
   });
 
   it("attaches Performance measurements only inside the Twin simulation", async () => {
@@ -457,7 +457,7 @@ describe("simulation workspace", () => {
     expect(await screen.findByText("NO MATCH")).toBeInTheDocument();
     expect(screen.getByText(/not stored: a result that matched nothing/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Nothing to simulate" })).toBeInTheDocument();
-    expect(screen.getByText(/not a statement that the change is safe/)).toBeInTheDocument();
+    expect(screen.getByTitle(/not a statement that the change is safe/)).toBeInTheDocument();
   });
 
   it("switches to seeds and hops for a cascade, and needs a seed before anything is previewed", async () => {

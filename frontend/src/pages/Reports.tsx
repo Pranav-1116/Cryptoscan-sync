@@ -38,11 +38,8 @@ export default function Reports() {
             Reports
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 640 }}>
-            Framework compliance reports — <b style={{ color: "var(--text)" }}>generated deterministically from the evidence store and HMAC-signed</b>. Content-addressed: identical payloads collapse, every PDF carries its scan→BOM chain.
+            Signed compliance reports generated from the evidence store.
           </p>
-          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>SCAN → BOM → REPORT · SIGNED PDF · CONTENT-ADDRESSED</span>
-          </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>

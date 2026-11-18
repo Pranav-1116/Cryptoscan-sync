@@ -71,7 +71,7 @@ describe("Approved offline host workflow", () => {
     const fetcher = mockFetch({ [`${P}/${id}/snapshot`]: () => new Promise(resolve => { finish = resolve; }) }); mount(); inspect();
     await waitFor(() => expect(finish).toBeTypeOf("function"));
     act(() => window.dispatchEvent(new StorageEvent("storage", { key: "cryptoscan_tenant", newValue: "other" })));
-    await screen.findByText(/Private evidence and unsubmitted drafts were cleared/);
+    await screen.findByTitle(/Private evidence and unsubmitted drafts were cleared/);
     await act(async () => { finish(detail); });
     expect(screen.queryByText("payments-1")).toBeNull(); expect(fetcher.mock.calls).toHaveLength(1);
     expect(screen.getByLabelText("Host approval ID")).toHaveValue("");

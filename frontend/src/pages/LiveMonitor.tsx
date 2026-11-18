@@ -509,8 +509,7 @@ function LiveMonitorPage() {
             What this state proves, and what it does not
           </summary>
           <p style={{ fontSize: 11, color: "var(--faint)", margin: "6px 0 0", lineHeight: 1.5, maxWidth: 900 }}>
-            Scheduled discovery reprojects stored observations. A heartbeat, an empty result, or an enabled cadence is
-            not proof that a collector acquired new evidence. API connectivity is not collection coverage.
+            <span title={"Scheduled discovery reprojects stored observations. A heartbeat, an empty result, or an enabled cadence is not proof that a collector acquired new evidence. API connectivity is not collection coverage."}>{"Scheduled discovery reprojects stored observations."}</span>
           </p>
         </details>
       </section>
@@ -549,7 +548,7 @@ function LiveMonitorPage() {
           </div>
           {collected > 0 && !everObservedAssets && (
             <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--dim)" }}>
-              Every read returned 0 assets. That is a measurement of an empty estate — not an error, and not coverage.
+              <span title={"Every read returned 0 assets. That is a measurement of an empty estate — not an error, and not coverage."}>{"Every read returned 0 assets."}</span>
             </p>
           )}
         </Panel>
@@ -591,7 +590,7 @@ function LiveMonitorPage() {
           />
           {env && domainRows.every((r) => r.value === 0) && (
             <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--faint)" }}>
-              All eight domains measured 0 in this read. The table says what the API returned for this tenant.
+              <span title={"All eight domains measured 0 in this read. The table says what the API returned for this tenant."}>{"All eight domains measured 0 in this read."}</span>
             </p>
           )}
         </Panel>

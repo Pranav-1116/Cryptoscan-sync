@@ -405,8 +405,7 @@ export default function LiveScanners() {
                 emptyNote="Nothing has completed in this session yet."
               />
               <p style={{ margin: "8px 0 0", fontSize: 10.5, color: "var(--faint)" }}>
-                Only cycles this screen observed are counted. An empty record means nothing ran while you were watching, not that the
-                estate is healthy.
+                <span title={"Only cycles this screen observed are counted. An empty record means nothing ran while you were watching, not that the estate is healthy."}>{"Only cycles this screen observed are counted."}</span>
               </p>
             </div>
           </Panel>
@@ -506,8 +505,7 @@ export default function LiveScanners() {
       </Panel>
 
       <p style={{ margin: "10px 0 0", fontSize: 11, color: "var(--faint)" }}>
-        Scanner results are the runner's own report. A cycle with zero failures still excludes blocked and unconfigured
-        scanners, and none of these counts measures estate coverage.
+        <span title={"Scanner results are the runner's own report. A cycle with zero failures still excludes blocked and unconfigured scanners, and none of these counts measures estate coverage."}>{"Scanner results are the runner's own report."}</span>
       </p>
     </>
   );

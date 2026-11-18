@@ -505,7 +505,7 @@ describe("OS & Kernel Intelligence", () => {
     expect(screen.getAllByText("windows").length).toBeGreaterThan(0);
     // qualification limit shown per host — development only
     expect(screen.getAllByText("development only").length).toBeGreaterThan(1);
-    expect(screen.getAllByText(/never a clean asset/).length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle(/never a clean asset/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/never enterprise/).length).toBeGreaterThan(0);
   });
 

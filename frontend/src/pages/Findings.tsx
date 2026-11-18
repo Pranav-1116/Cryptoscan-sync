@@ -341,7 +341,7 @@ export default function Findings() {
               </div>
             ))}
             <div style={{ marginTop: 4, padding: "8px 10px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: 11, color: "var(--dim)" }}>
-              Tip: scan a local path for fastest feedback. Remote clones respect proxy + credential policy.
+              <span title={"Tip: scan a local path for fastest feedback. Remote clones respect proxy + credential policy."}>{"Tip: scan a local path for fastest feedback."}</span>
             </div>
           </div>
         </div>

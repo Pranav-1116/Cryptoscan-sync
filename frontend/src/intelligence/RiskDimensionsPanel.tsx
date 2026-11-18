@@ -22,9 +22,7 @@ export default function RiskDimensionsPanel({
     <section aria-label="Risk dimensions">
       <h2>Risk — five separate dimensions, every score explainable</h2>
       <p className="muted">
-        Scores are never blended into one opaque number here. Each dimension
-        shows the exact rules and evidence that produced it; an unknown
-        dimension is unknown, not zero.
+        <span title={"Scores are never blended into one opaque number here. Each dimension shows the exact rules and evidence that produced it; an unknown dimension is unknown, not zero."}>{"Scores are never blended into one opaque number here."}</span>
       </p>
       <table aria-label="Risk dimensions">
         <thead>

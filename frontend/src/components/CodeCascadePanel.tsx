@@ -77,7 +77,7 @@ export default function CodeCascadePanel() {
             {system && <Badge tone="cyan">{system} <button onClick={() => setSystem("")} style={{ marginLeft: 6, background: "none", border: "none", cursor: "pointer", color: "inherit", fontWeight: 700 }}>×</button></Badge>}
           </div>
         </div>
-        <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 8 }}>Scope determines entry edge — code providers are resolved to their owning system, then BFS walks the dependency graph.</div>
+        <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 8 }}><span title={"Scope determines entry edge — code providers are resolved to their owning system, then BFS walks the dependency graph."}>{"Scope determines entry edge"}</span></div>
       </div>
 
       {state === "offline" && <p style={{ color: "var(--dim)", fontSize: 13 }}>Backend offline.</p>}

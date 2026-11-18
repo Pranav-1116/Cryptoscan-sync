@@ -83,8 +83,7 @@ describe("Crypto Event Stream", () => {
     mockFetch({ "/api/v1/cryptolog/events": { events: [], returned: 0, next_cursor: null } });
     renderStream();
     const empty = await screen.findByTestId("stream-empty");
-    expect(empty).toHaveTextContent(/never a quiet estate/);
-    expect(empty).toHaveTextContent(/never invents events/);
+    expect(empty).toHaveTextContent(/No events recorded/);
   });
 
   it("a failed read is named — not a source with no events", async () => {

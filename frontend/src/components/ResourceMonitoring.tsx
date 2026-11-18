@@ -70,7 +70,7 @@ export default function ResourceMonitoring() {
         <div style={{ minWidth: 0 }}>
           <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, letterSpacing: "-0.01em" }}>Traffic & storage</h2>
           <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2, lineHeight: 1.4, maxWidth: 640 }}>Imported Linux interface counters & filesystem capacity — read-only samples, not continuous live monitoring.</div>
-          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4 }}>Read-only Linux interface totals and path-filesystem capacity. Imported samples, not continuous live monitoring. No packet contents, per-app attribution or traffic enforcement.</div>
+          <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4 }}><span title={"Read-only Linux interface totals and path-filesystem capacity. Imported samples, not continuous live monitoring. No packet contents, per-app attribution or traffic enforcement."}>{"Read-only Linux interface totals and path-filesystem capacity."}</span></div>
         </div>
       </div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
@@ -295,7 +295,7 @@ export default function ResourceMonitoring() {
           <div style={{ overflowX: "auto", marginTop: 8 }}><table className="tbl"><thead><tr><th>Path</th><th>Status</th><th>Total</th><th>Used</th><th>Available to collector</th><th>Used %</th><th>Filesystem device</th></tr></thead>
             <tbody>{payload.report.storage.map((s) => <tr key={s.path}><td>{s.path}</td><td>{s.status}</td><td>{gib(s.total_bytes)}</td><td>{gib(s.used_bytes)}</td><td>{gib(s.available_bytes)}</td><td>{number(s.used_percent, 1)}</td><td>{s.filesystem_device ?? "Unknown"}</td></tr>)}</tbody></table></div>
         </details>
-        <div style={{ fontSize: 11, color: "var(--faint)", padding: "8px 10px", background: "color-mix(in srgb, var(--amber) 6%, var(--panel))", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 12 }}>Do not add these rows: multiple paths can refer to the same filesystem. Free space is not all available to this user; physical disks, RAID/SAN and quotas are not discovered. Counter errors/drops do not prove end-to-end packet loss.</div>
+        <div style={{ fontSize: 11, color: "var(--faint)", padding: "8px 10px", background: "color-mix(in srgb, var(--amber) 6%, var(--panel))", border: "1px solid var(--line)", borderRadius: "var(--r)", marginBottom: 12 }}><span title={"Do not add these rows: multiple paths can refer to the same filesystem. Free space is not all available to this user; physical disks, RAID/SAN and quotas are not discovered. Counter errors/drops do not prove end-to-end packet loss."}>{"Do not add these rows: multiple paths can refer to the same filesystem."}</span></div>
 
         {/* ── draft limit — visual card ── */}
         <div className="panel" style={{ background: "var(--panel-2)", borderTop: "2px solid var(--amber)", padding: 14 }}>
@@ -303,7 +303,7 @@ export default function ResourceMonitoring() {
             <b style={{ fontSize: 13 }}>Draft a traffic limit — not enforcement</b>
             <span className="badge amber">DRAFT ONLY</span>
           </div>
-          <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10 }}>Proposes a value for review. No enforcement adapter is called from this console.</div>
+          <div style={{ fontSize: 11, color: "var(--dim)", marginBottom: 10 }}><span title={"Proposes a value for review. No enforcement adapter is called from this console."}>{"Proposes a value for review."}</span></div>
           <form onSubmit={(event) => {
             event.preventDefault(); const f = new FormData(event.currentTarget);
             void run(async (request) => {

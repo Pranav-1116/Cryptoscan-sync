@@ -295,9 +295,7 @@ export default function Binary() {
       {view === "submit" ? (
         <Panel title="Artifact Inventory & Scan">
           <p style={{ marginTop: 0, fontSize: 12, color: "var(--muted)" }}>
-            Every submitted artifact is identified by content and an immutable
-            SHA-256 digest — a file extension is only a hint. The artifact is
-            validated and analyzed statically; it is never executed (§14).
+            <span title={"Every submitted artifact is identified by content and an immutable SHA-256 digest — a file extension is only a hint. The artifact is validated and analyzed statically; it is never executed (§14)."}>{"Every submitted artifact is identified by content and an immutable SHA-256 digest"}</span>
           </p>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             <label style={{ fontSize: 11, color: "var(--muted)" }}>
@@ -401,7 +399,7 @@ export default function Binary() {
               />
             ) : (
               <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>
-                section coverage unknown — never assumed complete
+                section coverage unknown
               </p>
             )}
           </div>
@@ -490,8 +488,7 @@ export default function Binary() {
                   </>
                 ) : (
                   <p style={{ fontSize: 11, color: "var(--muted)", margin: 0 }}>
-                    no crypto findings — a detection count of zero is never a
-                    clean verdict
+                    no crypto findings
                   </p>
                 )}
               </div>
@@ -526,10 +523,7 @@ export default function Binary() {
       {view === "pqc" ? (
         <Panel title="PQC Exposure">
           <p style={{ marginTop: 0, fontSize: 12, color: "var(--muted)" }}>
-            Quantum-vulnerable indicators, PQC implementation indicators and
-            migration blockers — reported separately. Presence is not usage,
-            and a classical algorithm is not automatically an immediate
-            vulnerability (§9).
+            <span title={"Quantum-vulnerable indicators, PQC implementation indicators and migration blockers — reported separately. Presence is not usage, and a classical algorithm is not automatically an immediate vulnerability (§9)."}>{"Quantum-vulnerable indicators, PQC implementation indicators and migration blockers"}</span>
           </p>
           <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
             <button
@@ -548,7 +542,7 @@ export default function Binary() {
                   {findings.data.findings.some((f) => f.quantum_vulnerable) ? "Detected" : "Not detected"}
                 </Badge>
                 <span style={{ marginLeft: 8, color: "var(--muted)", fontSize: 11 }}>
-                  within the analyzed scope — not detected is never absent
+                  within the analyzed scope
                 </span>
               </div>
               <div>
@@ -742,9 +736,7 @@ export default function Binary() {
       {view === "drift" ? (
         <Panel title="Drift Series">
           <p style={{ marginTop: 0, fontSize: 12, color: "var(--muted)" }}>
-            Artifacts grouped by subject (filename / source location),
-            compared consecutively — drift of static INDICATORS, never
-            drift of runtime behavior; every delta carries its caveat.
+            <span title={"Artifacts grouped by subject (filename / source location), compared consecutively — drift of static INDICATORS, never drift of runtime behavior; every delta carries its caveat."}>{"Artifacts grouped by subject (filename / source location), compared consecutively"}</span>
           </p>
           <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
             <label style={{ fontSize: 11, color: "var(--muted)" }}>
@@ -809,7 +801,7 @@ export default function Binary() {
               ))}
               {drift.data.points.length === 0 ? (
                 <p style={{ fontSize: 12, color: "var(--muted)" }}>
-                  no artifacts in this series — empty, never zero-filled with guesses
+                  no artifacts in this series
                 </p>
               ) : null}
               <p style={{ fontSize: 11, color: "var(--muted)", fontStyle: "italic" }}>
@@ -824,9 +816,7 @@ export default function Binary() {
       {view === "history" ? (
         <Panel title="History — one immutable artifact">
           <p style={{ marginTop: 0, fontSize: 12, color: "var(--muted)" }}>
-            How findings moved across scan runs of ONE immutable artifact —
-            a change between runs is a change of scanner, profile or
-            signature database, never of the artifact.
+            <span title={"How findings moved across scan runs of ONE immutable artifact — a change between runs is a change of scanner, profile or signature database, never of the artifact."}>{"How findings moved across scan runs of ONE immutable artifact"}</span>
           </p>
           <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
             <button
@@ -880,9 +870,7 @@ export default function Binary() {
       {view === "estate" ? (
         <Panel title="Estate View — recorded findings">
           <p style={{ marginTop: 0, fontSize: 12, color: "var(--muted)" }}>
-            Findings grouped by format, source, library and algorithm.
-            Counts are counts of RECORDED findings, never of running
-            cryptography; grouping is metadata, not proof of common origin.
+            <span title={"Findings grouped by format, source, library and algorithm. Counts are counts of RECORDED findings, never of running cryptography; grouping is metadata, not proof of common origin."}>{"Findings grouped by format, source, library and algorithm."}</span>
           </p>
           <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
             <button
@@ -944,11 +932,7 @@ export default function Binary() {
       {view === "firmware" ? (
         <Panel title="Firmware Analysis">
           <p style={{ marginTop: 0, fontSize: 12, color: "var(--muted)" }}>
-            Bounded signature analysis via the Binwalk tool — the tool runs
-            under a hard timeout; the artifact itself is never executed.
-            Third-party output is a LEAD, never definitive evidence; carved
-            content is untrusted; firmware version data is not proof of
-            firmware contents.
+            <span title={"Bounded signature analysis via the Binwalk tool — the tool runs under a hard timeout; the artifact itself is never executed. Third-party output is a LEAD, never definitive evidence; carved content is untrusted; firmware version data is not proof of firmware contents."}>{"Bounded signature analysis via the Binwalk tool"}</span>
           </p>
           <label style={{ fontSize: 11, color: "var(--muted)" }}>
             Firmware image{" "}

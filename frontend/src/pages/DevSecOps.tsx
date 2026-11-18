@@ -105,7 +105,6 @@ function ContainerPanel() {
         </label>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <button className="btn sm primary" onClick={() => void run()} disabled={busy} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><IconTarget size={12} /> {busy ? "Scanning…" : "Scan image"}</button>
-          <span style={{ fontSize: 11, color: "var(--faint)" }}>Deterministic — same input → same CVEs, offline & no inference</span>
         </div>
         <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
         {d && (
@@ -747,7 +746,7 @@ function SbomInventoryTab() {
               a.recommendation || "-",
               (a.affected || []).slice(0, 3).map((x: any) => `${x.ref} (${String(x.artifact_id).slice(0, 8)})`).join(", "),
             ])} />
-        ) : <div className="muted" style={{ fontSize: 12.5 }}>No advisories recorded — scan with an advisory feed to populate this view.</div>}
+        ) : <div className="muted" style={{ fontSize: 12.5 }}><span title={"No advisories recorded — scan with an advisory feed to populate this view."}>{"No advisories recorded"}</span></div>}
       </div>
     </Panel>
   );

@@ -82,8 +82,7 @@ export default function EstateSchedulePanel() {
         </span>
       </div>
       <p className="sub" style={{ margin: "3px 0 10px" }}>
-        A cadence re-reads retained evidence; it does not scan source, probe endpoints, or contact cloud/HSM providers.
-        Register and approve collection separately. A schedule with no stored observations proves no coverage.
+        <span title={"A cadence re-reads retained evidence; it does not scan source, probe endpoints, or contact cloud/HSM providers. Register and approve collection separately. A schedule with no stored observations proves no coverage."}>{"A cadence re-reads retained evidence"}</span>
       </p>
 
       {rows === null ? (

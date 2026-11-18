@@ -94,8 +94,7 @@ export default function CryptoLogCorrelation() {
                   style={{ width: 8, height: 8, borderRadius: 99, border: "1.5px dashed var(--slate, #64748b)", marginTop: 4, flex: "0 0 auto" }}
                 />
                 <div className="dim" style={{ fontSize: 12, lineHeight: 1.5 }}>
-                  No correlation groups in the recorded events. Absence of recorded
-                  correlation is never proof that nothing relates.
+                  <span title={"No correlation groups in the recorded events. Absence of recorded correlation is never proof that nothing relates."}>{"No correlation groups in the recorded events."}</span>
                 </div>
               </div>
             ) : (

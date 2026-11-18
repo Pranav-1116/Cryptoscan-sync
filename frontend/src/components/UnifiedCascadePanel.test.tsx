@@ -156,7 +156,7 @@ describe("cascade disjoint system classification", () => {
     await runCascade();
     expect(screen.getByText(/Relationship policy: cryptoscan.system-dependency-policy\/1/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "diff vs previous" }));
-    expect(await screen.findByText(/Count changes are not evidence of remediation/)).toBeInTheDocument();
+    expect(await screen.findByTitle(/Count changes are not evidence of remediation/)).toBeInTheDocument();
   });
 
   it("discloses release digests, SBOM document hashes and declared deployment evidence separately", async () => {

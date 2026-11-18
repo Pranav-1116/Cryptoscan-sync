@@ -96,8 +96,6 @@ export default function Hardware() {
             <b style={{ color: "var(--text)" }}>{live && data ? `${totalDevices} live devices` : "Hardware inventory not read"}</b> · CPU · TPM · HSM · secure elements · accelerators — from <span style={{ color: "var(--amber)", fontFamily: "var(--mono)" }}>live hardware scanner</span> {live && data?.generated_at ? `· ${new Date(data.generated_at as string).toLocaleTimeString()}` : "· awaiting scan"}.
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>LIVE SCAN INVENTORY</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
             <span style={{ fontSize: 11, color: "var(--dim)" }}>{tpmCount} TPM · {hsmCount} HSM · {firmware.length} firmware baselines</span>
           </div>
         </div>
@@ -306,7 +304,7 @@ export default function Hardware() {
             </div>
           ) : (
             <div style={{ fontSize: 12, color: "var(--faint)", padding: "14px", textAlign: "center", border: "1px dashed var(--line)", borderRadius: "var(--r)" }}>
-              No hardware events yet — CPU/TPM/HSM discoveries appear here after a scan.
+              <span title={"No hardware events yet — CPU/TPM/HSM discoveries appear here after a scan."}>{"No hardware events yet"}</span>
             </div>
           )}
         </Panel>

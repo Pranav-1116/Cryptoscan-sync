@@ -106,8 +106,7 @@ export default function AppPerfWorkspace({ data }: { data: PerformanceAppWorkspa
         <Panel title="Service-level performance" sub="per-service percentiles as delivered">
           {!services.length ? (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              No service telemetry is stored in this window — a missing service
-              is a collection gap, not a healthy service.
+              <span title={"No service telemetry is stored in this window — a missing service is a collection gap, not a healthy service."}>{"No service telemetry is stored in this window"}</span>
             </div>
           ) : (
             <table style={{ width: "100%", fontSize: 12 }}>
@@ -144,8 +143,7 @@ export default function AppPerfWorkspace({ data }: { data: PerformanceAppWorkspa
         <Panel title="API endpoint performance" sub="controlled label keys only — request payloads are never read">
           {!endpoints.length ? (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              No endpoint-attributed telemetry is stored in this window —
-              unlabelled requests are not attributed to endpoints.
+              <span title={"No endpoint-attributed telemetry is stored in this window — unlabelled requests are not attributed to endpoints."}>{"No endpoint-attributed telemetry is stored in this window"}</span>
             </div>
           ) : (
             <table style={{ width: "100%", fontSize: 12 }}>
@@ -203,8 +201,7 @@ export default function AppPerfWorkspace({ data }: { data: PerformanceAppWorkspa
             </table>
           ) : (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              No regression measurements are stored in this window — absence
-              of regression telemetry is not proof of no regression.
+              <span title={"No regression measurements are stored in this window — absence of regression telemetry is not proof of no regression."}>{"No regression measurements are stored in this window"}</span>
             </div>
           )}
           <div style={{ fontSize: 12, opacity: 0.8, marginTop: 10 }}>{capabilities.slo?.basis ?? ""}</div>

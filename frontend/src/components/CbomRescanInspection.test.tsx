@@ -15,7 +15,7 @@ describe("Retained-source rescan inspection",()=>{
  it("reads only on demand and never presents scoped verification as clean coverage",async()=>{
   const fetcher=mockFetch(routes());mount();expect(fetcher).not.toHaveBeenCalled();await inspect();
   await screen.findByText("Committed source evidence verified for this scoped rescan.");
-  expect(screen.getByText(/Partial history remains. No clean posture grade/)).toBeTruthy();
+  expect(screen.getByTitle(/Partial history remains. No clean posture grade/)).toBeTruthy();
   expect(fetcher.mock.calls.every(([,init])=>!init?.method||init.method==="GET")).toBe(true);
   expect(fetcher.mock.calls.find(([url])=>String(url).includes("job_id=job-a"))).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Completed source job ID"),{target:{value:"job-b"}});
@@ -41,7 +41,7 @@ describe("Retained-source rescan inspection",()=>{
   mockFetch(routes({"/api/v1/cbom/system/system-a/rescan-inspection":()=>new Promise(resolve=>{finish=resolve;})}));
   mount();await inspect();await waitFor(()=>expect(finish).toBeTypeOf("function"));
   act(()=>{window.dispatchEvent(new StorageEvent("storage",{key:"cryptoscan_tenant",newValue:"other"}));});
-  await screen.findByText(/Private evidence and unsubmitted drafts were cleared/);
+  await screen.findByTitle(/Private evidence and unsubmitted drafts were cleared/);
   await act(async()=>{finish(proof);});expect(screen.queryByText("Committed source evidence verified for this scoped rescan.")).toBeNull();
  });
  it.each([

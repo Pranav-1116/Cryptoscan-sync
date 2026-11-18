@@ -397,13 +397,9 @@ function CbomContent() {
             Cryptographic Bill of Materials
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
-            Every <b style={{ color: "var(--text)" }}>algorithm, key and protocol</b> in the estate — the CBOM layer of the unified asset model, linked through the cross-BOM identity spine. <span style={{ color: "var(--accent)" }}>One asset model</span>, materialized for crypto-agility.
+            Every algorithm, key and protocol in the estate.
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>CycloneDX 1.6</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span className="kicker" style={{ fontSize: 10 }}>LIVE QUERY · NO INFERENCE</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
             <span style={{ fontSize: 11, color: "var(--dim)" }}>{cryptoTotal} crypto assets · snapshot {fmtSnapshotId(techState?.snapshot_id).slice(0, 16)} · v{techState?.state_version ?? 0}</span>
           </div>
         </div>
@@ -499,7 +495,7 @@ function CbomContent() {
           </div>
           <div style={{ padding: "0 16px 12px" }}>
             <Bar value={identities ? Math.min(1, (conflictTotal ?? 0) / Math.max(1, identities)) : 0} tone={heroConflict ? "red" : "green"} />
-            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Cross-BOM value disagreements — never averaged</div>
+            <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Cross-BOM value disagreements</div>
           </div>
         </div>
       </div>
@@ -590,15 +586,13 @@ function CbomContent() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <IconCloud size={14} style={{ color: "var(--accent)" }} />
             <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Import CBOM metadata</h2>
-            <Badge tone="slate">DECLARED</Badge><Badge tone="cyan">1 MiB cap</Badge>
+            <Badge tone="slate">DECLARED</Badge>
           </div>
-          <span style={{ fontSize: 11, color: "var(--dim)" }}>Declared ≠ observed · not coverage · timestamps preserved</span>
         </div>
-        <p style={{ color: "var(--dim)", fontSize: 12, margin: "0 0 10px" }}>Analyst/CISO import — refreshes matching declarations; missing components not auto-retired.</p>
         <form onSubmit={importDocument} style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
           <label>System name<br /><input aria-label="Import system name" value={importName} maxLength={200} required
             disabled={importBusy} onChange={(event) => setImportName(event.target.value)} /></label>
-          <label>CycloneDX JSON (1 MiB maximum)<br /><input aria-label="CBOM JSON file" type="file" accept=".json,application/json"
+          <label>CycloneDX JSON (max 1 MiB)<br /><input aria-label="CBOM JSON file" type="file" accept=".json,application/json"
             disabled={importBusy} onChange={(event) => { setImportFile(event.target.files?.[0] || null); setImportError(""); setImportReceipt(null); }} /></label>
           <button className="btn primary" type="submit" disabled={importBusy || !importFile || !importName.trim()}>
             {importBusy ? "Importing metadata…" : "Import metadata"}
@@ -606,7 +600,7 @@ function CbomContent() {
         </form>
         {importError && <p role="alert">{importError}</p>}
         {importReceipt && <div role="status" style={{ marginTop: 12 }}>
-          <p>Saved metadata: {importReceipt.imported} assets for {importReceipt.system.name}. Not a scan or approval.</p>
+          <p>Saved metadata: {importReceipt.imported} assets for {importReceipt.system.name}. </p>
           <p style={{ overflowWrap: "anywhere" }}>Document SHA-256: {importReceipt.document_sha256}</p>
           <AuthenticatedDownload path={`/api/v1/cbom/system/${encodeURIComponent(importReceipt.system.id)}?fmt=cyclonedx16`}
             filename="imported-cbom-1.6.json" className="btn outline">Export persisted metadata</AuthenticatedDownload>
@@ -803,8 +797,7 @@ function CbomContent() {
         )}
         {selectedScan && !snapshotsLoaded && (
           <p style={{ margin: "12px 0 0", fontSize: 12.5, color: "var(--dim)" }}>
-            Snapshots unavailable for this scan — nothing is pinned or shown.
-          </p>
+            <span title={"Snapshots unavailable for this scan — nothing is pinned or shown."}>{"Snapshots unavailable for this scan"}</span>     </p>
         )}
         {selectedScan && snapshotsLoaded && snapshots.length === 0 && (
           <p style={{ margin: "12px 0 0", fontSize: 12.5, color: "var(--dim)" }}>

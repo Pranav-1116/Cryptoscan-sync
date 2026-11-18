@@ -99,8 +99,7 @@ export default function HsmWorkspace({ data }: {
       {!devices.length ? (
         <Panel title="Per-device detail">
           <div style={{ fontSize: 12, opacity: 0.75 }}>
-            No HSM or KMS performance telemetry is stored in this window —
-            absence of telemetry is not a healthy device.
+            <span title={"No HSM or KMS performance telemetry is stored in this window — absence of telemetry is not a healthy device."}>{"No HSM or KMS performance telemetry is stored in this window"}</span>
           </div>
         </Panel>
       ) : devices.map((device) => (
@@ -123,8 +122,7 @@ export default function HsmWorkspace({ data }: {
             <TrendBars trend={device.trend ?? []} />
           ) : (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              No operation-latency samples in this window — a missing trend is
-              a collection gap, not a flat line.
+              <span title={"No operation-latency samples in this window — a missing trend is a collection gap, not a flat line."}>{"No operation-latency samples in this window"}</span>
             </div>
           )}
         </Panel>

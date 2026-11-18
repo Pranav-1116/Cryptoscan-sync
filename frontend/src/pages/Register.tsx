@@ -11,7 +11,7 @@ function BrandPanel() {
     <div className="auth-hero">
       <div className="auth-cue">WORKSPACE ACCESS / 01</div>
       <h2>Your identity, then your evidence.</h2>
-      <p>Create a personal account on the live CryptoScan control plane. Elevated permissions are granted separately by a platform administrator.</p>
+      <p><span title={"Create a personal account on the live CryptoScan control plane. Elevated permissions are granted separately by a platform administrator."}>{"Create a personal account on the live CryptoScan control plane."}</span></p>
       <div className="auth-principles">
         <div><b>01</b><span>Identify your account</span></div>
         <div><b>02</b><span>Choose a strong password</span></div>
@@ -74,7 +74,7 @@ export default function Register() {
         <div className="auth-head">
           <div className="kicker">Individual access</div>
           <h1>Create your account</h1>
-          <p>Use your own credentials. Your initial role is read-only; an administrator can grant additional access after review.</p>
+          <p><span title={"Use your own credentials. Your initial role is read-only; an administrator can grant additional access after review."}>{"Use your own credentials."}</span></p>
           <span className={`auth-status ${backendUp === null ? "" : backendUp ? "live" : "down"}`}>
             <span className="dot" />{backendUp === null ? "Checking control plane…" : backendUp ? "Connected to CryptoScan" : "Control plane unavailable"}
           </span>
@@ -83,7 +83,7 @@ export default function Register() {
         {error && <div className="auth-alert err" role="alert"><IconClose className="ico" size={ICON_MD} />{error}</div>}
         {backendUp === false && <div className="auth-offline" role="status">
           <b>Registration is temporarily unavailable</b>
-          <p>CryptoScan cannot reach its API. No account or password has been submitted or saved. Start the backend, then this page will reconnect automatically.</p>
+          <p><span title={"CryptoScan cannot reach its API. No account or password has been submitted or saved. Start the backend, then this page will reconnect automatically."}>{"CryptoScan cannot reach its API."}</span></p>
           <Link to="/login">Return to sign in</Link>
         </div>}
         {backendUp === null && <p role="status" className="auth-wait">Checking service availability before showing the form…</p>}
@@ -109,7 +109,7 @@ export default function Register() {
 
           <fieldset className="auth-stage">
             <legend><span>02</span> Secure your account</legend>
-            <p className="auth-help" id="password-policy">At least 12 characters and three of uppercase, lowercase, number or symbol. CryptoScan checks the full policy on submission.</p>
+            <p className="auth-help" id="password-policy"><span title={"At least 12 characters and three of uppercase, lowercase, number or symbol. CryptoScan checks the full policy on submission."}>{"At least 12 characters and three of uppercase, lowercase, number or symbol."}</span></p>
             <div className="field-row">
               <div className="field">
                 <label htmlFor="reg-pass">Password</label>

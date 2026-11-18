@@ -157,7 +157,7 @@ export default function ResetPassword() {
             <div style={{ fontSize: "36px", color: "var(--green)", marginBottom: "12px" }}>✓</div>
             <h2 style={{ fontSize: "18px", fontWeight: 600, margin: "0 0 8px" }}>Password updated</h2>
             <p style={{ fontSize: "13px", color: "var(--dim)", margin: "0 0 20px" }}>
-              Your password has been changed successfully. For your security, please sign in again.
+              <span title={"Your password has been changed successfully. For your security, please sign in again."}>{"Your password has been changed successfully."}</span>
             </p>
             <Link to="/login" className="btn primary" style={{ textDecoration: "none", display: "block", textAlign: "center", height: "40px", lineHeight: "24px" }}>
               Sign in

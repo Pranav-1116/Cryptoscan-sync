@@ -21,7 +21,7 @@ describe("State machines explorer", () => {
     renderWithProviders(<StateMachines />);
     expect(screen.getByTitle(/NEVER means used/)).toBeInTheDocument();
     expect(screen.getByTitle(/NEVER zero, never clean/)).toBeInTheDocument();
-    expect(screen.getByText(/undeclared state must never render as a pass/)).toBeInTheDocument();
+    expect(screen.getByTitle(/undeclared state must never render as a pass/)).toBeInTheDocument();
   });
 
   it("shows the scan lifecycle with its observed edges and its invariant", async () => {

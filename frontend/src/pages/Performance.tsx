@@ -124,7 +124,7 @@ export function TileView({ tile, label }: { tile: PerformanceTile | undefined; l
 
 export function SummaryTable({ metrics }: { metrics: Record<string, PerformanceSummary> }) {
   const names = Object.keys(metrics).sort();
-  if (names.length === 0) return <div style={{ fontSize: 12, opacity: 0.75 }}>No telemetry in window — absence is unknown, never zero.</div>;
+  if (names.length === 0) return <div style={{ fontSize: 12, opacity: 0.75 }}>No telemetry in window.</div>;
   return (
     <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
       <thead>
@@ -178,8 +178,7 @@ export function ServiceTable({ services }: { services: PerformanceServiceRow[] }
   if (!services.length) {
     return (
       <div style={{ fontSize: 12, opacity: 0.75 }}>
-        No service telemetry is stored in this window — a missing service is a
-        collection gap, not a healthy service.
+        <span title={"No service telemetry is stored in this window — a missing service is a collection gap, not a healthy service."}>{"No service telemetry is stored in this window"}</span>
       </div>
     );
   }
@@ -374,8 +373,7 @@ export default function Performance() {
         <Panel title="Infrastructure trends" sub="CPU and memory utilisation over the selected window">
           {trends.error || !(trends.data?.samples ?? []).length ? (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              No trend samples are stored in this window — a missing trend is a
-              collection gap, not a flat line.
+              <span title={"No trend samples are stored in this window — a missing trend is a collection gap, not a flat line."}>{"No trend samples are stored in this window"}</span>
             </div>
           ) : (
             <TrendList samples={trends.data?.samples ?? []} />
@@ -542,8 +540,7 @@ export default function Performance() {
           <Panel title="SLO and SLA Management">
             {(slo.data ?? []).length === 0 ? (
               <div style={{ fontSize: 12, opacity: 0.75 }}>
-                No SLO policies are recorded — absence of policy is not compliance.
-              </div>
+                <span title={"No SLO policies are recorded — absence of policy is not compliance."}>{"No SLO policies are recorded"}</span>           </div>
             ) : (
               <table style={{ width: "100%", fontSize: 12 }}>
                 <tbody>
@@ -574,7 +571,7 @@ export function AlertsView({ alerts }: { alerts: PerformanceAlert[] }) {
     <Panel title="Performance Alerts">
       {alerts.length === 0 ? (
         <div style={{ fontSize: 12, opacity: 0.75 }}>
-          No alert conditions in this window. Absence of alerts is not proof of health.
+          <span title={"No alert conditions in this window. Absence of alerts is not proof of health."}>{"No alert conditions in this window."}</span>
         </div>
       ) : alerts.map((alert, index) => (
         <div key={`${alert.metric_name}-${index}`} style={{ borderBottom: "1px solid var(--rule)", padding: "10px 0" }}>
@@ -734,8 +731,7 @@ export function BenchmarkLab({ tenant, runs, note, onRun }: {
               <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Algorithm comparison — mean latency</div>
               {!rows.length ? (
                 <div style={{ fontSize: 12, opacity: 0.75 }}>
-                  No benchmark results are recorded — an absent benchmark is a
-                  gap, not a fast algorithm.
+                  <span title={"No benchmark results are recorded — an absent benchmark is a gap, not a fast algorithm."}>{"No benchmark results are recorded"}</span>
                 </div>
               ) : (
                 <>

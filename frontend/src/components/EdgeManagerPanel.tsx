@@ -258,7 +258,7 @@ export default function EdgeManagerPanel() {
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 14, gap: 12, flexWrap: "wrap" }}>
           <span style={{ fontSize: 11, color: "var(--faint)", lineHeight: 1.4 }}>
-            Edge is a manual declaration. Provenance is recorded; it is not an observed traffic proof.
+            <span title={"Edge is a manual declaration. Provenance is recorded; it is not an observed traffic proof."}>{"Edge is a manual declaration."}</span>
           </span>
           <RequireRole anyOf={[...EDGE_WRITE_ROLES]}>
             <button className="btn primary" onClick={register} disabled={!!editing || busy || !parentId.trim() || !childId.trim()} style={{ minWidth: 132 }}>
@@ -413,7 +413,7 @@ export default function EdgeManagerPanel() {
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
           <Badge tone="amber">TOMBSTONE</Badge>
           <span style={{ fontSize: 11, color: "var(--dim)" }}>
-            Retirement keeps an audited tombstone — it does not prove remediation or failure.
+            <span title={"Retirement keeps an audited tombstone — it does not prove remediation or failure."}>{"Retirement keeps an audited tombstone"}</span>
           </span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>

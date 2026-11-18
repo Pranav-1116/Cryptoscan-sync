@@ -333,7 +333,7 @@ export default function SystemCascadeSimulator() {
             </tbody>
           </table>
         </div>
-        {layout.cyclic && <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 4 }}>The dependency graph contains a cycle — the cascade walk visits each system once.</div>}
+        {layout.cyclic && <div style={{ fontSize: 11, color: "var(--amber)", marginTop: 4 }}><span title={"The dependency graph contains a cycle — the cascade walk visits each system once."}>{"The dependency graph contains a cycle"}</span></div>}
       </div>
     </div>
   );

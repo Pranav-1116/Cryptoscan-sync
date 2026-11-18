@@ -60,7 +60,7 @@ export default function NetworkPerfWorkspace({ data }: { data: PerformanceNetwor
           <SummaryTable metrics={{ "network.rtt_ms": data.rtt_ms }} />
         ) : (
           <div style={{ fontSize: 12, opacity: 0.75 }}>
-            No round-trip telemetry is stored in this window — unknown, never zero.
+            <span title={"No round-trip telemetry is stored in this window — unknown, never zero."}>{"No round-trip telemetry is stored in this window"}</span>
           </div>
         )}
       </Panel>

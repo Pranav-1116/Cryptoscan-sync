@@ -187,7 +187,7 @@ export default function UnifiedCascadePanel() {
                 {result.target_resolution.candidates_truncated && <div>Candidate list truncated at {result.target_resolution.candidate_limit}; narrow your search.</div>}
               </>}
               {result.target_resolution.coverage && <div>Candidate coverage: {JSON.stringify(result.target_resolution.coverage)}</div>}
-            </> : <div>Target selection policy unavailable for this stored answer; exact identity was not certified.</div>}
+            </> : <div><span title={"Target selection policy unavailable for this stored answer; exact identity was not certified."}>{"Target selection policy unavailable for this stored answer"}</span></div>}
             {result.analysis_performed === false && <strong>No impact analysis performed. Empty compatibility counts are not zero exposure or evidence of safety.</strong>}
           </section>
 
@@ -209,8 +209,8 @@ export default function UnifiedCascadePanel() {
                 {record.kind || "relationship"} {record.id || "unidentified"}: {record.state}
                 {record.valid_until && ` · valid until ${record.valid_until}`}
               </li>)}</ul>
-              {(result.relationship_lifecycle.excluded_records.length > 20 || result.relationship_lifecycle.excluded_records_truncated) && <div>Lifecycle evidence listing is bounded; not all retained records are shown.</div>}
-            </> : <div>Lifecycle metadata unavailable for this stored answer. Do not assume its links are current.</div>}
+              {(result.relationship_lifecycle.excluded_records.length > 20 || result.relationship_lifecycle.excluded_records_truncated) && <div><span title={"Lifecycle evidence listing is bounded; not all retained records are shown."}>{"Lifecycle evidence listing is bounded"}</span></div>}
+            </> : <div><span title={"Lifecycle metadata unavailable for this stored answer. Do not assume its links are current."}>{"Lifecycle metadata unavailable for this stored answer."}</span></div>}
           </section>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
@@ -231,13 +231,12 @@ export default function UnifiedCascadePanel() {
                 <div>Modeled exposure: {scope.exposure_system_count}</div>
                 <div>Review scope: {scope.review_system_count}</div>
                 <div style={{ fontSize: 11, color: "var(--dim)" }}>
-                  Exposure = direct + consumers. Review = exposure + context.
-                  Buckets are disjoint; direct takes precedence over consumers, then context.
+                  <span title={"Exposure = direct + consumers. Review = exposure + context. Buckets are disjoint; direct takes precedence over consumers, then context."}>{"Exposure = direct + consumers."}</span>
                 </div>
               </> : <>
                 <div>Legacy review scope: {impact.affected_system_count ?? "unknown"}</div>
                 <div style={{ fontSize: 11, color: "var(--dim)" }}>
-                  Classification unavailable for this answer. Do not interpret the legacy total as exposed consumers.
+                  <span title={"Classification unavailable for this answer. Do not interpret the legacy total as exposed consumers."}>{"Classification unavailable for this answer."}</span>
                 </div>
               </>}
             </section>
@@ -315,10 +314,10 @@ export default function UnifiedCascadePanel() {
                   {" · "}{deployment.assertion_source} · {deployment.effective_state || deployment.lifecycle_state || "legacy/unbounded"} · evidence: {deployment.evidence_ref}
                 </div>
               ))}
-              {(layers.software.artifacts.length > 20 || layers.software.deployments.length > 20 || layers.software.sbom_bindings.length > 20 || layers.software.packages.length > 20) && <div>Showing first 20 records per collection; full returned evidence remains in the stored result.</div>}
+              {(layers.software.artifacts.length > 20 || layers.software.deployments.length > 20 || layers.software.sbom_bindings.length > 20 || layers.software.packages.length > 20) && <div><span title={"Showing first 20 records per collection; full returned evidence remains in the stored result."}>{"Showing first 20 records per collection"}</span></div>}
               {layers.software.unbound_artifact_ids.length > 0 && <div role="status">Release artifacts without valid deployment bindings: {layers.software.unbound_artifact_ids.length}. Consumers remain unknown, not safe.</div>}
-              {layers.software.unlinked_deployment_ids.length > 0 && <div role="status">Some deployment declarations have missing systems or conflicting environments; they do not seed exposure.</div>}
-              {layers.software.coverage?.truncated && <div role="status">Software supply-chain input was truncated. This is not a complete deployment inventory.</div>}
+              {layers.software.unlinked_deployment_ids.length > 0 && <div role="status"><span title={"Some deployment declarations have missing systems or conflicting environments; they do not seed exposure."}>{"Some deployment declarations have missing systems or conflicting environments"}</span></div>}
+              {layers.software.coverage?.truncated && <div role="status"><span title={"Software supply-chain input was truncated. This is not a complete deployment inventory."}>{"Software supply-chain input was truncated."}</span></div>}
             </section>
           )}
 
@@ -413,7 +412,7 @@ export default function UnifiedCascadePanel() {
                 ? `Operational declarations: ${diff.operational_comparison.changed_edges?.length || 0} changed, ${diff.operational_comparison.added_edges?.length || 0} added, ${diff.operational_comparison.removed_edges?.length || 0} removed. Not measured availability changes.`
                 : `Operational comparison unavailable: ${diff.operational_comparison.reason}`}</div>}
               {diff.policy_comparison && !diff.policy_comparison.comparable && (
-                <div role="status">Relationship policy differs or is unknown. Count changes are not evidence of remediation.</div>
+                <div role="status"><span title={"Relationship policy differs or is unknown. Count changes are not evidence of remediation."}>{"Relationship policy differs or is unknown."}</span></div>
               )}
               {diff.system_classification?.available ? (
                 <div aria-label="Classification changes">

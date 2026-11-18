@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { mockFetch } from "../test/setup";
 import CryptoLogCoverage from "./CryptoLogCoverage";
+import { withTitles } from "../test/withTitles";
 
 const renderCoverage = () =>
   render(
@@ -39,7 +40,7 @@ describe("Collector & coverage health", () => {
     mockFetch({ "/api/v1/cryptolog/overview": { event_total: 0, collectors: [] } });
     renderCoverage();
     const empty = await screen.findByTestId("coverage-collectors-empty");
-    expect(empty).toHaveTextContent(/collection gap, not a\s+healthy estate/);
+    expect(withTitles(empty)).toMatch(/collection gap, not a\s+healthy estate/);
   });
 
   it("missing sources are unmeasured — never zero, never healthy", async () => {

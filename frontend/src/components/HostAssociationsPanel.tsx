@@ -71,7 +71,7 @@ export default function HostAssociationsPanel({ detail }: { detail: HostSnapshot
   }
   return <section aria-label="Host six-BOM associations" style={{ marginTop: 20, overflowWrap: "anywhere" }}>
     <h4>Six-BOM provenance graph · reviewed metadata only</h4>
-    <p>No relationship is created from matching names or co-existence. A customer-reviewed association is DECLARED, not proof of operational dependency, endpoint identity, firmware, HSM/KMS use or PQC use. Failed observations and missing domains remain UNKNOWN.</p>
+    <p><span title={"No relationship is created from matching names or co-existence. A customer-reviewed association is DECLARED, not proof of operational dependency, endpoint identity, firmware, HSM/KMS use or PQC use. Failed observations and missing domains remain UNKNOWN."}>{"No relationship is created from matching names or co-existence."}</span></p>
     <p>Analysts propose; a different admin/CISO reviews. Auditors/viewers read and export only. API enforces current roles. Proposals expire after 24 hours in this console; stale and retracted assertions are not active graph edges.</p>
     <label>Association source fact<select disabled={busy} value={fact} onChange={e => { invalidate(); setFact(e.target.value); }}><option value="">Select an imported fact</option>{facts.map((f, i) => <option key={i} value={String(i + 1)}>{f.input_id} · fact {f.fact_ordinal} · {f.kind}</option>)}</select></label>
     <label>Association target type<select disabled={busy} value={type} onChange={e => { invalidate(); setType(e.target.value as HostAssociationTargetType); setId(""); setPurl(""); }}>{types.map(t => <option key={t} value={t}>{t}</option>)}</select></label>

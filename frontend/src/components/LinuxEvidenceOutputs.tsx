@@ -50,13 +50,13 @@ export default function LinuxEvidenceOutputs({ job, envelope }: { job: string; e
     finally { if (timeout) clearTimeout(timeout); if (current()) { active.current = null; setBusy(false); } }
   }
   return <section aria-label="Linux evidence outputs"><h4>Linux relationships and standard software export</h4>
-    <p>Download an officially schema-validated CycloneDX 1.6 SBOM with explicit incomplete composition. Package type uses the specification default, not observed application classification. Schema validity does not prove completeness, authenticity, dependencies, runtime use or production qualification.</p>
+    <p><span title={"Download an officially schema-validated CycloneDX 1.6 SBOM with explicit incomplete composition. Package type uses the specification default, not observed application classification. Schema validity does not prove completeness, authenticity, dependencies, runtime use or production qualification."}>{"Download an officially schema-validated CycloneDX 1.6 SBOM with explicit incomplete composition."}</span></p>
     <AuthenticatedDownload key={job + envelope} path={`/api/v1/collection/jobs/${encodeURIComponent(job)}/software/linux/cyclonedx-1.6`} filename="linux-software.cdx.json">Download Linux CycloneDX 1.6 SBOM</AuthenticatedDownload>
     <button disabled={busy} onClick={() => void read()}>Read Linux evidence relationships</button>
     {busy && <p role="status">Reading relationship evidence…</p>}{error && <p role="alert">{error}</p>}
     {value && <><p>{value.nodes.length} original observation nodes · {value.edges.length} exact metadata joins · {value.unresolved.length} unresolved joins. No rescan. Separate captures do not prove simultaneous or continuous operation.</p>
       <p>Unsupported with captured fields: {value.unsupported_relationships.join(" · ")}. Service MainPID alone does not identify a process incarnation; a listener does not prove a TLS or certificate relationship.</p>
-      <p>Showing up to 50 joins and 50 unresolved records; full bounded details remain in the authorized API.</p>
+      <p><span title={"Showing up to 50 joins and 50 unresolved records; full bounded details remain in the authorized API."}>{"Showing up to 50 joins and 50 unresolved records"}</span></p>
       {value.edges.slice(0, 50).map(e => <p key={e.edge_id}>{e.relation}: {e.source_observation_id} → {e.target_observation_id} · evidence {e.evidence_ids.join(", ")} · runtime use UNKNOWN · local INFERRED</p>)}
       {value.unresolved.slice(0, 50).map(u => <p key={u.observation_id + u.relation}>{u.observation_id}: {u.relation} · {u.reason} · candidates {u.candidate_count} (not an absence conclusion)</p>)}
     </>}

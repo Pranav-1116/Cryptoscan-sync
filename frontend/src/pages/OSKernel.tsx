@@ -244,8 +244,7 @@ export default function OSKernel() {
               </p>
               {assets.data.assets.length === 0 ? (
                 <p style={{ fontSize: 12, margin: 0 }}>
-                  No collection recorded. A missing asset is never a clean asset.
-                </p>
+                  <span title={"No collection recorded. A missing asset is never a clean asset."}>{"No collection recorded."}</span>         </p>
               ) : (
                 <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
                   <thead>
@@ -305,14 +304,11 @@ export default function OSKernel() {
           ) : assets && assets.data ? (
             <>
               <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 8px" }}>
-                Cross-host view of every recorded OS collection. A missing
-                asset is never a clean asset; one host is never enterprise
-                qualification (§12).
+                <span title={"Cross-host view of every recorded OS collection. A missing asset is never a clean asset; one host is never enterprise qualification (§12)."}>{"Cross-host view of every recorded OS collection."}</span>
               </p>
               {assets.data.assets.length === 0 ? (
                 <p style={{ fontSize: 12, margin: 0 }}>
-                  No collection recorded. Nothing here is claimed about
-                  uncollected hosts.
+                  <span title={"No collection recorded. Nothing here is claimed about uncollected hosts."}>{"No collection recorded."}</span>
                 </p>
               ) : (
                 <>
@@ -447,9 +443,7 @@ export default function OSKernel() {
               <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 8px" }}>{modules.data.note}</p>
               {modules.data.modules.length === 0 ? (
                 <p style={{ fontSize: 12, margin: 0 }}>
-                  No module rows in this collection. A missing row is never
-                  evidence that a feature is unavailable — it may be built into
-                  the kernel (§2.1).
+                  <span title={"No module rows in this collection. A missing row is never evidence that a feature is unavailable — it may be built into the kernel (§2.1)."}>{"No module rows in this collection."}</span>
                 </p>
               ) : (
                 <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
@@ -483,9 +477,7 @@ export default function OSKernel() {
               <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 8px" }}>{flags.data.note}</p>
               {flags.data.flags.length === 0 ? (
                 <p style={{ fontSize: 12, margin: 0 }}>
-                  No recorded flag states in this collection. A flag missing
-                  from an unavailable config source is never reported as
-                  "disabled" (§2.1).
+                  <span title={"No recorded flag states in this collection. A flag missing from an unavailable config source is never reported as \"disabled\" (§2.1)."}>{"No recorded flag states in this collection."}</span>
                 </p>
               ) : (
                 <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
@@ -523,8 +515,7 @@ export default function OSKernel() {
               <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 8px" }}>{storage.data.note}</p>
               {storage.data.storage.length === 0 ? (
                 <p style={{ fontSize: 12, margin: 0 }}>
-                  No storage rows in this collection. Encryption state is
-                  UNKNOWN for the host — never "not encrypted".
+                  <span title={"No storage rows in this collection. Encryption state is UNKNOWN for the host — never \"not encrypted\"."}>{"No storage rows in this collection."}</span>
                 </p>
               ) : (
                 <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
@@ -570,8 +561,7 @@ export default function OSKernel() {
               ))}
               {trust.data.hardware_trust.length === 0 && (
                 <p style={{ fontSize: 12, margin: 0 }}>
-                  No hardware trust source in this collection — recorded as
-                  unavailable, never as "no TPM" (§2.1).
+                  <span title={"No hardware trust source in this collection — recorded as unavailable, never as \"no TPM\" (§2.1)."}>{"No hardware trust source in this collection"}</span>
                 </p>
               )}
             </>

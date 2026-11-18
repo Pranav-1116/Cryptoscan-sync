@@ -24,7 +24,7 @@ describe("drift feed and disposition truth", () => {
     renderWithProviders(<Drift />);
     expect(await screen.findByText("No drift events")).toBeInTheDocument();
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
-    expect(screen.getByText(/Not evidence of baseline approval or clean comparison/)).toBeInTheDocument();
+    expect(screen.getByTitle(/Not evidence of baseline approval or clean comparison/)).toBeInTheDocument();
     expect(screen.queryByText(/TimescaleDB|primitives match|Zero cryptographic drift detected/)).toBeNull();
     expect(screen.getByText("No events returned — comparison unproven")).toBeInTheDocument();
   });

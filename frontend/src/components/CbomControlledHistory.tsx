@@ -37,7 +37,7 @@ export function UnassignedHistory({ onCommitted }: { onCommitted: (receipt: stri
     else setMessage(`${result.error || "Request failed"}. ${uncertain}`);
   }
   return <section aria-label="Unassigned history decisions" style={{ marginTop: 18 }}>
-    <h3>Unassigned histories</h3><p>Assign declared responsibility before source review. This does not certify ownership authority, remove evidence or clear export blocks.</p>
+    <h3>Unassigned histories</h3><p><span title={"Assign declared responsibility before source review. This does not certify ownership authority, remove evidence or clear export blocks."}>{"Assign declared responsibility before source review."}</span></p>
     <button type="button" disabled={busy} onClick={() => void load()}>Review unassigned records</button>
     {listing && <><p>{listing.total} unassigned records; page {listing.page}.</p>
       {listing.assets.map((asset) => <p key={asset.id}><button disabled={busy} onClick={() => void inspect(asset.id)}>Inspect {asset.algorithm} ({asset.id})</button></p>)}
@@ -80,7 +80,7 @@ export function MixedHistoryDecision({ review, onCommitted }: { review: LegacyIm
   const snapshotMatches = record?.payload?.expected_snapshot_sha256 === review.snapshot_sha256;
   return <section aria-label="Controlled mixed history decision" style={{ marginTop: 18 }}>
     <h3>Controlled mixed-source retention</h3>
-    <p>Retain every original asset/evidence link. Replace current declarations only after two human reviews. Exports remain explicitly partial and posture grades blocked; this does not certify the evidence chain or a bank deployment.</p>
+    <p><span title={"Retain every original asset/evidence link. Replace current declarations only after two human reviews. Exports remain explicitly partial and posture grades blocked; this does not certify the evidence chain or a bank deployment."}>{"Retain every original asset/evidence link."}</span></p>
     <button disabled={busy} onClick={() => void load()}>Load controlled mixed review</button>
     {loaded && <><p>Case: {record?.payload?.state || "No proposal"}. A different current CISO/administrator is required for approval.</p>
       {record && <dl style={{ overflowWrap: "anywhere" }}><dt>Immutable case SHA-256</dt><dd>{record.payload_sha256}</dd><dt>Proposing human ID</dt><dd>{record.payload.submitted_by}</dd><dt>Proposal rationale</dt><dd>{record.payload.reason}</dd><dt>Proposal evidence reference</dt><dd>{record.payload.evidence_ref}</dd><dt>Proposal snapshot</dt><dd>{snapshotMatches ? "Matches this source review" : "Changed — refresh source and submit a new proposal"}</dd></dl>}

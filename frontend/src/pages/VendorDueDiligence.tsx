@@ -170,7 +170,7 @@ export default function VendorDueDiligence() {
 
       {!vendors.length ? (
         <Panel title="No operational vendors" sub="Use the form above to create the first tenant-scoped vendor, then collect its due-diligence profile here">
-          <div className="dim">No vendor records were returned by the live tenant. This screen never creates demo vendors.</div>
+          <div className="dim"><span title={"No vendor records were returned by the live tenant. This screen never creates demo vendors."}>{"No vendor records were returned by the live tenant."}</span></div>
         </Panel>
       ) : (
         <>

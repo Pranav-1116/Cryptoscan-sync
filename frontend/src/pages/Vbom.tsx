@@ -129,13 +129,9 @@ export default function Vbom() {
             Vendor Bill of Materials
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
-            Every <b style={{ color: "var(--text)" }}>vendor + the systems they supply</b> — with criticality, linkage, and lifecycle. <span style={{ color: "var(--green)" }}>One asset model</span>, vendor-materialized for third-party risk.
+            Vendors and the systems they supply.
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>VENDOR → SYSTEM → COMPONENT</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span className="kicker" style={{ fontSize: 10 }}>LINKED TO ESTATE</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
             <span style={{ fontSize: 11, color: "var(--dim)" }}>{vendorRead ? `${linkage.length} links · ${coveredSystems} systems covered` : "vendor register not read"}</span>
           </div>
         </div>

@@ -7,6 +7,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { mockFetch, offlineFetch } from "../test/setup";
 import CryptoLogAlerts from "./CryptoLogAlerts";
+import { withTitles } from "../test/withTitles";
 
 const AS_OF = "2026-11-07T04:00:00Z";
 
@@ -93,7 +94,7 @@ describe("CryptoLog threat investigation (§9)", () => {
   it("states an empty result as an empty result, never invented alerts", async () => {
     mockFetch({ "/api/v1/cryptolog/alerts": { rows: [], total_count: 0, next_cursor: null, has_more: false } });
     renderAlerts();
-    expect(await screen.findByTestId("alerts-empty")).toHaveTextContent(/never invents alerts/);
+    expect(withTitles(await screen.findByTestId("alerts-empty"))).toMatch(/never invents alerts/);
   });
 
   it("shows what is proven AND what is NOT proven, with severity drivers and append-only history", async () => {

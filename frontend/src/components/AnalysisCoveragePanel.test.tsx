@@ -3,6 +3,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import AnalysisCoveragePanel from "./AnalysisCoveragePanel";
 import type { AnalysisCoverage } from "../lib/api";
+import { withTitles } from "../test/withTitles";
 
 function report(): AnalysisCoverage {
   return { schema: "cryptoscan.analysis-coverage/1", status: "BOUNDED_REVIEW", analysis_performed: true,
@@ -15,7 +16,7 @@ describe("prominent coverage qualifications", () => {
   it("does not reconstruct old stored coverage", () => {
     render(<AnalysisCoveragePanel />);
     expect(screen.getByText("Coverage unavailable for this stored answer")).toBeInTheDocument();
-    expect(screen.getByText(/today's graph/)).toHaveTextContent("not zero exposure");
+    expect(withTitles(screen.getByText(/today's graph/))).toContain("not zero exposure");
   });
   it("separates source omission and lower bounds from exact totals", () => {
     const c = report();
@@ -40,7 +41,7 @@ describe("prominent coverage qualifications", () => {
     c.missing_links = [{ name: "systems_without_process_support", count: 2, denominator: 8, scope: "loaded review", status: "GAP_REPORTED" }];
     render(<AnalysisCoveragePanel coverage={c} />);
     const panel = within(screen.getByRole("region", { name: "Coverage and limitations" }));
-    expect(panel.getByText(/compact membership counts are independent/)).toBeInTheDocument();
+    expect(panel.getByTitle(/compact membership counts are independent/)).toBeInTheDocument();
     expect(panel.getByText(/systems without process support: 2 of 8/)).toBeInTheDocument();
     expect(panel.queryByText(/Source input truncated/)).not.toBeInTheDocument();
     expect(panel.getByText(/not additive/)).toBeInTheDocument();

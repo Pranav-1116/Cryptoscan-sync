@@ -482,7 +482,7 @@ export default function Assets() {
           <div style={{ marginBottom: "12px", lineHeight: 0, color: "var(--faint)" }}><IconEstate size={32} /></div>
           <h3 style={{ fontSize: "18px", fontWeight: 600, margin: "0 0 8px" }}>No cryptographic assets discovered yet</h3>
           <p style={{ color: "var(--dim)", fontSize: "14px", maxWidth: "480px", margin: "0 auto 20px", lineHeight: "1.5" }}>
-            No assets were returned by the inventory service. Start a discovery scan to populate this view.
+            <span title={"No assets were returned by the inventory service. Start a discovery scan to populate this view."}>{"No assets were returned by the inventory service."}</span>
           </p>
           <Link to="/scanners" className="btn primary" style={{ textDecoration: "none", display: "inline-block" }}>
             Start Discovery Scan
@@ -633,8 +633,8 @@ export default function Assets() {
                   {activeTab === 1 && (
                     <div style={{ fontSize: "13px" }}>
                       {detailLoading ? <p role="status">Loading evidence IDs...</p> : detailError ? <p role="alert">{detailError}</p> : detail?.id === selectedId && detail.evidenceIds.length ? (
-                        <><p>Evidence IDs associated with this asset. Integrity has not been verified here.</p><ul>{detail.evidenceIds.map((id) => <li key={id}><code style={{ color: "var(--cyan)", overflowWrap: "anywhere" }}>{id}</code></li>)}</ul></>
-                      ) : <p>No evidence IDs are associated with this asset in the detail response. Integrity not verified.</p>}
+                        <><p><span title={"Evidence IDs associated with this asset. Integrity has not been verified here."}>{"Evidence IDs associated with this asset."}</span></p><ul>{detail.evidenceIds.map((id) => <li key={id}><code style={{ color: "var(--cyan)", overflowWrap: "anywhere" }}>{id}</code></li>)}</ul></>
+                      ) : <p><span title={"No evidence IDs are associated with this asset in the detail response. Integrity not verified."}>{"No evidence IDs are associated with this asset in the detail response."}</span></p>}
                     </div>
                   )}
 
@@ -642,7 +642,7 @@ export default function Assets() {
                     <div style={{ fontSize: "13px" }}>
                       {!displayedAsset.algorithm || !displayedAsset.sourcePath ? (
                         <p role="note" style={{ color: "var(--dim)" }}>
-                          The fact join needs this asset's algorithm and source path; at least one is not observed on this row. No fact is inferred.
+                          <span title={"The fact join needs this asset's algorithm and source path; at least one is not observed on this row. No fact is inferred."}>{"The fact join needs this asset's algorithm and source path"}</span>
                         </p>
                       ) : factLoading ? (
                         <p role="status">Querying the fact store by algorithm and file prefix...</p>
@@ -677,7 +677,7 @@ export default function Assets() {
                               </div>
                             </div>
                             <p style={{ margin: 0, fontSize: "11.5px", color: "var(--faint)" }}>
-                              Served from the materialised fact store — queried server-side by algorithm + file prefix, matched on the identity spine. The store is derived and rebuildable; it is a projection of evidence, not a second truth.
+                              <span title={"Served from the materialised fact store — queried server-side by algorithm + file prefix, matched on the identity spine. The store is derived and rebuildable; it is a projection of evidence, not a second truth."}>{"Served from the materialised fact store"}</span>
                             </p>
                           </div>
                         ) : (
@@ -699,7 +699,7 @@ export default function Assets() {
                         <p role="alert">{blastError}</p>
                       ) : blast?.forId === displayedAsset.id && blast.unlinked ? (
                         <p role="note" style={{ color: "var(--dim)" }}>
-                          This asset is not linked to any system — no SystemAsset rows reference it, so the graph walk has no start. Blast radius is unknown, not zero: system links are declared or adopted relationships (Dependency Graph → Edge Manager), never inferred from co-location.
+                          <span title={"This asset is not linked to any system — no SystemAsset rows reference it, so the graph walk has no start. Blast radius is unknown, not zero: system links are declared or adopted relationships (Dependency Graph → Edge Manager), never inferred from co-location."}>{"This asset is not linked to any system"}</span>
                         </p>
                       ) : blast?.forId === displayedAsset.id && blast.data ? (
                         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -748,8 +748,7 @@ export default function Assets() {
                       {assetTasksLoading && <p style={{ color: "var(--dim)" }}>Loading remediation tasks…</p>}
                       {!assetTasksError && !assetTasksLoading && assetTasks && assetTasks.rows.length === 0 && (
                         <p style={{ color: "var(--dim)" }}>
-                          No remediation tasks reference this asset's evidence. Tasks are created
-                          from Priorities or a finding's drawer — not invented here.
+                          <span title={"No remediation tasks reference this asset's evidence. Tasks are created from Priorities or a finding's drawer — not invented here."}>{"No remediation tasks reference this asset's evidence."}</span>
                         </p>
                       )}
                       {!assetTasksError && !assetTasksLoading && assetTasks && assetTasks.rows.length > 0 && (

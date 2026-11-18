@@ -406,10 +406,7 @@ export default function Simulation() {
             Simulation workspace
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 700 }}>
-            Ask the twin a question. <b style={{ color: "var(--text)" }}>Change the estate</b> to see what a
-            cryptographic change would do to the six BOMs, or <b style={{ color: "var(--text)" }}>cascade a
-            failure</b> to see what a stopped asset reaches, wave by wave. Preview first; every run is
-            measured against one projection id and stored quarantined.
+            Ask the twin what a change or failure would do to the estate.
           </p>
           <p style={{ margin: "6px 0 0", fontSize: 11.5, color: "var(--faint)", maxWidth: 700 }}>
             Ten registered scenarios, four cascades and a bounded sequence of up to five of them —
@@ -450,9 +447,7 @@ export default function Simulation() {
         <div>
           <div style={{ fontSize: 12, fontWeight: 800, color: "var(--violet)" }}>SIMULATION ONLY — NOTHING IS EXECUTED</div>
           <div style={{ fontSize: 11, color: "var(--dim)" }}>
-            A scenario is applied to a snapshot of the twin and the six BOMs are re-projected from that copy.
-            A cascade walks the live topology and changes nothing, so it reports no BOM diff at all. Both say
-            whether they touched the live state; neither is counted as estate state.
+            <span title={"A scenario is applied to a snapshot of the twin and the six BOMs are re-projected from that copy. A cascade walks the live topology and changes nothing, so it reports no BOM diff at all. Both say whether they touched the live state; neither is counted as estate state."}>{"A scenario is applied to a snapshot of the twin and the six BOMs are re-projected from that copy."}</span>
           </div>
         </div>
       </div>
@@ -799,9 +794,7 @@ export default function Simulation() {
                 rows={4} style={inputStyle}
                 placeholder={'{"tenant_id":"<tenant>","asset_ref":"app:<id>","metric_name":"crypto.tls_handshake_ms","source_id":"<exporter>","change_event_id":"<stored change>","before_start":"<ISO-8601>","before_end":"<ISO-8601>","after_start":"<ISO-8601>","after_end":"<ISO-8601>"}'} />
               <div style={{ marginTop: 4, fontSize: 11, color: "var(--dim)" }}>
-                The preview checks the Twin selector only. Run checks measurement provenance,
-                the recorded change and exact asset identity; unsigned captures remain provisional.
-                No future performance or migration wave is inferred.
+                <span title={"The preview checks the Twin selector only. Run checks measurement provenance, the recorded change and exact asset identity; unsigned captures remain provisional. No future performance or migration wave is inferred."}>{"The preview checks the Twin selector only."}</span>
               </div>
               {performanceInput.error && <div role="alert" style={{ fontSize: 11, color: "var(--amber)" }}>{performanceInput.error}</div>}
             </div>
@@ -1106,8 +1099,7 @@ function SimulationResult({ result }: { result: SimulationRun }) {
           </div>
           {(result.effects || []).length === 0 ? (
             <div style={{ padding: "8px 16px 12px", fontSize: 12, color: "var(--dim)" }}>
-              No evidence record changed. That is the honest answer for a selector that matched nothing —
-              not a statement that the change is safe.
+              <span title={"No evidence record changed. That is the honest answer for a selector that matched nothing — not a statement that the change is safe."}>{"No evidence record changed."}</span>
             </div>
           ) : (
             result.effects.map((effect) => <EffectRow key={effect.evidence_id + effect.asset_id} effect={effect} />)
@@ -1153,8 +1145,7 @@ function SimulationResult({ result }: { result: SimulationRun }) {
           </div>
           {(result.blockers || []).length === 0 ? (
             <div style={{ fontSize: 11.5, color: "var(--dim)" }}>
-              No blocker was reported. A blocker is only raised where the evidence contradicts the target,
-              so an empty list is not evidence that the change is safe.
+              <span title={"No blocker was reported. A blocker is only raised where the evidence contradicts the target, so an empty list is not evidence that the change is safe."}>{"No blocker was reported."}</span>
             </div>
           ) : (
             result.blockers.map((blocker, index) => (
@@ -1201,9 +1192,7 @@ function SimulationResult({ result }: { result: SimulationRun }) {
       {refused && result.status === "NO_MATCH" && (
         <Panel title="Nothing to simulate">
           <div style={{ fontSize: 12.5, color: "var(--dim)", lineHeight: 1.6 }}>
-            The scenario matched no evidence record, so there is no copy to project and nothing to store.
-            Widen the selector — the chips in step 2 are the values this estate actually reports — or
-            run discovery if the asset you expected is missing from the twin.
+            <span title={"The scenario matched no evidence record, so there is no copy to project and nothing to store. Widen the selector — the chips in step 2 are the values this estate actually reports — or run discovery if the asset you expected is missing from the twin."}>{"The scenario matched no evidence record, so there is no copy to project and nothing to store."}</span>
           </div>
         </Panel>
       )}
@@ -1306,8 +1295,7 @@ function CascadeResult({ result }: { result: SimulationRun }) {
           </div>
           {(result.blockers || []).length === 0 ? (
             <div style={{ fontSize: 11.5, color: "var(--dim)" }}>
-              No refused edge touches this radius. That does not make the radius complete: it means the
-              topology the collectors established had no contradiction inside it.
+              <span title={"No refused edge touches this radius. That does not make the radius complete: it means the topology the collectors established had no contradiction inside it."}>{"No refused edge touches this radius."}</span>
             </div>
           ) : (
             result.blockers.map((blocker, index) => (

@@ -618,7 +618,7 @@ export default function Scanners() {
               I authorize active probes of this declared network scope.
             </label>}
             </> : <p style={{ margin: 0, fontSize: 13, color: "var(--dim)" }}>
-              Registers onboarding scope and estimates assets. Requires a tested connector.
+              <span title={"Registers onboarding scope and estimates assets. Requires a tested connector."}>{"Registers onboarding scope and estimates assets."}</span>
             </p>}
           </div>
 
@@ -836,8 +836,7 @@ function RunPhases({ requestedAt, created, started, completed, terminal }: {
         </div>
       ))}
       <p style={{ margin: "4px 0 0", fontSize: 10, color: "var(--faint)" }}>
-        Timestamps come from the run record; the console adds no estimate.
-      </p>
+        <span title={"Timestamps come from the run record; the console adds no estimate."}>{"Timestamps come from the run record"}</span>  </p>
     </div>
   );
 }
@@ -938,8 +937,7 @@ function RunCoverage({ progress }: { progress: Record<string, unknown> }) {
       </div>
       <HBars rows={rows} emptyTitle="No coverage count recorded" emptyNote="The run record carried no numeric coverage." />
       <p style={{ margin: "4px 0 0", fontSize: 10, color: "var(--faint)" }}>
-        Bar length is relative to the largest count in this run. These summarize the scan result; the findings live in the
-        scanner's own surfaces.
+        <span title={"Bar length is relative to the largest count in this run. These summarize the scan result; the findings live in the scanner's own surfaces."}>{"Bar length is relative to the largest count in this run."}</span>
       </p>
     </div>
   );

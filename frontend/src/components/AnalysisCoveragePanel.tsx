@@ -8,7 +8,7 @@ export default function AnalysisCoveragePanel({ coverage }: { coverage?: Analysi
   if (!coverage || coverage.schema !== "cryptoscan.analysis-coverage/1") return (
     <section aria-label="Coverage and limitations" style={{ padding: 12, border: "1px solid var(--amber)", borderRadius: "var(--r)" }}>
       <strong>Coverage unavailable for this stored answer</strong>
-      <div role="status">Do not reconstruct historical coverage from today's graph. Missing metadata is not zero exposure or proof of safety.</div>
+      <div role="status"><span title={"Do not reconstruct historical coverage from today's graph. Missing metadata is not zero exposure or proof of safety."}>{"Do not reconstruct historical coverage from today's graph."}</span></div>
     </section>
   );
   const inputs = Object.entries(coverage.collections).filter(([, read]) => read.truncated);
@@ -19,12 +19,12 @@ export default function AnalysisCoveragePanel({ coverage }: { coverage?: Analysi
       <strong>Coverage and limitations · {label(coverage.status)}</strong>
       <div role="status">
         Estate completeness: unknown. {coverage.note}
-        {!coverage.source_metadata_available && <div>Source read metadata unavailable; collection completeness cannot be assessed.</div>}
+        {!coverage.source_metadata_available && <div><span title={"Source read metadata unavailable; collection completeness cannot be assessed."}>{"Source read metadata unavailable"}</span></div>}
         {!coverage.analysis_performed && <div>No traversal performed for this unresolved selection.</div>}
         {coverage.known_input_truncation && <div><b>Source input truncated. Modeled membership and counts may omit exposure.</b></div>}
         {coverage.known_horizon_omission && <div><b>Loaded relationships continue beyond a traversal horizon. Omitted neighbours are not included in impact totals.</b></div>}
         {coverage.horizon_extension_unknown && <div><b>Traversal extension not evaluated. Unknown is not zero additional systems.</b></div>}
-        {coverage.explanation_truncation && <div>Explanation listings truncated; compact membership counts are independent of these detail limits.</div>}
+        {coverage.explanation_truncation && <div><span title={"Explanation listings truncated; compact membership counts are independent of these detail limits."}>{"Explanation listings truncated"}</span></div>}
       </div>
       {inputs.length > 0 && <ul>{inputs.map(([name, read]) => <li key={name}>
         {label(name)}: returned {read.returned ?? "unknown"} {read.unit}, limit {read.limit ?? "unknown"}; omitted input reported.
@@ -53,7 +53,7 @@ export default function AnalysisCoveragePanel({ coverage }: { coverage?: Analysi
           {label(row.name)}: returned {row.returned ?? "not counted"} / requested {row.requested ?? "not counted"}; limit {row.limit ?? "not specified"} · {row.scope}
         </li>)}</ul>
       </details>
-      <div>No overall coverage percentage is inferred. “Within read limit” does not certify complete discovery or operational availability.</div>
+      <div><span title={"No overall coverage percentage is inferred. “Within read limit” does not certify complete discovery or operational availability."}>{"No overall coverage percentage is inferred."}</span></div>
     </section>
   );
 }

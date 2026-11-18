@@ -81,8 +81,7 @@ export default function DbPerfWorkspace({ data }: { data: PerformanceDbWorkspace
         <Panel title="Metric areas" sub="delivered families with their window statistics">
           {Object.keys(areas).every((k) => Object.keys(areas[k]?.metrics ?? {}).length === 0) ? (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              No database telemetry is stored in this window — missing
-              telemetry is a collection gap, never zeros.
+              <span title={"No database telemetry is stored in this window — missing telemetry is a collection gap, never zeros."}>{"No database telemetry is stored in this window"}</span>
             </div>
           ) : (
             Object.keys(AREA_LABELS).map((key) => (
@@ -101,8 +100,7 @@ export default function DbPerfWorkspace({ data }: { data: PerformanceDbWorkspace
         <Panel title="Databases" sub="per-database figures as delivered — a platform is never invented">
           {!databases.length ? (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              No database telemetry is stored in this window — a missing
-              database is a collection gap, not a healthy estate.
+              <span title={"No database telemetry is stored in this window — a missing database is a collection gap, not a healthy estate."}>{"No database telemetry is stored in this window"}</span>
             </div>
           ) : (
             <table style={{ width: "100%", fontSize: 12 }}>
@@ -155,8 +153,7 @@ export default function DbPerfWorkspace({ data }: { data: PerformanceDbWorkspace
           </table>
           {!(data?.collectors ?? []).length ? (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              No collector health is recorded — an unread collector is not a
-              healthy collector.
+              <span title={"No collector health is recorded — an unread collector is not a healthy collector."}>{"No collector health is recorded"}</span>
             </div>
           ) : (
             <table style={{ width: "100%", fontSize: 12 }}>

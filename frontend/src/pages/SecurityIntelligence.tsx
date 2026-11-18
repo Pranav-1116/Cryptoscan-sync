@@ -163,7 +163,7 @@ export default function SecurityIntelligence() {
               <K k="qps" v={String((resolved.limits as Record<string, unknown>).requests_per_second ?? "—")} />
               <K k="connections" v={String((resolved.limits as Record<string, unknown>).max_connections ?? "—")} />
               <div className="dim" style={{ fontSize: 11.5, marginTop: 8 }}>
-                A regulated sector can only tighten this profile — it can never loosen it.
+                <span title={"A regulated sector can only tighten this profile — it can never loosen it."}>{"A regulated sector can only tighten this profile"}</span>
               </div>
             </div>
           )}

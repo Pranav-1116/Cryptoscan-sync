@@ -61,7 +61,7 @@ describe("Binary Intelligence (§16)", () => {
     renderPage();
     expect(screen.getByRole("button", { name: "Artifact Inventory & Scan" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Crypto Findings" })).toBeDisabled();
-    const notes = screen.getAllByText(/never executed/);
+    const notes = screen.getAllByTitle(/never executed/);
     expect(notes.length).toBeGreaterThanOrEqual(1);
   });
 

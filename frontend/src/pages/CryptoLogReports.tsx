@@ -77,9 +77,7 @@ export default function CryptoLogReports() {
               {result.fileCount ? ` — ${result.fileCount} files` : ""}.
             </div>
             <div className="dim" style={{ marginTop: 6 }}>
-              The archive contains events.json, alerts.json, integrity.json, report.md and
-              manifest.json. The manifest records a SHA-256 for every file: verify it with any
-              sha256sum-style check. A missing artifact is unverifiable, not valid.
+              <span title={"The archive contains events.json, alerts.json, integrity.json, report.md and manifest.json. The manifest records a SHA-256 for every file: verify it with any sha256sum-style check. A missing artifact is unverifiable, not valid."}>{"The archive contains events.json, alerts.json, integrity.json, report.md and manifest.json."}</span>
             </div>
           </div>
         ) : (

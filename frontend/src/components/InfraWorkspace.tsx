@@ -116,8 +116,7 @@ export default function InfraWorkspace({ data }: { data: PerformanceInfraWorkspa
         <Panel title="Server Inventory" sub="open a server's Technology BOM record, dependencies and Digital Twin history">
           {!inventory.length ? (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              No server telemetry is stored in this window — a missing server
-              is a collection gap, not an empty estate.
+              <span title={"No server telemetry is stored in this window — a missing server is a collection gap, not an empty estate."}>{"No server telemetry is stored in this window"}</span>
             </div>
           ) : (
             <table style={{ width: "100%", fontSize: 12 }}>
@@ -149,7 +148,7 @@ export default function InfraWorkspace({ data }: { data: PerformanceInfraWorkspa
                           <Link to={`/live-asset-intelligence?asset=${encodeURIComponent(row.link)}&detail_tab=history`}>Twin history</Link>
                         </span>
                       ) : (
-                        <span style={{ opacity: 0.65 }}>no verified link — the engine never invents asset identities</span>
+                        <span style={{ opacity: 0.65 }}>no verified link</span>
                       )}
                     </td>
                   </tr>
@@ -163,7 +162,7 @@ export default function InfraWorkspace({ data }: { data: PerformanceInfraWorkspa
       {tab === "cpu" && (
         <Panel title="CPU & Memory" sub="utilisation and load as delivered — per-server distribution is in the Server Inventory">
           {Object.keys(cat("cpu")?.metrics ?? {}).length + Object.keys(cat("memory")?.metrics ?? {}).length === 0 ? (
-            <div style={{ fontSize: 12, opacity: 0.75 }}>No CPU or memory telemetry is stored in this window — unknown, never zero.</div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}><span title={"No CPU or memory telemetry is stored in this window — unknown, never zero."}>{"No CPU or memory telemetry is stored in this window"}</span></div>
           ) : (
             <>
               <SummaryTable metrics={cat("cpu")?.metrics ?? {}} />
@@ -176,7 +175,7 @@ export default function InfraWorkspace({ data }: { data: PerformanceInfraWorkspa
       {tab === "storage" && (
         <Panel title="Storage Performance" sub="capacity, I/O and latency as delivered">
           {Object.keys({ ...(cat("storage")?.metrics ?? {}), ...(cat("disk")?.metrics ?? {}) }).length === 0 ? (
-            <div style={{ fontSize: 12, opacity: 0.75 }}>No storage telemetry is stored in this window — unknown, never zero.</div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>No storage telemetry is stored in this window.</div>
           ) : (
             <>
               <SummaryTable metrics={cat("storage")?.metrics ?? {}} />
@@ -199,8 +198,7 @@ export default function InfraWorkspace({ data }: { data: PerformanceInfraWorkspa
         <Panel title="Container Performance" sub="containers and Kubernetes as measured">
           {Object.keys({ ...(cat("containers")?.metrics ?? {}), ...(cat("kubernetes")?.metrics ?? {}) }).length === 0 ? (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              No container telemetry is stored in this window — absence of
-              telemetry is not a healthy cluster.
+              <span title={"No container telemetry is stored in this window — absence of telemetry is not a healthy cluster."}>{"No container telemetry is stored in this window"}</span>
             </div>
           ) : (
             <>
@@ -227,8 +225,7 @@ export default function InfraWorkspace({ data }: { data: PerformanceInfraWorkspa
         <Panel title="Historical Trends" sub="window statistics over the delivered samples">
           {Object.keys(data?.trends ?? {}).length === 0 ? (
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              No trend telemetry is stored in this window — a missing trend is
-              a collection gap, not a flat line.
+              <span title={"No trend telemetry is stored in this window — a missing trend is a collection gap, not a flat line."}>{"No trend telemetry is stored in this window"}</span>
             </div>
           ) : (
             <SummaryTable metrics={data?.trends ?? {}} />

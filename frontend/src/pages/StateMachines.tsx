@@ -83,8 +83,7 @@ function MachinePanel({ machine }: { machine: Machine }) {
         </div>
       ) : (
         <p style={{ margin: "4px 0 10px", color: "var(--slate, #64748b)" }}>
-          Vocabulary not yet observed — states are never guessed. The field exists and is
-          listed so the register cannot rot around it.
+          <span title={"Vocabulary not yet observed — states are never guessed. The field exists and is listed so the register cannot rot around it."}>{"Vocabulary not yet observed"}</span>
         </p>
       )}
 
@@ -100,8 +99,7 @@ function MachinePanel({ machine }: { machine: Machine }) {
         </div>
       ) : (
         <p style={{ margin: "4px 0 10px", color: "var(--slate, #64748b)" }}>
-          No edges observed in code — the vocabulary is pinned; edges appear only when
-          code proves them.
+          <span title={"No edges observed in code — the vocabulary is pinned; edges appear only when code proves them."}>{"No edges observed in code"}</span>
         </p>
       )}
 
@@ -169,8 +167,7 @@ export default function StateMachines() {
           ))}
         </div>
         <p style={{ margin: "8px 0 0", color: "var(--slate, #64748b)", fontSize: 12 }}>
-          Hover a chip for what the class means. An undeclared state always renders slate —
-          an undeclared state must never render as a pass.
+          <span title={"Hover a chip for what the class means. An undeclared state always renders slate — an undeclared state must never render as a pass."}>{"Hover a chip for what the class means."}</span>
         </p>
       </Panel>
 

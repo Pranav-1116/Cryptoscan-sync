@@ -15,7 +15,7 @@ function ReceiptPage({ status, cursor, onNext }: { status: string; cursor: strin
   if (cursor) params.set("cursor", cursor);
   const page = useLive<NotificationReceiptPage | null>(`/api/v1/notifications/deliveries?${params}`, null);
   if (page.loading) return <p role="status">Loading receipt metadata…</p>;
-  if (page.error || !page.data) return <p role="alert">Receipt ledger unavailable — not measured. No delivery conclusion can be drawn.</p>;
+  if (page.error || !page.data) return <p role="alert"><span title={"Receipt ledger unavailable — not measured. No delivery conclusion can be drawn."}>{"Receipt ledger unavailable"}</span></p>;
   return <>
     <Table head={["Receipt / event", "Destination / channel", "State", "Attempts / timing"]} rows={page.data.items.map((item) => [
       <span key="identity"><span style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{item.id}</span><br />Event: {item.event_id}<br />{item.event_class || "legacy event class unknown"}</span>,
@@ -29,7 +29,7 @@ function ReceiptPage({ status, cursor, onNext }: { status: string; cursor: strin
         {item.delivered_at && <div>Acknowledged: {when(item.delivered_at)}</div>}
         {item.time_eligible && <div className="dim">Time-eligible; routing/destination may defer</div>}</span>,
     ])} />
-    {!page.data.items.length && <p className="dim">No receipts match this view. This is not proof all events were delivered.</p>}
+    {!page.data.items.length && <p className="dim"><span title={"No receipts match this view. This is not proof all events were delivered."}>{"No receipts match this view."}</span></p>}
     {page.data.next_cursor && <button className="btn" onClick={() => onNext(page.data!.next_cursor!)}>Older receipts</button>}
   </>;
 }
@@ -53,7 +53,7 @@ export default function NotificationReceipts() {
         </div>
         <p className="dim">Observed: {when(summary.data.observed_at)} · Oldest pending: {when(summary.data.oldest_pending_at)}</p>
       </>}
-    <p className="dim">Counts are destination receipts, not unique events. Time eligibility does not override routing or destination settings. HTTP acknowledgement is not downstream ingestion or scheduler liveness; legacy unknown is not delivered. Payloads, endpoints, raw errors and claim credentials are withheld.</p>
+    <p className="dim"><span title={"Counts are destination receipts, not unique events. Time eligibility does not override routing or destination settings. HTTP acknowledgement is not downstream ingestion or scheduler liveness; legacy unknown is not delivered. Payloads, endpoints, raw errors and claim credentials are withheld."}>{"Counts are destination receipts, not unique events."}</span></p>
     <div className="row" style={{ marginBottom: 10 }}>
       <label>Receipt state <select aria-label="Receipt status" value={status} onChange={(event) => { setStatus(event.target.value); setCursor(null); }}>
         <option value="">All receipt states</option>

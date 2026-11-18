@@ -66,8 +66,7 @@ function Adapters() {
           offline profile exercised: {String(status.data.offline_profile_exercised)} ·
           live vendor supported: {String(status.data.live_vendor_supported)}</p>
         {!status.data.qualification && <p role="alert">
-          No qualification exists for this manifest. It is a declared profile, not a supported adapter:
-          the server will refuse supplier observations for it with HTTP 409.
+          <span title={"No qualification exists for this manifest. It is a declared profile, not a supported adapter: the server will refuse supplier observations for it with HTTP 409."}>{"No qualification exists for this manifest."}</span>
         </p>}
         {status.data.qualification && <details open>
           <summary>Qualification payload (engine and manifest fingerprints)</summary>

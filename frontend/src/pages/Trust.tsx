@@ -89,7 +89,7 @@ export default function Trust() {
               <span key="u">{k.key_usage ?? k.usage ?? "—"}</span>,
             ])}
           />
-          {keyList.length === 0 && <p className="dim" style={{ fontSize: 13 }}>No keys registered yet — import or discover keys to begin lifecycle tracking.</p>}
+          {keyList.length === 0 && <p className="dim" style={{ fontSize: 13 }}><span title={"No keys registered yet — import or discover keys to begin lifecycle tracking."}>{"No keys registered yet"}</span></p>}
         </Panel>
 
         <Panel title="Rotation forecast" sub={`${forecast.data.upcoming_count ?? upcoming.length} item(s) due in the horizon window`}>
@@ -263,7 +263,7 @@ function OtWindowsPanel({ onChange }: { onChange: () => void }) {
             : <span key="x" className="dim">—</span>,
         ])}
       />
-      {wins.length === 0 && <p className="dim" style={{ fontSize: 13 }}>No maintenance windows declared. Outside a window, OT/ICS scanning stays strictly passive.</p>}
+      {wins.length === 0 && <p className="dim" style={{ fontSize: 13 }}><span title={"No maintenance windows declared. Outside a window, OT/ICS scanning stays strictly passive."}>{"No maintenance windows declared."}</span></p>}
 
       <p className="dim" style={{ fontSize: 12, marginTop: 12 }}>
         Passive operations (always allowed): {(ops.data.passive_operations ?? []).slice(0, 6).join(", ")}{(ops.data.passive_operations ?? []).length > 6 ? "…" : ""}.

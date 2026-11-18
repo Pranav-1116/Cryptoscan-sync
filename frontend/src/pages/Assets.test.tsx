@@ -26,7 +26,7 @@ describe("asset inventory from the live API", () => {
     expect(screen.queryByText(/RSA|2048|TLS 1\.3|Production Cluster|Security Operations|OBS-|Integrity Verified|No drift/)).toBeNull();
     expect(screen.queryByRole("link", { name: /Evidence/i })).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Evidence" }));
-    expect(await screen.findByText("No evidence IDs are associated with this asset in the detail response. Integrity not verified.")).toBeInTheDocument();
+    expect(await screen.findByTitle("No evidence IDs are associated with this asset in the detail response. Integrity not verified.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Facts" }));
     expect(screen.getByText(/The fact join needs this asset's algorithm and source path/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Dependencies" }));
@@ -368,7 +368,7 @@ describe("asset detail → fact and graph cross-links (round 64)", () => {
     await screen.findByRole("heading", { name: "AES-256" });
     fireEvent.click(screen.getByRole("tab", { name: "Remediation" }));
     expect(await screen.findByText(/No remediation tasks reference this asset's evidence/)).toBeInTheDocument();
-    expect(screen.getByText(/not invented here/)).toBeInTheDocument();
+    expect(screen.getByTitle(/not invented here/)).toBeInTheDocument();
   });
 });
 

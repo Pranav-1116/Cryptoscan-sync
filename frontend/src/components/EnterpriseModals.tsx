@@ -165,9 +165,7 @@ export function EnvironmentModal({ isOpen, onClose }: { isOpen: boolean; onClose
   return (
     <ModalShell title="Deployment Environment (view profile)" onClose={onClose}>
       <p className="dim" style={{ fontSize: 11.5, marginBottom: 12 }}>
-        Display profile for the console — selects which environment context the
-        dashboards review. It is stored per browser and never changes backend
-        behaviour.
+        <span title={"Display profile for the console — selects which environment context the dashboards review. It is stored per browser and never changes backend behaviour."}>{"Display profile for the console"}</span>
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
         {ENVS.map((e) => (

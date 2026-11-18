@@ -19,7 +19,7 @@ const answer: CascadeTraversalEvidence = { schema: empty.schema, direct: [], dir
 it("does not reconstruct old stored evidence from the current graph", () => {
   render(<TraversalEvidencePanel />);
   expect(screen.getByText(/Traversal evidence unavailable for this stored answer/)).toBeInTheDocument();
-  expect(screen.getByText(/No aggregate confidence or failure probability/)).toBeInTheDocument();
+  expect(screen.getByTitle(/No aggregate confidence or failure probability/)).toBeInTheDocument();
 });
 
 it("shows bounded missing witnesses and preserves physical arrows and timestamp meanings", () => {

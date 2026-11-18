@@ -63,11 +63,9 @@ export default function SecurityCenter() {
             ZELNX Security Operations Center
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 640 }}>
-            Server-owned posture, posture-over-time drift, live threat feed & event stream — <b style={{ color: "var(--text)" }}>every number from a real control-plane signal</b>. Empty reads low, never fabricated green.
+            Posture, drift, threat feed and event stream.
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>POSTURE STREAM SSE · ABAC · AUDIT CHAIN · AGENT FLEET</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
             <Badge tone={postureStream.live ? "green" : posture.source === "live" ? "green" : "amber"}><span className="dot" /> {postureStream.live ? "LIVE SSE" : posture.source === "live" ? "LIVE" : "OFFLINE"} {score}/100</Badge>
           </div>
         </div>

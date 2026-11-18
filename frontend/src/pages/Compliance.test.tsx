@@ -206,7 +206,7 @@ describe("Compliance — requirements register", () => {
       },
     });
     renderPage();
-    await waitFor(() => expect(screen.getByText(/No evidence pack pinned — requirements are not evaluated/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByTitle(/No evidence pack pinned — requirements are not evaluated/)).toBeTruthy());
     // the register stays visible, honestly: every requirement says NO EVIDENCE
     expect(screen.getByText("SOC2-CC6.1")).toBeTruthy();
     expect(screen.getAllByText("NO EVIDENCE").length).toBe(4);

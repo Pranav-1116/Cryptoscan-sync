@@ -249,6 +249,6 @@ describe("DependencyGraph — asset inspector (gap analysis §A)", () => {
     await clickNode("orphan");
     await screen.findByTestId("node-inspector");
     expect(screen.getByText(/unknown, never a clean provenance/)).toBeInTheDocument();
-    expect(screen.getByText(/unknown, not isolated/)).toBeInTheDocument();
+    expect(screen.getByText(/no dependency edges are recorded for this node/)).toBeInTheDocument();
   });
 });

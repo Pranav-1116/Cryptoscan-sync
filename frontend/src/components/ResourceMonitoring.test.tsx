@@ -33,7 +33,7 @@ async function load() {
 
 it("starts honestly empty and does not collect or poll targets", () => {
   render(<ResourceMonitoring />);
-  expect(screen.getAllByText(/not continuous live monitoring/)).toHaveLength(2);
+  expect([...screen.queryAllByText(/not continuous live monitoring/), ...screen.queryAllByTitle(/not continuous live monitoring/)]).toHaveLength(2);
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
   expect(fetcher).not.toHaveBeenCalled();
 });

@@ -19,13 +19,13 @@ function projection(): OperationalImpact {
 
 it("does not silently classify old answers as hard dependency or safe operation", () => {
   render(<OperationalImpactPanel />);
-  expect(screen.getByText(/Missing metadata is unknown/)).toBeInTheDocument();
+  expect(screen.getByTitle(/Missing metadata is unknown/)).toBeInTheDocument();
   expect(screen.queryByText(/HARD: 0/)).not.toBeInTheDocument();
 });
 
 it("shows declared failover identities without claiming healthy alternatives or shrinking exposure", () => {
   render(<OperationalImpactPanel impact={projection()} />);
-  expect(screen.getByText(/failover and buffered edges remain in exposure/)).toBeInTheDocument();
+  expect(screen.getByTitle(/failover and buffered edges remain in exposure/)).toBeInTheDocument();
   expect(screen.getByText(/Declared alternatives: standby/)).toBeInTheDocument();
   expect(screen.getByText(/identity is not health or successful switchover/)).toBeInTheDocument();
   expect(screen.getByText(/Alternative health unverified/)).toBeInTheDocument();

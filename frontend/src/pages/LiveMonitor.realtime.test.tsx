@@ -5,6 +5,7 @@ import { setActiveTenantId } from "../lib/api";
 import { renderWithProviders } from "../test/render";
 import { mockFetch } from "../test/setup";
 import LiveMonitor from "./LiveMonitor";
+import { withTitles } from "../test/withTitles";
 
 const path = "/api/v1/estate/evidence/realtime";
 const idle = {
@@ -26,7 +27,7 @@ describe("live monitor collection authority", () => {
     expect(status).toHaveTextContent("0 enabled schedule(s)");
     expect(status).toHaveTextContent("last completed run none");
     expect(status).toHaveTextContent("reprojects stored observations");
-    expect(status).toHaveTextContent("not proof that a collector acquired new evidence");
+    expect(withTitles(status)).toContain("not proof that a collector acquired new evidence");
   });
 
   it("quotes an incomplete scheduled run as degraded, not healthy", async () => {

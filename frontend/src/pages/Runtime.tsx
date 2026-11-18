@@ -177,8 +177,7 @@ export default function Runtime() {
         <Panel title="No runtime agents reporting yet" sub="install and run the lightweight runtime agent on a machine to see its live cryptography">
           <div style={{ display: "grid", placeItems: "center", padding: "26px 10px" }}>
             <div className="frame" style={{ minHeight: 120, maxWidth: 760, width: "100%", display: "grid", placeItems: "center", border: "1px dashed var(--line-strong)", borderRadius: "var(--r)", color: "var(--faint)", fontSize: 13, padding: 24, textAlign: "center" }}>
-              No host has reported in yet. Run the runtime agent on a Linux machine to inventory its TLS libraries,
-              versions and listening endpoints — findings appear here within seconds of submission.
+              <span title={"No host has reported in yet. Run the runtime agent on a Linux machine to inventory its TLS libraries, versions and listening endpoints — findings appear here within seconds of submission."}>{"No host has reported in yet."}</span>
             </div>
           </div>
           <AgentInstructions />

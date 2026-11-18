@@ -73,11 +73,8 @@ export default function Priorities() {
             Remediation Priorities
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 640 }}>
-            Deterministic work queue — <b style={{ color: "var(--text)" }}>priority = revenue × severity × agility, effort = assets × complexity × (2 − agility)</b>. Replacement from fixed rule table, blast radius from dependency graph.
+            Work queue ranked by revenue, severity and agility.
           </p>
-          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>CORRELATION ENGINE · BLAST RADIUS · FIXED REPLACEMENT TABLE</span>
-          </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>

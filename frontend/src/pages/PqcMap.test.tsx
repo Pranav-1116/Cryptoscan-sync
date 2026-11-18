@@ -122,7 +122,7 @@ describe("PQC migration plan register", () => {
   it("does not silently pass when the register read fails", async () => {
     offlineFetch();
     renderWithProviders(<MigrationPlanRegister />);
-    await screen.findByText(/The plan register did not load\. A failed read is a failure — never an empty plan\./);
+    await screen.findByTitle(/The plan register did not load\. A failed read is a failure — never an empty plan\./);
   });
 });
 

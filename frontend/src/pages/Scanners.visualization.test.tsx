@@ -89,7 +89,7 @@ describe("scanner run visualisation", () => {
     // being drawn as a negative or zero wait.
     expect(screen.getAllByText("unknown").length).toBe(1);
     expect(screen.queryByText("-")).toBeNull();
-    expect(screen.getByText(/the console adds no estimate/)).toBeInTheDocument();
+    expect(screen.getByTitle(/the console adds no estimate/)).toBeInTheDocument();
   });
 
   it("says the timing is unknown instead of drawing a zero-length phase", async () => {

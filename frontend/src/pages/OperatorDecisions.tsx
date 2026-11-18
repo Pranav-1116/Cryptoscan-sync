@@ -227,8 +227,8 @@ function OperatorDecisionsPage() {
                 note="Composition of targets this register attempted — registered scope only, not whole-bank coverage." />
             </div>
           </div>;
-        }) : <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)" }}>Coverage UNKNOWN: no current register in this page. Do not interpret an empty task list as low risk.</p>}
-        <p className="mono" style={{ margin: "8px 0 0", fontSize: 10.5, color: "var(--faint)" }}>Coverage overview is paginated too. Select Coverage to inspect omissions, freshness and the next register page.</p>
+        }) : <p style={{ margin: 0, fontSize: 11.5, color: "var(--dim)" }}><span title={"Coverage UNKNOWN: no current register in this page. Do not interpret an empty task list as low risk."}>{"Coverage UNKNOWN: no current register in this page."}</span></p>}
+        <p className="mono" style={{ margin: "8px 0 0", fontSize: 10.5, color: "var(--faint)" }}><span title={"Coverage overview is paginated too. Select Coverage to inspect omissions, freshness and the next register page."}>{"Coverage overview is paginated too."}</span></p>
       </Panel>
     </aside>
 
@@ -278,7 +278,7 @@ function OperatorDecisionsPage() {
     </Panel>
 
     <Panel title="Condition-level remediation workflow">
-      <p style={{ margin: "0 0 8px", fontSize: 11.5, color: "var(--dim)" }}>Propose an explicit condition; a different authorized reviewer approves it. Reported completion is only a declaration. A subsequent independent collector must observe the exact condition. Missing evidence stays INCONCLUSIVE. Expired / changed authority requires a new proposal.</p>
+      <p style={{ margin: "0 0 8px", fontSize: 11.5, color: "var(--dim)" }}><span title={"Propose an explicit condition; a different authorized reviewer approves it. Reported completion is only a declaration. A subsequent independent collector must observe the exact condition. Missing evidence stays INCONCLUSIVE. Expired / changed authority requires a new proposal."}>{"Propose an explicit condition"}</span></p>
       <form onSubmit={submit} style={{ maxWidth: 760 }}>
         <label>Step <select aria-label="Workflow step" value={action} onChange={e => { setAction(e.target.value); setFields({}); }}>{["create-task", "propose", "approve", "report-complete", "verify", "revoke"].map(x => <option key={x}>{x}</option>)}</select></label>
         {action === "create-task" ? <>{field("evidenceId", "Original finding evidence ID")}{field("owner", "Accountable owner reference")}{field("notes", "Task context")}</> : action === "propose" ? <>

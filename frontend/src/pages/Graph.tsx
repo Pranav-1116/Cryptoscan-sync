@@ -460,7 +460,7 @@ export default function Graph(){
                 <div style={{textAlign:"center", padding:"18px 12px", border:"1px dashed var(--line-strong)", borderRadius:"var(--r)", background:"var(--bg-2)"}}>
                   <div style={{fontSize:22}}>◎</div>
                   <div style={{fontWeight:700, marginTop:6}}>Select a node to inspect</div>
-                  <div style={{fontSize:12, color:"var(--dim)", marginTop:6, lineHeight:1.5}}>See blast radius, upstream ancestors, provenance and hops. Use filters to narrow the canvas, then click through the topology.</div>
+                  <div style={{fontSize:12, color:"var(--dim)", marginTop:6, lineHeight:1.5}}><span title={"See blast radius, upstream ancestors, provenance and hops. Use filters to narrow the canvas, then click through the topology."}>{"See blast radius, upstream ancestors, provenance and hops."}</span></div>
                 </div>
                 <div style={{marginTop:12, display:"grid", gridTemplateColumns:"1fr 1fr", gap:8}}>
                   <div style={{padding:"10px 12px", background:"var(--panel-2)", border:"1px solid var(--line)", borderRadius:"var(--r)"}}><div style={{fontSize:10, color:"var(--dim)", letterSpacing:.06}}>AVG DEGREE</div><div style={{fontSize:18, fontWeight:800, fontFamily:"var(--mono)"}}>{avgDeg}</div></div>
@@ -514,7 +514,7 @@ export default function Graph(){
                 {/* downstream */}
                 <div>
                   <div style={{fontSize:11, fontWeight:700, color:"var(--faint)", marginBottom:6}}>DOWNSTREAM ({blastSet.size})</div>
-                  {blastSet.size===0 ? <div style={{fontSize:12, color:"var(--dim)", padding:"10px", background:"var(--bg-2)", borderRadius:"var(--r)", border:"1px solid var(--line)"}}>No downstream dependents — this node is a leaf. Safe to rotate without cascade, but verify via evidence.</div> : (
+                  {blastSet.size===0 ? <div style={{fontSize:12, color:"var(--dim)", padding:"10px", background:"var(--bg-2)", borderRadius:"var(--r)", border:"1px solid var(--line)"}}><span title={"No downstream dependents — this node is a leaf. Safe to rotate without cascade, but verify via evidence."}>{"No downstream dependents"}</span></div> : (
                     <div style={{maxHeight:160, overflow:"auto", display:"flex", flexDirection:"column", gap:4, paddingRight:2}}>
                       {Array.from(blastSet).slice(0,30).map(id=>{
                         const n=byId.get(id); const d=blastInfo?.dist.get(id)??0;
@@ -581,7 +581,7 @@ export default function Graph(){
               <div className="kpi"><span className="k">edge exposure</span><span className="v">{EDGES.filter(e=> blastSet.has(e.to)|| blastSet.has(e.from)).length}</span></div>
               <Link to="/what-if" className="btn sm" style={{alignSelf:"flex-start"}}>Run migration analysis →</Link>
             </div>
-          ) : <div className="dim" style={{fontSize:13.5}}>Impact is computed from live downstream traversal (BFS, no inference). Select a node.</div>}
+          ) : <div className="dim" style={{fontSize:13.5}}>Select a node.</div>}
         </Panel>
       </div>
     </>

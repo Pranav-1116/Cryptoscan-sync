@@ -226,15 +226,8 @@ export default function Hbom() {
             Hardware Bill of Materials
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
-            Every <b style={{ color: "var(--text)" }}>crypto-capable hardware device</b> — TPM · HSM · CPU crypto · secure elements · firmware — from live scans and the <span style={{ color: "var(--accent)" }}>unified estate document</span> over persisted rows.
+            Every crypto-capable hardware device from live scans.
           </p>
-          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>CONTENT-ADDRESSED · SHA-256</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span className="kicker" style={{ fontSize: 10 }}>EVIDENCE-REFERENCED</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span style={{ fontSize: 11, color: "var(--dim)" }}>NOT the TechBOM hardware layer</span>
-          </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
@@ -364,7 +357,7 @@ export default function Hbom() {
               <div style={{ flex: 1 }}><Bar value={(meta?.component_count ?? 0) ? n / (meta!.component_count!) : 0} tone="green" /></div>
               <span style={{ fontSize: 11, fontFamily: "var(--mono)", color: "var(--text)", minWidth: 28, textAlign: "right" }}>{n}</span>
             </div>
-          )) : <div style={{ fontSize: 12, color: "var(--dim)", padding: "8px 0" }}>No persisted hardware assets for this environment — HBOM is empty, not fabricated</div>}
+          )) : <div style={{ fontSize: 12, color: "var(--dim)", padding: "8px 0" }}><span title={"No persisted hardware assets for this environment — HBOM is empty, not fabricated"}>{"No persisted hardware assets for this environment"}</span></div>}
           <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4, borderTop: "1px solid var(--line)", paddingTop: 8 }}>Estate document — regenerated from rows · anchor {meta?.as_of ? new Date(meta.as_of).toLocaleDateString() : "—"}</div>
         </Panel>
         <Panel title="Integrity posture" sub="content hash + evidence anchoring" style={{ padding: "14px 16px" }}>
@@ -410,7 +403,7 @@ export default function Hbom() {
                 </tr>
               ))}
               {!devices.length && (
-                <tr><td colSpan={5} style={{ padding: 28, textAlign: "center", color: "var(--dim)" }}><div style={{ fontWeight: 600, color: "var(--text)" }}>No HBOM yet</div><div style={{ fontSize: 12, marginTop: 4 }}>Run a live hardware scan in Operations → Realtime scanners — empty is not fabricated</div></td></tr>
+                <tr><td colSpan={5} style={{ padding: 28, textAlign: "center", color: "var(--dim)" }}><div style={{ fontWeight: 600, color: "var(--text)" }}>No HBOM yet</div><div style={{ fontSize: 12, marginTop: 4 }}><span title={"Run a live hardware scan in Operations → Realtime scanners — empty is not fabricated"}>{"Run a live hardware scan in Operations → Realtime scanners"}</span></div></td></tr>
               )}
             </tbody>
           </table>
@@ -440,7 +433,7 @@ export default function Hbom() {
           <div style={{ padding: 32, textAlign: "center", color: "var(--dim)" }}>
             <div style={{ width: 40, height: 40, borderRadius: 10, display: "grid", placeItems: "center", background: "var(--panel-2)", border: "1px solid var(--line)", margin: "0 auto 10px" }}><IconHardware size={16} style={{ color: "var(--faint)" }} /></div>
             <div style={{ fontWeight: 600, color: "var(--text)" }}>Estate document unavailable</div>
-            <div style={{ fontSize: 12, marginTop: 4 }}>Generated from persisted hardware_assets — not live engine memory, not TechBOM hardware layer</div>
+            <div style={{ fontSize: 12, marginTop: 4 }}><span title={"Generated from persisted hardware_assets — not live engine memory, not TechBOM hardware layer"}>{"Generated from persisted hardware_assets"}</span></div>
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -461,7 +454,7 @@ export default function Hbom() {
                 ))}
               </tbody>
             </table>
-            {!estateDoc.components.length && <div style={{ padding: 20, textAlign: "center", color: "var(--dim)", fontSize: 12 }}>No hardware assets persisted for this environment — empty, not fabricated</div>}
+            {!estateDoc.components.length && <div style={{ padding: 20, textAlign: "center", color: "var(--dim)", fontSize: 12 }}><span title={"No hardware assets persisted for this environment — empty, not fabricated"}>{"No hardware assets persisted for this environment"}</span></div>}
           </div>
         )}
         {estateDoc && <div style={{ padding: "10px 16px", background: "var(--bg-2)", borderTop: "1px solid var(--line)", fontSize: 11, color: "var(--dim)", display: "flex", gap: 8, flexWrap: "wrap" }}><span>Sources: {meta?.sources?.join(", ") || "—"}</span>
@@ -485,7 +478,7 @@ export default function Hbom() {
         {!snapshotsLoaded ? (
           <div style={{ padding: 28, textAlign: "center", color: "var(--dim)", fontSize: 12 }}>Snapshot list unavailable — backend not reachable</div>
         ) : snapshots.length === 0 ? (
-          <div style={{ padding: 28, textAlign: "center", color: "var(--dim)" }}><div style={{ fontWeight: 600, color: "var(--text)" }}>No snapshots pinned yet</div><div style={{ fontSize: 12, marginTop: 4 }}>Pin freezes the current rendering for export and audit — identical pins collapse</div></div>
+          <div style={{ padding: 28, textAlign: "center", color: "var(--dim)" }}><div style={{ fontWeight: 600, color: "var(--text)" }}>No snapshots pinned yet</div><div style={{ fontSize: 12, marginTop: 4 }}><span title={"Pin freezes the current rendering for export and audit — identical pins collapse"}>{"Pin freezes the current rendering for export and audit"}</span></div></div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table className="tbl" style={{ width: "100%" }}>

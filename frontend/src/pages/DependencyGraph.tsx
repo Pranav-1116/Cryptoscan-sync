@@ -195,7 +195,7 @@ export default function DependencyGraph(){
                 </ul>
               ) : (
                 <div style={{fontSize:11.5, color:"var(--dim)"}}>
-                  no dependency edges are recorded for this node — unknown, not isolated
+                  no dependency edges are recorded for this node
                 </div>
               )}
             </div>

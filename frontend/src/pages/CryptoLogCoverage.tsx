@@ -59,8 +59,7 @@ export default function CryptoLogCoverage() {
               style={{ width: 8, height: 8, borderRadius: 99, border: "1.5px dashed var(--slate, #64748b)", marginTop: 4, flex: "0 0 auto" }}
             />
             <div className="dim" style={{ fontSize: 12, lineHeight: 1.5 }}>
-              No collectors have recorded events. This is a collection gap, not a
-              healthy estate — an empty store is never drawn as coverage.
+              <span title={"No collectors have recorded events. This is a collection gap, not a healthy estate — an empty store is never drawn as coverage."}>{"No collectors have recorded events."}</span>
             </div>
           </div>
         ) : (

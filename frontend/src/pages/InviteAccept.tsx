@@ -52,7 +52,7 @@ export default function InviteAccept() {
               </p>
             )}
             <p style={{ fontSize: 12, opacity: 0.6 }}>
-              Already have an account? Sign in first — tokens can never take over an existing identity.
+              <span title={"Already have an account? Sign in first — tokens can never take over an existing identity."}>{"Already have an account? Sign in first"}</span>
             </p>
           </div>
         )}

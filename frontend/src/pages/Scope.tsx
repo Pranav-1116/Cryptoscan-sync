@@ -233,8 +233,7 @@ export function CapabilityLimitsPanel() {
         </table>
       </div>
       <p style={{ fontSize: 10.5, color: "var(--faint)", margin: "8px 0 0" }}>
-        A route with no entry here resolves to unclassified and is not presented as supported. Unknown routes default
-        down, never up.
+        <span title={"A route with no entry here resolves to unclassified and is not presented as supported. Unknown routes default down, never up."}>{"A route with no entry here resolves to unclassified and is not presented as supported."}</span>
       </p>
     </Panel>
   );

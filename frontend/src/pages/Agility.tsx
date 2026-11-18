@@ -65,15 +65,8 @@ export default function Agility() {
             Crypto Agility
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
-            How fast can the enterprise move off a broken or <b style={{ color: "var(--text)" }}>quantum-vulnerable</b> algorithm? Agility is <span style={{ color: "var(--accent)" }}>measured from estate evidence</span> — not self-reported — via configuration surface, hard-coded detection, and migration velocity.
+            How fast the estate can move off a vulnerable algorithm, measured from evidence.
           </p>
-          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>CODE CHANGE ≠ CONFIG CHANGE</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span className="kicker" style={{ fontSize: 10 }}>MEASURED PER SYSTEM</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span style={{ fontSize: 11, color: "var(--dim)" }}>live agility scoring</span>
-          </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
@@ -287,7 +280,7 @@ export default function Agility() {
           <div style={{ padding: 28, textAlign: "center", color: "var(--dim)" }}>
             <div style={{ width: 44, height: 44, borderRadius: 12, display: "grid", placeItems: "center", background: "var(--panel-2)", border: "1px solid var(--line)", margin: "0 auto 10px" }}><IconHardware size={18} style={{ color: "var(--faint)" }} /></div>
             <div style={{ fontWeight: 600, color: "var(--text)" }}>No systems scored yet</div>
-            <div style={{ fontSize: 12, marginTop: 4, maxWidth: 420, marginInline: "auto" }}>Run a discovery scan to populate crypto agility — hard-coded algorithms will be flagged with their file location so teams can plan the code change.</div>
+            <div style={{ fontSize: 12, marginTop: 4, maxWidth: 420, marginInline: "auto" }}><span title={"Run a discovery scan to populate crypto agility — hard-coded algorithms will be flagged with their file location so teams can plan the code change."}>{"Run a discovery scan to populate crypto agility"}</span></div>
           </div>
         )}
 

@@ -69,7 +69,7 @@ describe("Controlled historical decisions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Load controlled mixed review" }));
     await waitFor(() => expect(finish).toBeTypeOf("function"));
     act(() => { window.dispatchEvent(new StorageEvent("storage", { key: "cryptoscan_tenant", newValue: "other" })); });
-    await screen.findByText(/Private evidence and unsubmitted drafts were cleared/);
+    await screen.findByTitle(/Private evidence and unsubmitted drafts were cleared/);
     await act(async () => { finish({ case: proposal }); });
     expect(screen.queryByText("Original proposal rationale")).toBeNull();
     expect(screen.queryByRole("button", { name: "Approve as second human" })).toBeNull();

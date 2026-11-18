@@ -73,15 +73,8 @@ export default function Pqc() {
             Post-Quantum Readiness
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
-            Tracking vulnerability to <b style={{ color: "var(--text)" }}>Shor's algorithm</b>, Harvest-Now-Decrypt-Later (HNDL) exposure, and hybrid PQC transition. All counts are <span style={{ color: "var(--accent)" }}>deterministic — from verified estate evidence</span>, not estimates.
+            Quantum vulnerability, HNDL exposure and hybrid PQC transition.
           </p>
-          <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>2030 DEPRECATION</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span className="kicker" style={{ fontSize: 10 }}>2035 DISALLOWANCE</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span style={{ fontSize: 11, color: "var(--dim)" }}>NIST IR 8547 anchor</span>
-          </div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
           <Panel style={{ padding: "10px 14px", minWidth: 160, display: "flex", alignItems: "center", gap: 12 }}>
@@ -181,7 +174,7 @@ export default function Pqc() {
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--faint)", marginTop: 6 }}><span>2027 purge</span><span>2030 replace</span><span>2035 disallow</span></div>
             <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 2 }}>
-              Schematic of the standard's milestones — the segment widths are equal, not estate proportions</div>
+              <span title={"Schematic of the standard's milestones — the segment widths are equal, not estate proportions"}>{"Schematic of the standard's milestones"}</span></div>
           </div>
         </div>
       </div>
@@ -374,8 +367,7 @@ export default function Pqc() {
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--faint)", marginTop: 6 }}><span>● weak legacy</span><span>● everything else (not classified)</span></div>
           <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 8, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
-            No collector reports a per-key hybrid/PQC split, so this page does not print one. The
-            estate-evidence PQC read is where that question is answered, once discovery has run.
+            <span title={"No collector reports a per-key hybrid/PQC split, so this page does not print one. The estate-evidence PQC read is where that question is answered, once discovery has run."}>{"No collector reports a per-key hybrid/PQC split, so this page does not print one."}</span>
           </div>
         </Panel>
       </div>

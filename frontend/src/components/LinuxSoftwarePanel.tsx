@@ -45,14 +45,14 @@ export default function LinuxSoftwarePanel({ job, envelope }: { job: string; env
     finally { if (timeout) clearTimeout(timeout); if (current()) { active.current = null; setBusy(false); } }
   }
   return <section aria-label="Linux software evidence"><h4>Phase 2 · Linux software metadata</h4>
-    <p>Intermediate metadata, not a standard CycloneDX SBOM. Packages, binary presence and mapped paths are separate; none proves cryptographic invocation. No collection starts here.</p>
+    <p><span title={"Intermediate metadata, not a standard CycloneDX SBOM. Packages, binary presence and mapped paths are separate; none proves cryptographic invocation. No collection starts here."}>{"Intermediate metadata, not a standard CycloneDX SBOM."}</span></p>
     <button disabled={busy} onClick={() => void read()}>Read Linux software evidence</button>
     {busy && <p role="status">Reading software evidence…</p>}{error && <p role="alert">{error}</p>}
     {value && <><p>IMPORTED software metadata · {value.packages.length} scoped package groups · binary-presence records: {value.binary_presence.length} · mapped-library-path records: {value.mapped_library_paths.length}.</p>
-      <p>Architecture, licenses, dependencies, runtime and cryptographic use remain UNKNOWN. No package artifact digest or purl supplied. Incomplete inventory; hashes are not authenticity or host attestation.</p>
-      {!value.package_inputs.length && <p>No package inputs requested — no denominator or package-absence conclusion.</p>}
+      <p><span title={"Architecture, licenses, dependencies, runtime and cryptographic use remain UNKNOWN. No package artifact digest or purl supplied. Incomplete inventory; hashes are not authenticity or host attestation."}>{"Architecture, licenses, dependencies, runtime and cryptographic use remain UNKNOWN."}</span></p>
+      {!value.package_inputs.length && <p><span title={"No package inputs requested — no denominator or package-absence conclusion."}>{"No package inputs requested"}</span></p>}
       {value.package_inputs.map(i => <p key={i.input_id}>{i.input_id}: {i.status} · {i.reason}</p>)}
-      <p>Showing up to 50 package groups. Full original records remain available in the authorized API response.</p>
+      <p><span title={"Showing up to 50 package groups. Full original records remain available in the authorized API response."}>{"Showing up to 50 package groups."}</span></p>
       <table><thead><tr><th>Metadata slot / manager</th><th>Package / version</th><th>Evidence / provenance</th></tr></thead><tbody>{value.packages.slice(0, 50).map(p => <tr key={p.identity_slot}><td>{p.identity_slot} · {p.package_manager}</td><td>{p.name} · {p.version ?? "UNKNOWN"} · {p.identity_status}</td><td>{p.records.slice(0, 5).map(r => <p key={r.observation_id}>{r.evidence_id} · local {r.fact.local_basis} · {r.source.path} · source-content SHA256 {r.source.input_content_sha256}</p>)}{p.records.length > 5 && <p>Additional records retained in the API; no winning version selected.</p>}</td></tr>)}</tbody></table>
     </>}
   </section>;

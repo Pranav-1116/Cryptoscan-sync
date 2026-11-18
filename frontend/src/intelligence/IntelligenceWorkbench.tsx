@@ -141,11 +141,11 @@ export default function IntelligenceWorkbench() {
                 />
               ) : (
                 <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>
-                  no findings recorded — an empty result, not a clean estate
+                  no findings recorded
                 </p>
               )
             ) : (
-              <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>not loaded — unknown, never zero</p>
+              <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>not loaded</p>
             )}
           </section>
 
@@ -173,7 +173,7 @@ export default function IntelligenceWorkbench() {
                 </p>
               </>
             ) : (
-              <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>not loaded — unknown, never zero</p>
+              <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>not loaded</p>
             )}
           </section>
 
@@ -200,7 +200,7 @@ export default function IntelligenceWorkbench() {
                 </p>
               )
             ) : (
-              <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>not loaded — unknown, never zero</p>
+              <p style={{ fontSize: 11, color: "var(--faint)", margin: 0 }}>not loaded</p>
             )}
           </section>
 
@@ -388,8 +388,7 @@ export default function IntelligenceWorkbench() {
           ) : (
             coverage.data.status === "FILED" && (
               <p className="muted">
-                no gaps recorded in this batch — a filed batch with no gaps is a
-                measured fact about that batch only, not a clean estate.
+                no gaps recorded in this batch.
               </p>
             )
           )}

@@ -413,8 +413,7 @@ export default function LiveEstate() {
               emptyNote="the patterns endpoint returned nothing, so no level can be shown"
             />
             <div className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>
-              L3 SECURITY_INCIDENT is never assigned by this engine — a correlated change feed is not
-              an incident declaration. L4 means several patterns in one window, not more certainty.
+              <span title={"L3 SECURITY_INCIDENT is never assigned by this engine — a correlated change feed is not an incident declaration. L4 means several patterns in one window, not more certainty."}>{"L3 SECURITY_INCIDENT is never assigned by this engine"}</span>
             </div>
             {(view?.patterns ?? []).length ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

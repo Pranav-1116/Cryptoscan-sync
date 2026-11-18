@@ -341,7 +341,7 @@ function LaunchReadinessPage() {
           {t("launch.meanings")}
         </div>
         <div style={{ border: "1px solid var(--line)", borderLeft: "2px dashed var(--line-strong)", borderRadius: "var(--r)", background: "var(--panel-2)", padding: "8px 10px", fontSize: 11.5, lineHeight: 1.5, color: "var(--dim)" }}>
-          No private keys belong in this form. Import only the public signed envelope. All writes require current durable human authority and exact-estate references.
+          <span title={"No private keys belong in this form. Import only the public signed envelope. All writes require current durable human authority and exact-estate references."}>{"No private keys belong in this form."}</span>
         </div>
       </div>
       <p id="launch-id-help" style={{ fontSize: 11.5, color: missingId ? "var(--amber)" : "var(--dim)" }}>{missingId ? t("launch.idRequired") : t("launch.idScope")}</p>

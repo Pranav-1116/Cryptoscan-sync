@@ -594,9 +594,7 @@ export default function TwinWalkthrough() {
         </div>
         <h1 style={{ fontSize: 26, fontWeight: 800, margin: "8px 0 6px", letterSpacing: "-0.02em" }}>One asset, thirteen investigations</h1>
         <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 760 }}>
-          The specification's walkthrough, on one canvas: pick an asset and carry it through all thirteen screens in
-          order. Each step reads the same twin the full screen reads, and says so when it could not — a panel of
-          zeros over an unread twin would be a claim about an estate nobody looked at.
+          Carry one asset through all thirteen screens in order.
         </p>
       </div>
 

@@ -68,7 +68,7 @@ describe("Remediation — task lifecycle", () => {
     // drift-sourced task shows its event ref (id truncated for display)
     expect(screen.getByText("drift-even…")).toBeTruthy();
     // the declared-vs-verified distinction is stated on the page
-    expect(screen.getByText(/COMPLETED is a declaration — VERIFIED is a machine verdict/)).toBeTruthy();
+    expect(screen.getByTitle(/COMPLETED is a declaration — VERIFIED is a machine verdict/)).toBeTruthy();
     expect(screen.getByText("work declared done — awaiting/failed verification, NOT closure")).toBeTruthy();
     expect(screen.getByText("machine-verified from rescan evidence")).toBeTruthy();
     // verification reasons are shown verbatim with their rescan
@@ -79,7 +79,7 @@ describe("Remediation — task lifecycle", () => {
     expect(screen.getByText("rescan scan-11")).toBeTruthy();
     expect(screen.getAllByText(/against rescan/)).toHaveLength(1);
     // a task without verification says so honestly
-    expect(screen.getByText("No verification yet — completion is a declaration, not proof.")).toBeTruthy();
+    expect(screen.getByText("No verification yet.")).toBeTruthy();
   });
 
   it("expands a task and drives the lifecycle: complete calls the endpoint with the rescan id", async () => {

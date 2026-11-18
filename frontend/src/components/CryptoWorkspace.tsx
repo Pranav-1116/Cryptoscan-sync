@@ -62,8 +62,7 @@ export default function CryptoWorkspace({ data }: {
       <Panel title="Observed production performance" sub="delivered families in the window">
         {Object.keys(categories).every((k) => Object.keys(categories[k]?.metrics ?? {}).length === 0) ? (
           <div style={{ fontSize: 12, opacity: 0.75 }}>
-            No cryptographic production telemetry is stored in this window —
-            absence of telemetry is not healthy cryptography.
+            <span title={"No cryptographic production telemetry is stored in this window — absence of telemetry is not healthy cryptography."}>{"No cryptographic production telemetry is stored in this window"}</span>
           </div>
         ) : (
           Object.keys(CATEGORY_LABELS).map((key) => (

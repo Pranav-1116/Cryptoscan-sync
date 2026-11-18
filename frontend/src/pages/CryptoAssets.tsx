@@ -112,8 +112,7 @@ function DetailDrawer({ alg, onClose }: { alg: AlgorithmEntry; onClose: () => vo
       </Panel>
       <Panel title="Usage & evidence" sub="from live scans" frame className="mt">
         <span className="dim" style={{ fontSize: 12.5 }}>
-          Observed usage and confidence are linked from live scans/CBOM — run a universal source scan and check the
-          dependency graph for where this algorithm appears.
+          <span title={"Observed usage and confidence are linked from live scans/CBOM — run a universal source scan and check the dependency graph for where this algorithm appears."}>{"Observed usage and confidence are linked from live scans/CBOM"}</span>
         </span>
         <br /><Link to="/cbom" className="mono" style={{ fontSize: 12 }}>open CBOM →</Link>
       </Panel>

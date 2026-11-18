@@ -31,7 +31,7 @@ describe("Evidence workflow", () => {
     expect(await screen.findByText("Evidence ID: ev-a")).toBeInTheDocument();
     const detail = screen.getByText("Evidence ID: ev-a").closest("article")!;
     expect(within(detail).getAllByText("Not supplied").length).toBeGreaterThan(0);
-    expect(screen.getByText(/the scan-level verdict appears here once requested/)).toBeInTheDocument();
+    expect(screen.getByTitle(/the scan-level verdict appears here once requested/)).toBeInTheDocument();
     expect(screen.queryByText(/Integrity Sealed|SECRET_EXAMPLE_DO_NOT_DISPLAY|127\.0\.0\.1/)).toBeNull();
     fireEvent.click(screen.getByRole("tab", { name: "Audit Ledger" }));
     expect(await screen.findByRole("button", { name: /audit-a/ })).toBeInTheDocument();
@@ -59,7 +59,7 @@ describe("Evidence workflow", () => {
     expect(await screen.findByText(/Server scan verification: PASS/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Verify this record" })).toBeInTheDocument();
     expect(screen.getByText("0/1 verified")).toBeInTheDocument();
-    expect(screen.getByText(/Unverified ≠ sealed/)).toBeInTheDocument();
+    expect(screen.getByText(/On-demand only/)).toBeInTheDocument();
   });
 
   it("reports a server FAIL and refuses missing or mismatched scan verdicts", async () => {

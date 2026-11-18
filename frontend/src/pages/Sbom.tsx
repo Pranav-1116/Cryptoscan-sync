@@ -125,13 +125,9 @@ export default function Sbom() {
             Software Bill of Materials
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
-            Every <b style={{ color: "var(--text)" }}>software component</b> — packages, containers, dependencies — from the unified Technology BOM SBOM layer. <span style={{ color: "var(--violet)" }}>One asset model</span>, materialized for supply-chain transparency.
+            Every software component — packages, containers, dependencies.
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>CycloneDX · SPDX 2.3</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span className="kicker" style={{ fontSize: 10 }}>CONTENT-ADDRESSED</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
             <span style={{ fontSize: 11, color: "var(--dim)" }}>snapshot {fmtSnapshotId(state?.snapshot_id).slice(0, 16)} · v{state?.state_version ?? 0}</span>
             {state?.dependency_count != null && (
               <>

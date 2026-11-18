@@ -5,7 +5,7 @@ export default function ProcessImpactPanel({ impact, legacy }: { impact?: Proces
   return <section aria-label="Business process impact" style={{ fontSize: 12 }}>
     <strong>Business process review</strong>
     {!impact || impact.schema !== "cryptoscan.business-process-impact/1" ? <>
-      <div>Process projection unavailable for this stored answer. Legacy linked processes are not a complete scoped business-impact assessment.</div>
+      <div><span title={"Process projection unavailable for this stored answer. Legacy linked processes are not a complete scoped business-impact assessment."}>{"Process projection unavailable for this stored answer."}</span></div>
       {legacy?.map((p, i) => <div key={p.id || i}>{p.name || p.id}</div>)}
     </> : <>
       <div>Modeled process exposure: {impact.counts.exposure} · Review processes: {impact.counts.review}</div>
@@ -13,7 +13,7 @@ export default function ProcessImpactPanel({ impact, legacy }: { impact?: Proces
       <div>{impact.note}</div>
       <div>{impact.coverage.systems_without_recorded_links_count} implicated systems have no usable recorded process link. This is unknown coverage, not zero impact.</div>
       {impact.coverage.unresolved_or_invalid_link_count > 0 && <div>{impact.coverage.unresolved_or_invalid_link_count} unresolved/invalid support records excluded.</div>}
-      {(!impact.coverage.source_coverage || impact.coverage.source_coverage.processes_truncated || impact.coverage.source_coverage.support_links_truncated) && <div>Process source coverage is unknown or truncated; counts describe loaded records only.</div>}
+      {(!impact.coverage.source_coverage || impact.coverage.source_coverage.processes_truncated || impact.coverage.source_coverage.support_links_truncated) && <div><span title={"Process source coverage is unknown or truncated; counts describe loaded records only."}>{"Process source coverage is unknown or truncated"}</span></div>}
       {(impact.coverage.processes_truncated || impact.processes.length > 20) && <div>Process explanations bounded: {impact.coverage.returned_process_count} returned of {impact.coverage.total_process_count}; showing first 20 here. Counts and economic context are not calculated from this preview.</div>}
       {impact.processes.slice(0, 20).map(process => <details key={process.id}>
         <summary>{process.name || process.id} ({process.id}) · {process.exposed ? "modeled exposure" : process.context_only ? "supporting context only" : "potential only"}</summary>
@@ -30,7 +30,7 @@ export default function ProcessImpactPanel({ impact, legacy }: { impact?: Proces
           {reason.support_link.references_truncated && <div>Support reference list truncated.</div>}
           {reason.support_link.evidence_references.map((ref, j) => <pre key={j} style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{typeof ref === "string" ? ref : JSON.stringify(ref)}</pre>)}
         </div>)}
-        {(process.reasons_truncated || process.reasons.length > 10) && <div>Inclusion reasons truncated; showing at most 10 here. The process remains counted once by ID.</div>}
+        {(process.reasons_truncated || process.reasons.length > 10) && <div><span title={"Inclusion reasons truncated; showing at most 10 here. The process remains counted once by ID."}>{"Inclusion reasons truncated"}</span></div>}
       </details>)}
       <details><summary>Declared business context — not predicted loss</summary>
         <div>Recorded revenue/day known sum: {impact.economic_context.revenue_daily.known_sum ?? "unknown (arithmetic overflow)"}; {impact.economic_context.revenue_daily.complete_sum == null ? "incomplete" : "complete for loaded exposed process metrics and recorded system mappings only"}. No currency conversion or currency consistency was verified.</div>

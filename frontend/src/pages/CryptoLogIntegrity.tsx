@@ -101,7 +101,7 @@ export default function CryptoLogIntegrity() {
           </div>
         ) : checkpoints.length === 0 ? (
           <div className="dim" data-testid="checkpoints-empty">
-            No checkpoints recorded yet. An absent checkpoint is not a verified chain — this screen never invents checkpoints.
+            <span title={"No checkpoints recorded yet. An absent checkpoint is not a verified chain — this screen never invents checkpoints."}>{"No checkpoints recorded yet."}</span>
           </div>
         ) : (
           <div data-testid="checkpoint-rows" style={{ display: "grid", gap: 6 }}>
@@ -164,7 +164,7 @@ export default function CryptoLogIntegrity() {
           </div>
         ) : (
           <div className="dim" style={{ marginTop: 12, fontSize: 12 }}>
-            No verification run yet. Nothing on this screen is verified until it is verified.
+            <span title={"No verification run yet. Nothing on this screen is verified until it is verified."}>{"No verification run yet."}</span>
           </div>
         )}
       </Panel>

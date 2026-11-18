@@ -126,7 +126,7 @@ export default function HostQualification() {
     <details><summary>Create approved campaign (trust authority)</summary>
       <p>Paste the approved AcceptancePolicy JSON with exact tenant, scope, platform-release/plan digests and two distinct public reviewer keys. No private signing keys. Policy and campaign identity are immutable.</p>
       <label>Bank-approved return channel reference (not a URL or credential)<input className="inp" aria-label="Return channel approval reference" value={channel} onChange={e => setChannel(e.target.value)} maxLength={120} /></label>
-      <p>Record the authorized bank approval reference only. The product does not provision or attest TLS, encryption, channel approval or notification delivery.</p>
+      <p><span title={"Record the authorized bank approval reference only. The product does not provision or attest TLS, encryption, channel approval or notification delivery."}>{"Record the authorized bank approval reference only."}</span></p>
       <textarea className="inp" aria-label="Approved policy JSON" rows={8} value={policy} onChange={e => setPolicy(e.target.value)} />
       <button className="btn sm" disabled={locked || !policy || !channel.trim()} onClick={create}>Create campaign</button>
     </details>
@@ -147,13 +147,13 @@ export default function HostQualification() {
         <button className="btn sm" disabled={locked || !assignments || payload.withdrawn || Object.keys(payload.artifacts).length > 0} onClick={() => jsonAction("assignments", "assignments", assignments)}>Save assignments</button>
       </details>
       <h4>Original public artifacts</h4>
-      <p>Assigned operators return native receipts; assigned operators/verifier may return supporting public JSON or raw TPM public quote/signature structures. No ZIPs. 2 MiB per file / 256 artifacts / 16 MiB campaign total. Preserve original bytes and failure/UNKNOWN results; they are not converted into PASS.</p>
+      <p><span title={"Assigned operators return native receipts; assigned operators/verifier may return supporting public JSON or raw TPM public quote/signature structures. No ZIPs. 2 MiB per file / 256 artifacts / 16 MiB campaign total. Preserve original bytes and failure/UNKNOWN results; they are not converted into PASS."}>{"Assigned operators return native receipts"}</span></p>
       <select className="inp" aria-label="Artifact kind" value={kind} onChange={e => setKind(e.target.value)}><option value="native">Native receipt</option><option value="public_json">Supporting public JSON</option><option value="tpm_attest">Raw TPM public quote</option><option value="tpm_signature">Raw TPM public signature</option></select>
       <input key={`${epoch.current}:${current.record.subject_id}:${current.record.revision}`} type="file" aria-label="Original public artifact" onChange={e => setFile(e.target.files?.[0] || null)} />
       <button className="btn sm" disabled={locked || !file || payload.withdrawn || payload.index !== null} onClick={upload}>Return original</button>
       <ul>{Object.entries(payload.artifacts).map(([digest, a]) => <li key={digest}><span className="mono">{digest}</span> · {a.kind} {a.category} · {a.bytes} bytes · {a.native_result || "No native verdict"} <AuthenticatedDownload path={`${BASE}/${current.record.subject_id}/artifacts/${digest}`} filename={`${digest}.original`}>Download original (raw privilege)</AuthenticatedDownload></li>)}</ul>
       <details><summary>Freeze verified index (assigned verifier)</summary>
-        <p>Paste the complete EvidenceIndex JSON. All referenced originals must already be retained. Missing/changed or unqualified native evidence cannot freeze; an index does not prove the worker checks ran.</p>
+        <p><span title={"Paste the complete EvidenceIndex JSON. All referenced originals must already be retained. Missing/changed or unqualified native evidence cannot freeze; an index does not prove the worker checks ran."}>{"Paste the complete EvidenceIndex JSON."}</span></p>
         <textarea className="inp" aria-label="Evidence index JSON" rows={6} value={index} onChange={e => setIndex(e.target.value)} />
         <button className="btn sm" disabled={locked || !index || payload.withdrawn || payload.index !== null} onClick={() => jsonAction("freeze", "index", index)}>Freeze evidence</button>
       </details>

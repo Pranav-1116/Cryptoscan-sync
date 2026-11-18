@@ -29,8 +29,7 @@ export default function PqcClaimsLadder({
     <section aria-label="PQC migration stages">
       <h2>PQC migration — five stages, five separate claims</h2>
       <div className="banner">
-        A library supporting ML-KEM is not PQC readiness. Support is not
-        configured, configured is not observed, observed is not validated.
+        <span title={"A library supporting ML-KEM is not PQC readiness. Support is not configured, configured is not observed, observed is not validated."}>{"A library supporting ML-KEM is not PQC readiness."}</span>
       </div>
       <div style={{ margin: "10px 0 12px" }}>
         <FlowStrip

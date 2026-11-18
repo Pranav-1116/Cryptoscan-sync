@@ -105,10 +105,10 @@ describe("Application Performance workspace (§3)", () => {
   it("keeps empty reads as gaps, not clean results", () => {
     renderWs({ services: [], endpoints: [], regression: null });
     fireEvent.click(screen.getByRole("tab", { name: "Service-level performance" }));
-    expect(screen.getByText(/collection gap, not a healthy service/)).toBeInTheDocument();
+    expect(screen.getByTitle(/collection gap, not a healthy service/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "API endpoint performance" }));
-    expect(screen.getByText(/unlabelled requests are not attributed to endpoints/)).toBeInTheDocument();
+    expect(screen.getByTitle(/unlabelled requests are not attributed to endpoints/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Regression & SLA/SLO" }));
-    expect(screen.getByText(/not proof of no regression/)).toBeInTheDocument();
+    expect(screen.getByTitle(/not proof of no regression/)).toBeInTheDocument();
   });
 });

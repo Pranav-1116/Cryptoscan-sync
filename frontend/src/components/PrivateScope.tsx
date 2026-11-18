@@ -19,7 +19,7 @@ export default function PrivateScope({ children }: { children: React.ReactNode }
   }, []);
   const current = () => active.current && generation.current === epoch;
   return <CurrentScope.Provider value={current}>
-    {epoch > 0 && <p role="status">Session, estate or resumed-tab context changed. Private evidence and unsubmitted drafts were cleared; reconcile current history before retrying a write.</p>}
+    {epoch > 0 && <p role="status"><span title={"Session, estate or resumed-tab context changed. Private evidence and unsubmitted drafts were cleared; reconcile current history before retrying a write."}>{"Session, estate or resumed-tab context changed."}</span></p>}
     <React.Fragment key={epoch}>{children}</React.Fragment>
   </CurrentScope.Provider>;
 }

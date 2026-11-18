@@ -52,6 +52,6 @@ describe("Cryptographic Performance workspace (§6)", () => {
 
   it("keeps an empty read honest", () => {
     render(<CryptoWorkspace data={{ categories: {}, measurement_kind: "observed-production", note: "" }} />);
-    expect(screen.getByText(/absence of telemetry is not healthy cryptography/)).toBeInTheDocument();
+    expect(screen.getByTitle(/absence of telemetry is not healthy cryptography/)).toBeInTheDocument();
   });
 });

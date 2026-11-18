@@ -55,7 +55,7 @@ function EvidencePage() {
             Evidence
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 620 }}>
-            Stored scan observations <b style={{ color: "var(--text)" }}>separately</b> from the platform action audit ledger. Verification covers only the scope the server reports — <span style={{ color: `var(--${hdrTone})` }}>no claim beyond verified records</span>.
+            Scan observations and the platform audit ledger.
           </p>
         </div>
         <Panel style={{ padding: "8px 12px", display: "flex", gap: 8, alignItems: "center" }}>
@@ -74,7 +74,6 @@ function EvidencePage() {
       }} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <button id="scan-tab" type="button" role="tab" tabIndex={tab === "scan" ? 0 : -1} aria-controls="scan-panel" aria-selected={tab === "scan"} onClick={() => setTab("scan")} style={{ padding: "8px 16px", borderRadius: "var(--r)", fontSize: 13, fontWeight: tab === "scan" ? 700 : 500, cursor: "pointer", background: tab === "scan" ? "var(--amber)" : "var(--bg-2)", color: tab === "scan" ? "#fff" : "var(--text)", border: `1px solid ${tab === "scan" ? "var(--amber)" : "var(--line)"}` }}>Scan Evidence</button>
         <button id="audit-tab" type="button" role="tab" tabIndex={tab === "audit" ? 0 : -1} aria-controls="audit-panel" aria-selected={tab === "audit"} onClick={() => { setAuditVisited(true); setTab("audit"); }} style={{ padding: "8px 16px", borderRadius: "var(--r)", fontSize: 13, fontWeight: tab === "audit" ? 700 : 500, cursor: "pointer", background: tab === "audit" ? "var(--violet)" : "var(--bg-2)", color: tab === "audit" ? "#fff" : "var(--text)", border: `1px solid ${tab === "audit" ? "var(--violet)" : "var(--line)"}` }}>Audit Ledger</button>
-        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--faint)", alignSelf: "center" }}>Scan integrity ≠ per-record truth · Ledger is platform actions, not scan findings</span>
       </div>
 
       <div id="scan-panel" role="tabpanel" aria-labelledby="scan-tab" hidden={tab !== "scan"}>
@@ -226,7 +225,7 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
             <div><div style={{ fontSize: 10, letterSpacing: ".08em", color: "var(--faint)" }}>PER-RECORD SEALS</div><div style={{ fontSize: 18, fontWeight: 800, margin: "6px 0 2px", fontFamily: "var(--mono)", lineHeight: 1 }}>{checked.length}/{findings.length} verified</div><div style={{ fontSize: 11, color: checked.length ? "var(--green)" : "var(--dim)" }}>{checked.length ? `${passed} PASS · ${checked.length - passed} FAIL` : "Verify each record individually"}</div></div>
             <span style={{ width: 36, height: 36, borderRadius: 10, display: "grid", placeItems: "center", background: checked.length ? "color-mix(in srgb, var(--green) 14%, transparent)" : "var(--panel-2)", border: `1px solid color-mix(in srgb, ${checked.length ? "var(--green)" : "var(--line)"} 35%, var(--line))`, color: checked.length ? "var(--green)" : "var(--faint)" }}><IconInfo size={16} /></span>
           </div>
-          <div style={{ padding: "0 16px 12px" }}><Bar value={findings.length ? checked.length / findings.length : 0} tone={checked.length ? "green" : "slate"} /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>Unverified ≠ sealed — on-demand only</div></div>
+          <div style={{ padding: "0 16px 12px" }}><Bar value={findings.length ? checked.length / findings.length : 0} tone={checked.length ? "green" : "slate"} /><div style={{ fontSize: 10, color: "var(--faint)", marginTop: 6 }}>On-demand only</div></div>
         </div>
       </div>
 
@@ -255,7 +254,7 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
           {selected && <>
             <p style={{ overflowWrap: "anywhere", fontSize: 12, background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 10px" }}>Scan ID: <strong style={{ fontFamily: "var(--mono)" }}>{selected}</strong></p>
             {verifyError && <p role="alert" style={{ fontSize: 12, color: "var(--red)", background: "color-mix(in srgb, var(--red) 8%, transparent)", border: "1px solid var(--red)", borderRadius: "var(--r)", padding: "8px 10px" }}>{verifyError}</p>}
-            {verification ? <div role="status" style={{ marginTop: 10, padding: 10, background: `color-mix(in srgb, var(--${verification.result === "PASS" ? "green" : verification.result === "FAIL" ? "red" : "amber"}) 8%, transparent)`, border: `1px solid var(--${verification.result === "PASS" ? "green" : verification.result === "FAIL" ? "red" : "amber"})`, borderRadius: "var(--r)", fontSize: 12 }}><Badge variant={verification.result === "PASS" ? "success" : verification.result === "FAIL" ? "danger" : "warning"}>{verification.result}</Badge> <span>Server scan verification: {verification.result} · {verification.records} records checked.</span>{verification.result === "EMPTY" && <p style={{ margin: "6px 0 0" }}>Empty scan; no observation integrity was established.</p>}{verification.result === "UNVERIFIABLE" && <p style={{ margin: "6px 0 0" }}>Stored scan cannot be verified (incomplete or missing manifest).</p>}{verification.result === "FAIL" && <p style={{ margin: "6px 0 0" }}>Scan integrity failed. Investigate stored chain and manifest.</p>}</div> : !verifying && !verifyError && <p role="status" style={{ color: "var(--dim)", fontSize: 11, background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 10px" }}>Scan verification not requested; the scan-level verdict appears here once requested — per-record seals are issued per record below.</p>}
+            {verification ? <div role="status" style={{ marginTop: 10, padding: 10, background: `color-mix(in srgb, var(--${verification.result === "PASS" ? "green" : verification.result === "FAIL" ? "red" : "amber"}) 8%, transparent)`, border: `1px solid var(--${verification.result === "PASS" ? "green" : verification.result === "FAIL" ? "red" : "amber"})`, borderRadius: "var(--r)", fontSize: 12 }}><Badge variant={verification.result === "PASS" ? "success" : verification.result === "FAIL" ? "danger" : "warning"}>{verification.result}</Badge> <span>Server scan verification: {verification.result} · {verification.records} records checked.</span>{verification.result === "EMPTY" && <p style={{ margin: "6px 0 0" }}>Empty scan; no observation integrity was established.</p>}{verification.result === "UNVERIFIABLE" && <p style={{ margin: "6px 0 0" }}>Stored scan cannot be verified (incomplete or missing manifest).</p>}{verification.result === "FAIL" && <p style={{ margin: "6px 0 0" }}>Scan integrity failed. Investigate stored chain and manifest.</p>}</div> : !verifying && !verifyError && <p role="status" style={{ color: "var(--dim)", fontSize: 11, background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 10px" }}><span title={"Scan verification not requested; the scan-level verdict appears here once requested — per-record seals are issued per record below."}>{"Scan verification not requested"}</span></p>}
             {findingLoading && <p role="status" style={{ fontSize: 12 }}>Loading scan evidence…</p>}
             {findingError && <p role="alert" style={{ fontSize: 12, color: "var(--red)", background: "color-mix(in srgb, var(--red) 8%, transparent)", border: "1px solid var(--red)", borderRadius: "var(--r)", padding: "8px 10px" }}>{findingError}</p>}
             {!findingLoading && findingTotal === 0 && <p style={{ fontSize: 12, color: "var(--dim)" }}>No evidence observations returned for this scan.</p>}
@@ -275,7 +274,7 @@ function ScanEvidence({ tenant }: { tenant: string | null }) {
                 {recordVerdicts[f.evidence_id]?.error && <span role="alert" style={{ color: "var(--amber)", fontSize: 11 }}>{recordVerdicts[f.evidence_id]?.error}</span>}
                 {recordVerdicts[f.evidence_id]?.verdict && (() => { const v = recordVerdicts[f.evidence_id]!.verdict!; return <span style={{ fontSize: 11 }}><Badge variant={v.result === "PASS" ? "success" : "danger"}>{v.result}</Badge> content {v.content_intact ? "intact" : "broken"} · chain {v.chain_intact ? "intact" : "broken"} · hash format {v.hash_format_valid ? "valid" : "invalid"} · verified by {field(v.verified_by)}</span>; })()}
               </div>
-              <p style={{ color: "var(--faint)", fontSize: 10, margin: "8px 0 0" }}>Provenance fields shown only when provided by the redacted server projection; raw finding data is not displayed.</p>
+              <p style={{ color: "var(--faint)", fontSize: 10, margin: "8px 0 0" }}><span title={"Provenance fields shown only when provided by the redacted server projection; raw finding data is not displayed."}>{"Provenance fields shown only when provided by the redacted server projection"}</span></p>
             </article>)}
             {findingTotal !== null && <p style={{ color: "var(--dim)", fontSize: 11, marginTop: 10 }}>Loaded {findings.length} of {findingTotal} observations</p>}
             {findingTotal !== null && findings.length < findingTotal && <Button onClick={() => void moreFindings()} disabled={findingPaging}>{findingPaging ? "Loading…" : "Load more evidence"}</Button>}
@@ -338,7 +337,7 @@ function AuditLedger() {
     setVerifying(false);
   }
   return <div>
-    <p style={{ color: "var(--dim)", fontSize: 12, background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 12px" }}>Platform action audit events, distinct from scan findings. The chain verdict applies to the audit ledger as a whole, not to an individual event.</p>
+    <p style={{ color: "var(--dim)", fontSize: 12, background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 12px" }}><span title={"Platform action audit events, distinct from scan findings. The chain verdict applies to the audit ledger as a whole, not to an individual event."}>{"Platform action audit events, distinct from scan findings."}</span></p>
     {/* KPI for audit */}
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 16 }}>
       <div className="panel" style={{ padding: 0, overflow: "hidden", borderTop: `2px solid ${verify?.status === "OK" ? "var(--green)" : verify?.status === "TAMPERED" ? "var(--red)" : "var(--slate)"}` }}>
@@ -387,7 +386,7 @@ function AuditLedger() {
       </section>
       <section className="panel" aria-label="Audit event detail" style={{ padding: 16, minWidth: 0, overflowWrap: "anywhere" }}>
         <h2 style={{ fontSize: 14, fontWeight: 800, margin: "0 0 12px", display: "flex", alignItems: "center", gap: 8 }}><IconTarget size={14} style={{ color: "var(--violet)" }} /> Audit event detail</h2>
-        {!selected ? <p style={{ fontSize: 12, color: "var(--dim)" }}>Select an audit event to inspect its metadata. Individual event integrity is not independently verified by this endpoint.</p> : <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 12px", fontSize: 12 }}>
+        {!selected ? <p style={{ fontSize: 12, color: "var(--dim)" }}><span title={"Select an audit event to inspect its metadata. Individual event integrity is not independently verified by this endpoint."}>{"Select an audit event to inspect its metadata."}</span></p> : <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "8px 12px", fontSize: 12 }}>
           <dt style={{ color: "var(--faint)" }}>Event ID</dt><dd style={{ margin: 0, fontFamily: "var(--mono)" }}>{selected.id}</dd>
           <dt style={{ color: "var(--faint)" }}>Actor</dt><dd style={{ margin: 0 }}>{field(selected.actor)}</dd>
           <dt style={{ color: "var(--faint)" }}>Action</dt><dd style={{ margin: 0 }}>{field(selected.action)}</dd>
@@ -396,7 +395,7 @@ function AuditLedger() {
           <dt style={{ color: "var(--faint)" }}>Target</dt><dd style={{ margin: 0 }}>{field(selected.target_type)} · {field(selected.target_id)}</dd>
           <dt style={{ color: "var(--faint)" }}>Source IP</dt><dd style={{ margin: 0 }}>{field(selected.ip_address)}</dd>
         </dl>}
-        {selected && <p style={{ fontSize: 11, color: "var(--faint)", marginTop: 12, background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 10px" }}>Unstructured event detail is withheld to avoid displaying raw secrets; no per-event integrity claim is available.</p>}
+        {selected && <p style={{ fontSize: 11, color: "var(--faint)", marginTop: 12, background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 10px" }}><span title={"Unstructured event detail is withheld to avoid displaying raw secrets; no per-event integrity claim is available."}>{"Unstructured event detail is withheld to avoid displaying raw secrets"}</span></p>}
       </section>
     </div>
   </div>;

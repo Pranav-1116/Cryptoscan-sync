@@ -63,9 +63,7 @@ function CertDrawer({ cert, onClose }: { cert: CertRow; onClose: () => void }) {
       </Panel>
       <Panel title="Evidence" sub="what links here" frame className="mt">
         <div className="dim" style={{ fontSize: 12 }}>
-          A live-scan certificate row is one observation run, not an evidence-chain record —
-          there is no per-record verification or task linkage to show here. The persisted
-          estate below carries the durable facts (owner, usages, revocation state).
+          <span title={"A live-scan certificate row is one observation run, not an evidence-chain record — there is no per-record verification or task linkage to show here. The persisted estate below carries the durable facts (owner, usages, revocation state)."}>{"A live-scan certificate row is one observation run, not an evidence-chain record"}</span>
         </div>
       </Panel>
     </Drawer>
@@ -177,8 +175,7 @@ function EstateCertDrawer({ cert, onClose }: { cert: CertificateEstateRow; onClo
         )}
         {usages !== null && usages.length === 0 && (
           <div className="dim" style={{ fontSize: 12.5 }}>
-            No usage locations recorded for this certificate — it exists in the estate, but no
-            endpoint observation has been linked to it yet (unknown, not zero).
+            <span title={"No usage locations recorded for this certificate — it exists in the estate, but no endpoint observation has been linked to it yet (unknown, not zero)."}>{"No usage locations recorded for this certificate"}</span>
           </div>
         )}
         {usages !== null && usages.length > 0 && (
@@ -220,8 +217,7 @@ function EstateCertDrawer({ cert, onClose }: { cert: CertificateEstateRow; onClo
               );
             })}
             <div className="dim" style={{ fontSize: 11.5, marginTop: 6 }}>
-              The offline parse reports what the certificate's own AIA URLs allow — absent URLs
-              mean UNDETERMINED, never "good". Checked at is recorded even then.
+              <span title={"The offline parse reports what the certificate's own AIA URLs allow — absent URLs mean UNDETERMINED, never \"good\". Checked at is recorded even then."}>{"The offline parse reports what the certificate's own AIA URLs allow"}</span>
             </div>
           </div>
         )}
@@ -249,9 +245,7 @@ function EstateCertDrawer({ cert, onClose }: { cert: CertificateEstateRow; onClo
 
       <Panel title="Tasks & verification" sub="what can and cannot be linked" frame className="mt">
         <div className="dim" style={{ fontSize: 12 }}>
-          Remediation tasks bind to evidence records (scan findings); a certificate is not an
-          evidence record, so no task linkage exists to show — none is invented. Revocation and
-          expiry state above are the verifiable facts this row carries.
+          <span title={"Remediation tasks bind to evidence records (scan findings); a certificate is not an evidence record, so no task linkage exists to show — none is invented. Revocation and expiry state above are the verifiable facts this row carries."}>{"Remediation tasks bind to evidence records (scan findings)"}</span>
         </div>
       </Panel>
     </Drawer>

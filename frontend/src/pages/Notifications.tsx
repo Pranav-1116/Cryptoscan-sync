@@ -99,14 +99,11 @@ export default function Notifications() {
         />
         {!notifications.length && (
           <div className="dim" style={{ fontSize: 13, marginTop: 8 }}>
-            No routed notifications yet — events appear here when a mapped event class fires and
-            its in-app routing is on. Verification outcomes (VERIFIED / PARTIAL / FAILED /
-            REGRESSION) are the flagship class.
+            <span title={"No routed notifications yet — events appear here when a mapped event class fires and its in-app routing is on. Verification outcomes (VERIFIED / PARTIAL / FAILED / REGRESSION) are the flagship class."}>{"No routed notifications yet"}</span>
           </div>
         )}
         <div className="dim" style={{ fontSize: 11.5, marginTop: 8 }}>
-          Email / webhook / SIEM delivery runs through the integrations surface; emitted event
-          types without a catalog mapping stay in the events stream, unrouted.
+          <span title={"Email / webhook / SIEM delivery runs through the integrations surface; emitted event types without a catalog mapping stay in the events stream, unrouted."}>{"Email / webhook / SIEM delivery runs through the integrations surface"}</span>
         </div>
       </Panel>
 

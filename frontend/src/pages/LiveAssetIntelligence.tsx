@@ -912,10 +912,6 @@ export default function LiveAssetIntelligence() {
             Unified <b style={{ color: "var(--text)" }}>SBOM · CBOM · HBOM · Vendor</b> — one asset model, four materialized views. Snapshot <span style={{ color: "var(--accent)", fontFamily: "var(--mono)" }}>v{state?.state_version ?? 0} · {fmtSnapshotId(state?.snapshot_id)}</span>
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>MATERIALIZED VIEWS</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
-            <span className="kicker" style={{ fontSize: 10 }}>HMAC-SIGNED EXPORTS</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
             <span style={{ fontSize: 11, color: "var(--dim)" }}>dependency edges {state?.dependency_count ?? 0}</span>
           </div>
         </div>
@@ -1417,7 +1413,7 @@ function TechbomReconciliation() {
                     <div key={i} style={{ fontSize: 11, color: "var(--dim)", marginBottom: 2, fontFamily: "var(--mono)" }}>
                       {Object.entries(row).map(([k, v]) => `${k}=${Array.isArray(v) ? v.join("|") : String(v)}`).join("  ·  ")}
                     </div>
-                  )) : <div style={{ fontSize: 11.5, color: "var(--dim)" }}>Nothing stored to reconcile — not a healthy zero.</div>}
+                  )) : <div style={{ fontSize: 11.5, color: "var(--dim)" }}>Nothing stored to reconcile.</div>}
                 </div>
               )}
             </div>

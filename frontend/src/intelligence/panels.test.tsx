@@ -73,7 +73,7 @@ describe("RiskDimensionsPanel", () => {
   it("draws an unknown dimension as unknown, never zero", () => {
     render(<RiskDimensionsPanel dimensions={[unknownDimension]} />);
     expect(screen.getByText("UNKNOWN — not zero")).toBeInTheDocument();
-    expect(screen.getByText(/unknown, not zero/)).toBeInTheDocument();
+    expect(screen.getByTitle(/unknown, not zero/)).toBeInTheDocument();
   });
 
   it("expands factors with rule ids and contributions", async () => {

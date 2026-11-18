@@ -434,7 +434,7 @@ export default function PlatformP2() {
                 <span className="mono muted">{String(v.fingerprint).slice(0, 12)}…</span>,
               ])}
             />
-          ) : <span className="muted">No CBOM versions yet — the engine versions the cryptographic inventory as observations change.</span>}
+          ) : <span className="muted">No CBOM versions yet.</span>}
         </Panel>
 
         <Panel title="Operational health" sub="connectors + agents swept live · fixed SLO thresholds · critical targets raise alerts">
@@ -505,7 +505,7 @@ export default function PlatformP2() {
                 ];
               })}
             />
-          ) : <span className="muted">No agents enrolled yet. Enrolled scanners report heartbeat and version here; outdated agents are flagged for signed update.</span>}
+          ) : <span className="muted"><span title={"No agents enrolled yet. Enrolled scanners report heartbeat and version here; outdated agents are flagged for signed update."}>{"No agents enrolled yet."}</span></span>}
         </Panel>
 
         <Panel

@@ -102,7 +102,7 @@ function VaultPanel() {
           </span>,
         ])}
       />
-      {credentialList.length === 0 && <p className="dim" style={{ fontSize: 13 }}>No credentials registered. Provide only a non-secret vault locator; the platform rejects inline key material (fail-closed).</p>}
+      {credentialList.length === 0 && <p className="dim" style={{ fontSize: 13 }}><span title={"No credentials registered. Provide only a non-secret vault locator; the platform rejects inline key material (fail-closed)."}>{"No credentials registered."}</span></p>}
 
       {leaseList.length > 0 && (
         <>
@@ -224,9 +224,7 @@ export default function Integrations() {
         />
         {rows.length === 0 && (
           <div className="dim" style={{ fontSize: 13, marginTop: 12 }}>
-            No integrations registered yet. Register a SIEM/SOC, ticketing (ITSM), CMDB or SOAR
-            destination in the form below; the endpoint URL is non-secret and credentials are
-            referenced from the vault, never stored.
+            <span title={"No integrations registered yet. Register a SIEM/SOC, ticketing (ITSM), CMDB or SOAR destination in the form below; the endpoint URL is non-secret and credentials are referenced from the vault, never stored."}>{"No integrations registered yet."}</span>
           </div>
         )}
         {live && (

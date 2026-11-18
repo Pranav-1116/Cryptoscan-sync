@@ -79,11 +79,9 @@ export default function Compliance() {
             Continuous Regulatory Compliance
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 650 }}>
-            Deterministic policy verification over platform controls. <b style={{ color: "var(--text)" }}>Framework certifications are external</b> — this page reports what the engine has actually evaluated. <span style={{ color: "var(--green)" }}>Empty is not 100%.</span>
+            Policy checks the engine has actually evaluated.
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>SOC 2 · WORM · PINNED EVIDENCE PACK</span>
-            <span style={{ color: "var(--line-strong)" }}>·</span>
             <span style={{ fontSize: 11, color: "var(--dim)" }}>{mappedFrameworks} of {Object.keys(STANDARD_CONTROL_KEYS).length} frameworks mapped</span>
           </div>
         </div>
@@ -105,7 +103,7 @@ export default function Compliance() {
 
       {evidence.phase === "offline" && (
         <div className="panel" style={{ padding: "12px 16px", marginBottom: 16, border: "1px solid var(--amber)", background: "color-mix(in srgb, var(--amber) 8%, transparent)", borderRadius: "var(--r)", display: "flex", gap: 10, alignItems: "center" }}>
-          <Badge tone="amber">OFFLINE</Badge><span style={{ color: "var(--amber)", fontWeight: 700, fontSize: 13 }}>Compliance evidence unavailable.</span><span style={{ color: "var(--dim)", fontSize: 12.5 }}>Nothing below is evaluated — no score is shown while the evidence source is unreachable.</span>
+          <Badge tone="amber">OFFLINE</Badge><span style={{ color: "var(--amber)", fontWeight: 700, fontSize: 13 }}>Compliance evidence unavailable.</span><span style={{ color: "var(--dim)", fontSize: 12.5 }}><span title={"Nothing below is evaluated — no score is shown while the evidence source is unreachable."}>{"Nothing below is evaluated"}</span></span>
         </div>
       )}
 
@@ -190,7 +188,7 @@ export default function Compliance() {
           {registerLive && register && (
             <>
               {register.pack ? <p style={{ margin: "0 0 6px", fontSize: 11, color: "var(--dim)" }}>Pinned pack <span style={{ fontFamily: "var(--mono)", fontWeight: 700, color: "var(--text)" }}>{String(register.pack.pack_sha256).slice(0, 12)}…</span> · collected {register.pack.generated_at ? new Date(register.pack.generated_at).toLocaleString() : "—"} · integrity {String(register.pack.integrity)}</p>
-                : <p style={{ margin: "0 0 8px", fontSize: 12, color: "var(--amber)", background: "color-mix(in srgb, var(--amber) 8%, transparent)", border: "1px solid var(--amber)", borderRadius: "var(--r)", padding: "8px 12px" }}>No evidence pack pinned — requirements are not evaluated. Use “Pin Current Evidence” first.</p>}
+                : <p style={{ margin: "0 0 8px", fontSize: 12, color: "var(--amber)", background: "color-mix(in srgb, var(--amber) 8%, transparent)", border: "1px solid var(--amber)", borderRadius: "var(--r)", padding: "8px 12px" }}><span title={"No evidence pack pinned — requirements are not evaluated. Use “Pin Current Evidence” first."}>{"No evidence pack pinned"}</span></p>}
               <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--dim)" }}><strong style={{ color: "var(--text)" }}>{register.summary?.closed ?? 0} of {register.summary?.denominator ?? register.requirements?.length ?? 0} requirements closed</strong> (evidenced + fresh + signed where required)</p>
               <div style={{ overflowX: "auto" }}>
                 <table className="tbl" style={{ width: "100%" }}>

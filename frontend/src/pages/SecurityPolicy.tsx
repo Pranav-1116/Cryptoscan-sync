@@ -97,10 +97,9 @@ export default function SecurityPolicy() {
             Security & Scanning Policy
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 660 }}>
-            Company-administrator controls — <b style={{ color: "var(--text)" }}>what may be scanned, how aggressively, and what may be retained</b>. Three engines kept separate: <span style={{ color: "var(--violet)" }}>Scanner / Policy / Privacy</span>. Every change is signed to the scanner gate.
+            What may be scanned, how aggressively, and what is retained.
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <span className="kicker" style={{ fontSize: 10 }}>READ-ONLY DEFAULT · HSM-GATED · 4-LAYER RATE LIMIT</span>
             {sector && <Badge tone="violet">SECTOR · {sector}</Badge>}
           </div>
           {sector && <div style={{ marginTop: 8, fontSize: 11, color: "var(--dim)", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "6px 10px" }}>Policy is loaded from the live <b>{sector}</b> sector profile (read-only, conservative intensity, sensitive-data collection off) and can never be looser than it.</div>}

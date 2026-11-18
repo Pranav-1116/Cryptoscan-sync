@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mockFetch, offlineFetch } from "../test/setup";
 import { apiCryptologReportExport, setActiveTenantId, setToken } from "../lib/api";
 import CryptoLogReports from "./CryptoLogReports";
+import { withTitles } from "../test/withTitles";
 
 const renderReports = () => render(<CryptoLogReports />);
 
@@ -39,7 +40,7 @@ describe("CryptoLog reports (§9)", () => {
     const done = await screen.findByTestId("report-done");
     expect(done).toHaveTextContent(/cryptolog-20261107T120000Z-abcd1234/);
     expect(done).toHaveTextContent(/5 files/);
-    expect(done).toHaveTextContent(/missing artifact is unverifiable, not valid/);
+    expect(withTitles(done)).toMatch(/missing artifact is unverifiable, not valid/);
     await waitFor(() => {
       const calls = fetchSpy.mock.calls.map(([, init]) => String(init?.body ?? ""));
       expect(calls.some((b) => b.includes("start_occurred") && b.includes("2026-11-01"))).toBe(true);

@@ -89,7 +89,7 @@ describe("Infrastructure Performance workspace (§2)", () => {
     renderWs();
     fireEvent.click(screen.getByRole("tab", { name: "Server Inventory" }));
     expect(screen.getByText(/not established — no canonical record/)).toBeInTheDocument();
-    expect(screen.getByText(/never invents asset identities/)).toBeInTheDocument();
+    expect(screen.getByText(/no verified link/)).toBeInTheDocument();
     // exactly one set of record links — the verified row only
     expect(screen.getAllByRole("link", { name: "TechBOM record" }).length).toBe(1);
     // unread columns stay unknown
@@ -113,8 +113,8 @@ describe("Infrastructure Performance workspace (§2)", () => {
       </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole("tab", { name: "Server Inventory" }));
-    expect(screen.getByText(/collection gap, not an empty estate/)).toBeInTheDocument();
+    expect(screen.getByTitle(/collection gap, not an empty estate/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Historical Trends" }));
-    expect(screen.getByText(/collection gap, not a flat line/)).toBeInTheDocument();
+    expect(screen.getByTitle(/collection gap, not a flat line/)).toBeInTheDocument();
   });
 });

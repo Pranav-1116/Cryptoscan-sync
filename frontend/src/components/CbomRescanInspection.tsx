@@ -58,7 +58,7 @@ export default function CbomRescanInspection() {
       <p>{proof.result === "VERIFIED_EMPTY_SCOPED_RESCAN" ? "Verified empty committed scope — absence is NOT proven." : "Committed source evidence verified for this scoped rescan."}</p>
       <p>{proof.parsed_files} parsed files; {proof.unparsed_files} unparsed files; {proof.integrity.records} committed records (including tombstones). Integrity: {proof.integrity.result}.</p>
       <p>Completed: {proof.completed_at}. Inspected: {proof.inspected_at}. Inspection snapshot SHA-256: {proof.source_snapshot_sha256}.</p>
-      <p>Partial history remains. No clean posture grade or bank approval. A completed parser receipt is not an independently verified coverage denominator.</p>
+      <p><span title={"Partial history remains. No clean posture grade or bank approval. A completed parser receipt is not an independently verified coverage denominator."}>{"Partial history remains."}</span></p>
     </div>}
     {busy && <p role="status">Reading committed rescan proof…</p>}{message && <p role="status">{message}</p>}
   </section>;
