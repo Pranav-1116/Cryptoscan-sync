@@ -1673,3 +1673,8 @@ summary:focus-visible,
   .drawer { width: 100%; inset: 0; border-radius: 0; }
   .drawer .close { top: 10px; right: 10px; padding: 8px; min-width: 40px; min-height: 40px; }
 }
+
+/* dependency cascade: stack the selector above the diagram on narrow screens */
+@media (max-width: 960px) {
+  .cascade-grid { grid-template-columns: 1fr !important; }
+}

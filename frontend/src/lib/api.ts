@@ -3310,6 +3310,37 @@ export const apiGraphBlastRadius = (systemId: string, hops = 5): Promise<ApiResu
   call(`/api/v1/graph/blast-radius?system_id=${encodeURIComponent(systemId)}&hops=${hops}`);
 export const apiGraphDependents = (systemId: string, hops = 5): Promise<ApiResult<BlastRadiusResult>> =>
   call(`/api/v1/graph/dependents?system_id=${encodeURIComponent(systemId)}&hops=${hops}`);
+/* Crypto dependency map — system → component → library → algorithm, plus the
+   declared/observed system → system dependencies (consumer → provider). */
+export type DepRisk = "disallowed" | "deprecated" | "quantum_vulnerable" | "unknown" | "acceptable" | "quantum_safe";
+export interface DepSystem { id: string; system_id: string; label: string; kind: "system" | "unattributed"; criticality?: string | null; business_unit?: string | null; owner?: string | null; environment?: string | null; algorithm_ids: string[]; risk?: DepRisk | null; component_count: number; }
+export interface DepComponent { id: string; label: string; kind: "source" | "config" | "keystore" | "tls_endpoint"; location: string; system_ids: string[]; algorithm_ids: string[]; asset_count: number; languages: string[]; risk?: DepRisk | null; }
+export interface DepLibrary { id: string; label: string; name: string; version?: string | null; component_ids: string[]; algorithm_ids: string[]; system_ids: string[]; }
+export interface DepAlgorithm { id: string; label: string; canonical: string; family: string; status: string; quantum_impact?: string | null; key_size?: number | null; risk: DepRisk; risk_label: string; asset_count: number; component_ids: string[]; system_ids: string[]; library_ids: string[]; purposes: string[]; modes: string[]; }
+export interface DepLocation { asset_id: string; file_path: string; line_number?: number | null; purpose?: string | null; mode?: string | null; key_size?: number | null; confidence?: string | null; is_hardcoded_key: boolean; scanner_ids: string[]; }
+export interface DepUseEdge { from: string; to: string; relation: "USES"; basis: string; locations: DepLocation[]; library_ids: string[]; }
+export interface DepLinkEdge { from: string; to: string; relation: string; basis: string; asset_ids: string[]; }
+export interface DepSystemEdge { id: string; from: string; to: string; relation: string; lifecycle_state: string; propagates: boolean; provenance?: string | null; source?: string | null; created_by?: string | null; evidence_ref?: string | null; confidence?: number | null; last_verified?: string | null; }
+export interface DependencyMap {
+  policy: { version: string; direction: string; meaning: string };
+  generated_at: string;
+  systems: DepSystem[]; components: DepComponent[]; libraries: DepLibrary[]; algorithms: DepAlgorithm[];
+  edges: { contains: DepLinkEdge[]; uses: DepUseEdge[]; links: DepLinkEdge[]; provides: DepLinkEdge[]; depends_on: DepSystemEdge[] };
+  coverage: { assets: number; attributed_assets: number; unattributed_assets: number; systems: number; systems_with_crypto: number; dependency_edges: number; propagating_edges: number };
+}
+export interface CascadeSystemRow { id: string; system_id: string; name: string; criticality?: string | null; risk?: DepRisk | null; algorithms: { id: string; label: string; risk: DepRisk }[]; weak_algorithms: string[]; hops?: number; direction?: "dependents" | "providers"; path?: string[]; chain?: string[]; path_names?: string[]; chain_names?: string[]; path_edges?: DepSystemEdge[]; reasons?: string[]; }
+export interface CascadeResult {
+  direction: "dependents" | "providers" | "both"; hops: number;
+  seeds: CascadeSystemRow[]; impacted: CascadeSystemRow[];
+  algorithm_seeds: { algorithm: string; id: string; risk: DepRisk; systems: string[]; locations: number }[];
+  unknown_selections: string[];
+  summary: { seed_systems: number; impacted_systems: number; max_depth: number; by_criticality: Record<string, number>; edges_considered: number; edges_not_propagating: number };
+  not_propagating: { from: string; to: string; relation: string; lifecycle_state: string }[];
+  semantics: string;
+}
+export const apiDependencyMap = (): Promise<ApiResult<DependencyMap>> => call("/api/v1/graph/dependency-map");
+export const apiDependencyCascade = (body: { system_ids: string[]; algorithm_ids: string[]; direction: "dependents" | "providers" | "both"; hops: number }): Promise<ApiResult<CascadeResult>> =>
+  call("/api/v1/graph/dependency-map/cascade", { method: "POST", body: JSON.stringify(body) });
 export const apiGraphSimulate = (nodeId: string, change = "migrate_pqc"): Promise<ApiResult<SimulateResult>> =>
   call("/api/v1/graph/simulate", { method: "POST", body: JSON.stringify({ node_id: nodeId, change }) });
 export const apiGraphExplain = (nodeId: string): Promise<ApiResult<ExplainResult>> =>

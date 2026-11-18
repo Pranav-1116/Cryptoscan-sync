@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import { Panel, Badge, Table, PageHead, Bar, Ring } from "../components/ui.jsx";
 import { apiBlast, LiveBadge } from "../lib/api.js";
 import TwinEdgeExplorer from "../components/TwinEdgeExplorer";
+import CryptoDependencyMap from "../components/depmap/CryptoDependencyMap";
 import { useLive } from "../lib/useLive.js";
 import { motion, AnimatePresence } from "framer-motion";
 import { EASE, useMotionOK, CountUp } from "../lib/motion";
@@ -243,6 +244,9 @@ export default function Graph(){
           </div>
         }
       />
+
+      {/* full algorithm → software dependency map (system → component → library → algorithm) */}
+      <CryptoDependencyMap/>
 
       {/* KPI strip — visual */}
       <div className="grid cols-5" style={{marginBottom:14}}>

@@ -7,6 +7,8 @@ import { IconComponent, IconSearch, IconTarget, IconHardware } from "../componen
 import CodeCascadePanel from "../components/CodeCascadePanel";
 import UnifiedCascadePanel from "../components/UnifiedCascadePanel";
 import EdgeManagerPanel from "../components/EdgeManagerPanel";
+import SystemCascadeSimulator from "../components/depmap/SystemCascadeSimulator";
+import CryptoDependencyMap from "../components/depmap/CryptoDependencyMap";
 
 const KIND_COLOR: Record<string,string> = {
   network:"var(--accent)", infra:"var(--accent)", cloud:"var(--accent)",
@@ -139,6 +141,11 @@ export default function DependencyGraph(){
           </div>
         </div>
       </div>
+
+      {/* system → system dependencies + selectable cascade (consumer → provider) */}
+      <SystemCascadeSimulator/>
+      {/* algorithm → software chain, compact (full explorer lives in Graph explorer) */}
+      <CryptoDependencyMap compact/>
 
       <div style={{display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(180px,1fr))", gap:12, marginBottom:16}}>
         <div className="panel" style={{padding:"12px 14px", borderTop:"2px solid var(--accent)"}}>

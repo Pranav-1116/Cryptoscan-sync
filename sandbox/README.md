@@ -233,6 +233,25 @@ when reality moves.
 The seeded history (scan back-story, baselines, drift) remains as the bank's
 past quarter; scans and `collect` runs are the living present.
 
+## Dependencies — crypto map and cascade (Twin & dependencies)
+
+The seed also records the bank's dependency register, so both dependency
+views have complete, attributable data:
+
+| What | Where it comes from | Where to see it |
+|---|---|---|
+| system → software component → library → algorithm | each `crypto_assets` row, its owning-system link (`system_assets`) and its recorded library | **Twin & dependencies → Graph explorer** (full map + "which software uses each algorithm" table with file:line) |
+| live TLS endpoints → system | scan target ownership (`10.210.0.2:443` → Internet Banking, `.3` Mobile, `.4` SWIFT, `.5` Legacy Branch, `.6` Payment HSM, `.7` Core Ledger, `.8` Bastion) | the same map, as `LIVE` components — every new CBOM/Network scan links itself |
+| system → system (consumer → provider) | 20 declared architecture edges (e.g. ATM → Card Management → Payment HSM), provenance DECLARED with the interface as evidence | **Twin & dependencies → Cascade** (diagram + "who depends on whom" table) |
+| cascade simulation | walks only ACTIVE `CALLS` / `DEPENDS_ON` / `IMPORTS` edges | **Cascade** → tick systems and/or algorithms → *Simulate cascade* |
+
+Databases seeded before this existed pick it up with a plain, non-destructive
+re-seed (it only adds links, never deletes):
+
+```bash
+./sandbox/run_sandbox.sh seed
+```
+
 ## Tear down and clean up
 
 ```bash

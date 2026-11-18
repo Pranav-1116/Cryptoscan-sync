@@ -205,6 +205,181 @@ def _seed_authorized_scope(db) -> None:
     print(f"registered {added} live scan targets ({len(LIVE_TARGETS)} total in rotation)")
 
 
+# ── estate architecture (the bank's dependency register) ───────────────────
+# Infrastructure systems that the live estate exposes but the application
+# list above does not cover. Created idempotently by the topology phase.
+INFRA_SYSTEMS = [
+    # (key, name, unit, owner-tech, owner-sec, criticality)
+    ("hsm",     "Payment HSM Cluster",       "Payments",                "Meera Krishnan", "Risk — S. Rao",   "CRITICAL"),
+    ("bastion", "Privileged Access Bastion", "Infrastructure Security", "Rahul Iyer",     "CISO — D. Varma", "HIGH"),
+]
+SANDBOX_UNITS = sorted({s[2] for s in SYSTEMS} | {s[2] for s in INFRA_SYSTEMS})
+
+# Which system owns each live estate endpoint (binds scan targets → systems,
+# so every TLS observation lands on the right system in the dependency map).
+TARGET_SYSTEM = {
+    "10.210.0.2:443": "ibank",
+    "10.210.0.3:443": "mobile",
+    "10.210.0.4:443": "swift",
+    "10.210.0.5:443": "legacy",
+    "10.210.0.6:8443": "hsm",
+    "10.210.0.7:5432": "core",
+    "10.210.0.8:22": "bastion",
+}
+
+# Seeded certificates → owning system, where the certificate name says so
+# unambiguously. Shared/edge certificates (api., openbanking., dr-site.,
+# dev.) are deliberately left unbound rather than guessed.
+CERT_SYSTEM = {
+    "*.meridianbank.example": "ibank",
+    "mobile-api.meridianbank.example": "mobile",
+    "swift-hub.meridianbank.example": "swift",
+    "cms.meridianbank.example": "cards",
+    "crm.meridianbank.example": "crm",
+    "dwh.meridianbank.example": "dwh",
+    "legacy-branch.meridianbank.example": "legacy",
+    "atm-switch-dr.meridianbank.example": "atm",
+    "hsm-admin.meridianbank.example": "hsm",
+    "treasury.meridianbank.example": "treas",
+}
+
+# Consumer → provider. "A → B" means A calls / consumes B and is affected
+# when B (or B's cryptography) changes or breaks. Each row states the
+# interface that establishes it; these are the bank's declared architecture
+# (provenance DECLARED), not observed traffic. The ibank → core edge is also
+# independently observed by the estate collector (depends_on db-core).
+ARCHITECTURE = [
+    ("ibank",   "core",  "CALLS",      "account balances, transfers and statements over the core-banking service API"),
+    ("ibank",   "crm",   "CALLS",      "customer profile and consent lookups at login"),
+    ("mobile",  "ibank", "CALLS",      "mobile backend reuses the internet-banking payment and beneficiary services"),
+    ("mobile",  "core",  "CALLS",      "real-time balance enquiry over the core-banking service API"),
+    ("mobile",  "crm",   "CALLS",      "device binding and customer notifications"),
+    ("swift",   "core",  "CALLS",      "posts inbound/outbound MT/MX settlements to the ledger"),
+    ("swift",   "hsm",   "DEPENDS_ON", "LAU message signing keys held in the payment HSM"),
+    ("cards",   "core",  "CALLS",      "card account postings and limits"),
+    ("cards",   "hsm",   "DEPENDS_ON", "PIN translation and CVV generation (payShield commands)"),
+    ("atm",     "cards", "CALLS",      "ISO 8583 authorisation requests routed to card management"),
+    ("atm",     "hsm",   "DEPENDS_ON", "PIN block translation and DUKPT key derivation"),
+    ("treas",   "swift", "CALLS",      "FX and money-market settlement messages via the SWIFT hub"),
+    ("treas",   "core",  "CALLS",      "nostro/vostro postings"),
+    ("dwh",     "core",  "DEPENDS_ON", "nightly ledger extract (ETL)"),
+    ("dwh",     "crm",   "DEPENDS_ON", "nightly customer extract (ETL)"),
+    ("dwh",     "treas", "DEPENDS_ON", "daily treasury position extract"),
+    ("legacy",  "core",  "CALLS",      "branch teller transactions forwarded to the ledger"),
+    ("core",    "hsm",   "DEPENDS_ON", "TDE master key wrapping for the ledger database"),
+    ("bastion", "hsm",   "CALLS",      "privileged HSM administration sessions"),
+    ("bastion", "core",  "CALLS",      "privileged database administration sessions"),
+]
+
+
+def _seed_dependency_topology(db) -> None:
+    """Idempotently bind the estate together so the dependency map is complete:
+    infrastructure systems, scan target → system, crypto asset → system,
+    certificate → system, and the declared system → system architecture.
+
+    Safe to re-run: every write is an upsert keyed by natural identity, so
+    databases seeded by older script versions gain the links on a plain
+    `seed` run without touching their existing data.
+    """
+    from db.models.network_scan_target import NetworkScanTarget
+    from db.models.system_asset import SystemAsset
+    from db.models.system_dependency import SystemDependency
+
+    by_key: dict[str, System] = {}
+    for row in db.query(System).all():
+        key = (row.extra or {}).get("system_key")
+        if key and (row.extra or {}).get("seed") == SEED_TAG:
+            by_key[key] = row
+    created = 0
+    for key, name, unit, tech, sec, crit in INFRA_SYSTEMS:
+        if key in by_key:
+            continue
+        row = System(
+            name=name, description=f"{name} — Meridian Bank (fictional sandbox estate)",
+            owner=unit, technical_owner=tech, security_owner=sec, environment="Production",
+            compliance_scopes=["PCI-DSS", "RBI-IT-Framework", "ISO27001"], business_unit=unit,
+            criticality=crit, coverage_status="CURRENT",
+            extra={"seed": SEED_TAG, "system_key": key},
+        )
+        db.add(row)
+        by_key[key] = row
+        created += 1
+    db.flush()
+    if not by_key:
+        print("dependency topology skipped: no sandbox systems yet")
+        return
+
+    # scan targets → owning system
+    bound = 0
+    for endpoint, key in TARGET_SYSTEM.items():
+        target = db.query(NetworkScanTarget).filter(NetworkScanTarget.endpoint == endpoint).first()
+        system = by_key.get(key)
+        if target is not None and system is not None and target.system_id != system.id:
+            target.system_id = system.id
+            bound += 1
+
+    # crypto assets → owning system
+    existing_links = {(l.system_id, l.asset_id) for l in db.query(SystemAsset).all()}
+    linked = 0
+    for asset in db.query(CryptoAsset).all():
+        key = (asset.extra or {}).get("system_key") if (asset.extra or {}).get("seed") == SEED_TAG else None
+        if key is None:
+            loc = str(asset.file_path or "")
+            loc = loc[len("tls://"):] if loc.startswith("tls://") else loc
+            key = TARGET_SYSTEM.get(loc)
+        system = by_key.get(key) if key else None
+        if system is None or (system.id, asset.id) in existing_links:
+            continue
+        db.add(SystemAsset(system_id=system.id, asset_id=asset.id, tenant_id=asset.tenant_id))
+        existing_links.add((system.id, asset.id))
+        linked += 1
+
+    # certificates → owning system (seeded names + live endpoint usages)
+    usage_sys: dict[str, set[str]] = {}
+    for usage in db.query(CertificateUsage).all():
+        key = TARGET_SYSTEM.get(str(usage.location or ""))
+        if key and key in by_key:
+            usage_sys.setdefault(usage.fingerprint_sha256, set()).add(by_key[key].id)
+    certs_bound = 0
+    for cert in db.query(Certificate).all():
+        wanted = set(usage_sys.get(cert.fingerprint_sha256, set()))
+        if (cert.extra or {}).get("seed") == SEED_TAG:
+            cn = str(cert.subject or "").split(",", 1)[0].removeprefix("CN=")
+            key = CERT_SYSTEM.get(cn)
+            if key and key in by_key:
+                wanted.add(by_key[key].id)
+        have = set((cert.extra or {}).get("system_ids") or [])
+        if wanted - have:
+            cert.extra = {**(cert.extra or {}), "system_ids": sorted(have | wanted)}
+            certs_bound += 1
+
+    # declared architecture
+    declared = 0
+    for consumer, provider, relation, why in ARCHITECTURE:
+        parent, child = by_key.get(consumer), by_key.get(provider)
+        if parent is None or child is None:
+            continue
+        edge = db.query(SystemDependency).filter(
+            SystemDependency.parent_id == parent.id, SystemDependency.child_id == child.id).first()
+        if edge is None:
+            edge = SystemDependency(parent_id=parent.id, child_id=child.id, tenant_id=parent.tenant_id)
+            db.add(edge)
+            declared += 1
+        edge.relation = relation
+        edge.source = "imported"
+        edge.created_by = "sandbox-architecture"
+        edge.confidence = 1.0
+        edge.confidence_meaning = "declared in the bank's architecture register — not observed traffic"
+        edge.evidence_ref = f"meridian-architecture: {why}"[:500]
+        edge.last_verified = NOW
+        edge.lifecycle_state = "ACTIVE"
+        edge.lifecycle_source = "sandbox-architecture"
+    db.commit()
+    print(f"dependency topology: +{created} infra systems, {bound} targets bound, "
+          f"+{linked} asset links, {certs_bound} certificates bound, "
+          f"+{declared} dependencies ({len(ARCHITECTURE)} declared)")
+
+
 def _clear_authorized_scope(db) -> None:
     from db.models.network_scan_target import NetworkScanTarget
     from db.models.onboarding import ScopeEntry
@@ -294,7 +469,7 @@ def seed(db_url: str, reset: bool) -> None:
                     ) + str(getattr(row, "notes", "") or "") + str(getattr(row, "target_location", "") or "")
                     if SEED_TAG in blob or "meridianbank.internal" in blob:
                         db.delete(row)
-            db.query(System).filter(System.business_unit.in_([s[2] for s in SYSTEMS])).delete(synchronize_session=False)
+            db.query(System).filter(System.business_unit.in_(SANDBOX_UNITS)).delete(synchronize_session=False)
             db.commit()
             _clear_authorized_scope(db)
             print("sandbox rows wiped")
@@ -306,6 +481,7 @@ def seed(db_url: str, reset: bool) -> None:
         ).first()
         if marker:
             print("sandbox estate already seeded — pass --reset to rebuild")
+            _seed_dependency_topology(db)
             return
 
         systems = {}
@@ -502,6 +678,7 @@ def seed(db_url: str, reset: bool) -> None:
                 notes=f"Sandbox baseline seeded {SEED_TAG}",
             ))
         db.commit()
+        _seed_dependency_topology(db)
         print("sandbox bank estate seeded OK")
 
 

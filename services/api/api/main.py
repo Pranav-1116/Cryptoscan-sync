@@ -92,6 +92,7 @@ from api.routers import (
     export,
     findings,
     graph,
+    dependency_map,
     hardware,
     hbom,
     hbom_workspace,
@@ -704,6 +705,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(techbom_workspace.router, prefix=prefix)
     app.include_router(asset_detail.router, prefix=prefix)
     app.include_router(graph.router, prefix=prefix)
+    app.include_router(dependency_map.router, prefix=prefix)
     app.include_router(reachability.router, prefix=prefix)
     app.include_router(remediation.router, prefix=prefix)
     app.include_router(pqc_migration.router, prefix=prefix)

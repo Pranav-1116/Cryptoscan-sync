@@ -249,9 +249,45 @@ def _materialize_workspace_rows(db, result) -> None:
     logged, it never fails the scan that produced the evidence.
     """
     try:
+        # No savepoint on purpose: releasing one fires the session's
+        # before_commit hooks mid-run. Writes are pre-checked instead
+        # (owner systems verified to exist, links de-duplicated) so the
+        # projection cannot poison the run's transaction.
         _materialize_workspace_rows_inner(db, result)
     except Exception:  # noqa: BLE001 — projection must not sink the run
         logger.exception("network_workspace_projection_failed")
+
+
+def _endpoint_owners(db, findings) -> dict[str, str]:
+    """endpoint → owning system id, from the registered scan targets.
+
+    Ownership is only ever taken from an operator/onboarding declaration on
+    the target — an endpoint without one stays unattributed in the
+    dependency map rather than being guessed onto a system."""
+    from db.models.network_scan_target import NetworkScanTarget
+
+    endpoints = sorted({str(f.get("endpoint") or "").strip() for f in findings
+                        if isinstance(f, dict) and f.get("endpoint")})
+    if not endpoints:
+        return {}
+    from db.models.system import System
+
+    rows = db.query(NetworkScanTarget).filter(NetworkScanTarget.endpoint.in_(endpoints)).all()
+    claimed = {row.system_id for row in rows if row.system_id}
+    live = {sid for (sid,) in db.query(System.id).filter(System.id.in_(claimed)).all()} if claimed else set()
+    return {row.endpoint: row.system_id for row in rows if row.system_id in live}
+
+
+def _link_owner(db, system_id, asset_row, tenant_id) -> None:
+    if not system_id or asset_row is None:
+        return
+    from db.models.system_asset import SystemAsset
+
+    exists = db.query(SystemAsset).filter(SystemAsset.system_id == system_id,
+                                          SystemAsset.asset_id == asset_row.id).first()
+    if exists is None:
+        db.add(SystemAsset(system_id=system_id, asset_id=asset_row.id, tenant_id=tenant_id))
+        db.flush()
 
 
 def _materialize_workspace_rows_inner(db, result) -> None:
@@ -263,6 +299,7 @@ def _materialize_workspace_rows_inner(db, result) -> None:
     if not isinstance(findings, list):
         return
     tenant_id = current_tenant()
+    owner_of = _endpoint_owners(db, findings)
     assets = AssetRepository(db)
     states = CryptoRepository(db)
     runtime = RuntimeFindingRepository(db)
@@ -300,6 +337,7 @@ def _materialize_workspace_rows_inner(db, result) -> None:
                     "observation": "live TLS handshake",
                 },
             })
+            _link_owner(db, owner_of.get(endpoint), row, tenant_id)
             states.upsert_state({
                 "asset_id": f"crypto:{row.id}",
                 "tenant_id": tenant_id,
@@ -328,6 +366,7 @@ def _materialize_workspace_rows_inner(db, result) -> None:
                     "observation": "live TLS handshake",
                 },
             })
+            _link_owner(db, owner_of.get(endpoint), row, tenant_id)
             states.upsert_state({
                 "asset_id": f"crypto:{row.id}",
                 "tenant_id": tenant_id,
