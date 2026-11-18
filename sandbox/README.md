@@ -46,6 +46,16 @@ by IP produces clean, realistic cert records — no artificial name mismatches.
 
 ## Run it
 
+> **Port conflicts:** every host port is an env var (`POSTGRES_PORT`,
+> `REDIS_PORT`, `API_PORT`, `FRONTEND_PORT`, `NGINX_PORT`, …). If another
+> project holds a default (e.g. 55432), put the override in `.env` —
+> **not** as a one-off `VAR=x` prefix, which silently reverts on the next
+> command:
+>
+> ```bash
+> echo "POSTGRES_PORT=55433" >> .env
+> ```
+
 ```bash
 # from the repo root — one command brings up the core stack + the estate and
 # seeds the DB.
