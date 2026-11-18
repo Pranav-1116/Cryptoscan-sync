@@ -147,6 +147,67 @@ SCAN_STORY.append({"system_key": "ibank", "location": "git://meridianbank.intern
                    "operator": "p.suresh", "started": NOW, "failed": None})  # QUEUED
 
 
+# ── live-scan authorization (the bank's onboarding declaration) ────────────
+# The sandbox LAN + every estate endpoint, declared as authorized scope so
+# the sweep gate (sweep_is_authorized) and the due-scan rotation accept them.
+# Runs BEFORE the idempotency marker check on purpose: databases seeded by an
+# older script version still get scope on the next plain `seed` run.
+SANDBOX_CIDR = "10.210.0.0/24"
+LIVE_TARGETS = [
+    ("10.210.0.10:443", "internet-banking"),
+    ("10.210.0.11:443", "mobile-api"),
+    ("10.210.0.12:443", "swift-gateway"),
+    ("10.210.0.13:443", "legacy-branch"),
+    ("10.210.0.14:8443", "hsm-sim"),
+    ("10.210.0.15:5432", "core-banking-db"),
+    ("10.210.0.16:22", "payments-bastion"),
+]
+
+
+def _seed_authorized_scope(db) -> None:
+    from db.models.network_scan_target import NetworkScanTarget
+    from db.models.onboarding import ScopeEntry
+
+    scope = db.query(ScopeEntry).filter(
+        ScopeEntry.kind == "network", ScopeEntry.target == SANDBOX_CIDR).first()
+    if scope:
+        if not scope.enabled:
+            scope.enabled = True
+            db.commit()
+        print(f"authorized scope already declared: {SANDBOX_CIDR}")
+    else:
+        db.add(ScopeEntry(
+            org_id="meridian-sandbox", env_id=None, kind="network", target=SANDBOX_CIDR,
+            detail={"seed": SEED_TAG, "label": "Meridian Bank sandbox LAN",
+                    "declared_by": "sandbox-onboarding"},
+            enabled=True,
+        ))
+        print(f"declared authorized network scope: {SANDBOX_CIDR}")
+    added = 0
+    for endpoint, name in LIVE_TARGETS:
+        row = db.query(NetworkScanTarget).filter(NetworkScanTarget.endpoint == endpoint).first()
+        if not row:
+            db.add(NetworkScanTarget(
+                endpoint=endpoint, source="onboarding", scan_frequency="daily",
+                enabled=True, next_scan_time=NOW,
+            ))
+            added += 1
+    db.commit()
+    print(f"registered {added} live scan targets ({len(LIVE_TARGETS)} total in rotation)")
+
+
+def _clear_authorized_scope(db) -> None:
+    from db.models.network_scan_target import NetworkScanTarget
+    from db.models.onboarding import ScopeEntry
+
+    db.query(ScopeEntry).filter(ScopeEntry.target == SANDBOX_CIDR).delete(synchronize_session=False)
+    db.query(NetworkScanTarget).filter(
+        NetworkScanTarget.endpoint.in_([ep for ep, _n in LIVE_TARGETS]),
+        NetworkScanTarget.source == "onboarding",
+    ).delete(synchronize_session=False)
+    db.commit()
+
+
 def _engine_with_retry(db_url: str, attempts: int = 20, delay_s: float = 3.0):
     """Wait out a fresh stack: Postgres healthy != API migrations finished."""
     import time
@@ -198,6 +259,8 @@ def _ensure_schema(engine) -> None:
     import db.models.drift_event  # noqa: F401
     import db.models.baseline  # noqa: F401
     import db.models.system  # noqa: F401
+    import db.models.onboarding  # noqa: F401
+    import db.models.network_scan_target  # noqa: F401
     Base.metadata.create_all(engine)
     print("sqlite schema ensured (existing tables untouched)")
 
@@ -224,7 +287,10 @@ def seed(db_url: str, reset: bool) -> None:
                         db.delete(row)
             db.query(System).filter(System.business_unit.in_([s[2] for s in SYSTEMS])).delete(synchronize_session=False)
             db.commit()
+            _clear_authorized_scope(db)
             print("sandbox rows wiped")
+
+        _seed_authorized_scope(db)
 
         marker = db.execute(
             text("SELECT id FROM crypto_assets WHERE file_path LIKE '%MERIDIAN-SANDBOX-MARKER%'")

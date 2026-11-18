@@ -83,9 +83,12 @@ The seeded data is the bank's *history*. The steps below are the *real
 onboarding flow* — you point CryptoScan at IPs and it collects everything
 live. This is what a deployment at an actual bank looks like.
 
-**1. Declare the estate scope** — a bank first tells CryptoScan which
-network it owns. In the console: **Network → Crypto Scope**, add
-`10.210.0.0/24` as an authorized scope entry.
+**1. Estate scope is declared for you** — a real bank declares its networks
+at onboarding; the seeder does the same: `10.210.0.0/24` is written as an
+authorized network scope entry and all 7 estate endpoints are registered as
+scan targets (visible under **Network → Targets**, and picked up by the due
+-scan rotation). Nothing to configure before scanning. If you ever run
+`reset`, scope is re-declared on the next `seed`.
 
 **2. Get the target list** — `bash sandbox/run_sandbox.sh targets` prints it,
 or copy from the table above.
@@ -136,9 +139,9 @@ check **Drift** for scan-to-scan deltas. The six BOM workspaces
 (SBOM · CBOM · HBOM · NBOM · VBOM · TechBOM) reconcile the seeded software/
 hardware/vendor inventory with what the network scans just observed.
 
-> If a scan is refused with a scope/admission error, revisit step 1 — the
-> platform fail-closes on targets outside authorized scope, same as it would
-> in the bank.
+> The sweep gate fail-closes on anything outside authorized scope — with
+> `10.210.0.0/24` declared, every estate IP passes; a target outside that
+> range is refused with a scope violation, same as in the bank.
 
 ## Tear down and clean up
 
