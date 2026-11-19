@@ -22,6 +22,8 @@ export interface VirtualTableProps {
   rows: React.ReactNode[][];
   /** Row height in px (fixed rows keep scrolling honest). */
   rowHeight?: number;
+  /** Header height in px (defaults to the row height). */
+  headHeight?: number;
   /** Scrollport height in px. */
   height?: number;
   /** True total across all backend pages — announced, not rendered. */
@@ -37,6 +39,7 @@ export default function VirtualTable({
   head,
   rows,
   rowHeight = 40,
+  headHeight,
   height = 480,
   total,
   selected = -1,
@@ -61,6 +64,7 @@ export default function VirtualTable({
     : rows.slice(0, 200).map((_, index) => ({ key: index, index, start: index * rowHeight }));
 
   const announcedTotal = total ?? rows.length;
+  const headerHeight = headHeight ?? rowHeight;
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!onSelect || rows.length === 0) return;
@@ -92,7 +96,7 @@ export default function VirtualTable({
       tabIndex={0}
       onKeyDown={onKeyDown}
     >
-      <div style={{ height: virtualizer.getTotalSize() + rowHeight, position: "relative" }}>
+      <div style={{ height: virtualizer.getTotalSize() + headerHeight, position: "relative" }}>
         <div
           role="row"
           aria-rowindex={1}
@@ -100,14 +104,21 @@ export default function VirtualTable({
           style={{
             position: "sticky",
             top: 0,
-            height: rowHeight,
+            height: headerHeight,
             display: "flex",
+            alignItems: "center",
             zIndex: 1,
-            background: "var(--bg, #0b0f14)",
+            background: "var(--panel, var(--bg, #0b0f14))",
+            borderBottom: "1px solid var(--line)",
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: "var(--dim)",
           }}
         >
           {head.map((h, i) => (
-            <div role="columnheader" key={i} style={{ flex: 1, padding: "0 8px" }}>
+            <div role="columnheader" key={i} style={{ flex: 1, minWidth: 0, padding: "0 8px" }}>
               {h}
             </div>
           ))}
@@ -127,13 +138,14 @@ export default function VirtualTable({
                 left: 0,
                 width: "100%",
                 height: rowHeight,
-                transform: `translateY(${item.start + rowHeight}px)`,
+                transform: `translateY(${item.start + headerHeight}px)`,
                 display: "flex",
+                alignItems: "center",
               }}
               onClick={() => onSelect?.(item.index)}
             >
               {(rows[item.index] ?? []).map((cell, ci) => (
-                <div role="gridcell" key={ci} style={{ flex: 1, padding: "0 8px", overflow: "hidden" }}>
+                <div role="gridcell" key={ci} style={{ flex: 1, minWidth: 0, height: "100%", display: "flex", alignItems: "center", padding: "0 8px", overflow: "hidden" }}>
                   {cell}
                 </div>
               ))}

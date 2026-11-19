@@ -106,6 +106,8 @@ function spineJoin(fact: FactStoreRow, asset: AssetRecord): boolean {
 }
 
 const PAGE_SIZE = 100;
+/** Fixed list-row height: three text lines plus the gap between rows. */
+const ROW_HEIGHT = 92;
 
 function parseAssetPage(body: unknown): { rows: AssetRecord[]; total: number } | { error: string } {
   if (!body || typeof body !== "object" || Array.isArray(body)) return { error: "Asset response is unavailable or invalid." };
@@ -409,36 +411,44 @@ export default function Assets() {
   const selectedAsset = assetsList.find((asset) => asset.id === selectedId) ?? null;
   const displayedAsset = detail?.id === selectedId ? detail : selectedAsset;
   // No browser-side filtering: the list shows what the DATABASE matched.
+  const ellipsis: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 };
   const assetButton = (asset: AssetRecord) => {
     const isSel = selectedId === asset.id;
+    const evidence = asset.evidenceClass ?? "UNCLASSIFIED";
     return (
       <button
         type="button"
         aria-pressed={isSel}
         onClick={() => setSelectedId(asset.id)}
+        title={`${asset.name} — ${asset.sourcePath ?? "source not observed"}`}
         style={{
-          width: "100%", textAlign: "left", color: "var(--text)",
-          padding: "10px 12px",
+          width: "100%", height: ROW_HEIGHT - 8, boxSizing: "border-box",
+          display: "flex", flexDirection: "column", justifyContent: "center", gap: 4,
+          textAlign: "left", color: "var(--text)",
+          padding: "8px 12px",
           background: isSel ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent",
           border: isSel ? "1px solid var(--cyan)" : "1px solid var(--line)",
           borderRadius: "var(--r)",
           cursor: "pointer",
-          transition: "all 0.15s ease"
+          transition: "border-color 0.15s ease, background 0.15s ease"
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-          <span style={{ fontWeight: 600, fontSize: "13px", color: isSel ? "var(--cyan)" : "var(--text)" }}>{asset.name}</span>
-          <span style={{ display: "flex", gap: "4px" }}>
-            <Badge tone={asset.evidenceClass && asset.evidenceClass !== "UNCLASSIFIED" ? "cyan" : "slate"}>
-              {`Evidence: ${asset.evidenceClass ?? "UNCLASSIFIED"}`}
-            </Badge>
-            <Badge tone="slate">{asset.lifecycleState ?? "Unknown"}</Badge>
+        {/* row 1: asset name · lifecycle */}
+        <span style={{ display: "flex", alignItems: "center", gap: 8, width: "100%" }}>
+          <span style={{ ...ellipsis, flex: 1, fontWeight: 600, fontSize: 13, color: isSel ? "var(--cyan)" : "var(--text)" }}>{asset.name}</span>
+          <span style={{ flexShrink: 0 }}><Badge tone="slate">{asset.lifecycleState ?? "Unknown"}</Badge></span>
+        </span>
+        {/* row 2: where it was found */}
+        <span style={{ ...ellipsis, width: "100%", fontFamily: "var(--mono)", fontSize: 11, color: "var(--dim)" }}>
+          {asset.sourcePath ?? "Source not observed"}
+        </span>
+        {/* row 3: evidence level · owner */}
+        <span style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", fontSize: 11.5, color: "var(--dim)" }}>
+          <span style={{ flexShrink: 0 }}>
+            <Badge tone={evidence !== "UNCLASSIFIED" ? "cyan" : "slate"}>{`Evidence: ${evidence}`}</Badge>
           </span>
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11.5px", color: "var(--dim)" }}>
-          <span>{asset.sourcePath ?? "Source not observed"}</span>
-          <span>{asset.owner ?? "Owner unknown"}</span>
-        </div>
+          <span style={{ ...ellipsis, flex: 1, textAlign: "right" }}>{asset.owner ?? "Owner unknown"}</span>
+        </span>
       </button>
     );
   };
@@ -489,11 +499,11 @@ export default function Assets() {
           </Link>
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "360px 1fr", gap: "24px" }}>
+        <div className="assets-layout">
           {/* Left Column: Asset Selection List */}
-          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
             <div className="panel" style={{ padding: "16px" }}>
-              <div style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
                 <input
                   type="search"
                   aria-label="Search assets"
@@ -502,10 +512,13 @@ export default function Assets() {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   style={{
                     flex: 1,
+                    minWidth: 0,
+                    height: 32,
+                    boxSizing: "border-box",
                     background: "var(--bg-2)",
                     border: "1px solid var(--line)",
                     borderRadius: "var(--r)",
-                    padding: "6px 10px",
+                    padding: "0 10px",
                     color: "var(--text)",
                     fontSize: "13px"
                   }}
@@ -514,7 +527,7 @@ export default function Assets() {
                   aria-label="Sort assets by"
                   value={sort}
                   onChange={(e) => setSort(e.target.value)}
-                  style={{ background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", color: "var(--text)", fontSize: "12px", padding: "6px" }}
+                  style={{ flexShrink: 0, height: 32, boxSizing: "border-box", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", color: "var(--text)", fontSize: "12px", padding: "0 6px" }}
                 >
                   <option value="algorithm">Algorithm</option>
                   <option value="file_path">Source path</option>
@@ -527,7 +540,7 @@ export default function Assets() {
                   aria-label={order === "asc" ? "Sort descending" : "Sort ascending"}
                   onClick={() => setOrder(order === "asc" ? "desc" : "asc")}
                   className="btn outline"
-                  style={{ padding: "6px 10px", fontSize: "12px" }}
+                  style={{ flexShrink: 0, height: 32, width: 32, boxSizing: "border-box", padding: 0, fontSize: "13px", justifyContent: "center" }}
                 >
                   {order === "asc" ? "↑" : "↓"}
                 </button>
@@ -536,8 +549,9 @@ export default function Assets() {
               <VirtualTable
                 head={["Cryptographic asset"]}
                 rows={assetsList.map((asset) => [assetButton(asset)])}
-                rowHeight={68}
-                height={600}
+                rowHeight={ROW_HEIGHT}
+                headHeight={34}
+                height={620}
                 total={totalCount ?? assetsList.length}
                 selected={assetsList.findIndex((asset) => asset.id === selectedId)}
                 onSelect={(index) => {
@@ -551,7 +565,7 @@ export default function Assets() {
               </p>
               {pageError && <p role="alert" style={{ color: "var(--dim)", fontSize: "12px" }}>{pageError}</p>}
               {nextPage !== null && (
-                <button type="button" className="btn outline" onClick={loadMore} disabled={pageLoading} style={{ marginTop: "8px" }}>
+                <button type="button" className="btn outline" onClick={loadMore} disabled={pageLoading} style={{ marginTop: "8px", width: "100%", justifyContent: "center" }}>
                   {pageLoading ? "Loading more..." : "Load more assets"}
                 </button>
               )}
@@ -560,13 +574,13 @@ export default function Assets() {
 
           {/* Right Column: Active Asset Detail Tabs */}
           {displayedAsset && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px", minWidth: 0 }}>
               <div className="panel" style={{ padding: "20px" }}>
                 <Tabs tabs={tabNames} active={activeTab} onChange={setActiveTab} />
 
                 <div style={{ marginTop: "20px" }}>
                   {activeTab === 0 && (
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", fontSize: "13px" }}>
+                    <div className="assets-overview" style={{ fontSize: "13px" }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                         <div>
                           <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Lifecycle status</div>
