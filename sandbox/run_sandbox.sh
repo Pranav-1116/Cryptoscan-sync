@@ -26,6 +26,13 @@ wait_healthy() {
   return 0
 }
 
+# the seed/migrate container talks to Postgres by name — start it first, or
+# alembic fails with 'could not translate host name "postgres"'
+db_up() {
+  "${COMPOSE[@]}" up -d postgres
+  wait_healthy cryptoscan-postgres 60
+}
+
 case "${1:-up}" in
   up)
     # Wave 1 — data plane only. The seed talks straight to Postgres and even
@@ -56,11 +63,12 @@ case "${1:-up}" in
     echo "  DNS also works: internet-banking.bank.sandbox, ..."
     echo "  console: http://127.0.0.1:3003   (run '$0 targets' to reprint)"
     ;;
-  seed)   "${COMPOSE[@]}" run --rm sandbox-seed ;;
-  reset)  "${COMPOSE[@]}" run --rm -e SEED_ARGS="--reset" sandbox-seed ;;
+  seed)   db_up; "${COMPOSE[@]}" run --rm sandbox-seed ;;
+  reset)  db_up; "${COMPOSE[@]}" run --rm -e SEED_ARGS="--reset" sandbox-seed ;;
   migrate)
     # Applies the DB migrations without seeding — the repair path for the
     # API's 'Database migration status is missing' startup failure.
+    db_up
     "${COMPOSE[@]}" run --rm -e SEED_MODE="migrate-only" sandbox-seed
     echo "schema migrated. Now: docker compose restart cryptoscan-api (or rerun: $0 up)"
     ;;
