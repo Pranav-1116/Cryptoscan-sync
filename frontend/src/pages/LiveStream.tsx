@@ -178,7 +178,7 @@ function CbomPanel() {
           placeholder="system id (e.g. core-1)"
           onKeyDown={(e) => { if (e.key === "Enter") void load(); }}
         />
-        <button onClick={() => void load()} disabled={busy}>{busy ? "…" : "Inspect"}</button>
+        <button className="btn primary" onClick={() => void load()} disabled={busy || !system.trim()}>{busy ? "Inspecting…" : "Inspect"}</button>
       </div>
       {err && <p className="sub" style={{ color: "var(--red)" }}>{err}</p>}
       {live && (

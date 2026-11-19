@@ -581,35 +581,6 @@ function CbomContent() {
               </tr>
             </thead>
             <tbody>
-      <section className="panel" aria-label="Import CBOM metadata" style={{ padding: 16, marginBottom: 16, borderTop: "2px solid var(--accent)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <IconCloud size={14} style={{ color: "var(--accent)" }} />
-            <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Import CBOM metadata</h2>
-            <Badge tone="slate">DECLARED</Badge>
-          </div>
-        </div>
-        <form onSubmit={importDocument} style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
-          <label>System name<br /><input aria-label="Import system name" value={importName} maxLength={200} required
-            disabled={importBusy} onChange={(event) => setImportName(event.target.value)} /></label>
-          <label>CycloneDX JSON (max 1 MiB)<br /><input aria-label="CBOM JSON file" type="file" accept=".json,application/json"
-            disabled={importBusy} onChange={(event) => { setImportFile(event.target.files?.[0] || null); setImportError(""); setImportReceipt(null); }} /></label>
-          <button className="btn primary" type="submit" disabled={importBusy || !importFile || !importName.trim()}>
-            {importBusy ? "Importing metadata…" : "Import metadata"}
-          </button>
-        </form>
-        {importError && <p role="alert">{importError}</p>}
-        {importReceipt && <div role="status" style={{ marginTop: 12 }}>
-          <p>Saved metadata: {importReceipt.imported} assets for {importReceipt.system.name}. </p>
-          <p style={{ overflowWrap: "anywhere" }}>Document SHA-256: {importReceipt.document_sha256}</p>
-          <AuthenticatedDownload path={`/api/v1/cbom/system/${encodeURIComponent(importReceipt.system.id)}?fmt=cyclonedx16`}
-            filename="imported-cbom-1.6.json" className="btn outline">Export persisted metadata</AuthenticatedDownload>
-        </div>}
-      </section>
-
-      <HostEvidencePanel />
-      <CbomLegacyReview refresh={refresh} onCommitted={() => setRefresh(value => value + 1)} />
-
               {filtered.map((item) => {
                 const isExpanded = expandedRow === item.identity;
                 return (
@@ -737,6 +708,37 @@ function CbomContent() {
           <span style={{ marginLeft: "auto", fontFamily: "var(--mono)" }}>ONE asset model · four layers</span>
         </div>
       </div>
+
+      {/* Import, historical review and offline host evidence — outside the table, full width */}
+      <div className="cbom-side-by-side">
+        <section className="panel" aria-label="Import CBOM metadata" style={{ padding: 16, marginBottom: 16, borderTop: "2px solid var(--accent)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <IconCloud size={14} style={{ color: "var(--accent)" }} />
+              <h2 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>Import CBOM metadata</h2>
+              <Badge tone="slate">DECLARED</Badge>
+            </div>
+          </div>
+          <form onSubmit={importDocument} style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "end" }}>
+            <label>System name<br /><input aria-label="Import system name" value={importName} maxLength={200} required
+              disabled={importBusy} onChange={(event) => setImportName(event.target.value)} /></label>
+            <label>CycloneDX JSON (max 1 MiB)<br /><input aria-label="CBOM JSON file" type="file" accept=".json,application/json"
+              disabled={importBusy} onChange={(event) => { setImportFile(event.target.files?.[0] || null); setImportError(""); setImportReceipt(null); }} /></label>
+            <button className="btn primary" type="submit" disabled={importBusy || !importFile || !importName.trim()}>
+              {importBusy ? "Importing metadata…" : "Import metadata"}
+            </button>
+          </form>
+          {importError && <p role="alert">{importError}</p>}
+          {importReceipt && <div role="status" style={{ marginTop: 12 }}>
+            <p>Saved metadata: {importReceipt.imported} assets for {importReceipt.system.name}. </p>
+            <p style={{ overflowWrap: "anywhere" }}>Document SHA-256: {importReceipt.document_sha256}</p>
+            <AuthenticatedDownload path={`/api/v1/cbom/system/${encodeURIComponent(importReceipt.system.id)}?fmt=cyclonedx16`}
+              filename="imported-cbom-1.6.json" className="btn outline">Export persisted metadata</AuthenticatedDownload>
+          </div>}
+        </section>
+        <CbomLegacyReview refresh={refresh} onCommitted={() => setRefresh(value => value + 1)} />
+      </div>
+      <HostEvidencePanel />
 
       <div className="panel" style={{ padding: 16, marginTop: 16, borderTop: "2px solid var(--accent)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>

@@ -416,31 +416,12 @@ export function Button({
   style?: React.CSSProperties;
   title?: string;
 }) {
-  const colors: Record<string, { bg: string; border: string; fg: string }> = {
-    primary: { bg: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "var(--cyan)", fg: "var(--accent)" },
-    danger: { bg: "color-mix(in srgb, var(--red) 12%, transparent)", border: "var(--red)", fg: "var(--red)" },
-    default: { bg: "var(--bg-2)", border: "var(--line-strong)", fg: "var(--text)" },
-    ghost: { bg: "transparent", border: "var(--line)", fg: "var(--dim)" },
-  };
-  const c = colors[variant] || colors.default;
-  const padding = size === "sm" ? "5px 10px" : size === "lg" ? "10px 18px" : "7px 14px";
-  const fontSize = size === "sm" ? 11.5 : size === "lg" ? 14 : 12.5;
+  // the console's button system (styles/global.css → "Buttons"): one look everywhere
+  const known = ["primary", "danger", "ghost", "outline"];
+  const classes = ["btn", known.includes(variant) ? variant : "", size === "md" ? "" : size]
+    .filter(Boolean).join(" ");
   return (
-    <button
-      type={type}
-      title={title}
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
-        padding, borderRadius: "var(--r)", fontSize, fontWeight: 600,
-        cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.55 : 1,
-        background: c.bg, border: `1px solid ${c.border}`, color: variant === "primary" ? c.fg : c.fg,
-        transition: "filter 120ms ease", fontFamily: "inherit", ...style,
-      }}
-      onMouseEnter={(e) => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.2)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.filter = ""; }}
-    >
+    <button type={type} title={title} onClick={onClick} disabled={disabled} className={classes} style={style}>
       {children}
     </button>
   );
