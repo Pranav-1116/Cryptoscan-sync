@@ -64,6 +64,10 @@ POLICY: dict[str, str] = {
                                  "is the gate (guide 182)",
     "/api/v1/devsecops": "operator surface: pipeline and SBOM ingestion",
     "/api/v1/graph": "operator surface: graph curation of the estate",
+    # The cascade question carries the selected systems/algorithms as a body; the handler
+    # computes over stored dependency edges and writes nothing.
+    "/api/v1/graph/dependency-map/cascade": "read-only question surface: POST carries the "
+                                            "selection, the handler writes nothing",
     "/api/v1/vendors": "operator surface: vendor and profile registry",
     "/api/v1/technology-bom": "operator surface: BOM export schedules",
     "/api/v1/banking": "operator surface: group entity registry",
@@ -99,6 +103,13 @@ POLICY: dict[str, str] = {
     "/api/v1/ct-scans": "operator surface: certificate transparency scan runs",
     "/api/v1/hsm-scans": "operator surface: HSM scan runs",
     "/api/v1/control": "operator surface: control plane actions",
+    # A Cryptava agent's live performance sample. The caller is the agent's machine key
+    # (scoped at activation to the heartbeat path), not an operator, so there is no role to
+    # require: the handler binds the key to the named agent and refuses any sample that is
+    # not signed by the Ed25519 key that agent registered.
+    "/api/v1/control/agents/heartbeat/performance": "machine-signed: a Cryptava agent's own key; "
+                                                    "the sample must verify against the key it "
+                                                    "registered at activation",
     "/api/v1/crypto": "operator surface: live crypto event ingestion",
     "/api/v1/ot": "operator surface: OT/ICS capture analysis and ingestion",
     "/api/v1/sectors": "operator surface: sector reference data",

@@ -282,6 +282,34 @@ are added next to the `collect` pass and never overwrite it. See
 `services/cryptava/README.md` for what each BOM contains and how to install the
 agent on a real server.
 
+#### Live performance of the bank servers
+
+Each agent also sends a signed **performance sample every minute** for its server:
+
+* CPU, memory, disk and network;
+* process health;
+* how long a TLS handshake with the server takes;
+* for `hsm-sim`, the HSM's response time on `:8443`.
+
+Open **Performance → Live Systems (Cryptava agents)** in the console. You get one card
+per bank server:
+
+* `LIVE`, `STALE` or `NO SAMPLES YET`;
+* the newest figures with a short trend;
+* the TLS version and cipher each listener negotiated;
+* every figure the agent could not read, with the reason, never as a zero.
+
+The same servers are listed at the top of **Performance Overview**. The page refreshes
+every 15 s.
+
+The agents run beside their servers, so they measure the **server's own processes**
+(`workload` scope). They do not measure the Docker host. `agents check` shows each
+agent's last delivery (`· live metrics 17 sent …`). To look at one sample:
+
+```bash
+docker exec cryptoscan-cryptava-swift-gateway sh -c 'PYTHONPATH=/opt/cryptava python3 -m cryptava perf --print'
+```
+
 If a server shows anything other than `CONNECTED`:
 
 | Check says | Do this |

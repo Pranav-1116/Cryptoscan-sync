@@ -23,7 +23,7 @@ from typing import Any
 
 from db.repositories.control_plane_repository import ControlPlaneRepository
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -434,6 +434,52 @@ AGENT_KEY_SCOPES = ["/ingestion/observations", "/control/agents/heartbeat"]
 AGENT_KEY_PREFIX = "cryptava:"
 
 
+class AgentActivateHint(BaseModel):
+    command: str
+    path: str
+
+
+class EnrollmentTokenResponse(BaseModel):
+    """A one-time enrolment token: shown once, only its hash is kept."""
+    agent_id: str
+    name: str
+    enrollment_token: str
+    note: str
+    activate: AgentActivateHint
+
+
+class ActivateAgentResponse(BaseModel):
+    """The agent's machine identity. The API key is shown once."""
+    agent_id: str
+    name: str
+    api_key: str
+    key_id: str
+    contributor: str
+    observations_path: str
+    heartbeat_path: str
+    scopes: list[str]
+    note: str
+
+
+class RefusedMetric(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    metric: str | None = None
+    reason: str
+
+
+class AgentPerformanceReceipt(BaseModel):
+    """What happened to one live performance sample."""
+    agent_id: str
+    tenant_id: str
+    asset_id: str
+    observed_at: str
+    authenticity: str
+    accepted: int
+    duplicate: int
+    rejected: int
+    refused: list[RefusedMetric]
+
+
 class EnrollAgentRequest(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     region: str | None = None
@@ -472,7 +518,7 @@ def _effective_tenant(explicit: str | None) -> str | None:
         return None
 
 
-@router.post("/agents/enroll", status_code=status.HTTP_201_CREATED)
+@router.post("/agents/enroll", status_code=status.HTTP_201_CREATED, response_model=EnrollmentTokenResponse)
 def enroll_agent(body: EnrollAgentRequest,
                  user: str = Depends(require_roles("superadmin", "admin", "ciso")),
                  db: Session = Depends(get_db_session)):
@@ -536,7 +582,7 @@ class ActivateAgentRequest(BaseModel):
     version: str | None = Field(default=None, max_length=40)
 
 
-@router.post("/agents/activate", status_code=status.HTTP_201_CREATED)
+@router.post("/agents/activate", status_code=status.HTTP_201_CREATED, response_model=ActivateAgentResponse)
 def activate_agent(body: ActivateAgentRequest, request: Request,
                    db: Session = Depends(get_db_session)):
     """Exchange a one-time enrolment token for the agent's machine identity.
@@ -627,7 +673,8 @@ def activate_agent(body: ActivateAgentRequest, request: Request,
     }
 
 
-@router.post("/agents/{agent_id}/enrollment-token", status_code=status.HTTP_201_CREATED)
+@router.post("/agents/{agent_id}/enrollment-token", status_code=status.HTTP_201_CREATED,
+             response_model=EnrollmentTokenResponse)
 def reissue_agent_token(agent_id: str,
                         user: str = Depends(require_roles("superadmin", "admin", "ciso")),
                         db: Session = Depends(get_db_session)):
@@ -704,6 +751,75 @@ def agent_heartbeat(body: AgentHeartbeatRequest,
     return {"agent_id": body.agent_id, "status": updated.status, "healthy": updated.healthy,
             "link": updated.link, "target_version": updated.target_version,
             "config": updated.config and {k: v for k, v in updated.config.items() if k != "identity"}}
+
+
+@router.post("/agents/heartbeat/performance", status_code=status.HTTP_202_ACCEPTED,
+             response_model=AgentPerformanceReceipt)
+def agent_performance(body: dict[str, Any],
+                      user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """A Cryptava agent's live performance sample → Performance Intelligence metrics.
+
+    Lives under the heartbeat path so the machine key issued at activation (scope
+    ``/control/agents/heartbeat``) can post it without re-enrolment. The sample must be
+    signed by the key this agent registered; the figures are stored as performance
+    metrics of the host's live-estate node, with the signature as their evidence.
+    """
+    from datetime import datetime, timezone
+
+    from db.repositories.performance_repository import INSERTED, DUPLICATE, PerformanceRepository
+
+    from api import cryptava_performance as cp
+
+    agent_id = str(body.get("agent_id") or "")
+    repo = _repo(db)
+    agent = repo.get_agent(agent_id) if agent_id else None
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Unknown agent")
+    bound = agent_name_from_principal(user)
+    if bound is not None and bound != agent.name:
+        _audit(db, user, "control.agent_performance_denied", target_id=agent_id, outcome="FAILURE")
+        db.commit()
+        raise HTTPException(status_code=403, detail="This agent key belongs to a different agent")
+    if agent.status == "retired":
+        raise HTTPException(status_code=403, detail="This agent is retired")
+    registered = ((agent.config or {}).get("identity") or {}).get("public_key")
+    now = datetime.now(timezone.utc)
+    try:
+        verdict = cp.verify_sample(body, registered)
+        tenant = agent.tenant_id or _effective_tenant(None) or cp.default_tenant()
+        evidence = cp.evidence_reference(body, verdict.get("key_id"))
+        metrics, refused = cp.metrics_from_sample(body, agent_name=agent.name, tenant_id=tenant,
+                                                  evidence_id=evidence, now=now)
+    except cp.SampleRefused as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail={"error": exc.error, "message": exc.message}) from exc
+
+    perf = PerformanceRepository(db)
+    accepted = duplicate = 0
+    try:
+        for metric in metrics:
+            outcome = perf.insert_metric(metric, commit=False)["outcome"]
+            if outcome == INSERTED:
+                accepted += 1
+            elif outcome == DUPLICATE:
+                duplicate += 1
+            else:
+                refused.append({"metric": metric.metric_name, "reason": "metric id conflict"})
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="sample conflicts with stored metrics — resend") from None
+    asset_id = cp.host_asset_id(agent.name)
+    observed = metrics[0].observed_at if metrics else now
+    perf.register_asset(tenant, asset_id, identity_source="cryptava-live-estate", seen_at=observed)
+    perf.record_collector_report(
+        tenant, cp.source_id(agent.name), status="ok", last_report_at=observed,
+        detail=(f"{accepted + duplicate} live metrics · {body.get('scope') or 'host'} scope · "
+                f"signature verified · {body.get('host') or agent.name}")[:500])
+    return {"agent_id": agent.id, "tenant_id": tenant, "asset_id": asset_id,
+            "observed_at": observed.isoformat(), "authenticity": "VALID",
+            "accepted": accepted, "duplicate": duplicate, "rejected": len(refused),
+            "refused": refused[:20]}
 
 
 @router.get("/agents")

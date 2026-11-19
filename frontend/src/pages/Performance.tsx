@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   PerformanceServiceRow, activeTenantId, ensureActiveTenant } from "../lib/api";
 import { Badge, Panel, PageHead } from "../components/ui.jsx";
@@ -9,6 +10,7 @@ import NetworkPerfWorkspace from "../components/NetworkPerfWorkspace";
 import CryptoWorkspace from "../components/CryptoWorkspace";
 import HsmWorkspace from "../components/HsmWorkspace";
 import WorkloadWorkspace from "../components/WorkloadWorkspace";
+import LiveSystemsPanel from "../components/LiveSystemsPanel";
 import { comparabilityGate, comparisonRows, metadataChecklist, type BenchmarkRunLike } from "../lib/benchmarkLab";
 import { CAPACITY_FEATURES, capacityQuestions, featureState, type CapacityForecastRow } from "../lib/capacityBrief";
 import {
@@ -40,12 +42,13 @@ import {
    causation unproven". No gradients, no glow, no assistant panel. */
 
 type View =
-  | "overview" | "infrastructure" | "storage" | "network" | "applications"
+  | "overview" | "live" | "infrastructure" | "storage" | "network" | "applications"
   | "databases" | "cryptography" | "hsm" | "workloads" | "cloud" | "alerts"
   | "capacity" | "benchmarks" | "reports" | "collectors" | "slo";
 
 const VIEWS: Array<{ key: View; label: string }> = [
   { key: "overview", label: "Performance Overview" },
+  { key: "live", label: "Live Systems (Cryptava agents)" },
   { key: "infrastructure", label: "Infrastructure Performance" },
   { key: "storage", label: "Storage Performance" },
   { key: "network", label: "Network Performance" },
@@ -70,9 +73,15 @@ const CONTROL_STYLE: React.CSSProperties = {
 
 const ALGORITHMS = ["Ed25519", "ECDSA-P256", "RSA-2048", "RSA-3072"];
 
+/* The last 30 minutes: real-time by default, and inside the 5000-sample analysis
+   budget with every Cryptava agent reporting each minute. */
+const LIVE_WINDOW_MS = 30 * 60 * 1000;
+/* An agent without a tenant reports into "default" (CRYPTAVA_PERFORMANCE_TENANT on the API). */
+const AGENT_DEFAULT_TENANT = "default";
+
 function defaultWindow(): { window_start: string; window_end: string } {
   const end = new Date();
-  const start = new Date(end.getTime() - 60 * 60 * 1000);
+  const start = new Date(end.getTime() - LIVE_WINDOW_MS);
   return { window_start: start.toISOString(), window_end: end.toISOString() };
 }
 
@@ -239,7 +248,10 @@ function useAsync<T>(loader: () => Promise<ApiResult<T>>, deps: React.Dependency
 }
 
 export default function Performance() {
-  const [view, setView] = useState<View>("overview");
+  const location = useLocation();
+  const requested = new URLSearchParams(location.search).get("view");
+  const [view, setView] = useState<View>(
+    VIEWS.some((v) => v.key === requested) ? (requested as View) : "overview");
   // Resolve the session's tenant (the header picker owns tenancy). Reads
   // wait for the resolution: a blank tenant used to 422 every call on load,
   // and "Read failed" hid the page it belonged to.
@@ -253,7 +265,9 @@ export default function Performance() {
     let alive = true;
     void ensureActiveTenant().then((resolved) => {
       if (!alive) return;
-      if (resolved) setTenant(resolved);
+      // no organization membership (a single-bank or sandbox console): read the tenant
+      // un-tenanted Cryptava agents report into, instead of a blank tenant that fails
+      setTenant(resolved || AGENT_DEFAULT_TENANT);
       setTenantResolving(false);
     });
     return () => {
@@ -261,6 +275,13 @@ export default function Performance() {
     };
   }, [tenant]);
   const [window, setWindow] = useState(defaultWindow);
+  // follow live: the window rolls forward every minute until the operator sets one
+  const [follow, setFollow] = useState(true);
+  useEffect(() => {
+    if (!follow) return undefined;
+    const t = setInterval(() => setWindow(defaultWindow()), 60000);
+    return () => clearInterval(t);
+  }, [follow]);
 
   const reloadKey = `${tenant}|${window.window_start}|${window.window_end}`;
   const w = { tenant_id: tenant, ...window };
@@ -316,14 +337,23 @@ export default function Performance() {
           aria-label="Window start"
           style={CONTROL_STYLE}
           value={window.window_start}
-          onChange={(e) => setWindow({ ...window, window_start: e.target.value })}
+          onChange={(e) => { setFollow(false); setWindow({ ...window, window_start: e.target.value }); }}
         />
         <input
           aria-label="Window end"
           style={CONTROL_STYLE}
           value={window.window_end}
-          onChange={(e) => setWindow({ ...window, window_end: e.target.value })}
+          onChange={(e) => { setFollow(false); setWindow({ ...window, window_end: e.target.value }); }}
         />
+        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
+          <input
+            type="checkbox"
+            aria-label="Follow live"
+            checked={follow}
+            onChange={(e) => { setFollow(e.target.checked); if (e.target.checked) setWindow(defaultWindow()); }}
+          />
+          follow live (last 30 min)
+        </label>
       </div>
 
       {tenantResolving && (
@@ -343,6 +373,12 @@ export default function Performance() {
           failures, never zeros; the moment the tenant lands, every read re-runs.
         </div>
       )}
+
+      {view === "overview" && (
+        <LiveSystemsPanel tenant={tenant} enabled={readsReady} compact onOpen={() => setView("live")} />
+      )}
+
+      {view === "live" && <LiveSystemsPanel tenant={tenant} enabled={readsReady} />}
 
       {view === "overview" && (
         overview.error ? <ErrorNote error={overview.error} /> : (

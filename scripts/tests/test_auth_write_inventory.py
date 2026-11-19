@@ -178,8 +178,13 @@ def test_the_authenticated_only_write_surface_is_pinned(rows, recorded):
     # own tenant scope so GET /scope/diff has something to compare. It
     # widens nothing — a snapshot is a record, not an authority — and it
     # carries its POLICY decision under the /api/v1/scope family.
-    assert len(rows) <= 343, (
-        f"{len(rows)} authenticated-only writes; the recorded inventory holds 343. "
+    # 343 -> 345 (up, deliberate): POST /api/v1/graph/dependency-map/cascade is a read-only
+    # question (the selection is the body, nothing is written), and
+    # POST /api/v1/control/agents/heartbeat/performance is a Cryptava agent's signed live
+    # performance sample — its caller is the agent's machine key, bound to that agent and
+    # verified against the key it registered, so there is no operator role to require.
+    assert len(rows) <= 345, (
+        f"{len(rows)} authenticated-only writes; the recorded inventory holds 345. "
         "This count may only go down (a route gained a role) without a regeneration."
     )
 

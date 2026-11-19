@@ -11,12 +11,12 @@ API enforces, not what a document claims.
 
 | Authority demanded | Operations |
 |---|---|
-| session | 1072 |
-| role | 370 |
-| permission | 74 |
+| session | 1080 |
+| role | 372 |
+| permission | 82 |
 | tenant-role | 17 |
 
-**1533** operations; **343** of them change state with nothing but the session gate — the exact list, with the policy
+**1551** operations; **345** of them change state with nothing but the session gate — the exact list, with the policy
 reason for each, is `102-authenticated-only-writes.json`.
 
 ## Session-only writes, by area
@@ -34,8 +34,8 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `estate` | 26 |
 | `cbom` | 15 |
 | `migrations` | 13 |
+| `graph` | 10 |
 | `vendors` | 10 |
-| `graph` | 9 |
 | `banking` | 8 |
 | `systems` | 8 |
 | `auth` | 7 |
@@ -48,10 +48,10 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | `cryptolog` | 5 |
 | `host-evidence` | 5 |
 | `resource-monitoring` | 5 |
+| `control` | 4 |
 | `traffic-control` | 4 |
 | `business` | 3 |
 | `container-scans` | 3 |
-| `control` | 3 |
 | `ct-scans` | 3 |
 | `hsm-scans` | 3 |
 | `ot` | 3 |
@@ -202,7 +202,9 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/container-scans/scan` | `api.routers.container_scans.trigger_container_scan` |
 | POST | `/api/v1/container/sbom` | `api.routers.container.render_sbom` |
 | POST | `/api/v1/container/scan` | `api.routers.container.scan_container` |
+| POST | `/api/v1/control/agents/activate` | `api.routers.control_plane.activate_agent` |
 | POST | `/api/v1/control/agents/heartbeat` | `api.routers.control_plane.agent_heartbeat` |
+| POST | `/api/v1/control/agents/heartbeat/performance` | `api.routers.control_plane.agent_performance` |
 | POST | `/api/v1/control/events/enqueue` | `api.routers.control_plane.enqueue_event` |
 | POST | `/api/v1/control/safe-scan/evaluate` | `api.routers.control_plane.evaluate_scan_check` |
 | POST | `/api/v1/cryptolog/alerts/transition` | `api.routers.cryptolog.alert_transition` |
@@ -252,6 +254,7 @@ pinned by `scripts/tests/test_auth_write_inventory.py` and may only go down.
 | POST | `/api/v1/exceptions/{exception_id}/review` | `api.routers.exceptions.review_exception` |
 | POST | `/api/v1/exceptions/{exception_id}/revoke` | `api.routers.exceptions.revoke_exception` |
 | POST | `/api/v1/governance/requests` | `api.routers.governance.submit_request` |
+| POST | `/api/v1/graph/dependency-map/cascade` | `api.routers.dependency_map.post_dependency_cascade` |
 | POST | `/api/v1/graph/edges/adopt` | `api.routers.graph.adopt_edges` |
 | POST | `/api/v1/graph/hardware-links` | `api.routers.graph.declare_hardware_link` |
 | DELETE | `/api/v1/graph/hardware-links/{asset_id}/{hardware_asset_id}` | `api.routers.graph.delete_hardware_link` |

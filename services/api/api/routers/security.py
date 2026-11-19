@@ -32,6 +32,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from api.routers.events import stream_grant, _checkpoint
 from api.routers.audit_export import _platform_audit_scope
 from api.security.socket_history import SocketRefused
@@ -96,7 +97,23 @@ def _persist_posture(db: Session, posture: dict) -> tuple[ControlPlaneRepository
     return repo, row, previous_score
 
 
-@router.get("/auth-monitor")
+class SuspiciousAuthKey(BaseModel):
+    user: str | None = None
+    source: str | None = None
+    window_failures: int
+    first_failure: float | str | None = None
+    latest_failure: float | str | None = None
+
+
+class AuthMonitorResponse(BaseModel):
+    window_seconds: int
+    threshold: int
+    total_failures_in_window: int
+    suspicious_keys: list[SuspiciousAuthKey]
+    suspicious: bool
+
+
+@router.get("/auth-monitor", response_model=AuthMonitorResponse)
 def get_auth_monitor(
     user: str = Depends(get_current_user),
 ):

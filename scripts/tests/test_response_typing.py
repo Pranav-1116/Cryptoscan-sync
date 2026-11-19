@@ -89,7 +89,10 @@ def test_the_inventory_does_not_claim_routes_that_are_now_typed(untyped, recorde
 #: the envelope differences — built by the domain resolver, not by a response
 #: model; clients (the CLI) render what it returned and invent nothing. Recorded
 #: like the question-surface family above.
-MAX_UNTYPED_OPERATIONS = 1162
+#: 1162 -> 1157 (down): the Cryptava agent routes (enroll, activate, enrollment-token,
+#: heartbeat/performance), the live-systems view, the dependency map + cascade, the
+#: auth monitor and GET/POST /network-scans now declare response models.
+MAX_UNTYPED_OPERATIONS = 1157
 
 
 def test_the_untyped_surface_does_not_grow(untyped, recorded):

@@ -9322,6 +9322,42 @@ const performanceQuery = (params: object): string => {
   return suffix ? `?${suffix}` : "";
 };
 
+/** Live systems: servers a Cryptava agent reports from, newest signed figures
+ *  (GET /api/v1/performance/live-systems). A figure the agent could not read is in
+ *  `missing` with its reason — never a zero. */
+export interface LiveSystemMetric { value: number; unit: string; labels?: Record<string, string> }
+export interface LiveSystem {
+  agent: string;
+  agent_id?: string | null;
+  asset_id: string;
+  host?: string | null;
+  system?: string | null;
+  ip?: string | null;
+  scope?: "host" | "workload" | string | null;
+  state: "live" | "stale" | "no_samples";
+  last_sample_at?: string | null;
+  age_seconds?: number | null;
+  interval_seconds?: number | null;
+  signed: boolean;
+  metrics: Record<string, LiveSystemMetric>;
+  tls: Array<{ port?: string | null; ms: number; tls_version?: string | null; algorithm?: string | null }>;
+  missing: Array<{ metric: string; reason: string }>;
+  trend: Record<string, Array<{ t: string; v: number }>>;
+  samples: number;
+}
+export interface LiveSystems {
+  tenant_id: string;
+  generated_at: string;
+  window_minutes: number;
+  systems: LiveSystem[];
+  counts: { systems: number; live: number; stale: number; no_samples: number };
+  truncated: boolean;
+  note: string;
+}
+
+export const apiPerformanceLiveSystems = (p: { tenant_id?: string; minutes?: number } = {}): Promise<ApiResult<LiveSystems>> =>
+  call<LiveSystems>(`/api/v1/performance/live-systems${performanceQuery(p)}`);
+
 export const apiPerformanceOverview = (p: PerformanceWindow): Promise<ApiResult<PerformanceOverview>> =>
   call<PerformanceOverview>(`/api/v1/performance/overview${performanceQuery(p)}`);
 

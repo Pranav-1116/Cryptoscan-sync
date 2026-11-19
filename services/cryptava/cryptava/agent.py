@@ -163,3 +163,29 @@ def run_once(config: dict[str, Any], state: State, *, send: bool = True) -> dict
         result["heartbeat"] = str(exc)
     state.write_json(state.last_run_path, result)
     return result
+
+
+def send_performance(config: dict[str, Any], state: State, sampler: Any, *, send: bool = True) -> dict[str, Any]:
+    """One live performance sample: read → sign → send (see ``cryptava.performance``).
+
+    The result is written to ``last-performance.json`` so ``cryptava status --brief``
+    and ``run_sandbox.sh agents check`` can say whether live metrics are flowing.
+    """
+    from cryptava import performance
+
+    identity = state.identity() or {}
+    key = SigningKey.load(state.key_path) if identity and state.key_path.exists() else None
+    sample = sampler.sample()
+    document = performance.signed_sample(sample, identity, config, key)
+    if not send:
+        return {"document": document}
+    result: dict[str, Any] = {"observed_at": sample["observed_at"], "metrics": len(sample["metrics"]),
+                              "scope": sample["scope"]}
+    try:
+        response = performance.send(client_for(config, identity), identity, document)
+        result.update(delivered=True, accepted=response.get("accepted"), rejected=response.get("rejected"),
+                      authenticity=response.get("authenticity"), asset_id=response.get("asset_id"))
+    except TransportError as exc:
+        result.update(delivered=False, error=str(exc), status=exc.status)
+    state.write_json(state.last_performance_path, result)
+    return result

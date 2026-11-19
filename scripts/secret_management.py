@@ -64,6 +64,9 @@ ALLOWED: dict[str, str] = {
         "this drill: the allow-list reasons quote the example key they excuse",
     "services/devsecops/devsecops/yara_rules.py":
         "YARA detector: these are the strings the rule *looks for*, not key material",
+    "services/cryptava/cryptava/signing.py":
+        "the Cryptava agent writes ITS OWN freshly generated Ed25519 key to its 0600 state "
+        "file; the string is the PEM header it writes, no key material is in source",
     "scripts/golden_path.py":
         "the AWS documentation example key AKIAIOSFODNN7EXAMPLE, used by a local harness",
     "services/eventstream/eventstream/bus.py":

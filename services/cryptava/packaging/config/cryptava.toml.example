@@ -13,6 +13,13 @@ estate = "meridian"
 # Seconds between full collections; heartbeats keep the agent "online" in between.
 interval = 3600
 heartbeat_interval = 60
+# Seconds between live performance samples for Performance Intelligence -> Live systems
+# (CPU, memory, disk, network, TLS handshake time); 0 turns them off.
+performance_interval = 60
+# auto | host (whole machine) | workload (only the processes of the server beside this agent)
+performance_scope = "auto"
+# host:port of an HSM to time (TLS connect + first response), e.g. "10.0.4.20:1792"
+# hsm_probe = ""
 jitter = 120
 
 # Probe this host's own listeners (TLS handshake, SSH banner, PostgreSQL SSLRequest).

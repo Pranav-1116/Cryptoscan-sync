@@ -121,7 +121,10 @@ def test_the_report_is_json_and_stable():
 #: the ratchet was introduced. It may fall, never rise: an operation that adds
 #: itself to the console without a schema makes the console/API contract
 #: unverifiable for that page, which is the failure this file exists to prevent.
-UNTYPED_OPERATION_CEILING = 565
+#: 565 -> 549 (down): a 201 Created with a response model now counts as typed (the same
+#: 2xx rule as scripts/response_typing.py), and the Cryptava agent, network-scans and
+#: performance live-systems routes declare response models.
+UNTYPED_OPERATION_CEILING = 549
 
 
 def test_the_untyped_response_ratchet_only_goes_down():

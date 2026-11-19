@@ -35,6 +35,10 @@ x-cryptava-env: &cryptava-env
   CRYPTAVA_ROOT: "/proc/1/root"
   CRYPTAVA_INTERVAL: "300"
   CRYPTAVA_JITTER: "30"
+  # live performance → Performance Intelligence "Live systems": one signed sample a minute.
+  # 7 servers x ~17 figures x 60/h stays inside the 5000-sample read budget of a 30-min window.
+  CRYPTAVA_PERFORMANCE_INTERVAL: "60"
+  CRYPTAVA_PERFORMANCE_SCOPE: "auto"
   CRYPTAVA_TAGS: '{"environment": "production-sandbox", "datacenter": "dc1", "owner": "Meridian Bank"}'
   CRYPTAVA_LOGIN_USER: "${CRYPTOSCAN_USERNAME:-admin}"
   CRYPTAVA_LOGIN_PASSWORD: "${CRYPTOSCAN_PASSWORD:-}"
@@ -349,6 +353,8 @@ services:
     environment:
       <<: *cryptava-env
       CRYPTAVA_NAME: "mrdn-sbx-dc1-hsmsim01"
+      # the sidecar shares the HSM's network: time its TLS listener's first response
+      CRYPTAVA_HSM_PROBE: "127.0.0.1:8443"
       CRYPTAVA_HOSTNAME: "hsm-sim"
       CRYPTAVA_FQDN: "hsm-sim.bank.sandbox"
       CRYPTAVA_PRIMARY_IP: "10.210.0.6"

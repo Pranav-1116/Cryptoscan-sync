@@ -103,6 +103,11 @@ states: `ACTIVE`, `EXPIRING_SOON` (≤ 90 days), `EXPIRED`, `COMMUNITY`, `INTERN
    Other agents' hosts are never overwritten. Unchanged hosts send `NO_CHANGE`.
 4. **Every minute** a heartbeat keeps the agent `online` on the Cryptava agents page
    (no heartbeat for 3 minutes shows it `offline`).
+5. **Every minute** it also sends a signed **live performance sample**: CPU, memory,
+   disk, network, process health, and a timed TLS handshake against each of the
+   server's own TLS listeners. Optionally it also times the HSM response. The server
+   shows in **Performance → Live Systems**. A figure it cannot read is sent as unknown
+   with the reason, never as zero. See `docs/performance/05_CRYPTAVA_LIVE_SYSTEMS.md`.
 
 A rebuilt host keeps its name: open the agent and click **new token** (or re-run the automated
 rollout) and enrol again with `--force`. **retire** revokes the agent's machine key.
@@ -116,7 +121,9 @@ cryptava enroll --agent-id ID --token TOKEN [--server URL]
 cryptava run --once              # one collect → sign → send → heartbeat
 cryptava run                     # the service loop (used by systemd)
 cryptava status                  # identity (never the API key) and the last run
-cryptava status --brief          # one line: CONNECTED / NOT DELIVERED / NOT ENROLLED, signature check, six BOM results
+cryptava status --brief          # one line: CONNECTED / NOT DELIVERED / NOT ENROLLED, signature check, six BOM results, live metrics
+cryptava perf --print            # read one live performance sample and print it — sends nothing
+cryptava perf --once             # send one signed performance sample now
 ```
 
 ## Install options

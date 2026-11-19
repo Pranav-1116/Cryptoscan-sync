@@ -14,7 +14,7 @@ documents are left in place as historical snapshots.
 
 ## Schema
 
-- **Migration head (computed from alembic): `0157`**
+- **Migration head (computed from alembic): `0165`**
 - The operator-package contract (`scripts/operator_release.py`) pins the same head;
   `test_operator_release.py` fails if they ever disagree again.
 
@@ -31,8 +31,8 @@ superseded, not silently edited:
 
 ## Console surfaces
 
-- **Computed from `shared/shared_models/capability_maturity.py`: 98 classified
-  surfaces (98 GA / 0 Beta / 0 Preview).**
+- **Computed from `shared/shared_models/capability_maturity.py`: 99 classified
+  surfaces (99 GA / 0 Beta / 0 Preview).**
 
 Stale surface-count claims superseded by the count above:
 

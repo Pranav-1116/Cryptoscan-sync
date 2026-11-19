@@ -893,6 +893,105 @@ def _tenant_rows(db: Session, tenant_id: Optional[str],
     return rows
 
 
+class LiveSystemMetric(BaseModel):
+    value: float
+    unit: str
+    labels: Dict[str, str] = Field(default_factory=dict)
+
+
+class LiveSystemTls(BaseModel):
+    port: Optional[str] = None
+    ms: float
+    tls_version: Optional[str] = None
+    algorithm: Optional[str] = None
+
+
+class LiveSystemMissing(BaseModel):
+    metric: str
+    reason: str
+
+
+class LiveSystemPoint(BaseModel):
+    t: str
+    v: float
+
+
+class LiveSystemCard(BaseModel):
+    agent: str
+    agent_id: Optional[str] = None
+    asset_id: str
+    host: Optional[str] = None
+    system: Optional[str] = None
+    ip: Optional[str] = None
+    scope: Optional[str] = None
+    state: str = Field(description="live | stale | no_samples")
+    last_sample_at: Optional[str] = None
+    age_seconds: Optional[int] = None
+    interval_seconds: Optional[int] = None
+    signed: bool
+    metrics: Dict[str, LiveSystemMetric]
+    tls: List[LiveSystemTls]
+    missing: List[LiveSystemMissing]
+    trend: Dict[str, List[LiveSystemPoint]]
+    samples: int
+
+
+class LiveSystemCounts(BaseModel):
+    systems: int
+    live: int
+    stale: int
+    no_samples: int
+
+
+class LiveSystemsResponse(BaseModel):
+    tenant_id: str
+    generated_at: str
+    window_minutes: int
+    systems: List[LiveSystemCard]
+    counts: LiveSystemCounts
+    truncated: bool
+    note: str
+
+
+@router.get("/live-systems", response_model=LiveSystemsResponse)
+def live_systems_view(tenant_id: Optional[str] = Query(None),
+                      minutes: int = Query(15, ge=1, le=120),
+                      db: Session = Depends(get_db_session),
+                      user: str = Depends(get_current_user)) -> Dict[str, Any]:
+    """Live systems: every server a Cryptava agent reports from, with its newest
+    signed performance figures and a short trend. Bounded to the newest 5000 samples
+    of the window — a truncated window says so instead of posing as complete."""
+    from db.models.performance import PerformanceMetric as PerformanceMetricRow
+    from db.repositories.control_plane_repository import ControlPlaneRepository
+    from db.repositories.performance_repository import row_to_metric
+    from db.tenancy import current_tenant
+
+    from api import cryptava_performance as cp
+
+    tenant = tenant_id or current_tenant() or cp.default_tenant()
+    now = datetime.now(timezone.utc)
+    stmt = (select(PerformanceMetricRow)
+            .where(PerformanceMetricRow.tenant_id == tenant,
+                   PerformanceMetricRow.source_id.like(f"{cp.SOURCE_PREFIX}%"),
+                   PerformanceMetricRow.observed_at >= now - timedelta(minutes=minutes))
+            .order_by(PerformanceMetricRow.observed_at.desc())
+            .limit(5001))
+    raw = list(db.execute(stmt).scalars())
+    truncated = len(raw) > 5000
+    rows = [row_to_metric(r) for r in raw[:5000]]
+    agents = []
+    for agent in ControlPlaneRepository(db).list_agents():
+        identity = (agent.config or {}).get("identity") or {}
+        if agent.status == "retired" or not identity.get("public_key"):
+            continue
+        if (agent.tenant_id or cp.default_tenant()) != tenant:
+            continue
+        agents.append({"id": agent.id, "name": agent.name, "hostname": identity.get("hostname")})
+    out = cp.live_systems(rows, agents, now=now, window_minutes=minutes, truncated=truncated)
+    out["tenant_id"] = tenant
+    return out
+
+
 @router.get("/overview", response_model=OverviewResponse)
 def overview(tenant_id: str = Query(...),
              window: Tuple[datetime, datetime] = Depends(_window_params),

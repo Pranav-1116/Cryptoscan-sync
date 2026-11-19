@@ -655,6 +655,11 @@
     },
     {
       "method": "POST",
+      "path": "/api/v1/control/agents/heartbeat/performance",
+      "reason": "machine-signed: a Cryptava agent's own key; the sample must verify against the key it registered at activation"
+    },
+    {
+      "method": "POST",
       "path": "/api/v1/control/events/enqueue",
       "reason": "operator surface: control plane actions"
     },
@@ -897,6 +902,11 @@
       "method": "POST",
       "path": "/api/v1/governance/requests",
       "reason": "operator surface: governance records"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/graph/dependency-map/cascade",
+      "reason": "read-only question surface: POST carries the selection, the handler writes nothing"
     },
     {
       "method": "POST",

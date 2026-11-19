@@ -234,3 +234,16 @@ class SigningKey:
             "signature": base64.b64encode(signature).decode("ascii"),
             "covers": "every member except `signature`, as canonical JSON (sorted keys, no whitespace)",
         }
+
+    def document_signature(self, document: Mapping[str, Any]) -> dict[str, Any]:
+        """The ``signature`` member for any other signed document (e.g. a performance
+        sample): it covers every member except ``signature``, as canonical JSON."""
+        signature = self.sign(canonical_bytes(document))
+        return {
+            "schema": SCHEMA,
+            "alg": "Ed25519",
+            "key_id": self.key_id,
+            "public_key": self.public_b64,
+            "signature": base64.b64encode(signature).decode("ascii"),
+            "covers": "every member except `signature`, as canonical JSON (sorted keys, no whitespace)",
+        }

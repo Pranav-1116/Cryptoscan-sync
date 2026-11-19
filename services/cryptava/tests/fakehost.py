@@ -148,3 +148,40 @@ def build(base: Path, *, hostname: str = "swiftgw01", ip: str = "10.210.0.4") ->
 
     return {"root": str(root), "proc": str(proc), "sys": str(sys), "primary_ip": ip,
             "domain": "mrdn.bank", "probe_listeners": False, "dmidecode": False, "jar_dirs": ["/opt"]}
+
+
+def performance_counters(base: Path, tick: int) -> None:
+    """Write the kernel counters a performance sample reads, as they stand at ``tick``.
+
+    Two calls with different ticks make one measured interval: per tick the machine
+    spends 25% of 2 CPUs busy, nginx+sshd use 30 CPU ticks, eth0 moves 7.5 MB, the
+    disk does 600 I/Os (1 MB), and TCP retransmits 3 segments.
+    """
+    proc = base / "proc"
+    busy, idle = 50 * tick, 150 * tick                     # jiffies over both CPUs
+    _w(proc / "stat", f"cpu  {busy} 0 0 {idle} 0 0 0 0 0 0\ncpu0 0 0 0 0 0 0 0 0 0 0\n")
+    _w(proc / "meminfo", "MemTotal:       65843204 kB\nMemFree:        30000000 kB\n"
+                         "MemAvailable:   49382403 kB\n")
+    _w(proc / "loadavg", "0.42 0.38 0.35 2/180 4242\n")
+    rx, tx = 5_000_000 * tick, 2_500_000 * tick
+    _w(proc / "net/dev",
+       "Inter-|   Receive                                                |  Transmit\n"
+       " face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n"
+       "    lo: 999999 10 0 0 0 0 0 0 999999 10 0 0 0 0 0 0\n"
+       f"  eth0: {rx} 100 {tick} 0 0 0 0 0 {tx} 100 0 0 0 0 0 0\n")
+    _w(proc / "net/snmp",
+       "Tcp: RtoAlgorithm RtoMin RtoMax MaxConn ActiveOpens PassiveOpens AttemptFails EstabResets "
+       "CurrEstab InSegs OutSegs RetransSegs InErrs OutRsts\n"
+       f"Tcp: 1 200 120000 -1 10 20 0 0 1 1000 1000 {3 * tick} 0 0\n")
+    _w(proc / "diskstats",
+       f"   8       0 sda {400 * tick} 0 {1000 * tick} {800 * tick} {200 * tick} 0 {1048 * tick} {400 * tick} 0 0 0\n"
+       f"   8       1 sda1 {400 * tick} 0 {1000 * tick} {800 * tick} {200 * tick} 0 {1048 * tick} {400 * tick} 0 0 0\n")
+    _w(base / "sys/block/sda/dev", "8:0\n")
+    for pid, comm, uid, rss_kb in ((4242, "nginx", "33", 81920), (777, "sshd", "0", 8192)):
+        p = proc / str(pid)
+        _w(p / "stat", f"{pid} ({comm}) S 1 {pid} {pid} 0 -1 4194560 100 0 0 0 {10 * tick} {5 * tick} "
+                       "0 0 20 0 1 0 100 1000000 2000 18446744073709551615\n")
+        _w(p / "status", f"Name:\t{comm}\nState:\tS (sleeping)\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\n"
+                         f"VmRSS:\t{rss_kb} kB\n")
+        _w(p / "io", f"rchar: 1\nwchar: 1\nsyscr: 1\nsyscw: 1\nread_bytes: {400_000 * tick}\n"
+                     f"write_bytes: {100_000 * tick}\ncancelled_write_bytes: 0\n")

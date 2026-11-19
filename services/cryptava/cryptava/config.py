@@ -57,10 +57,13 @@ DEFAULTS: dict[str, Any] = {
     "asset_record": None,           # CMDB/procurement record (default /etc/cryptava/asset-record.json)
     "hardware": None,               # inline hardware record (overrides the file's "hardware")
     "contracts": None,              # inline vendor contracts (overrides the file's "contracts")
+    "performance_interval": 60,     # seconds between live performance samples (0 = off)
+    "performance_scope": "auto",    # auto | host (whole machine) | workload (a sidecar's server)
+    "hsm_probe": None,              # "127.0.0.1:8443" — time an HSM's response (crypto.hsm_operation_latency_ms)
 }
 
 _BOOL = {"insecure_skip_verify", "probe_listeners", "python_packages", "java_archives", "dmidecode"}
-_INT = {"interval", "heartbeat_interval", "jitter", "timeout", "max_probes", "max_packages", "max_certificates"}
+_INT = {"interval", "heartbeat_interval", "performance_interval", "jitter", "timeout", "max_probes", "max_packages", "max_certificates"}
 _FLOAT = {"probe_timeout"}
 _JSON = {"tags", "system", "probe_exclude_ports", "cert_dirs", "jar_dirs", "hardware", "contracts"}
 
@@ -140,6 +143,10 @@ class State:
     @property
     def last_run_path(self) -> Path:
         return self.dir / "last-run.json"
+
+    @property
+    def last_performance_path(self) -> Path:
+        return self.dir / "last-performance.json"
 
     def ensure(self) -> None:
         self.dir.mkdir(parents=True, exist_ok=True)

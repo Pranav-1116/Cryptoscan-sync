@@ -38,6 +38,26 @@ Sections:
   (e.g. memory pressure; a cryptographic operation queue exceeding an
   approved threshold).
 
+### 1a. Live Systems — servers reporting through Cryptava agents
+
+A compact table at the top of the Overview, and a dedicated **Live Systems** view.
+There is one card per server whose Cryptava agent is activated:
+
+* `LIVE`, `STALE` or `NO SAMPLES YET`;
+* when the last signed sample arrived;
+* the scope (whole machine, or the server's own processes);
+* CPU, memory, disk used/free, disk I/O, network throughput;
+* link capacity, labelled as capacity;
+* connections and retransmits, process health;
+* TLS handshake time per listener, with protocol and cipher;
+* HSM response time where configured.
+
+CPU, memory, network and TLS have a short trend. Every unread figure is listed as
+`unknown · <metric> — <reason>`. The page polls every 15 s, and the time range
+defaults to *follow live (last 30 min)*.
+
+Source and rules: `05_CRYPTAVA_LIVE_SYSTEMS.md`.
+
 ## 2. Infrastructure Performance UI — computing infrastructure
 
 | Category | Measurements |

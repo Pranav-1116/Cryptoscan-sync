@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from api.dependencies import (
@@ -21,8 +24,26 @@ router = APIRouter(prefix="/network-scans", tags=["network-scans"])
 class HostScanRequest(NetworkHostRequest):
     pass
 
-@router.post("")
-@router.post("/")
+
+class NetworkTlsScanResponse(BaseModel):
+    """Top-level contract of a live host scan; per-probe rows pass through unchanged."""
+    model_config = ConfigDict(extra="allow")
+    scan_id: str | None = None
+    target_kind: str | None = None
+    live: bool | None = None
+    findings: list[dict[str, Any]] = Field(default_factory=list)
+    certificates: list[dict[str, Any]] = Field(default_factory=list)
+    usages: list[dict[str, Any]] = Field(default_factory=list)
+    alerts: list[dict[str, Any]] = Field(default_factory=list)
+    probe_telemetry: dict[str, Any] | None = None
+
+
+class NetworkScanTargetsResponse(BaseModel):
+    targets: list[dict[str, Any]]
+    total_count: int
+
+@router.post("", response_model=NetworkTlsScanResponse)
+@router.post("/", response_model=NetworkTlsScanResponse)
 def trigger_network_scan(
     body: HostScanRequest,
     ctx: TenantContext = Depends(network_context),
@@ -56,8 +77,8 @@ def trigger_network_scan(
     return result
 
 
-@router.get("")
-@router.get("/")
+@router.get("", response_model=NetworkScanTargetsResponse)
+@router.get("/", response_model=NetworkScanTargetsResponse)
 def list_network_scans(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     rows = IntelligenceRepository(db).list_targets()
     return {"targets": [row.to_dict() for row in rows], "total_count": len(rows)}

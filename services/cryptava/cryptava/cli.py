@@ -3,7 +3,8 @@
     cryptava enroll  --server URL --agent-id ID --token TOKEN   # once per host
     cryptava collect [--print] [--output FILE]                  # read the host, send nothing
     cryptava run     [--once | --interval SECONDS]              # collect → sign → send
-    cryptava status                                             # identity + last run
+    cryptava perf    [--once] [--print]                         # one live performance sample
+    cryptava status  [--brief]                                  # identity + last run
     cryptava version
 """
 
@@ -16,10 +17,12 @@ import random
 import signal
 import sys
 import threading
+import time
 from typing import Any
 
 from cryptava import __version__
-from cryptava.agent import client_for, collect, build_payload, enroll, heartbeat, run_once, summarise
+from cryptava.agent import (build_payload, client_for, collect, enroll, heartbeat, host_view, run_once,
+                            send_performance, summarise)
 from cryptava.config import DEFAULT_STATE_DIR, ConfigError, State, load_config
 from cryptava.signing import SigningKey
 from cryptava.transport import TransportError
@@ -43,7 +46,17 @@ def _out(data: Any, as_json: bool) -> None:
     print(json.dumps(data, indent=2, sort_keys=True, default=str))
 
 
-def brief_status(identity: dict[str, Any] | None, last: dict[str, Any] | None) -> str:
+def perf_brief(perf: dict[str, Any] | None) -> str:
+    """`` · live metrics 14 sent 10:00:05Z`` — whether performance samples are flowing."""
+    if not perf:
+        return " · live metrics: none sent yet"
+    if perf.get("delivered"):
+        return f" · live metrics {perf.get('accepted', perf.get('metrics'))} sent {perf.get('observed_at')}"
+    return f" · live metrics NOT DELIVERED ({perf.get('error') or 'unknown error'})"
+
+
+def brief_status(identity: dict[str, Any] | None, last: dict[str, Any] | None,
+                 perf: dict[str, Any] | None = None, *, show_perf: bool = False) -> str:
     """``CONNECTED <name> · last report 12:00:05Z · HBOM complete …`` — for scripts and humans."""
     if not identity:
         return "NOT ENROLLED  (waiting for enrolment — see `docker logs` of this agent)"
@@ -59,7 +72,8 @@ def brief_status(identity: dict[str, Any] | None, last: dict[str, Any] | None) -
     if last.get("delivered"):
         signature = ((last.get("response") or {}).get("authenticity") or "").lower()
         verified = " · signature verified" if signature == "valid" else (f" · signature {signature}" if signature else "")
-        return f"CONNECTED     {name} -> {server} · last report {when}{verified} · {planes}"
+        return (f"CONNECTED     {name} -> {server} · last report {when}{verified} · {planes}"
+                f"{perf_brief(perf) if show_perf else ''}")
     return f"NOT DELIVERED {name} -> {server} · {last.get('error') or 'unknown error'} (retries every cycle)"
 
 
@@ -103,6 +117,9 @@ def _parser() -> argparse.ArgumentParser:
 
     st = sub.add_parser("status", help="show this agent's identity and last run")
     st.add_argument("--brief", action="store_true", help="one line: connected or not, and the six BOM results")
+    pf = sub.add_parser("perf", help="one live performance sample (CPU, memory, disk, network, TLS)")
+    pf.add_argument("--once", action="store_true", help="send one sample to the console")
+    pf.add_argument("--print", dest="print_sample", action="store_true", help="print the sample (sends nothing)")
     sub.add_parser("version")
     return parser
 
@@ -112,35 +129,57 @@ def _state(args: argparse.Namespace, config: dict[str, Any]) -> State:
 
 
 def _loop(config: dict[str, Any], state: State, interval: int, as_json: bool) -> int:
+    """Full collection every ``interval``; a heartbeat every ``heartbeat_interval``; a live
+    performance sample every ``performance_interval`` (0 turns samples off)."""
+    from cryptava.performance import Sampler
+
     stop = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
     beat = max(15, int(config.get("heartbeat_interval") or 60))
+    perf_every = int(config.get("performance_interval") or 0)
+    perf_every = max(15, perf_every) if perf_every > 0 else 0
+    sampler = Sampler(config, host_view(config)) if perf_every else None
     jitter = max(0, int(config.get("jitter") or 0))
     stop.wait(random.uniform(0, min(jitter, interval)))  # nosec B311 — scheduling jitter, not crypto
+    now = time.monotonic()
+    next_full, next_beat = now, now + beat
+    next_perf = now if sampler else float("inf")
     while not stop.is_set():
-        try:
-            result = run_once(config, state)
-            _out({"delivered": result.get("delivered"), "error": result.get("error"),
-                  **{k: result["summary"][k] for k in ("observed_at", "state_hash", "counts")},
-                  "response": result.get("response")}, True)
-        except Exception as exc:  # noqa: BLE001 — the service keeps running and retries
-            print(f"cryptava: cycle failed: {exc}", file=sys.stderr, flush=True)
-        sys.stdout.flush()
-        deadline = interval
-        while deadline > 0 and not stop.is_set():
-            wait = min(beat, deadline)
-            if stop.wait(wait):
-                break
-            deadline -= wait
-            if deadline > 0:
-                identity = state.identity()
-                if identity:
-                    try:
-                        heartbeat(client_for(config, identity), identity, healthy=True,
-                                  buffered=1 if state.spool_path.exists() else 0)
-                    except TransportError as exc:
-                        print(f"cryptava: heartbeat failed: {exc}", file=sys.stderr, flush=True)
+        if time.monotonic() >= next_full:
+            try:
+                result = run_once(config, state)
+                _out({"delivered": result.get("delivered"), "error": result.get("error"),
+                      **{k: result["summary"][k] for k in ("observed_at", "state_hash", "counts")},
+                      "response": result.get("response")}, True)
+            except Exception as exc:  # noqa: BLE001 — the service keeps running and retries
+                print(f"cryptava: cycle failed: {exc}", file=sys.stderr, flush=True)
+            sys.stdout.flush()
+            next_full = time.monotonic() + interval
+            next_beat = time.monotonic() + beat      # run_once sent a heartbeat
+        if sampler is not None and time.monotonic() >= next_perf:
+            try:
+                perf = send_performance(config, state, sampler)
+                if not perf.get("delivered"):
+                    print(f"cryptava: performance sample not delivered: {perf.get('error')}",
+                          file=sys.stderr, flush=True)
+            except Exception as exc:  # noqa: BLE001
+                print(f"cryptava: performance sample failed: {exc}", file=sys.stderr, flush=True)
+            next_perf += perf_every
+            if next_perf <= time.monotonic():      # fell behind (slow full run): do not burst
+                next_perf = time.monotonic() + perf_every
+        if time.monotonic() >= next_beat:
+            identity = state.identity()
+            if identity:
+                try:
+                    heartbeat(client_for(config, identity), identity, healthy=True,
+                              buffered=1 if state.spool_path.exists() else 0)
+                except TransportError as exc:
+                    print(f"cryptava: heartbeat failed: {exc}", file=sys.stderr, flush=True)
+            next_beat = time.monotonic() + beat
+        wait = min(next_full, next_beat, next_perf) - time.monotonic()
+        if wait > 0 and stop.wait(wait):
+            break
     return EXIT_OK
 
 
@@ -211,15 +250,34 @@ def main(argv: list[str] | None = None) -> int:
                 return EXIT_OK if result.get("delivered") else EXIT_TRANSPORT
             return _loop(config, state, interval, args.json)
 
+        if args.command == "perf":
+            from cryptava.performance import Sampler
+
+            sampler = Sampler(config, host_view(config))
+            if args.once and not args.print_sample:
+                if not state.identity():
+                    print("cryptava: not enrolled — run `cryptava enroll` first", file=sys.stderr)
+                    return EXIT_NOT_ENROLLED
+                result = send_performance(config, state, sampler)
+                _out(result, True)
+                return EXIT_OK if result.get("delivered") else EXIT_TRANSPORT
+            _out(send_performance(config, state, sampler, send=False)["document"], True)
+            return EXIT_OK
+
         if args.command == "status":
             identity = state.identity()
-            last = None
+            last = perf = None
             try:
                 last = json.loads(state.last_run_path.read_text())
             except (OSError, ValueError):
                 pass
+            try:
+                perf = json.loads(state.last_performance_path.read_text())
+            except (OSError, ValueError):
+                pass
             if getattr(args, "brief", False):
-                print(brief_status(identity, last))
+                print(brief_status(identity, last, perf,
+                                   show_perf=int(config.get("performance_interval") or 0) > 0))
                 return EXIT_OK if identity else EXIT_NOT_ENROLLED
             _out({
                 "version": __version__,

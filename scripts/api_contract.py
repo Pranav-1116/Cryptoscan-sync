@@ -560,8 +560,12 @@ def console_operation_typing() -> dict:
         for method, operation in spec[path].items():
             if method not in {"get", "post", "put", "patch", "delete"}:
                 continue
-            response = (operation.get("responses") or {}).get("200") or {}
-            schema = (response.get("content", {}).get("application/json", {}) or {}).get("schema")
+            # any 2xx JSON schema counts (a 201 Created with a model is typed) — the same
+            # rule as scripts/response_typing.py, so the two counts agree
+            schema = None
+            for status_code, response in (operation.get("responses") or {}).items():
+                if str(status_code).startswith("2"):
+                    schema = schema or ((response or {}).get("content", {}).get("application/json", {}) or {}).get("schema")
             (typed if schema else untyped).append(f"{method.upper()} {path}")
     return {
         "operations": len(typed) + len(untyped),
