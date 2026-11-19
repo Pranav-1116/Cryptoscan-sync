@@ -19,7 +19,6 @@ from typing import Any
 from jsonschema import Draft7Validator, FormatChecker
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT7
-from shared_models.algorithm_registry import parse_algorithm
 
 try:  # the upstream URI format rule, when the pinned package is installed
     from rfc3986_validator import validate_rfc3986 as _upstream_uri_rule
@@ -82,6 +81,27 @@ SAFE_PROPERTIES = {f"cryptoscan:{key}" for key in CONTEXT_FIELDS} | {
 
 from shared_models.host_collection import HostEvidenceRef
 SAFE_PROPERTIES |= {f"cryptoscan:host:{field}" for field in HostEvidenceRef.model_fields}
+SAFE_PROPERTIES |= {
+    "cryptoscan:reported_key_size_basis", "cryptoscan:classification", "cryptoscan:algorithm_family",
+    "cryptoscan:primitive_basis", "cryptoscan:registry_status", "cryptoscan:registry_notes",
+    "cryptoscan:standard", "cryptoscan:parameter_set_basis", "cryptoscan:parameter_facts",
+    "cryptoscan:curve", "cryptoscan:curve_basis", "cryptoscan:security_level_basis",
+    "cryptoscan:crypto_functions_basis", "cryptoscan:normalization_notes", "cryptoscan:deployment_stage",
+    "cryptoscan:hardcoded_key", "cryptoscan:lifecycle_state", "cryptoscan:verification_status",
+    "cryptoscan:occurrence_count", "cryptoscan:evidence_link_status", "cryptoscan:evidence_count",
+    "cryptoscan:evidence_withheld", "cryptoscan:component_role", "cryptoscan:relationships",
+    "cryptoscan:quantum_status", "cryptoscan:quantum_status_basis", "cryptoscan:algorithm_class",
+    "cryptoscan:requires_review", "cryptoscan:technical_owner", "cryptoscan:security_owner",
+}
+#: Generated namespaces (values are produced by CryptoScan code, never copied
+#: from arbitrary user properties): evidence chain, identity, ownership mapping,
+#: risk, system/certificate/library provenance.
+SAFE_PREFIXES = ("cryptoscan:evidence:", "cryptoscan:identity:", "cryptoscan:mapping_", "cryptoscan:risk:",
+                 "cryptoscan:system:", "cryptoscan:certificate:", "cryptoscan:library:")
+
+
+def _safe(name: Any) -> bool:
+    return isinstance(name, str) and (name in SAFE_PROPERTIES or name.startswith(SAFE_PREFIXES))
 
 
 def _validator() -> Draft7Validator:
@@ -165,99 +185,235 @@ def _property(name: str, value: Any) -> dict[str, str]:
     return {"name": name, "value": str(value)}
 
 
-def to_cyclonedx16(bom: dict, *, omit_inventory_dependencies: bool = False) -> dict:
-    """Project the existing generator's metadata into the official1.6 shape.
+#: Document-level metadata properties a source document may carry into 1.6.
+_METADATA_PASSTHROUGH = {
+    "cryptoscan:scope", "cryptoscan:systems", "cryptoscan:assets", "cryptoscan:truncated",
+    "cryptoscan:asset_limit", "cryptoscan:assets_total", "cryptoscan:source_basis",
+    "cryptoscan:retained_mixed_evidence_assets", "cryptoscan:inventory_completeness",
+}
+_METADATA_PREFIXES = ("cryptoscan:portfolio:", "cryptoscan:coverage", "cryptoscan:export:",
+                      "cryptoscan:collection:", "cryptoscan:organization")
+_OCCURRENCE_FIELDS = ("bom-ref", "location", "line", "offset", "symbol", "additionalContext")
+_CONFIDENCE = {"HIGH": 0.9, "CONFIRMED": 0.9, "MEDIUM": 0.6, "LIKELY": 0.6, "LOW": 0.3, "TENTATIVE": 0.3}
 
-    This deliberately does not copy arbitrary evidence, external custom fields,
-    claims, key values, certificate bodies or arbitrary user property names.
-    Relations retained from legacy sources remain source assertions, not proven
-    runtime or replacement-compatibility edges. The caller can omit the legacy
-    generator's invented inventory root fanout.
+
+def _props_dict(props: list[dict[str, str]]) -> dict[str, str]:
+    return {p["name"]: p["value"] for p in props if isinstance(p, dict) and "name" in p}
+
+
+def _algorithm_block(n: Any) -> dict[str, Any]:
+    algorithm: dict[str, Any] = {"primitive": n.primitive if n.primitive in {
+        "drbg", "mac", "block-cipher", "stream-cipher", "signature", "hash", "pke", "xof", "kdf",
+        "key-agree", "kem", "ae", "combiner", "other", "unknown"} else "unknown"}
+    if n.parameter_set:
+        algorithm["parameterSetIdentifier"] = n.parameter_set
+    if n.curve:
+        algorithm["curve"] = n.curve
+    if n.mode:
+        algorithm["mode"] = n.mode
+    if n.padding:
+        algorithm["padding"] = n.padding
+    if n.crypto_functions:
+        algorithm["cryptoFunctions"] = list(n.crypto_functions)
+    if n.classical_level is not None:
+        algorithm["classicalSecurityLevel"] = int(n.classical_level)
+    if n.quantum_level is not None:
+        algorithm["nistQuantumSecurityLevel"] = int(n.quantum_level)
+    return algorithm
+
+
+def to_cyclonedx16(bom: dict, *, omit_inventory_dependencies: bool = False) -> dict:
+    """Project a CryptoScan BOM into the official 1.6 shape.
+
+    Every cryptographic record goes through the CBOM normalization registry
+    (:mod:`cbom.crypto_normalization`) — family, primitive, variant name, mode,
+    parameter set, security levels, OID and classification are decided there,
+    never per discovery engine. Placeholder rows are excluded (and counted);
+    unrecognized names are kept but flagged as candidates. Protocols become
+    ``assetType: protocol``. Certificates and keys keep their native blocks.
+
+    This deliberately does not copy arbitrary evidence payloads, external
+    custom fields, claims, key values, certificate bodies or arbitrary user
+    property names. Relations remain source assertions with their stated
+    basis, not runtime or replacement proof.
     """
+    from cbom import crypto_risk
+    from cbom.crypto_normalization import NORMALIZER_VERSION, deployment_stage, detection_technique, normalize
+
     meta = bom.get("metadata") or {}
     root = meta.get("component") or {}
     properties = [copy.deepcopy(p) for p in meta.get("properties", [])
-                  if p.get("name") in {"cryptoscan:scope", "cryptoscan:systems", "cryptoscan:assets",
-                    "cryptoscan:truncated", "cryptoscan:asset_limit", "cryptoscan:assets_total", "cryptoscan:source_basis",
-                    "cryptoscan:retained_mixed_evidence_assets", "cryptoscan:inventory_completeness"}]
+                  if isinstance(p, dict) and (p.get("name") in _METADATA_PASSTHROUGH
+                                              or str(p.get("name", "")).startswith(_METADATA_PREFIXES))]
     properties += [_property("cryptoscan:discovery_completeness", "NOT_PROVEN"),
                    _property("cryptoscan:dependency_basis", "SOURCE_RELATIONSHIPS_NOT_RUNTIME_OR_REPLACEMENT_PROOF"),
-                   _property("cryptoscan:profile", "ALLOWLISTED_CRYPTO_METADATA_NO_SECRET_VALUES")]
+                   _property("cryptoscan:profile", "ALLOWLISTED_CRYPTO_METADATA_NO_SECRET_VALUES"),
+                   _property("cryptoscan:normalizer_version", NORMALIZER_VERSION),
+                   _property("cryptoscan:risk_model_version", crypto_risk.RISK_MODEL_VERSION)]
     document: dict[str, Any] = {
         "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
         "bomFormat": "CycloneDX", "specVersion": "1.6", "version": bom.get("version", 1),
         "metadata": {"component": {k: copy.deepcopy(v) for k, v in root.items()
-                                    if k in {"type", "name", "version", "bom-ref"}}, "properties": properties},
+                                    if k in {"type", "name", "version", "bom-ref", "description"}}, "properties": properties},
         "components": [],
     }
     scan_refs = [ref for ref in bom.get("externalReferences", [])
                  if ref.get("type") == "provenance" and re.fullmatch(r"urn:cryptoscan:scan:[A-Za-z0-9_.:-]+", ref.get("url", ""))]
     if scan_refs:
         document["metadata"]["properties"] += [_property("cryptoscan:source_scan", ref["url"]) for ref in scan_refs]
-    for field in ("timestamp", "tools"):
+    for field in ("timestamp", "tools", "lifecycles", "manufacturer", "supplier"):
         if field in meta:
             document["metadata"][field] = copy.deepcopy(meta[field])
     if bom.get("serialNumber"):
         document["serialNumber"] = bom["serialNumber"]
     by_ref: dict[str, dict] = {}
+    excluded: list[dict[str, str]] = []
+    excluded_refs: set[str] = set()
     for old in bom.get("components", []):
-        component = {k: copy.deepcopy(v) for k, v in old.items() if k in {"type", "name", "version", "bom-ref"}}
-        props = [copy.deepcopy(p) for p in old.get("properties", []) if p.get("name") in SAFE_PROPERTIES]
+        component = {k: copy.deepcopy(v) for k, v in old.items()
+                     if k in {"type", "name", "version", "bom-ref", "description", "group", "purl"}}
+        props = [copy.deepcopy(p) for p in old.get("properties", []) if isinstance(p, dict) and _safe(p.get("name"))]
+        known = _props_dict(props)
         crypto = old.get("cryptoProperties")
+        evidence = old.get("evidence") or {}
+        locations = [o for o in (evidence.get("occurrences") or []) if isinstance(o, dict) and o.get("location")]
+        location = (locations[0]["location"] if locations else evidence.get("file")) or None
+        stage = known.get("cryptoscan:deployment_stage") or (deployment_stage(location, host_evidence=any(
+            p["name"].startswith("cryptoscan:host:") for p in props)) if location else None)
+        n = None
         if crypto:
-            reported = crypto.get("algorithmProperties") or {}
-            algorithm = str(reported.get("algorithm") or old.get("name") or "UNKNOWN")
-            info = parse_algorithm(algorithm)
-            family = {"aead": "ae", "kem-pqc": "kem", "signature-pqc": "signature", "kem-hybrid-pqc": "combiner"}.get(info.family, info.family)
-            primitives = {"drbg", "mac", "block-cipher", "stream-cipher", "signature", "hash", "pke", "xof", "kdf", "key-agree", "kem", "ae", "combiner", "other", "unknown"}
-            algorithms = {"primitive": family if info.recognized and family in primitives else "unknown"}
-            if reported.get("parameterSetIdentifier") is not None:
-                algorithms["parameterSetIdentifier"] = str(reported["parameterSetIdentifier"])
-                props.append(_property("cryptoscan:reported_key_size", reported["parameterSetIdentifier"]))
-            # FIPS parameter-set names are not public-key byte counts. The
-            # legacy key_size field has no trustworthy unit provenance.
-            parameter_set = re.fullmatch(r"ML-(?:KEM|DSA)-(\d+)", info.canonical)
-            slh_set = re.fullmatch(r"SLH-DSA-(SHA2|SHAKE)-(128|192|256)([sf])", info.canonical)
-            if info.family in {"kem-pqc", "signature-pqc", "kem-hybrid-pqc"}:
-                algorithms.pop("parameterSetIdentifier", None)
-                if parameter_set:
-                    algorithms["parameterSetIdentifier"] = parameter_set.group(1)
-                elif slh_set:
-                    algorithms["parameterSetIdentifier"] = "-".join(slh_set.groups()[:2]) + slh_set.group(3)
+            asset_type = crypto.get("assetType", "algorithm")
+            if asset_type in {"certificate", "related-crypto-material"}:
+                block_name = "certificateProperties" if asset_type == "certificate" else "relatedCryptoMaterialProperties"
+                component["cryptoProperties"] = {"assetType": asset_type}
+                if isinstance(crypto.get(block_name), dict):
+                    component["cryptoProperties"][block_name] = copy.deepcopy(crypto[block_name])
+                if crypto.get("oid"):
+                    component["cryptoProperties"]["oid"] = str(crypto["oid"])
+            else:
+                reported = crypto.get("algorithmProperties") or {}
+                algorithm = str(reported.get("algorithm") or known.get("cryptoscan:reported_algorithm") or old.get("name") or "UNKNOWN")
+                n = normalize(algorithm, key_size=reported.get("parameterSetIdentifier"), mode=reported.get("mode"),
+                              padding=reported.get("padding"), purpose=known.get("cryptoscan:purpose"),
+                              curve=reported.get("curve") or known.get("cryptoscan:curve"), location=location,
+                              confidence=known.get("cryptoscan:confidence"))
+                if not n.exported:
+                    ref = str(old.get("bom-ref") or "")
+                    excluded_refs.add(ref)
+                    excluded.append({"ref": ref, "recorded_algorithm": algorithm, "reason": n.exclusion_reason or ""})
+                    continue
+                component["name"] = n.name
+                if known.get("cryptoscan:quantum_status_basis") == "UNRECOGNIZED_ALGORITHM" and \
+                        n.classification != "UNRECOGNIZED_CANDIDATE" and n.asset_type == "algorithm":
+                    # the legacy status table missed a spelling the registry
+                    # normalizes (e.g. DHE): restate it from the normalized family
+                    from cbom import pqc_handoff
+                    stale = {"cryptoscan:quantum_status", "cryptoscan:quantum_status_basis",
+                             "cryptoscan:algorithm_class", "cryptoscan:requires_review"}
+                    restated = pqc_handoff.component_properties("DH" if n.family == "DHE" else n.name, n.key_size_bits)
+                    if not any(q["value"] == "UNRECOGNIZED_ALGORITHM" for q in restated):
+                        props = [q for q in props if q["name"] not in stale] + restated
+                if n.asset_type == "protocol":
+                    # a protocol's quantum posture is that of its negotiated
+                    # algorithms; it is not an unrecognized algorithm
+                    props = [q for q in props if q["name"] not in {"cryptoscan:quantum_status_basis", "cryptoscan:algorithm_class"}]
+                    props += [_property("cryptoscan:quantum_status_basis", "PROTOCOL_DEPENDS_ON_NEGOTIATED_ALGORITHMS"),
+                              _property("cryptoscan:algorithm_class", "PROTOCOL")]
                 if reported.get("parameterSetIdentifier") is not None:
-                    props.append(_property("cryptoscan:reported_key_size_basis", "REPORTED_UNIT_NOT_ESTABLISHED"))
-            for field, allowed in (("mode", {"cbc", "ecb", "ccm", "gcm", "cfb", "ofb", "ctr", "other", "unknown"}),
-                                   ("padding", {"pkcs5", "pkcs7", "pkcs1v15", "oaep", "raw", "other", "unknown"})):
-                if reported.get(field):
-                    raw = str(reported[field])
-                    algorithms[field] = raw.lower() if raw.lower() in allowed else "other"
-                    props.append(_property(f"cryptoscan:reported_{field}", raw))
-            props += [_property("cryptoscan:reported_algorithm", algorithm),
-                      _property("cryptoscan:deployment_readiness", "NOT_ESTABLISHED")]
-            component["cryptoProperties"] = {"assetType": crypto.get("assetType", "algorithm")}
-            if component["cryptoProperties"]["assetType"] == "algorithm":
-                component["cryptoProperties"]["algorithmProperties"] = algorithms
-            # The old OID table contains family/variant ambiguities. Do not
-            # manufacture an exact algorithm OID or certification in this profile.
+                    props.append(_property("cryptoscan:reported_key_size", reported["parameterSetIdentifier"]))
+                    if n.family in {"ML-KEM", "ML-DSA", "SLH-DSA"} or n.primitive == "combiner":
+                        basis = n.parameter_set_basis or ""
+                        props.append(_property("cryptoscan:reported_key_size_basis",
+                                               "PARAMETER_SET_IDENTIFIER_NOT_KEY_LENGTH" if basis.startswith("REPORTED_NUMBER_IS")
+                                               else "REPORTED_UNIT_NOT_ESTABLISHED"))
+                for field, value in (("mode", n.mode_reported), ("padding", n.padding_reported)):
+                    if value:
+                        props.append(_property(f"cryptoscan:reported_{field}", value))
+                props += [_property("cryptoscan:reported_algorithm", algorithm),
+                          _property("cryptoscan:deployment_readiness", "NOT_ESTABLISHED"),
+                          _property("cryptoscan:classification", n.classification),
+                          _property("cryptoscan:algorithm_family", n.family),
+                          _property("cryptoscan:primitive_basis", n.primitive_basis),
+                          _property("cryptoscan:registry_status", n.registry_status),
+                          _property("cryptoscan:identity:algorithm", n.identity_key())]
+                for name, value in (("cryptoscan:standard", n.standard), ("cryptoscan:parameter_set_basis", n.parameter_set_basis),
+                                    ("cryptoscan:curve_basis", None if n.curve and n.curve_basis == "RECORDED_IN_EVIDENCE" else n.curve_basis),
+                                    ("cryptoscan:security_level_basis", n.security_level_basis),
+                                    ("cryptoscan:crypto_functions_basis", n.crypto_functions_basis),
+                                    ("cryptoscan:registry_notes", n.registry_notes or None)):
+                    if value:
+                        props.append(_property(name, value))
+                if n.parameter_facts:
+                    props.append(_property("cryptoscan:parameter_facts", json.dumps(n.parameter_facts, sort_keys=True)))
+                if n.notes:
+                    props.append(_property("cryptoscan:normalization_notes", "; ".join(n.notes)))
+                if n.asset_type == "protocol":
+                    protocol: dict[str, Any] = {"type": n.protocol_type or "unknown"}
+                    if n.protocol_version:
+                        protocol["version"] = n.protocol_version
+                    supplied = crypto.get("protocolProperties") if isinstance(crypto.get("protocolProperties"), dict) else {}
+                    if supplied.get("cipherSuites"):
+                        protocol["cipherSuites"] = copy.deepcopy(supplied["cipherSuites"])
+                    elif n.parameter_facts.get("cipher_suite") or known.get("cryptoscan:evidence:cipher_suite"):
+                        protocol["cipherSuites"] = [{"name": n.parameter_facts.get("cipher_suite")
+                                                     or known["cryptoscan:evidence:cipher_suite"]}]
+                    component["cryptoProperties"] = {"assetType": "protocol", "protocolProperties": protocol}
+                else:
+                    component["cryptoProperties"] = {"assetType": "algorithm", "algorithmProperties": _algorithm_block(n)}
+                    if n.oid:
+                        component["cryptoProperties"]["oid"] = n.oid
+                if location or known.get("cryptoscan:component_role") != "ALGORITHM_REFERENCE":
+                    risk = crypto_risk.assess(
+                        n, purpose=known.get("cryptoscan:purpose"), criticality=known.get("cryptoscan:criticality"),
+                        exposure=known.get("cryptoscan:exposure"), data_classification=known.get("cryptoscan:data_classification"),
+                        retention_years=known.get("cryptoscan:retention_years"), confidence=known.get("cryptoscan:confidence"),
+                        deployment_stage=stage, hardcoded_key=known.get("cryptoscan:hardcoded_key") == "true")
+                    props += [_property("cryptoscan:risk:algorithm_risk", risk["algorithm_risk"]),
+                              _property("cryptoscan:risk:priority", risk["priority"]),
+                              _property("cryptoscan:risk:quantum_exposure", risk["quantum_exposure"]),
+                              _property("cryptoscan:risk:finding_status", risk["finding_status"]),
+                              _property("cryptoscan:risk:factors", json.dumps(risk["factors"], sort_keys=True))]
+                    if risk["reasons"]:
+                        props.append(_property("cryptoscan:risk:reasons", json.dumps(risk["reasons"])))
+                if stage and "cryptoscan:deployment_stage" not in known:
+                    props.append(_property("cryptoscan:deployment_stage", stage))
+            # The old OID table contains family/variant ambiguities; only the
+            # registry's fully-determined variants get an OID. No certification
+            # level is ever manufactured.
         context = {p["name"].removeprefix("cryptoscan:"): p["value"] for p in props
                    if p["name"].removeprefix("cryptoscan:") in CONTEXT_FIELDS}
         if context:
             declaration = _property("cryptoscan:business_context", json.dumps(context, sort_keys=True))
             if declaration not in props:
                 props.append(declaration)
-        if props:
-            component["properties"] = props
-        evidence = old.get("evidence") or {}
+        deduped: list[dict[str, str]] = []
+        for prop in props:
+            if prop not in deduped:
+                deduped.append(prop)
+        if deduped:
+            component["properties"] = deduped
         occurrences = []
         for occurrence in evidence.get("occurrences") or ([{"location": evidence.get("file"), "line": evidence.get("line")}] if evidence.get("file") else []):
-            if not occurrence.get("location"):
+            if not isinstance(occurrence, dict) or not occurrence.get("location"):
                 continue
-            item = {"location": str(occurrence["location"])}
+            item: dict[str, Any] = {"location": str(occurrence["location"])}
             if type(occurrence.get("line")) is int and occurrence["line"] > 0:
                 item["line"] = occurrence["line"]
+            if type(occurrence.get("offset")) is int and occurrence["offset"] >= 0:
+                item["offset"] = occurrence["offset"]
+            for key in ("bom-ref", "symbol", "additionalContext"):
+                if occurrence.get(key):
+                    item[key] = str(occurrence[key])
             occurrences.append(item)
         if occurrences:
             component["evidence"] = {"occurrences": occurrences}
+            if n is not None:
+                level = _CONFIDENCE.get(str(known.get("cryptoscan:confidence") or "").upper(), 0.9)
+                component["evidence"]["identity"] = [{
+                    "field": "name", "confidence": level, "concludedValue": n.name,
+                    "methods": [{"technique": detection_technique(stage or "DETECTED_IN_SOURCE"), "confidence": level,
+                                 "value": f"{occurrences[0]['location']}" + (f":{occurrences[0]['line']}" if occurrences[0].get("line") else "")}],
+                }]
         ref = component.get("bom-ref")
         if ref and ref in by_ref:
             existing = by_ref[ref]
@@ -275,11 +431,77 @@ def to_cyclonedx16(bom: dict, *, omit_inventory_dependencies: bool = False) -> d
             document["components"].append(component)
             if ref:
                 by_ref[ref] = component
+    _link_suite_algorithms(document["components"])
     refs = [c["bom-ref"] for c in document["components"] if c.get("bom-ref")]
     document["compositions"] = [{"aggregate": "incomplete", "assemblies": refs}]
     if bom.get("dependencies") and not omit_inventory_dependencies:
-        document["dependencies"] = copy.deepcopy(bom["dependencies"])
+        dependencies = []
+        for dependency in bom["dependencies"]:
+            if not isinstance(dependency, dict) or dependency.get("ref") in excluded_refs:
+                continue
+            item = {"ref": dependency["ref"]}
+            for key in ("dependsOn", "provides"):
+                if key in dependency:
+                    item[key] = [r for r in dependency[key] if r not in excluded_refs]
+            dependencies.append(item)
+        document["dependencies"] = dependencies
+    if excluded:
+        document["metadata"]["properties"].append(_property("cryptoscan:excluded_candidates", json.dumps(
+            {"count": len(excluded), "items": excluded[:50],
+             "basis": "placeholder or bookkeeping rows are not cryptographic assets"}, sort_keys=True)))
+    document["metadata"]["properties"].append(_property("cryptoscan:inventory_summary", json.dumps(
+        _inventory_summary(document), sort_keys=True)))
     check = validate_cyclonedx16(document)
     if not check["ok"]:
         raise ValueError("CycloneDX1.6 export failed validation: " + "; ".join(check["errors"][:10]))
     return document
+
+
+def _link_suite_algorithms(components: list[dict[str, Any]]) -> None:
+    """Reference a cipher suite's component algorithms only where this document
+    holds an algorithm component observed at the same location (the same
+    endpoint or file). The suite name alone never manufactures a reference."""
+    from cbom.crypto_normalization import normalize, suite_algorithms
+
+    def locations(component: dict[str, Any]) -> set[str]:
+        return {o["location"] for o in (component.get("evidence") or {}).get("occurrences", []) if o.get("location")}
+
+    algorithms = [(c, locations(c), _props_dict(c.get("properties") or []).get("cryptoscan:algorithm_family"))
+                  for c in components if (c.get("cryptoProperties") or {}).get("assetType") == "algorithm" and c.get("bom-ref")]
+    for component in components:
+        protocol = (component.get("cryptoProperties") or {}).get("protocolProperties")
+        if not isinstance(protocol, dict) or not protocol.get("cipherSuites"):
+            continue
+        where = locations(component)
+        for suite in protocol["cipherSuites"]:
+            if not isinstance(suite, dict) or suite.get("algorithms") or not suite.get("name"):
+                continue
+            families = {normalize(name).family for _role, name in suite_algorithms(suite["name"])}
+            refs = sorted({c["bom-ref"] for c, locs, family in algorithms if family in families and locs & where})
+            if refs:
+                suite["algorithms"] = refs
+
+
+def _inventory_summary(document: dict[str, Any]) -> dict[str, Any]:
+    """Counts computed from the components actually in this document — the
+    single source of truth a reader can recount."""
+    kinds: dict[str, int] = {}
+    classes: dict[str, int] = {}
+    for component in document.get("components", []):
+        crypto = component.get("cryptoProperties") or {}
+        kind = crypto.get("assetType") or component.get("type") or "unknown"
+        props = _props_dict(component.get("properties") or [])
+        if props.get("cryptoscan:component_role") == "ALGORITHM_REFERENCE":
+            kind = "algorithm-reference"
+        kinds[kind] = kinds.get(kind, 0) + 1
+        if props.get("cryptoscan:classification"):
+            classes[props["cryptoscan:classification"]] = classes.get(props["cryptoscan:classification"], 0) + 1
+    deps = document.get("dependencies") or []
+    return {
+        "components_total": len(document.get("components", [])),
+        "components_by_kind": dict(sorted(kinds.items())),
+        "crypto_classification": dict(sorted(classes.items())),
+        "dependency_records": len(deps),
+        "dependency_edges": sum(len(d.get("dependsOn") or []) for d in deps),
+        "provides_edges": sum(len(d.get("provides") or []) for d in deps),
+    }

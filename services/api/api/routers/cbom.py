@@ -519,15 +519,57 @@ def cbom_portfolio(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
+    import uuid
+
+    from api import cbom_provenance
+
     records, total_assets = _located_assets(db)
     limit = _portfolio_max_assets()
     truncated = total_assets > limit
-    system_components, dependencies = _portfolio_dependencies(db, records)
+    systems, _systems_truncated = SystemRepository(db).list_all_bounded()
+    # evidence chain + ownership mapping per asset; placeholder rows removed
+    provenance = cbom_provenance.enrich_records(db, records, systems)
+    system_components, dependencies, edge_summary = _portfolio_dependencies(db, records, systems=systems)
+    distinct_assets = len({str(row.get("id")) for row in records if row.get("id")})
+    registered = len(systems)
+    system_records = len(system_components)
     metadata_properties = [
         {"name": "cryptoscan:scope", "value": "estate"},
-        {"name": "cryptoscan:systems", "value": str(len({row.get("system_id") for row in records if row.get("system_id")}))},
-        {"name": "cryptoscan:assets", "value": str(len(records))},
+        # registered business systems; the unassigned bucket is not a system
+        {"name": "cryptoscan:systems", "value": str(registered)},
+        {"name": "cryptoscan:portfolio:system_components", "value": str(system_records)},
+        {"name": "cryptoscan:portfolio:systems_with_assets",
+         "value": str(len({row.get("system_id") for row in records if row.get("system_id")}))},
+        {"name": "cryptoscan:assets", "value": str(distinct_assets)},
+        {"name": "cryptoscan:portfolio:asset_system_rows", "value": str(len(records))},
+        {"name": "cryptoscan:export:run_id", "value": str(uuid.uuid4())},
+        {"name": "cryptoscan:export:profile_version", "value": cbom_provenance.EXPORT_PROFILE_VERSION},
+        {"name": "cryptoscan:export:generated_by", "value": str(user)},
+        {"name": "cryptoscan:export:collectors", "value": json.dumps(provenance["collectors"])},
+        {"name": "cryptoscan:export:source_revisions", "value": json.dumps(provenance["source_revisions"])},
+        {"name": "cryptoscan:export:mapping_summary", "value": json.dumps(
+            {"by_status": provenance["mapping_counts"], "unmapped_reasons": provenance["unmapped_reasons"],
+             "basis": "asset-to-system links; candidates come from scan targets or claimed endpoints, never names"},
+            sort_keys=True)},
+        {"name": "cryptoscan:export:evidence_summary", "value": json.dumps(
+            {"assets_with_linked_evidence": provenance["evidence_linked_assets"],
+             "assets_without_linked_evidence": provenance["evidence_unlinked_assets"],
+             "confidence_is_not_verification": True}, sort_keys=True)},
+        {"name": "cryptoscan:export:relationship_summary", "value": json.dumps(edge_summary, sort_keys=True)},
+        {"name": "cryptoscan:export:coverage_denominator", "value": json.dumps(
+            {"registered_systems": registered, "assets_exported": distinct_assets, "assets_total": total_assets,
+             "meaning": "counts of what CryptoScan holds; unscanned estate is not in the denominator"},
+            sort_keys=True)},
+        {"name": "cryptoscan:collection:failures", "value": json.dumps(cbom_provenance.failed_collections(db),
+                                                                        sort_keys=True)},
     ]
+    if provenance["excluded"]:
+        metadata_properties.append({"name": "cryptoscan:export:excluded_candidates", "value": json.dumps(
+            {"count": len(provenance["excluded"]), "items": provenance["excluded"][:50],
+             "basis": "placeholder or bookkeeping rows are not cryptographic assets"}, sort_keys=True)})
+    org = cbom_provenance.organization(db)
+    if org:
+        metadata_properties.append({"name": "cryptoscan:organization", "value": json.dumps(org, sort_keys=True)})
     # Review item 18: an estate CBOM states its coverage in the document, so the
     # asset count cannot be read downstream as "the bank has N".
     from cbom.coverage_render import document_properties, inventory_coverage
@@ -557,9 +599,11 @@ def cbom_portfolio(
 
 
 PORTFOLIO_ROOT_REF = "root:cryptoscan-portfolio"
+UNASSIGNED_REF = "system:unassigned"
 
 
-def _portfolio_dependencies(db: Session, records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _portfolio_dependencies(db: Session, records: list[dict[str, Any]], *, systems: list[Any] | None = None
+                            ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     """Real CycloneDX dependency graph for the estate CBOM.
 
     root → every business system (plus an `unassigned` bucket when assets are not attached to a system);
@@ -567,51 +611,89 @@ def _portfolio_dependencies(db: Session, records: list[dict[str, Any]]) -> tuple
     edges imported from cryptoscan-systems.yml / the systems import). Every ref points at a component
     in this BOM, so downstream CycloneDX tooling can walk blast radius across systems.
 
+    CycloneDX ``dependencies`` entries cannot carry metadata, so each system→system
+    edge's provenance (id, type, basis, confidence, verification, evidence ref,
+    first/last seen) travels on the parent system component as
+    ``cryptoscan:system:dependency_edges``. Asset membership edges carry the
+    asset's own ``cryptoscan:mapping_*`` properties. None of these edges is a
+    runtime-verified call path.
+
     Set-based (audit 14 §3): one query loads every system, one loads every
     dependency edge — no per-system ``dependencies_for`` round trips.
     """
+    from api.cbom_provenance import edge_record
     from db.models.system_dependency import SystemDependency
     from sqlalchemy import select as sa_select
 
-    systems, _trunc = SystemRepository(db).list_all_bounded()
+    if systems is None:
+        systems, _trunc = SystemRepository(db).list_all_bounded()
     if not systems:
-        return [], []
+        return [], [], {"system_edges": 0}
     sys_ref = {s.id: f"system:{s.name}" for s in systems}
     assets_by_system: dict[str | None, list[str]] = {}
     for row in records:
         ref = row.get("id") or row.get("evidence_id") or row.get("finding_id")
-        if ref:
-            assets_by_system.setdefault(row.get("system_id"), []).append(str(ref))
+        if ref and str(ref) not in assets_by_system.setdefault(row.get("system_id"), []):
+            assets_by_system[row.get("system_id")].append(str(ref))
     # one query for the whole edge list, grouped by parent (no N+1)
-    edges_by_parent: dict[str, list[str]] = {}
+    edges_by_parent: dict[str, list[Any]] = {}
     for edge in db.execute(sa_select(SystemDependency)).scalars():
         if edge.child_id != edge.parent_id:
-            edges_by_parent.setdefault(edge.parent_id, []).append(edge.child_id)
+            edges_by_parent.setdefault(edge.parent_id, []).append(edge)
     components: list[dict[str, Any]] = []
     deps: list[dict[str, Any]] = []
-    for s in systems:
+    by_basis: dict[str, int] = {}
+    by_verification: dict[str, int] = {}
+    edge_total = 0
+    for s in sorted(systems, key=lambda item: sys_ref[item.id]):
         props = [
             {"name": "cryptoscan:system:id", "value": s.id},
+            {"name": "cryptoscan:system:kind", "value": "REGISTERED_SYSTEM"},
             {"name": "cryptoscan:system:criticality", "value": str(s.criticality or "")},
             {"name": "cryptoscan:system:business_unit", "value": str(s.business_unit or "")},
             {"name": "cryptoscan:system:coverage_status", "value": str(s.coverage_status or "")},
             {"name": "cryptoscan:system:environment", "value": str(getattr(s, "environment", "") or "")},
+            {"name": "cryptoscan:system:owner", "value": str(getattr(s, "owner", "") or "")},
+            {"name": "cryptoscan:system:last_scanned_at", "value": str(_iso(getattr(s, "last_scanned_at", None)) or "")},
+            {"name": "cryptoscan:system:asset_count", "value": str(len(assets_by_system.get(s.id, [])))},
         ]
+        edges = [edge_record(edge, sys_ref[s.id], sys_ref[edge.child_id])
+                 for edge in edges_by_parent.get(s.id, []) if edge.child_id in sys_ref]
+        edges.sort(key=lambda item: item["target"])
+        for item in edges:
+            by_basis[item["basis"]] = by_basis.get(item["basis"], 0) + 1
+            by_verification[item["verification_status"]] = by_verification.get(item["verification_status"], 0) + 1
+        edge_total += len(edges)
+        if edges:
+            props.append({"name": "cryptoscan:system:dependency_edges", "value": json.dumps(edges, sort_keys=True)})
         components.append({"type": "application", "name": s.name, "bom-ref": sys_ref[s.id],
                            "properties": [p for p in props if p["value"]]})
         depends = list(assets_by_system.get(s.id, []))
-        depends += [sys_ref[cid] for cid in edges_by_parent.get(s.id, []) if cid in sys_ref]
+        depends += [item["target"] for item in edges]
         if depends:
             deps.append({"ref": sys_ref[s.id], "dependsOn": depends})
-    top = list(sys_ref.values())
+    top = [sys_ref[s.id] for s in sorted(systems, key=lambda item: sys_ref[item.id])]
     unassigned = assets_by_system.get(None, [])
     if unassigned:
-        components.append({"type": "application", "name": "unassigned", "bom-ref": "system:unassigned",
-                           "properties": [{"name": "cryptoscan:system:coverage_status", "value": "unassigned"}]})
-        deps.append({"ref": "system:unassigned", "dependsOn": unassigned})
-        top.append("system:unassigned")
+        components.append({"type": "application", "name": "unassigned", "bom-ref": UNASSIGNED_REF,
+                           "description": "Bucket for assets with no recorded system link; not a business system. "
+                                          "Each asset's cryptoscan:mapping_reason says why.",
+                           "properties": [{"name": "cryptoscan:system:coverage_status", "value": "unassigned"},
+                                          {"name": "cryptoscan:system:kind", "value": "UNMAPPED_BUCKET_NOT_A_SYSTEM"},
+                                          {"name": "cryptoscan:system:asset_count", "value": str(len(unassigned))}]})
+        deps.append({"ref": UNASSIGNED_REF, "dependsOn": unassigned})
+        top.append(UNASSIGNED_REF)
     deps.insert(0, {"ref": PORTFOLIO_ROOT_REF, "dependsOn": top})
-    return components, deps
+    summary = {
+        "system_edges": edge_total,
+        "system_edges_by_basis": dict(sorted(by_basis.items())),
+        "system_edges_by_verification": dict(sorted(by_verification.items())),
+        "asset_membership_edges": sum(len(v) for v in assets_by_system.values()),
+        "root_edges": len(top),
+        "runtime_verified_edges": 0,
+        "basis": "declared or observed relationships from the system registry; not runtime call proof",
+    }
+    return components, deps, summary
 
 
 @router.get("/search")

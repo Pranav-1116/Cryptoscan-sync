@@ -207,21 +207,27 @@ class CbomGenerator:
                     nist = SubElement(props, "nistDesignation")
                     nist.text = str(crypto["nistDesignation"])
             evidence = item.get("evidence") or {}
-            if evidence.get("file"):
+            occurrences = [o for o in evidence.get("occurrences") or [] if isinstance(o, dict) and o.get("location")]
+            if not occurrences and evidence.get("file"):
+                occurrences = [{"location": evidence["file"], "line": evidence.get("line")}]
+            if occurrences:
                 ev = SubElement(el, "evidence")
-                occ = SubElement(ev, "occurrence")
-                loc = SubElement(occ, "location")
-                loc.text = str(evidence.get("file"))
-            for ref in item.get("externalReferences") or []:
-                if isinstance(ref, dict) and ref.get("url"):
-                    refs_el = SubElement(el, "externalReferences")
+                occs = SubElement(ev, "occurrences")
+                for occurrence in occurrences:
+                    occ = SubElement(occs, "occurrence")
+                    loc = SubElement(occ, "location")
+                    loc.text = str(occurrence["location"])
+                    if occurrence.get("line") is not None:
+                        line = SubElement(occ, "line")
+                        line.text = str(occurrence["line"])
+            references = [r for r in item.get("externalReferences") or [] if isinstance(r, dict) and r.get("url")]
+            if references:
+                refs_el = SubElement(el, "externalReferences")
+                for ref in references:
                     ref_el = SubElement(refs_el, "reference")
                     ref_el.set("type", str(ref.get("type") or "other"))
                     url_el = SubElement(ref_el, "url")
                     url_el.text = str(ref["url"])
-                if evidence.get("line") is not None:
-                    line = SubElement(occ, "line")
-                    line.text = str(evidence.get("line"))
 
         dependencies = bom.get("dependencies") or []
         if dependencies:
@@ -232,7 +238,7 @@ class CbomGenerator:
                 dep_el = SubElement(deps_el, "dependency")
                 dep_el.set("ref", str(dep.get("ref") or ""))
                 for child in dep.get("dependsOn") or []:
-                    child_el = SubElement(deps_el, "dependency")
+                    child_el = SubElement(dep_el, "dependency")  # nested, per the CycloneDX XML schema
                     child_el.set("ref", str(child))
 
         vulnerabilities = bom.get("vulnerabilities") or []

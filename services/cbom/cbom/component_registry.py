@@ -268,6 +268,23 @@ def cbom_crypto_component(data: dict[str, Any]) -> dict[str, Any]:
         host = HostEvidenceRef.model_validate(data["host_evidence"])
         for key, value in host.model_dump(mode="json").items():
             properties.append({"name": f"cryptoscan:host:{key}", "value": str(value)})
+    if data.get("is_hardcoded_key") is True:
+        properties.append({"name": "cryptoscan:hardcoded_key", "value": "true"})
+    # Evidence-backed parameters the asset row itself has no column for
+    # (named curve, negotiated cipher suites) — supplied by the assembler from
+    # linked evidence, never inferred from the key size.
+    if isinstance(data.get("curve"), str) and data["curve"]:
+        component["cryptoProperties"]["algorithmProperties"]["curve"] = data["curve"]
+        properties.append({"name": "cryptoscan:curve", "value": data["curve"]})
+    # Assembler-built evidence chain: richer occurrences (evidence id, symbol,
+    # scan/commit context) and generated provenance properties. Names are
+    # restricted to CryptoScan's own namespace; the 1.6 projection allowlists
+    # them again.
+    if isinstance(data.get("cbom_occurrences"), list) and data["cbom_occurrences"]:
+        component["evidence"]["occurrences"] = [dict(o) for o in data["cbom_occurrences"] if isinstance(o, dict)]
+    for prop in data.get("cbom_properties") or []:
+        if isinstance(prop, dict) and str(prop.get("name", "")).startswith("cryptoscan:"):
+            properties.append({"name": str(prop["name"]), "value": str(prop.get("value", ""))})
     if properties:
         component["properties"] = properties
     return component

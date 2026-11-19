@@ -42,6 +42,7 @@ from db.models.baseline import Baseline  # noqa: E402
 from db.models.certificate import Certificate  # noqa: E402
 from db.models.certificate_usage import CertificateUsage  # noqa: E402
 from db.models.crypto_asset import CryptoAsset  # noqa: E402
+from db.models.crypto_asset_evidence import CryptoAssetEvidence  # noqa: E402
 from db.models.drift_event import DriftEvent  # noqa: E402
 from db.models.evidence_record import EvidenceRecord  # noqa: E402
 from db.models.scan import Scan  # noqa: E402
@@ -507,6 +508,9 @@ def seed(db_url: str, reset: bool) -> None:
 
         # ── scans + hash-chained evidence ────────────────────────────────
         scan_objs = []
+        # (system, algorithm, size, purpose) -> evidence rows, so inventory assets
+        # link to the observations they were deduplicated from
+        ev_index: dict[tuple, list] = {}
         for story in SCAN_STORY:
             scan = Scan(
                 scan_start=story["started"],
@@ -566,6 +570,7 @@ def seed(db_url: str, reset: bool) -> None:
                         provenance={"collector": "sandbox-seed", "seed": SEED_TAG},
                     )
                     db.add(ev)
+                    ev_index.setdefault((sys_key, alg, ksize, purpose), []).append(ev)
                     prev = chain
                     pos += 1
                     stats["files_scanned"] += 11
@@ -590,23 +595,30 @@ def seed(db_url: str, reset: bool) -> None:
                 [f for f in FINDINGS if f[5] == "PASS"] + FINDINGS[8:11] if key in ("swift", "cards")
                 else [f for f in FINDINGS if f[5] == "PASS"])
             for i, (alg, ksize, purpose, conf, hard, _v) in enumerate(per_system):
-                path = paths[i % len(paths)]
-                db.add(CryptoAsset(
-                    algorithm=alg, purpose=purpose, mode=("GCM" if "AES" in alg else None),
+                observed = ev_index.get((key, alg, ksize, purpose), [])
+                path = observed[0].file_path if observed else paths[i % len(paths)]
+                # mode only where the finding names it (AES-GCM); plain AES stays unspecified
+                asset = CryptoAsset(
+                    algorithm=alg, purpose=purpose, mode=("GCM" if alg == "AES-GCM" else None),
                     key_size=ksize, file_path=path,
-                    line_number=10 + ((i * 37) % 400),
+                    line_number=observed[0].line_number if observed else 10 + ((i * 37) % 400),
                     source_language={"ibank": "java", "mobile": "go", "swift": "java", "cards": "java",
                                      "core": "cobol", "atm": "cpp", "treas": "java", "crm": "python",
                                      "dwh": "scala", "legacy": "c"}[key],
                     confidence=conf, is_hardcoded_key=hard,
-                    occurrence_count=1 + (i % 3),
+                    occurrence_count=max(1, len(observed)),
                     scanner_ids=["cryptoscan-estate-scanner-v1.4"],
                     libraries=[{"name": "BouncyCastle", "version": "1.78"}] if alg in ("RSA", "ECDSA") else [],
                     extra={"seed": SEED_TAG, "system_key": key},
                     lifecycle_state="ACTIVE" if conf == "HIGH" else "DISCOVERED",
                     owner=systems[key].technical_owner, technical_owner=systems[key].technical_owner,
                     security_owner=systems[key].security_owner,
-                ))
+                )
+                db.add(asset)
+                if observed:
+                    db.flush()
+                    db.add_all([CryptoAssetEvidence(asset_id=asset.id, evidence_id=ev.id, tenant_id=asset.tenant_id)
+                                for ev in observed])
                 asset_count += 1
         # marker row so re-running is idempotent
         db.add(CryptoAsset(algorithm="MARKER", purpose="seed", file_path="/MERIDIAN-SANDBOX-MARKER",

@@ -6,20 +6,37 @@
       "bom-ref": "00000000-0000-4000-8000-000000000002",
       "cryptoProperties": {
         "algorithmProperties": {
+          "classicalSecurityLevel": 112,
           "mode": "unknown",
+          "nistQuantumSecurityLevel": 0,
           "parameterSetIdentifier": "2048",
           "primitive": "pke"
         },
-        "assetType": "algorithm"
+        "assetType": "algorithm",
+        "oid": "1.2.840.113549.1.1.1"
       },
       "evidence": {
+        "identity": [
+          {
+            "concludedValue": "RSA-2048",
+            "confidence": 0.3,
+            "field": "name",
+            "methods": [
+              {
+                "confidence": 0.3,
+                "technique": "other",
+                "value": "/approved/public.pem"
+              }
+            ]
+          }
+        ],
         "occurrences": [
           {
             "location": "/approved/public.pem"
           }
         ]
       },
-      "name": "RSA",
+      "name": "RSA-2048",
       "properties": [
         {
           "name": "cryptoscan:asset_key",
@@ -32,6 +49,18 @@
         {
           "name": "cryptoscan:confidence",
           "value": "LOW"
+        },
+        {
+          "name": "cryptoscan:quantum_status",
+          "value": "QUANTUM_SENSITIVE"
+        },
+        {
+          "name": "cryptoscan:quantum_status_basis",
+          "value": "REGISTRY_SHOR"
+        },
+        {
+          "name": "cryptoscan:algorithm_class",
+          "value": "PUBLIC_KEY"
         },
         {
           "name": "cryptoscan:purpose",
@@ -166,6 +195,70 @@
           "value": "NOT_ESTABLISHED"
         },
         {
+          "name": "cryptoscan:classification",
+          "value": "CRYPTOGRAPHIC_ASSET"
+        },
+        {
+          "name": "cryptoscan:algorithm_family",
+          "value": "RSA"
+        },
+        {
+          "name": "cryptoscan:primitive_basis",
+          "value": "RSA_DEFAULT_PURPOSE_NOT_RECORDED"
+        },
+        {
+          "name": "cryptoscan:registry_status",
+          "value": "ALLOWED"
+        },
+        {
+          "name": "cryptoscan:identity:algorithm",
+          "value": "rsa-2048"
+        },
+        {
+          "name": "cryptoscan:standard",
+          "value": "FIPS 186-5 / SP 800-56B"
+        },
+        {
+          "name": "cryptoscan:parameter_set_basis",
+          "value": "MODULUS_BITS"
+        },
+        {
+          "name": "cryptoscan:security_level_basis",
+          "value": "NIST SP 800-57 Pt1 Rev5 Table 2 (IFC); Shor-vulnerable"
+        },
+        {
+          "name": "cryptoscan:crypto_functions_basis",
+          "value": "NOT_ESTABLISHED_BY_EVIDENCE"
+        },
+        {
+          "name": "cryptoscan:registry_notes",
+          "value": "<2048 disallowed; Shor breaks RSA entirely"
+        },
+        {
+          "name": "cryptoscan:risk:algorithm_risk",
+          "value": "NONE"
+        },
+        {
+          "name": "cryptoscan:risk:priority",
+          "value": "NONE"
+        },
+        {
+          "name": "cryptoscan:risk:quantum_exposure",
+          "value": "SHOR_VULNERABLE_KEY_ESTABLISHMENT_DATA_LIFETIME_UNKNOWN"
+        },
+        {
+          "name": "cryptoscan:risk:finding_status",
+          "value": "DETECTION_FINDING_NOT_CONFIRMED_VULNERABILITY"
+        },
+        {
+          "name": "cryptoscan:risk:factors",
+          "value": "{\"algorithm_risk\": \"NONE\", \"business_criticality\": \"NOT_RECORDED\", \"data_lifetime_years\": \"NOT_RECORDED\", \"deployment_stage\": \"PRESENT_ON_HOST\", \"evidence_confidence\": \"LOW\", \"exposure\": \"NOT_RECORDED\"}"
+        },
+        {
+          "name": "cryptoscan:deployment_stage",
+          "value": "PRESENT_ON_HOST"
+        },
+        {
           "name": "cryptoscan:business_context",
           "value": "{\"asset_key\": \"fact:v1:848ed1ea39704efc6448629addaf113eae168a98ee525156d8e4de209f417ce9\", \"confidence\": \"LOW\", \"library\": \"UNKNOWN\", \"purpose\": \"PUBLIC_KEY_METADATA\", \"source_basis\": \"IMPORTED\", \"system_id\": \"payments\"}"
         }
@@ -206,8 +299,20 @@
         "value": "ALLOWLISTED_CRYPTO_METADATA_NO_SECRET_VALUES"
       },
       {
+        "name": "cryptoscan:normalizer_version",
+        "value": "cryptoscan-cbom-normalizer/2.0.0"
+      },
+      {
+        "name": "cryptoscan:risk_model_version",
+        "value": "cryptoscan-crypto-risk/1.0.0"
+      },
+      {
         "name": "cryptoscan:source_scan",
         "value": "urn:cryptoscan:scan:00000000-0000-4000-8000-000000000003"
+      },
+      {
+        "name": "cryptoscan:inventory_summary",
+        "value": "{\"components_by_kind\": {\"algorithm\": 1}, \"components_total\": 1, \"crypto_classification\": {\"CRYPTOGRAPHIC_ASSET\": 1}, \"dependency_edges\": 0, \"dependency_records\": 0, \"provides_edges\": 0}"
       }
     ],
     "timestamp": "2026-10-24T00:00:00+00:00",

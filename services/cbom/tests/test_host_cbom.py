@@ -120,7 +120,7 @@ def test_mutable_host_enrichment_cannot_override_committed_source():
     data["compliance_status"] = {"overall": "COMPLIANT"}
     data["library"] = "uncommitted-version"
     component = CbomGenerator().from_records([data], spec_version="1.6")["components"][0]
-    assert component["name"] == "RSA"
+    assert component["name"] == "RSA-2048"  # variant from the committed source, never the mutable ML-KEM enrichment
     props = {p["name"]: p["value"] for p in component["properties"]}
     assert props["cryptoscan:reported_key_size"] == "2048"
     assert props["cryptoscan:host:pqc_assessment"] == "UNKNOWN"
