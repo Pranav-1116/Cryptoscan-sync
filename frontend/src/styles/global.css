@@ -1936,3 +1936,109 @@ summary:focus-visible,
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
 }
 .cbom-side-by-side > section { margin: 0 !important; }
+
+
+/* ─────────────────────────────────────────────────────────────────────
+   Status labels (badges) — plain, compact lozenges.
+   No glowing dot, no outlined pill: a small rectangle with a quiet tint
+   and the tone carried by the text colour, the way established admin
+   tools label status. Declared last so it is the effective badge style.
+   ───────────────────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 1px 6px; min-height: 18px; box-sizing: border-box;
+  font-family: var(--sans); font-size: 10.5px; font-weight: 700; letter-spacing: .03em;
+  line-height: 16px; white-space: nowrap; vertical-align: middle;
+  border: 0; border-radius: 3px;
+  color: var(--dim);
+  background: color-mix(in srgb, var(--dim) 13%, transparent);
+  box-shadow: none;
+}
+.badge .dot, .badge .dot.pulse { display: none; }
+:root:not([data-theme="light"]) .badge.cyan, :root[data-theme="light"] .badge.cyan {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: transparent;
+}
+:root:not([data-theme="light"]) .badge.blue, :root[data-theme="light"] .badge.blue {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  border-color: transparent;
+}
+:root:not([data-theme="light"]) .badge.green, :root[data-theme="light"] .badge.green {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 15%, transparent);
+  border-color: transparent;
+}
+:root:not([data-theme="light"]) .badge.amber, :root[data-theme="light"] .badge.amber {
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 15%, transparent);
+  border-color: transparent;
+}
+:root:not([data-theme="light"]) .badge.orange, :root[data-theme="light"] .badge.orange {
+  color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 15%, transparent);
+  border-color: transparent;
+}
+:root:not([data-theme="light"]) .badge.red, :root[data-theme="light"] .badge.red {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 15%, transparent);
+  border-color: transparent;
+}
+:root:not([data-theme="light"]) .badge.slate, :root[data-theme="light"] .badge.slate {
+  color: var(--dim);
+  background: color-mix(in srgb, var(--dim) 15%, transparent);
+  border-color: transparent;
+}
+:root:not([data-theme="light"]) .badge.violet, :root[data-theme="light"] .badge.violet {
+  color: var(--violet);
+  background: color-mix(in srgb, var(--violet) 15%, transparent);
+  border-color: transparent;
+}
+/* Light theme: a lighter tint keeps every tone at WCAG AA (≥ 4.5:1) on white. */
+:root[data-theme="light"] .badge { background: color-mix(in srgb, var(--dim) 10%, transparent); }
+:root[data-theme="light"] .badge.cyan { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+:root[data-theme="light"] .badge.blue { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+:root[data-theme="light"] .badge.green { background: color-mix(in srgb, var(--green) 10%, transparent); }
+:root[data-theme="light"] .badge.amber { background: color-mix(in srgb, var(--amber) 10%, transparent); }
+:root[data-theme="light"] .badge.orange { background: color-mix(in srgb, var(--orange) 10%, transparent); }
+:root[data-theme="light"] .badge.red { background: color-mix(in srgb, var(--red) 10%, transparent); }
+:root[data-theme="light"] .badge.slate { background: color-mix(in srgb, var(--dim) 10%, transparent); }
+:root[data-theme="light"] .badge.violet { background: color-mix(in srgb, var(--violet) 10%, transparent); }
+
+/* ── Technology BOM dependency graph ─────────────────────────────────── */
+.depgraph { display: grid; gap: 10px; }
+.depgraph-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.depgraph-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.depgraph-chip {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  font: 600 11.5px var(--sans); color: var(--faint);
+  padding: 4px 10px; border-radius: var(--r);
+  background: transparent; border: 1px solid var(--line);
+}
+.depgraph-chip i { width: 8px; height: 8px; border-radius: 2px; opacity: .45; }
+.depgraph-chip span { font-family: var(--mono); font-weight: 500; color: var(--faint); }
+.depgraph-chip.on { color: var(--text); background: var(--panel-2); border-color: var(--line-strong); }
+.depgraph-chip.on i { opacity: 1; }
+.depgraph-chip:hover { border-color: color-mix(in srgb, var(--accent) 60%, var(--line-strong)); }
+.depgraph-toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--dim); }
+.depgraph-stats { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--dim); }
+.depgraph-stats b { color: var(--text); font-variant-numeric: tabular-nums; }
+.depgraph-stats .warn { color: var(--amber); }
+.depgraph-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11.5px; color: var(--dim); }
+.depgraph-legend i, .depgraph-rel i { display: inline-block; width: 14px; height: 2px; margin-right: 6px; vertical-align: middle; }
+.depgraph-canvas {
+  max-height: 620px; overflow: auto; border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--bg-2); padding: 8px 10px;
+}
+.depgraph-colhead { font: 700 10.5px var(--sans); letter-spacing: .08em; fill: var(--dim); }
+.depgraph-colsub { font-weight: 500; letter-spacing: 0; fill: var(--faint); }
+.depgraph-label { font: 500 11.5px var(--sans); fill: var(--text); }
+.depgraph-degree { font: 500 10px var(--mono); fill: var(--faint); }
+.depgraph-detail { border: 1px solid var(--line); border-radius: var(--r); padding: 10px 12px; background: var(--panel-2); }
+.depgraph-detail-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.depgraph-detail-head span { font-size: 12px; color: var(--dim); }
+.depgraph-detail-head .btn { margin-left: auto; }
+.depgraph-detail-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.depgraph-rel { font-size: 12px; padding: 3px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.depgraph-rel span { color: var(--faint); font-size: 11px; margin-left: 6px; }

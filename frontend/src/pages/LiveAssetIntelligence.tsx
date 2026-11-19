@@ -5,6 +5,7 @@ import {
 import { useRealtime, severityOf } from "../lib/realtime.js";
 import { usePollingApi, useApi } from "../lib/apiUi.jsx";
 import AssetDetail from "../components/AssetDetail";
+import TechBomDependencyGraph from "../components/TechBomDependencyGraph";
 import { useSearchParams } from "react-router-dom";
 import { ICON_MD, ICON_SM, IconCalendar, IconClose, IconWarn, IconClock, IconCrypto, IconHardware, IconTarget, IconSecurity, IconInfo, IconSearch, IconComponent, IconCertificate } from "../components/icons";
 import {
@@ -27,7 +28,7 @@ import {
   downloadGroupRoadmap,
   downloadSupervisorPack,
   BankJurisdictionPack, BankKeyLifecycle, BankSwiftCsp, GroupEntityRec, GroupRollup,
-  TechBomState, TechBomDiff, TechBomVersion, TechBomComponent, TechBomExport,
+  TechBomState, TechBomDiff, TechBomVersion, TechBomExport,
   TechBomSchedule, TechBomRun, TechBomEvidence, TechBomVendorInventory,
   TechBomAssurance, TechBomAdmission, TechBomVex, TechBomXbom, TechBomRuntimeVerify,
   BankOverview, BankHndl, BankRoadmap, BankHsmFleet, BankActionPlan, BankMainframeInventory, BankIngestResult,
@@ -69,61 +70,6 @@ function download(filename: string, text: string, mime: string) {
 }
 
 /* Simple radial dependency graph from the live layers' components + deps. */
-interface GraphNode extends TechBomComponent { layer: string; x: number; y: number }
-
-function BomGraph({ state }: { state: TechBomState }) {
-  const components = useMemo<Array<GraphNode>>(() => {
-    const all: Array<GraphNode> = [];
-    for (const layer of ["sbom", "cbom", "hbom", "vendor", "certificates"] as const) {
-      const L = state.layers?.[layer];
-      for (const c of L?.components ?? []) all.push({ ...c, layer, x: 0, y: 0 });
-    }
-    const cx = 420, cy = 250, r = Math.min(210, Math.max(90, all.length * 16));
-    return all.map((c, i) => {
-      const ang = all.length === 1 ? -Math.PI / 2 : (i / all.length) * Math.PI * 2 - Math.PI / 2;
-      return { ...c, x: cx + r * Math.cos(ang), y: cy + r * Math.sin(ang) * 0.68 };
-    });
-  }, [state.layers]);
-
-  const edges = useMemo<Array<{ a: GraphNode; b: GraphNode }>>(() => {
-    const map = new Map(components.map((c) => [c["bom-ref"], c]));
-    const deps = state.dependency_count ?? 0;
-    const pairs: Array<[string, string]> = [];
-    const names: string[] = components.map((c) => c["bom-ref"] ?? "").filter((x): x is string => Boolean(x));
-    for (let i = 0; i < deps && i < names.length - 1; i++) pairs.push([names[i], names[i + 1]]);
-    const edges: Array<{ a: GraphNode; b: GraphNode }> = [];
-    for (const [a, b] of pairs) {
-      const na = map.get(a), nb = map.get(b);
-      if (na && nb) edges.push({ a: na, b: nb });
-    }
-    return edges;
-  }, [components, state.dependency_count]);
-
-  const color = (layer: string) =>
-    ({ sbom: "var(--violet)", cbom: "var(--accent)", hbom: "var(--slate)", vendor: "var(--slate)", certificates: "var(--green)" }[layer] || "var(--slate)");
-
-  if (components.length === 0) return <div className="empty">No components — run a scan to populate the BOM.</div>;
-  return (
-    <svg viewBox="0 0 840 500" width="100%">
-      {edges.map((e, i) => (
-        <line key={i} x1={e.a.x} y1={e.a.y} x2={e.b.x} y2={e.b.y}
-          stroke="color-mix(in srgb, var(--violet) 35%, transparent)" strokeWidth="1.4" />
-      ))}
-      {components.map((c, i) => (
-        <g key={i}>
-          <circle cx={c.x} cy={c.y} r={14} fill={color(c.layer)} fillOpacity={0.85} />
-          <text x={c.x} y={c.y + 4} textAnchor="middle" fontSize="9" fill="var(--bg)" fontWeight="600">
-            {(c.name || c["bom-ref"] || "").slice(0, 3).toUpperCase()}
-          </text>
-          <text x={c.x} y={c.y + 30} textAnchor="middle" fontSize="9.5" fill="var(--text)">
-            {c.name || c["bom-ref"] || ""}
-          </text>
-        </g>
-      ))}
-    </svg>
-  );
-}
-
 function Comparison({ from, to, diff }: { from: TechBomVersion | null; to: TechBomVersion | null; diff: TechBomDiff | null }) {
   if (!from || !to) return <div className="empty">Pick two versions, then run Compare.</div>;
   if (!diff) return <div className="empty">No difference computed.</div>;
@@ -1051,10 +997,10 @@ export default function LiveAssetIntelligence() {
       </div>
 
       {view === 0 && (
-        <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-          <Panel title="Dependency Graph" sub={`${total} components · ${state?.dependency_count ?? 0} edges`} frame>
+        <div style={{ display: "grid", gap: 14 }}>
+          <Panel title="Dependency Graph" sub={`${total} components · ${state?.dependency_count ?? 0} recorded dependencies · grouped by BOM layer`} frame>
             {state ? (
-              <BomGraph state={state} />
+              <TechBomDependencyGraph state={state} />
             ) : (
               <div className="faint" style={{ padding: 12 }}>
                 No Technology BOM yet — the graph appears after the first materialisation

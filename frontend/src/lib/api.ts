@@ -3709,6 +3709,8 @@ export interface TechBomState {
   components_by_layer: Partial<Record<"sbom" | "cbom" | "hbom" | "vendor" | "certificates", number>>;
   certificate_count?: number;
   dependency_count?: number;
+  /** the edges themselves, canonical `[source, target, type]` (type may be "") */
+  dependencies?: Array<string[]>;
   layers: Partial<Record<"sbom" | "cbom" | "hbom" | "vendor" | "certificates", TechBomLayer>>;
   scan?: Record<string, unknown>;
   fingerprint: string;

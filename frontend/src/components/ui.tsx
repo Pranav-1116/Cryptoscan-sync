@@ -176,10 +176,7 @@ export function Badge({ children, tone, variant }: { children: ReactNode; tone?:
   const resolved = TONE_ALIAS[String(named).toLowerCase()] ?? named;
   const t = resolved || BADGE_TONE[String(children).toString().toUpperCase()] || "";
   return (
-    <span className={`badge ${t}`}>
-      <span className="dot" />
-      {children}
-    </span>
+    <span className={`badge ${t}`}>{children}</span>
   );
 }
 
