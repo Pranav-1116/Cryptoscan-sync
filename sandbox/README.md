@@ -233,41 +233,71 @@ when reality moves.
 The seeded history (scan back-story, baselines, drift) remains as the bank's
 past quarter; scans and `collect` runs are the living present.
 
-### Cryptava agents — one agent per bank host
+### Cryptava agents — one agent on every bank server
 
 The `collect` pass looks at the estate from outside. Cryptava is the agent a real
 bank installs **on each server**: it reads that machine from the inside and sends
-one signed observation per host. Four agents run next to the busiest hosts:
+one signed observation per server. In the sandbox **all seven bank servers get an
+agent, automatically**: `bash sandbox/run_sandbox.sh up` starts them as soon as the
+API is healthy, waits for their first signed reports and prints a check:
 
-```bash
-bash sandbox/run_sandbox.sh agents          # start the 4 agents (uses CRYPTOSCAN_USERNAME/PASSWORD from .env, or asks)
-bash sandbox/run_sandbox.sh agents status   # what each agent last sent
-bash sandbox/run_sandbox.sh agents stop
+```
+BANK SERVER        AGENT
+internet-banking   CONNECTED  mrdn-sbx-dc1-ibank01 -> http://api:8010 · last report … · signature verified · HBOM:complete SBOM:complete …
+mobile-api         CONNECTED  mrdn-sbx-dc1-mobileapi01 -> …
+…
 ```
 
-| Agent name | Host | Business system |
+The agents enrol once with your console login — put it in `.env`
+(`CRYPTOSCAN_USERNAME=admin`, `CRYPTOSCAN_PASSWORD=...`) or type it when asked.
+`SANDBOX_AGENTS=0 bash sandbox/run_sandbox.sh up` skips them.
+
+```bash
+bash sandbox/run_sandbox.sh agents          # connect every bank server (if `up` did not, or after `agents stop`)
+bash sandbox/run_sandbox.sh agents check    # one line per bank server: connected? last report? six BOM results
+bash sandbox/run_sandbox.sh agents stop     # stop them (enrolment is kept)
+```
+
+| Agent name | Bank server | Business system |
 | --- | --- | --- |
-| `mrdn-sbx-dc1-swiftgw01` | swift-gateway (10.210.0.4) | SWIFT Gateway |
 | `mrdn-sbx-dc1-ibank01` | internet-banking (10.210.0.2) | Internet Banking |
+| `mrdn-sbx-dc1-mobileapi01` | mobile-api (10.210.0.3) | Mobile Banking API |
+| `mrdn-sbx-dc1-swiftgw01` | swift-gateway (10.210.0.4) | SWIFT Gateway |
+| `mrdn-sbx-br0142-legacy01` | legacy-branch (10.210.0.5) | Branch Banking |
+| `mrdn-sbx-dc1-hsmsim01` | hsm-sim (10.210.0.6) | Payment HSM |
 | `mrdn-sbx-dc1-coredb01` | core-banking-db (10.210.0.7) | Core Banking |
 | `mrdn-sbx-dc1-paybastion01` | payments-bastion (10.210.0.8) | SWIFT Gateway |
 
-Each agent enrols itself once (your login is used only for that), gets its own
-signing key, and then sends every 5 minutes. Open **Discovery → Cryptava agents**
-in the console: each agent shows as `online`, with its six BOM results and
-`verified` once its signed report is checked. Click an agent for the reason
-behind each result, **how each BOM was collected** (every source it read and what
-came back), and links to the BOM workspaces. Their findings are added next to the
-`collect` pass and never overwrite it. See `services/cryptava/README.md` for what
-each of the six BOMs contains and how to install the agent on a real server.
+How an agent is "connected" to its bank server: it runs beside the server and
+shares the server's **processes and network**, and reads the server's **files**
+through `/proc/1/root` — exactly the view an agent installed on the machine has. It
+reaches the console at `http://api:8010` over the bank LAN, signs every report with
+its own key, sends a heartbeat every minute and a full report every 5 minutes.
 
-#### Add a bank server from the console (the real enrolment flow)
+Open **Discovery → Cryptava agents** in the console: each agent shows as `online`,
+with its six BOM results and `verified` once its signed report is checked. Click an
+agent for the reason behind each result, **how each BOM was collected** (every
+source it read and what came back), and links to the BOM workspaces. Their findings
+are added next to the `collect` pass and never overwrite it. See
+`services/cryptava/README.md` for what each BOM contains and how to install the
+agent on a real server.
 
-The other three bank servers — `mobile-api`, `legacy-branch`, `hsm-sim` — have no
-agent until you add one, exactly as an operator would for a new server:
+If a server shows anything other than `CONNECTED`:
+
+| Check says | Do this |
+| --- | --- |
+| `NO AGENT` | `bash sandbox/run_sandbox.sh agents` |
+| `NOT ENROLLED` | the console login was missing/wrong — fix `.env`, then `docker restart cryptoscan-cryptava-<server>` |
+| `NOT DELIVERED … cannot reach` | the API is down — `docker logs cryptoscan-api --tail 80`; the agent retries by itself |
+| `AGENT exited` | `docker logs cryptoscan-cryptava-<server>` |
+
+#### Connect a bank server from the console (the real enrolment flow)
+
+To do it the way an operator adds a new server — with a name and a one-time token
+from the console — pick any bank server; your agent **replaces** its built-in one:
 
 1. Console → **Discovery → Cryptava agents → Add a server**.
-2. Type a unique name, e.g. `mrdn-sbx-dc1-mobileapi01`, and click **enrol**.
+2. Type a unique name, e.g. `mrdn-sbx-dc1-mobileapi02`, and click **enrol**.
    The console shows the agent id and a one-time token.
 3. Choose **Sandbox bank server**, pick the server (`mobile-api`), click **copy**.
 4. Paste the command in a terminal in the repository folder:
@@ -276,12 +306,13 @@ agent until you add one, exactly as an operator would for a new server:
    bash sandbox/run_sandbox.sh agents add mobile-api <agent-id> <token>
    ```
 
-   The agent joins that server (its processes, network and files), enrols with the
-   token, and its first signed report shows on the page within a minute.
+   The built-in agent on that server is removed (retire its old name in the
+   console), your agent enrols with the token, and its first signed report shows on
+   the page within a minute. Later `up` / `agents` runs leave that server's agent alone.
 
 ```bash
 bash sandbox/run_sandbox.sh agents list              # every agent container and its state
-bash sandbox/run_sandbox.sh agents remove mobile-api # stop + delete it (retire it in the console too)
+bash sandbox/run_sandbox.sh agents remove mobile-api # stop + delete it; `agents` then puts the built-in one back
 ```
 
 A token works once and expires. If enrolment fails, open the agent in the

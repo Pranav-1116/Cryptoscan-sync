@@ -218,7 +218,7 @@ services:
     networks: [cryptoscan-net, sandbox-net]
     restart: unless-stopped
 
-  # Cryptava — the real host agent (services/cryptava), one per simulated bank host.
+  # Cryptava — the real host agent (services/cryptava), one per simulated bank server (7).
   # Each sidecar shares its host's processes and network and reads the host's files
   # through /proc/1/root, exactly as on a real server; it enrols itself under a unique
   # name and pushes a SIGNED observation every 5 minutes. Profiled out of `up`:
@@ -228,8 +228,9 @@ services:
   # Each agent also gets its host's CMDB record (sandbox/cryptava/<host>.json) at
   # /etc/cryptava/asset-record.json: the hardware identity a container cannot read from
   # firmware (HBOM) and the vendor contracts that are never on a host (VBOM).
-  # The other bank hosts (mobile-api, legacy-branch, hsm-sim) are left for the console:
-  # Discovery -> Cryptava agents -> Add a server -> "Sandbox bank server".
+  # All seven bank servers have one. `run_sandbox.sh up` starts them once the API is
+  # healthy; a server you (re)connect from the console (Add a server -> "Sandbox bank
+  # server" -> `agents add`) replaces its built-in agent.
   cryptava-swift-gateway:
     <<: *cryptava-agent
     container_name: cryptoscan-cryptava-swift-gateway
@@ -302,12 +303,70 @@ services:
       - cryptava_payments_bastion:/var/lib/cryptava
       - ./sandbox/cryptava/payments-bastion.json:/etc/cryptava/asset-record.json:ro
 
+  cryptava-mobile-api:
+    <<: *cryptava-agent
+    container_name: cryptoscan-cryptava-mobile-api
+    depends_on: [api, mobile-api]
+    network_mode: "service:mobile-api"
+    pid: "service:mobile-api"
+    environment:
+      <<: *cryptava-env
+      CRYPTAVA_NAME: "mrdn-sbx-dc1-mobileapi01"
+      CRYPTAVA_HOSTNAME: "mobile-api"
+      CRYPTAVA_FQDN: "mobile-api.bank.sandbox"
+      CRYPTAVA_PRIMARY_IP: "10.210.0.3"
+      CRYPTAVA_SYSTEM: '{"name": "Mobile Banking API", "owner": "Digital Channels"}'
+    volumes:
+      - ./services/cryptava:/opt/cryptava:ro
+      - cryptava_mobile_api:/var/lib/cryptava
+      - ./sandbox/cryptava/mobile-api.json:/etc/cryptava/asset-record.json:ro
+
+  cryptava-legacy-branch:
+    <<: *cryptava-agent
+    container_name: cryptoscan-cryptava-legacy-branch
+    depends_on: [api, legacy-branch]
+    network_mode: "service:legacy-branch"
+    pid: "service:legacy-branch"
+    environment:
+      <<: *cryptava-env
+      CRYPTAVA_NAME: "mrdn-sbx-br0142-legacy01"
+      CRYPTAVA_HOSTNAME: "legacy-branch"
+      CRYPTAVA_FQDN: "legacy-branch.bank.sandbox"
+      CRYPTAVA_PRIMARY_IP: "10.210.0.5"
+      CRYPTAVA_SYSTEM: '{"name": "Branch Banking", "owner": "Branch Technology"}'
+      CRYPTAVA_TAGS: '{"environment": "production-sandbox", "datacenter": "branch-0142", "owner": "Meridian Bank"}'
+    volumes:
+      - ./services/cryptava:/opt/cryptava:ro
+      - cryptava_legacy_branch:/var/lib/cryptava
+      - ./sandbox/cryptava/legacy-branch.json:/etc/cryptava/asset-record.json:ro
+
+  cryptava-hsm-sim:
+    <<: *cryptava-agent
+    container_name: cryptoscan-cryptava-hsm-sim
+    depends_on: [api, hsm-sim]
+    network_mode: "service:hsm-sim"
+    pid: "service:hsm-sim"
+    environment:
+      <<: *cryptava-env
+      CRYPTAVA_NAME: "mrdn-sbx-dc1-hsmsim01"
+      CRYPTAVA_HOSTNAME: "hsm-sim"
+      CRYPTAVA_FQDN: "hsm-sim.bank.sandbox"
+      CRYPTAVA_PRIMARY_IP: "10.210.0.6"
+      CRYPTAVA_SYSTEM: '{"name": "Payment HSM", "owner": "Payments Security"}'
+    volumes:
+      - ./services/cryptava:/opt/cryptava:ro
+      - cryptava_hsm_sim:/var/lib/cryptava
+      - ./sandbox/cryptava/hsm-sim.json:/etc/cryptava/asset-record.json:ro
+
 volumes:
   sandbox_certs:
   cryptava_swift_gateway:
   cryptava_internet_banking:
   cryptava_core_banking_db:
   cryptava_payments_bastion:
+  cryptava_mobile_api:
+  cryptava_legacy_branch:
+  cryptava_hsm_sim:
 
 networks:
   # The fake bank's LAN. Fixed subnet so every system keeps a stable IP you

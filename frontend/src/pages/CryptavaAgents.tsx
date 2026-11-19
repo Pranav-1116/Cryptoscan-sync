@@ -302,7 +302,7 @@ export default function CryptavaAgents() {
         ) : (
           <div className="cv-empty">
             <p style={{ marginTop: 0 }}><strong>No agents yet.</strong></p>
-            <p className="muted" style={{ marginBottom: 6 }}>Sandbox — start the four bank-host agents:</p>
+            <p className="muted" style={{ marginBottom: 6 }}>Sandbox — connect an agent to all seven bank servers (<code>run_sandbox.sh up</code> does this too):</p>
             <pre className="mono" style={{ margin: "0 0 12px" }}>bash sandbox/run_sandbox.sh agents</pre>
             <p className="muted" style={{ margin: 0 }}>Real server — enrol it below, then run the command shown on that server.</p>
           </div>
@@ -343,7 +343,7 @@ export default function CryptavaAgents() {
             <p className="muted" style={{ margin: "4px 0", fontSize: 12 }}>
               {target === "linux" && "Run on the server, from the unpacked agent folder (services/cryptava/packaging). Add --asset-record FILE to supply the CMDB record."}
               {target === "container" && "Set these on the agent container (sidecar or DaemonSet); it enrols on first start. Mount the CMDB record at /etc/cryptava/asset-record.json."}
-              {target === "sandbox" && "Run in the repository folder on the machine running the sandbox. The agent joins that bank server and reports within a minute."}
+              {target === "sandbox" && "Run in the repository folder on the machine running the sandbox. The agent joins that bank server (replacing its built-in agent) and reports within a minute. Check every server with: bash sandbox/run_sandbox.sh agents check"}
             </p>
             <pre className="mono" style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", margin: "8px 0", fontSize: 12 }}>{command}</pre>
             <span style={{ display: "flex", gap: 6 }}>

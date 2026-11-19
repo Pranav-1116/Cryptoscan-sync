@@ -43,6 +43,26 @@ def _out(data: Any, as_json: bool) -> None:
     print(json.dumps(data, indent=2, sort_keys=True, default=str))
 
 
+def brief_status(identity: dict[str, Any] | None, last: dict[str, Any] | None) -> str:
+    """``CONNECTED <name> · last report 12:00:05Z · HBOM complete …`` — for scripts and humans."""
+    if not identity:
+        return "NOT ENROLLED  (waiting for enrolment — see `docker logs` of this agent)"
+    name = identity.get("name") or identity.get("contributor") or identity.get("agent_id")
+    server = identity.get("server") or ""
+    if not last:
+        return f"ENROLLED      {name} -> {server} · first report not sent yet"
+    summary = last.get("summary") or {}
+    planes = " ".join(
+        f"{str(p.get('plane', '')).split(' ')[0]}:{str(p.get('status', '')).lower()}"
+        for p in summary.get("planes") or [])
+    when = summary.get("observed_at") or "?"
+    if last.get("delivered"):
+        signature = ((last.get("response") or {}).get("authenticity") or "").lower()
+        verified = " · signature verified" if signature == "valid" else (f" · signature {signature}" if signature else "")
+        return f"CONNECTED     {name} -> {server} · last report {when}{verified} · {planes}"
+    return f"NOT DELIVERED {name} -> {server} · {last.get('error') or 'unknown error'} (retries every cycle)"
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cryptava", description="CryptoScan host agent (HBOM · SBOM · CBOM · NBOM · VBOM · TechBOM)")
     # global options are accepted before or after the sub-command
@@ -81,7 +101,8 @@ def _parser() -> argparse.ArgumentParser:
     mode.add_argument("--once", action="store_true")
     mode.add_argument("--interval", type=int, help="seconds between collections (overrides config)")
 
-    sub.add_parser("status", help="show this agent's identity and last run")
+    st = sub.add_parser("status", help="show this agent's identity and last run")
+    st.add_argument("--brief", action="store_true", help="one line: connected or not, and the six BOM results")
     sub.add_parser("version")
     return parser
 
@@ -197,6 +218,9 @@ def main(argv: list[str] | None = None) -> int:
                 last = json.loads(state.last_run_path.read_text())
             except (OSError, ValueError):
                 pass
+            if getattr(args, "brief", False):
+                print(brief_status(identity, last))
+                return EXIT_OK if identity else EXIT_NOT_ENROLLED
             _out({
                 "version": __version__,
                 "enrolled": bool(identity),

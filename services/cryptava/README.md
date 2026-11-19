@@ -116,6 +116,7 @@ cryptava enroll --agent-id ID --token TOKEN [--server URL]
 cryptava run --once              # one collect → sign → send → heartbeat
 cryptava run                     # the service loop (used by systemd)
 cryptava status                  # identity (never the API key) and the last run
+cryptava status --brief          # one line: CONNECTED / NOT DELIVERED / NOT ENROLLED, signature check, six BOM results
 ```
 
 ## Install options
@@ -126,7 +127,7 @@ cryptava status                  # identity (never the API key) and the last run
 | A fleet | `packaging/ansible/` role — one-step enrolment with an admin key kept in Ansible Vault |
 | Kubernetes nodes | `packaging/kubernetes/cryptava-daemonset.yaml` (node filesystem read-only at `/host`) |
 | Container image | `packaging/container/Dockerfile` |
-| The CryptoScan sandbox | `./sandbox/run_sandbox.sh agents` — four agents on the simulated bank hosts |
+| The CryptoScan sandbox | started by `./sandbox/run_sandbox.sh up` — one agent on each of the seven bank servers; `./sandbox/run_sandbox.sh agents check` shows whether each is connected |
 
 Configuration: `packaging/config/cryptava.toml.example` (or JSON; every key can also be
 set as `CRYPTAVA_<KEY>`). Identity and key: `/var/lib/cryptava/` (mode 0700, files 0600).

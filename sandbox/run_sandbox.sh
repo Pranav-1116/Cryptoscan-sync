@@ -33,6 +33,93 @@ db_up() {
   wait_healthy cryptoscan-postgres 60
 }
 
+# ── Cryptava agents: one per sandbox bank server ─────────────────────────────
+SBX_HOSTS="internet-banking mobile-api swift-gateway legacy-branch hsm-sim core-banking-db payments-bastion"
+
+# host -> container | hostname | ip | business system | owner
+host_info() {
+  case "$1" in
+    internet-banking) echo "cryptoscan-sbx-internet-banking|internet-banking|10.210.0.2|Internet Banking|Digital Channels" ;;
+    mobile-api)       echo "cryptoscan-sbx-mobile-api|mobile-api|10.210.0.3|Mobile Banking API|Digital Channels" ;;
+    swift-gateway)    echo "cryptoscan-sbx-swift-gateway|swift-gateway|10.210.0.4|SWIFT Gateway|Payments Operations" ;;
+    legacy-branch)    echo "cryptoscan-sbx-legacy-branch|legacy-branch|10.210.0.5|Branch Banking|Branch Technology" ;;
+    hsm-sim)          echo "cryptoscan-sbx-hsm-sim|hsm-sim|10.210.0.6|Payment HSM|Payments Security" ;;
+    core-banking-db)  echo "cryptoscan-sbx-core-db|core-db|10.210.0.7|Core Banking|Core Banking Platform" ;;
+    payments-bastion) echo "cryptoscan-sbx-payments-bastion|payments-bastion|10.210.0.8|SWIFT Gateway|Payments Operations" ;;
+    *) return 1 ;;
+  esac
+}
+
+# true when the agent beside <host> was connected from the console (agents add)
+console_agent() {
+  [ "$(docker inspect -f '{{index .Config.Labels "cryptoscan.cryptava.added"}}' "cryptoscan-cryptava-$1" 2>/dev/null)" = "1" ]
+}
+
+# the console login the built-in agents use once, to enrol; from the shell, .env, or a prompt
+agent_credentials() {
+  for key in CRYPTOSCAN_USERNAME CRYPTOSCAN_PASSWORD; do
+    if [ -z "${!key:-}" ] && [ -f .env ]; then
+      val="$(grep -E "^${key}=" .env | tail -1 | cut -d= -f2-)"
+      [ -n "$val" ] && export "$key=$val"
+    fi
+  done
+  if [ -z "${CRYPTOSCAN_PASSWORD:-}" ]; then
+    [ -t 0 ] || return 1
+    if [ -z "${CRYPTOSCAN_USERNAME:-}" ]; then read -r -p "console username (for the agents to enrol): " CRYPTOSCAN_USERNAME; export CRYPTOSCAN_USERNAME; fi
+    read -r -s -p "console password: " CRYPTOSCAN_PASSWORD; echo; export CRYPTOSCAN_PASSWORD
+  fi
+  export CRYPTOSCAN_USERNAME="${CRYPTOSCAN_USERNAME:-admin}"
+}
+
+# one line per bank server: is its agent connected, and what did it last report
+agents_check() {
+  printf '%-18s %s\n' "BANK SERVER" "AGENT"
+  for host in $SBX_HOSTS; do
+    c="cryptoscan-cryptava-$host"
+    state=$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null || echo "none")
+    if [ "$state" = "running" ]; then
+      line=$(docker exec "$c" sh -c 'PYTHONPATH=/opt/cryptava python3 -m cryptava status --brief' 2>/dev/null || true)
+      [ -n "$line" ] || line="starting…"
+      console_agent "$host" && line="$line  [connected from the console]"
+    elif [ "$state" = "none" ]; then
+      line="NO AGENT  (bash $0 agents  — or Add a server in the console)"
+    else
+      line="AGENT $state  (docker logs $c)"
+    fi
+    printf '%-18s %s\n' "$host" "$line"
+  done
+}
+
+# start the built-in agent on every bank server that has no console-connected one
+start_agents() {
+  local mode="${1:-ask}" services="" host
+  for host in $SBX_HOSTS; do
+    console_agent "$host" || services="$services cryptava-$host"
+  done
+  [ -n "$services" ] || { echo "every bank server already has a console-connected agent"; return 0; }
+  if ! agent_credentials; then
+    echo "Cryptava agents not started: they need your console login once, to enrol." >&2
+    echo "  add CRYPTOSCAN_USERNAME=... and CRYPTOSCAN_PASSWORD=... to .env, then: $0 agents" >&2
+    return 0
+  fi
+  "${COMPOSE[@]}" --profile agents up -d $services
+  echo "Cryptava agents started on:$(echo "$services" | sed 's/cryptava-//g')"
+  if [ "$mode" = "wait" ] || [ "$mode" = "ask" ]; then
+    echo "waiting for the first signed reports (about a minute)…"
+    for _ in $(seq 1 30); do
+      pending=0
+      for host in $SBX_HOSTS; do
+        docker exec "cryptoscan-cryptava-$host" sh -c 'PYTHONPATH=/opt/cryptava python3 -m cryptava status --brief' 2>/dev/null \
+          | grep -q '^CONNECTED' || pending=1
+      done
+      [ "$pending" = "0" ] && break
+      sleep 4
+    done
+    agents_check
+  fi
+  echo "Fleet view: console -> Discovery -> Cryptava agents.   Re-check any time:  $0 agents check"
+}
+
 case "${1:-up}" in
   up)
     # Wave 1 — data plane only. The seed talks straight to Postgres and even
@@ -48,6 +135,8 @@ case "${1:-up}" in
     "${COMPOSE[@]}" up -d api
     if wait_healthy cryptoscan-api 90 && [ "$(docker inspect -f '{{.State.Health.Status}}' cryptoscan-api 2>/dev/null)" = "healthy" ]; then
       "${COMPOSE[@]}" up -d worker estate-daemon monitor frontend nginx 2>/dev/null || true
+      # Wave 3 — a Cryptava agent on every bank server (SANDBOX_AGENTS=0 to skip)
+      if [ "${SANDBOX_AGENTS:-1}" != "0" ]; then start_agents wait; fi
     else
       echo "WARNING: cryptoscan-api is not healthy — console will 502. Inspect with:" >&2
       echo "  docker logs cryptoscan-api --tail 80" >&2
@@ -101,6 +190,8 @@ case "${1:-up}" in
     # Sandbox-only teardown: stop/remove just the fake-estate containers plus
     # the sandbox_certs volume. Never interacts with the main stack's
     # containers or named volumes.
+    # agents first: they share the bank servers' network + process namespaces
+    for c in $(docker ps -aq --filter name=cryptoscan-cryptava-); do docker rm -f "$c" >/dev/null 2>&1 || true; done
     "${COMPOSE[@]}" stop ${SBX_SERVICES} 2>/dev/null || true
     "${COMPOSE[@]}" rm -f ${SBX_SERVICES} 2>/dev/null || true
     docker volume rm "$(basename "$PWD" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')_sandbox_certs" 2>/dev/null || true
@@ -145,37 +236,24 @@ case "${1:-up}" in
     "${COMPOSE[@]}" run --rm -e CRYPTOSCAN_USERNAME -e CRYPTOSCAN_PASSWORD sandbox-collect
     ;;
   agents)
-    # Cryptava: the real host agent beside the sandbox bank servers.
-    #   agents                         start the four built-in agents (swift-gateway,
-    #                                  internet-banking, core-banking-db, payments-bastion);
-    #                                  they enrol themselves as mrdn-sbx-dc1-...
-    #   agents add <host> <id> <token> put an agent on <host> with the agent id + one-time
-    #                                  token from the console (Discovery -> Cryptava agents
-    #                                  -> Add a server -> "Sandbox bank server")
+    # Cryptava: the real host agent, one per sandbox bank server (all seven).
+    #   agents                         connect every bank server (built-in agents; they
+    #                                  enrol themselves as mrdn-sbx-...); `up` does this too
+    #   agents check                   one line per bank server: connected? last report?
+    #   agents add <host> <id> <token> connect <host> with the agent id + one-time token
+    #                                  from the console (Discovery -> Cryptava agents ->
+    #                                  Add a server -> "Sandbox bank server"); replaces
+    #                                  that server's built-in agent
     #   agents remove <host>           stop and delete the agent beside <host>
     #   agents list | status | stop
-    # Every agent shares its host's processes + network, reads the host's files through
-    # /proc/1/root, gets the host's CMDB record (sandbox/cryptava/<host>.json) and pushes a
+    # Every agent shares its server's processes + network, reads the server's files through
+    # /proc/1/root, gets the server's CMDB record (sandbox/cryptava/<host>.json) and pushes a
     # SIGNED observation every 5 minutes. Enrolment survives in named volumes.
-    AGENTS="cryptava-swift-gateway cryptava-internet-banking cryptava-core-banking-db cryptava-payments-bastion"
-    SBX_HOSTS="internet-banking mobile-api swift-gateway legacy-branch hsm-sim core-banking-db payments-bastion"
-    # host -> container | hostname | ip | business system | owner
-    host_info() {
-      case "$1" in
-        internet-banking) echo "cryptoscan-sbx-internet-banking|internet-banking|10.210.0.2|Internet Banking|Digital Channels" ;;
-        mobile-api)       echo "cryptoscan-sbx-mobile-api|mobile-api|10.210.0.3|Mobile Banking API|Digital Channels" ;;
-        swift-gateway)    echo "cryptoscan-sbx-swift-gateway|swift-gateway|10.210.0.4|SWIFT Gateway|Payments Operations" ;;
-        legacy-branch)    echo "cryptoscan-sbx-legacy-branch|legacy-branch|10.210.0.5|Branch Banking|Branch Technology" ;;
-        hsm-sim)          echo "cryptoscan-sbx-hsm-sim|hsm-sim|10.210.0.6|Payment HSM|Payments Security" ;;
-        core-banking-db)  echo "cryptoscan-sbx-core-db|core-db|10.210.0.7|Core Banking|Core Banking Platform" ;;
-        payments-bastion) echo "cryptoscan-sbx-payments-bastion|payments-bastion|10.210.0.8|SWIFT Gateway|Payments Operations" ;;
-        *) return 1 ;;
-      esac
-    }
     case "${2:-}" in
+      check) agents_check; exit 0 ;;
       stop)
-        "${COMPOSE[@]}" --profile agents stop $AGENTS
-        for c in $(docker ps -q --filter label=cryptoscan.cryptava.added=1); do docker stop "$c" >/dev/null; done
+        for c in $(docker ps -q --filter name=cryptoscan-cryptava-); do docker stop "$c" >/dev/null; done
+        echo "agents stopped (their enrolment is kept; '$0 agents' starts them again)"
         exit 0 ;;
       list|status)
         names=$(docker ps -a --format '{{.Names}}' --filter name=cryptoscan-cryptava- | sort)
@@ -204,7 +282,12 @@ EOF_INFO
           || { echo "$host ($target) is not running — start the sandbox first: $0 up" >&2; exit 1; }
         agent="cryptoscan-cryptava-$host"
         if docker inspect "$agent" >/dev/null 2>&1; then
-          echo "an agent already runs beside $host ($agent). Remove it first:  $0 agents remove $host" >&2; exit 1
+          if console_agent "$host"; then
+            echo "$host already has a console-connected agent. To replace it:  $0 agents remove $host" >&2; exit 1
+          fi
+          old=$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$agent" 2>/dev/null | sed -n 's/^CRYPTAVA_NAME=//p')
+          docker rm -f "$agent" >/dev/null
+          echo "replaced the built-in agent on $host${old:+ ($old — retire it in the console)}"
         fi
         volume="cryptoscan_cryptava_added_${host//-/_}"
         docker volume rm -f "$volume" >/dev/null 2>&1 || true   # a one-time token means a fresh identity
@@ -242,15 +325,9 @@ EOF_INFO
         echo "Enrolment did not succeed (see the log above). A token works once and expires —" >&2
         echo "in the console open the agent, click 'new token', then:  $0 agents remove $host  and run add again." >&2
         exit 1 ;;
-      "") ;;
-      *) echo "usage: $0 agents [add <host> <id> <token> | remove <host> | list | status | stop]" >&2; exit 2 ;;
+      "") start_agents wait; exit 0 ;;
+      *) echo "usage: $0 agents [check | add <host> <id> <token> | remove <host> | list | status | stop]" >&2; exit 2 ;;
     esac
-    if [ -z "${CRYPTOSCAN_USERNAME:-}" ]; then read -r -p "console username: " CRYPTOSCAN_USERNAME; export CRYPTOSCAN_USERNAME; fi
-    if [ -z "${CRYPTOSCAN_PASSWORD:-}" ]; then read -r -s -p "console password: " CRYPTOSCAN_PASSWORD; echo; export CRYPTOSCAN_PASSWORD; fi
-    "${COMPOSE[@]}" --profile agents up -d $AGENTS
-    echo "Cryptava agents started. Follow one:  docker logs -f cryptoscan-cryptava-swift-gateway"
-    echo "Fleet view: console -> Discovery -> Cryptava agents (/cryptava).  Status:  $0 agents status"
-    echo "Add the other bank servers from the console (Add a server -> Sandbox bank server):  mobile-api, legacy-branch, hsm-sim"
     ;;
   targets)
     # Paste-ready target list for the console's Network page / API calls.

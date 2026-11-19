@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -485,8 +486,28 @@ def test_sandbox_asset_records_cover_every_bank_server():
         assert reg.hardware_identified(), path.name
         assert reg.has_contract_register and reg.contracts, path.name
     compose = (REPO / "sandbox/docker-compose.sandbox.yml").read_text()
-    for host in ("swift-gateway", "internet-banking", "core-banking-db", "payments-bastion"):
-        assert f"./sandbox/cryptava/{host}.json:/etc/cryptava/asset-record.json:ro" in compose
+    for host in hosts:  # every bank server has a built-in agent with its CMDB record
+        assert f"container_name: cryptoscan-cryptava-{host}\n" in compose, host
+        assert f'network_mode: "service:{host}"' in compose, host
+        assert f"./sandbox/cryptava/{host}.json:/etc/cryptava/asset-record.json:ro" in compose, host
+    names = re.findall(r'CRYPTAVA_NAME: "([^"]+)"', compose)
+    assert len(names) == 7 and len(set(names)) == 7
     runner = (REPO / "sandbox/run_sandbox.sh").read_text()
     for host in hosts:
-        assert f"\n        {host})" in runner, host
+        assert re.search(rf"\n\s+{re.escape(host)}\)\s+echo \"cryptoscan-sbx-", runner), host
+        assert host in runner.split('SBX_HOSTS="', 1)[1].split('"', 1)[0], host
+
+
+def test_brief_status_says_whether_the_agent_is_connected():
+    from cryptava.cli import brief_status
+
+    assert brief_status(None, None).startswith("NOT ENROLLED")
+    identity = {"name": "mrdn-sbx-dc1-hsmsim01", "server": "http://api:8010"}
+    assert brief_status(identity, None).startswith("ENROLLED")
+    ok = {"delivered": True, "response": {"authenticity": "VALID"},
+          "summary": {"observed_at": "2026-11-19T07:00:00+00:00",
+                      "planes": [{"plane": "HBOM · hardware", "status": "COMPLETE"}]}}
+    line = brief_status(identity, ok)
+    assert line.startswith("CONNECTED") and "signature verified" in line and "HBOM:complete" in line
+    down = brief_status(identity, {"delivered": False, "error": "cannot reach http://api:8010", "summary": {}})
+    assert down.startswith("NOT DELIVERED") and "cannot reach" in down
