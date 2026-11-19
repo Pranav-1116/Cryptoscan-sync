@@ -9,7 +9,7 @@ import autoAnimate from "@formkit/auto-animate";
 import {
   Atom, Bank, Buildings, Certificate, ChartLineUp, Cloud,
   Code, Cpu, Cube, FileText, GearSix, GlobeHemisphereWest, Graph, HardDrives,
-  Key, ListChecks, MagnifyingGlass, Stack, PlugsConnected, Pulse, Scan,
+  Key, ListChecks, MagnifyingGlass, Stack, PlugsConnected, Pulse, Robot, Scan,
   Scales, ShieldCheck, SlidersHorizontal, UsersThree, type Icon,
 } from "@phosphor-icons/react";
 import { BrandMark, ICON_LG, ICON_MD, ICON_SM, IconCaretDown, IconCaretLeft, IconCaretRight, IconClock, IconClose, IconDark, IconKeyboard, IconLight, IconSearch, IconSecurity, IconTenant, IconUser } from "./icons";
@@ -91,6 +91,8 @@ export const PRIMARY_SECTIONS: NavSection[] = [
           { to: "/collector-depth", label: "Collector depth", icon: Pulse },
         ],
       },
+      // the host agents: one per server, each feeding the six BOMs
+      { to: "/cryptava", label: "Cryptava agents", icon: Robot },
       { to: "/cryptolog", label: "CryptoLog", icon: Pulse },
       { to: "/vendor", label: "Vendors", icon: Buildings },
     ],

@@ -32,7 +32,7 @@ The console turns that into six BOMs:
 
 ## How an agent joins (step by step)
 
-1. **Console → Platform → Agent fleet → enrol agent.** Type a unique name, e.g.
+1. **Console → Discovery → Cryptava agents → Add a server.** Type a unique name, e.g.
    `mrdn-prod-dc1-swiftgw01` (`<bank>-<env>-<dc>-<hostname>`). Names are unique; a
    duplicate is refused. The console shows a **one-time token** and the install command.
 2. **On the server**, run the command it shows:
@@ -46,9 +46,10 @@ The console turns that into six BOMs:
    signature against the key it registered in step 2 (`authenticity = VALID`), checks
    that the agent is speaking only for itself, and adds this host's slice to the estate.
    Other agents' hosts are never overwritten. Unchanged hosts send `NO_CHANGE`.
-4. **Every minute** a heartbeat keeps the agent `connected` in the fleet view.
+4. **Every minute** a heartbeat keeps the agent `online` on the Cryptava agents page
+   (no heartbeat for 3 minutes shows it `offline`).
 
-A rebuilt host keeps its name: click **new token** on its row (or re-run the automated
+A rebuilt host keeps its name: open the agent and click **new token** (or re-run the automated
 rollout) and enrol again with `--force`. **retire** revokes the agent's machine key.
 
 ## Commands

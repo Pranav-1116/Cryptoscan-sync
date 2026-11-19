@@ -160,7 +160,7 @@ case "${1:-up}" in
     if [ -z "${CRYPTOSCAN_PASSWORD:-}" ]; then read -r -s -p "console password: " CRYPTOSCAN_PASSWORD; echo; export CRYPTOSCAN_PASSWORD; fi
     "${COMPOSE[@]}" --profile agents up -d $AGENTS
     echo "Cryptava agents started. Follow one:  docker logs -f cryptoscan-cryptava-swift-gateway"
-    echo "Fleet view: console -> Platform -> Agent fleet.  Status:  $0 agents status"
+    echo "Fleet view: console -> Discovery -> Cryptava agents (/cryptava).  Status:  $0 agents status"
     ;;
   targets)
     # Paste-ready target list for the console's Network page / API calls.

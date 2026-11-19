@@ -157,6 +157,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "supervision": {"tier": "ga", "area": "Governance", "why": "Supervisory-review view for regulators; a read model over evidence, early."},
     "timeline": {"tier": "ga", "area": "Overview", "why": "Estate timeline; aggregates several beta sources."},
     "security-intelligence": {"tier": "ga", "area": "Intelligence", "why": "Cross-scanner identity resolution + profiles; roadmap in SECURITY-INTELLIGENCE-ROADMAP.md."},
+    "cryptava": {"tier": "ga", "area": "Discovery", "why": "Fleet of Cryptava host agents: one per Linux server, each enrolled under a unique name with its own signing key. Shows who is online (heartbeat within three minutes), each agent's last signed report per BOM (complete, partial or failed, with the reason) and whether the signature verified. Windows hosts, vendor contracts and automatic agent upgrades are not covered."},
     "platform-p2": {"tier": "ga", "area": "Administration", "why": "Phase-2 platform features behind one page (marketplace, datalake, anomaly) — each < 700 LOC."},
     "security-controls": {"tier": "ga", "area": "Governance", "why": "Read-only inventory of the bank's own controls (firewall/IDS/WAF/HSM/KMS/PKI, 13 types): it records what each control enforces and exports findings; it is not a firewall, an IPS or a rate limiter, and a spec that would mutate a control is refused at registration."},
 }

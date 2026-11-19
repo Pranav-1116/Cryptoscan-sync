@@ -253,9 +253,10 @@ bash sandbox/run_sandbox.sh agents stop
 | `mrdn-sbx-dc1-paybastion01` | payments-bastion (10.210.0.8) | SWIFT Gateway |
 
 Each agent enrols itself once (your login is used only for that), gets its own
-signing key, and then sends every 5 minutes. They appear under **Platform → Agent
-fleet** as `connected`, and every observation they send is checked as
-`authenticity = VALID`. Their findings are added next to the `collect` pass and
+signing key, and then sends every 5 minutes. Open **Discovery → Cryptava agents**
+in the console: each agent shows as `online`, with its six BOM results and
+`verified` once its signed report is checked. Click an agent for the reason
+behind each result and links to the BOM workspaces. Their findings are added next to the `collect` pass and
 never overwrite it. See `services/cryptava/README.md` for what each of the six
 BOMs contains and how to install the agent on a real server.
 

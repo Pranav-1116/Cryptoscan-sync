@@ -4,7 +4,7 @@
 > `scripts/gen_capability_maturity.py`. Served live at
 > `GET /api/v1/platform/capabilities`.
 
-**98 shipped surfaces, all supported.** The navigation carries no maturity
+**99 shipped surfaces, all supported.** The navigation carries no maturity
 badges: a product's sidebar is not the place to negotiate what is proven. What
 used to be a `beta` or `preview` label is now the **stated limit** column below,
 which is the part that actually told an operator something. A support statement
@@ -51,6 +51,7 @@ role-guarded actions.
 | `/cloud` | Discovery | Read-only AWS/Azure/GCP estate scan; 15k LOC, 25 test files. Needs credentials to show data. |
 | `/cmdb` | Discovery | CMDB import/resolution; ServiceNow mapping is field-tested with one schema. |
 | `/collector-depth` | Discovery | Four measured matrices compiled from the collectors present in this build: runtime observation depth per family (one family reaches call-level; installed is never reported as executed), network protocol readers per protocol (TLS/database handshakes, SSH/IPsec offers, and the protocols with no reader at all listed as absent), Windows layer-by-layer reach with the server's own NO on whether it is a complete Windows collector, and the depth of each of the six BOM projections on the stored snapshot. A fifth tab prints the maturity register: eight areas and ~46 surfaces, each carrying a readiness (OPERATIONAL, CANDIDATE or FOUNDATION) beside its coverage state, the collector behind it, the work still missing and the route that proves it, plus the claims the product may and may not make and the five capabilities it does not present as operational. A sixth tab prints the simulation boundary: the ten enterprise scenarios an engine is asked for, with EXISTS/PARTIAL/ABSENT, the scenario ids that implement each row, and what each cannot compute. Every number is echoed from the API; no percentage or score is computed anywhere. |
+| `/cryptava` | Discovery | Fleet of Cryptava host agents: one per Linux server, each enrolled under a unique name with its own signing key. Shows who is online (heartbeat within three minutes), each agent's last signed report per BOM (complete, partial or failed, with the reason) and whether the signature verified. Windows hosts, vendor contracts and automatic agent upgrades are not covered. |
 | `/dev-sec-ops` | Discovery | SBOM/container/binary/firmware/mobile/WASM scanning, VEX, licence, gates and correlated binary BOM sidecars; bounded evidence and explicit refusal/partial states. |
 | `/hardware` | Discovery | HSM/TPM/firmware plugins exist (ADR-014); live hardware collection needs vendor access and has a short field history. |
 | `/live-environment` | Discovery | Live environment roll-up of runtime + network. |

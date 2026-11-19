@@ -41,6 +41,7 @@ export const CAPABILITIES_JSON = {
   "collector-depth": "ga",
   "command-center": "ga",
   "compliance": "ga",
+  "cryptava": "ga",
   "crypto": "ga",
   "crypto-assets": "ga",
   "crypto-assurance": "ga",
@@ -208,6 +209,10 @@ export const CAPABILITY_LIMITS = {
   "compliance": {
     "area": "Governance",
     "limit": "Requirement-by-requirement reports from policy evidence, 6 templates."
+  },
+  "cryptava": {
+    "area": "Discovery",
+    "limit": "Fleet of Cryptava host agents: one per Linux server, each enrolled under a unique name with its own signing key. Shows who is online (heartbeat within three minutes), each agent's last signed report per BOM (complete, partial or failed, with the reason) and whether the signature verified. Windows hosts, vendor contracts and automatic agent upgrades are not covered."
   },
   "crypto": {
     "area": "Intelligence",

@@ -2462,6 +2462,19 @@ export const apiEnrollAgent = (name: string, environment?: string) =>
 export const apiReissueAgentToken = (agentId: string) =>
   _postAgent(`/api/v1/control/agents/${encodeURIComponent(agentId)}/enrollment-token`, {});
 
+/** What each Cryptava agent last sent: its six BOM results, signature check and asset counts. */
+export async function apiAgentContributions(): Promise<ApiResult<any[]>> {
+  try {
+    const resp = await tenantFetch(`/api/v1/ingestion/contributors`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`), data: [] } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: body.contributors || [] };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}
+
 /** Schedule a deterministic signed-update / rollback / retire for an agent. */
 export const apiAgentUpgrade = (agentId: string, action: "upgrade" | "rollback" | "retire", targetVersion?: string) =>
   _postAction(`/api/v1/control/agents/${encodeURIComponent(agentId)}/upgrade`, { action, target_version: targetVersion });

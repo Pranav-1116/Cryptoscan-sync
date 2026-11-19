@@ -74,6 +74,7 @@ const Notifications = lazy(() => import("./pages/Notifications"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Organization = lazy(() => import("./pages/Organization"));
 const PlatformP2 = lazy(() => import("./pages/PlatformP2"));
+const CryptavaAgents = lazy(() => import("./pages/CryptavaAgents"));
 const Pqc = lazy(() => import("./pages/Pqc"));
 const PqcMap = lazy(() => import("./pages/PqcMap"));
 const Priorities = lazy(() => import("./pages/Priorities"));
@@ -227,6 +228,7 @@ function RoutedPages() {
       <Route path="/onboarding" element={<Onboarding />} />
       <Route path="/organization" element={<Organization />} />
       <Route path="/platform-p2" element={<PlatformP2 />} />
+      <Route path="/cryptava" element={<CryptavaAgents />} />
       <Route path="/pqc" element={<Pqc />} />
       <Route path="/pqc-map" element={<PqcMap />} />
       <Route path="/priorities" element={<Priorities />} />
