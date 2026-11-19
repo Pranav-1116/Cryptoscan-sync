@@ -322,7 +322,7 @@ def _materialize_workspace_rows_inner(db, result) -> None:
             row, _created = assets.upsert_network_asset({
                 "algorithm": algorithm,
                 "purpose": "NETWORK_ENCRYPTION",
-                "mode": crypto.get("mode"),
+                "mode": crypto.get("mode") or crypto.get("encryption_mode"),
                 "key_size": crypto.get("key_size"),
                 "file_path": f"tls://{endpoint}",
                 "source_language": "TLS",
@@ -363,6 +363,7 @@ def _materialize_workspace_rows_inner(db, result) -> None:
                     "subject": leaf.get("subject"),
                     "signature_algorithm": leaf.get("signature_algorithm"),
                     "fingerprint_sha256": leaf.get("fingerprint_sha256"),
+                    "curve": leaf.get("curve"),
                     "observation": "live TLS handshake",
                 },
             })

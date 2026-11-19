@@ -71,7 +71,7 @@ def _server_keyring() -> dict[str, str]:
     return ring
 
 
-def _render(bom: dict, fmt: str, signed: bool | str):
+def _render(bom: dict, fmt: str, signed: bool | str, *, digest: bool = False):
     if fmt not in {"json", "xml", "cyclonedx16"}:
         raise HTTPException(status_code=422, detail="fmt must be json, xml or cyclonedx16")
     if fmt == "cyclonedx16":
@@ -80,6 +80,12 @@ def _render(bom: dict, fmt: str, signed: bool | str):
             bom = to_cyclonedx16(bom)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail="Native CBOM export failed schema/reference validation") from exc
+    if digest:
+        # reproducibility: a digest over components/dependencies/compositions
+        # (metadata excluded — timestamps and run ids differ per export)
+        from api.cbom_collection import content_sha256
+        bom.setdefault("metadata", {}).setdefault("properties", []).append(
+            {"name": "cryptoscan:export:content_sha256", "value": content_sha256(bom)})
     bom = _apply_signature(bom, signed, fmt=fmt)
     if fmt == "cyclonedx16":
         from cbom.cyclonedx16 import validate_cyclonedx16
@@ -521,15 +527,54 @@ def cbom_portfolio(
 ):
     import uuid
 
-    from api import cbom_provenance
+    from api import cbom_collection, cbom_provenance
 
     records, total_assets = _located_assets(db)
     limit = _portfolio_max_assets()
     truncated = total_assets > limit
     systems, _systems_truncated = SystemRepository(db).list_all_bounded()
+    systems_by_id = {s.id: s for s in systems}
+    # latest live observation per endpoint (network scan runs + runtime sessions)
+    observations = cbom_collection.network_observations(
+        db, endpoints=cbom_collection.export_endpoints(db, systems, records))
+    cbom_collection.enrich_observations_from_assets(observations, records, db)
     # evidence chain + ownership mapping per asset; placeholder rows removed
-    provenance = cbom_provenance.enrich_records(db, records, systems)
-    system_components, dependencies, edge_summary = _portfolio_dependencies(db, records, systems=systems)
+    provenance = cbom_provenance.enrich_records(db, records, systems, observations)
+    # each TLS observation → linked algorithm / certificate / key components
+    tls = cbom_collection.tls_components(records, observations, systems_by_id, provenance["claims"])
+    # relationship records travel on their source component (dependency
+    # entries cannot carry metadata); membership records already sit on assets
+    by_source: dict[str, list[dict[str, Any]]] = {}
+    for item in tls["relationships"]:
+        by_source.setdefault(item["source"], []).append(item)
+    for record in records:
+        extra_props = list(tls["record_properties"].get(str(record.get("id"))) or [])
+        if by_source.get(str(record.get("id"))):
+            extra_props.append({"name": "cryptoscan:relationship:records",
+                                "value": json.dumps(by_source[str(record.get("id"))], sort_keys=True)})
+        if extra_props:
+            record["cbom_properties"] = list(record.get("cbom_properties") or []) + extra_props
+    for component in tls["components"]:
+        if by_source.get(component["bom-ref"]):
+            component["properties"].append({"name": "cryptoscan:relationship:records",
+                                            "value": json.dumps(by_source[component["bom-ref"]], sort_keys=True)})
+    system_components, dependencies, edge_summary = _portfolio_dependencies(
+        db, records, systems=systems, tls=tls, membership=provenance["relationships"])
+    for component in system_components:
+        if by_source.get(component["bom-ref"]):
+            component["properties"].append({"name": "cryptoscan:relationship:records",
+                                            "value": json.dumps(by_source[component["bom-ref"]], sort_keys=True)})
+    scans = cbom_collection.relevant_scans(db, systems, provenance["scans_by_system"])
+    facts = cbom_collection.collection_facts(db, systems, records, provenance["scans_by_system"], observations,
+                                             scans=scans)
+    collectors = cbom_collection.collector_provenance(db, observations, scans)
+    for component in system_components:
+        sid = next((p["value"] for p in component.get("properties", []) if p["name"] == "cryptoscan:system:id"), None)
+        info = facts["systems"].get(sid)
+        if info:
+            component["properties"] += [
+                {"name": "cryptoscan:system:inspection_state", "value": info["inspection_state"]},
+                {"name": "cryptoscan:system:collection", "value": json.dumps(info, sort_keys=True)}]
     distinct_assets = len({str(row.get("id")) for row in records if row.get("id")})
     registered = len(systems)
     system_records = len(system_components)
@@ -545,22 +590,28 @@ def cbom_portfolio(
         {"name": "cryptoscan:export:run_id", "value": str(uuid.uuid4())},
         {"name": "cryptoscan:export:profile_version", "value": cbom_provenance.EXPORT_PROFILE_VERSION},
         {"name": "cryptoscan:export:generated_by", "value": str(user)},
-        {"name": "cryptoscan:export:collectors", "value": json.dumps(provenance["collectors"])},
-        {"name": "cryptoscan:export:source_revisions", "value": json.dumps(provenance["source_revisions"])},
+        {"name": "cryptoscan:export:collectors", "value": json.dumps(collectors["collectors"], sort_keys=True)},
+        {"name": "cryptoscan:export:source_revisions", "value": json.dumps(collectors["source_revisions"],
+                                                                            sort_keys=True)},
+        {"name": "cryptoscan:export:collector_provenance", "value": json.dumps(
+            {k: collectors[k] for k in ("exporter", "commit_coverage", "note")}, sort_keys=True)},
         {"name": "cryptoscan:export:mapping_summary", "value": json.dumps(
-            {"by_status": provenance["mapping_counts"], "unmapped_reasons": provenance["unmapped_reasons"],
+            {"by_status": provenance["mapping_counts"], "by_basis": provenance["mapping_basis_counts"],
+             "unmapped_reasons": provenance["unmapped_reasons"], "runtime_dependency_verified": 0,
              "basis": "asset-to-system links; candidates come from scan targets or claimed endpoints, never names"},
             sort_keys=True)},
-        {"name": "cryptoscan:export:evidence_summary", "value": json.dumps(
-            {"assets_with_linked_evidence": provenance["evidence_linked_assets"],
-             "assets_without_linked_evidence": provenance["evidence_unlinked_assets"],
-             "confidence_is_not_verification": True}, sort_keys=True)},
+        {"name": "cryptoscan:export:evidence_summary", "value": json.dumps(provenance["evidence_summary"],
+                                                                            sort_keys=True)},
         {"name": "cryptoscan:export:relationship_summary", "value": json.dumps(edge_summary, sort_keys=True)},
+        {"name": "cryptoscan:export:tls_summary", "value": json.dumps(tls["summary"], sort_keys=True)},
+        {"name": "cryptoscan:coverage:dimensions", "value": json.dumps(facts["coverage"], sort_keys=True)},
+        {"name": "cryptoscan:export:reproducibility", "value": json.dumps(
+            cbom_collection.reproducibility(records, observations, scans), sort_keys=True)},
         {"name": "cryptoscan:export:coverage_denominator", "value": json.dumps(
             {"registered_systems": registered, "assets_exported": distinct_assets, "assets_total": total_assets,
              "meaning": "counts of what CryptoScan holds; unscanned estate is not in the denominator"},
             sort_keys=True)},
-        {"name": "cryptoscan:collection:failures", "value": json.dumps(cbom_provenance.failed_collections(db),
+        {"name": "cryptoscan:collection:failures", "value": json.dumps(cbom_provenance.failed_collections(db, scans=scans),
                                                                         sort_keys=True)},
     ]
     if provenance["excluded"]:
@@ -573,8 +624,11 @@ def cbom_portfolio(
     # Review item 18: an estate CBOM states its coverage in the document, so the
     # asset count cannot be read downstream as "the bank has N".
     from cbom.coverage_render import document_properties, inventory_coverage
+    reg = facts["coverage"]["registered_system_coverage"]
     coverage_block = inventory_coverage(SystemRepository(db).coverage_summary(),
-                                        assets=total_assets)
+                                        assets=total_assets - len(provenance["excluded"]), systems_inspected=reg["fully_inspected"],
+                                        failed_jobs=facts["coverage"]["jobs"]["failed_count"],
+                                        partial_systems=reg["partially_inspected"])
     metadata_properties += document_properties(coverage_block)
     from api.routers.cbom_legacy_controlled import retained_metadata
     metadata_properties += retained_metadata(db)
@@ -595,14 +649,17 @@ def cbom_portfolio(
     if system_components:
         bom["metadata"]["component"]["bom-ref"] = PORTFOLIO_ROOT_REF
         bom["components"] = list(bom["components"]) + system_components
-    return _render(bom, fmt, signed)
+    if tls["components"]:
+        bom["components"] = list(bom["components"]) + tls["components"]
+    return _render(bom, fmt, signed, digest=True)
 
 
 PORTFOLIO_ROOT_REF = "root:cryptoscan-portfolio"
 UNASSIGNED_REF = "system:unassigned"
 
 
-def _portfolio_dependencies(db: Session, records: list[dict[str, Any]], *, systems: list[Any] | None = None
+def _portfolio_dependencies(db: Session, records: list[dict[str, Any]], *, systems: list[Any] | None = None,
+                            tls: dict[str, Any] | None = None, membership: list[dict[str, Any]] | None = None
                             ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     """Real CycloneDX dependency graph for the estate CBOM.
 
@@ -669,6 +726,7 @@ def _portfolio_dependencies(db: Session, records: list[dict[str, Any]], *, syste
         components.append({"type": "application", "name": s.name, "bom-ref": sys_ref[s.id],
                            "properties": [p for p in props if p["value"]]})
         depends = list(assets_by_system.get(s.id, []))
+        depends += [ref for ref in ((tls or {}).get("members") or {}).get(s.id, []) if ref not in depends]
         depends += [item["target"] for item in edges]
         if depends:
             deps.append({"ref": sys_ref[s.id], "dependsOn": depends})
@@ -684,14 +742,49 @@ def _portfolio_dependencies(db: Session, records: list[dict[str, Any]], *, syste
         deps.append({"ref": UNASSIGNED_REF, "dependsOn": unassigned})
         top.append(UNASSIGNED_REF)
     deps.insert(0, {"ref": PORTFOLIO_ROOT_REF, "dependsOn": top})
+    # protocol → algorithm (provides) and protocol → certificate → key/signature
+    # (dependsOn) edges from live TLS observations; merged by ref
+    tls = tls or {}
+    index = {d["ref"]: d for d in deps}
+    for key in ("provides", "depends"):
+        for ref, targets in sorted((tls.get(key) or {}).items()):
+            field = "provides" if key == "provides" else "dependsOn"
+            entry = index.get(ref)
+            if entry is None:
+                entry = index[ref] = {"ref": ref}
+                deps.append(entry)
+            existing = entry.setdefault(field, [])
+            existing += [t for t in targets if t not in existing]
+    relationships = list(membership or []) + list(tls.get("relationships") or [])
+    rel_basis: dict[str, int] = {}
+    rel_types: dict[str, int] = {}
+    for item in relationships:
+        rel_basis[item["basis"]] = rel_basis.get(item["basis"], 0) + 1
+        rel_types[item["type"]] = rel_types.get(item["type"], 0) + 1
+    for edges in edges_by_parent.values():
+        for edge in edges:
+            if edge.child_id in sys_ref:
+                rel_types[edge.relation or "DEPENDS_ON"] = rel_types.get(edge.relation or "DEPENDS_ON", 0) + 1
     summary = {
         "system_edges": edge_total,
         "system_edges_by_basis": dict(sorted(by_basis.items())),
         "system_edges_by_verification": dict(sorted(by_verification.items())),
         "asset_membership_edges": sum(len(v) for v in assets_by_system.values()),
         "root_edges": len(top),
-        "runtime_verified_edges": 0,
-        "basis": "declared or observed relationships from the system registry; not runtime call proof",
+        "provides_edges": sum(len(v) for v in (tls.get("provides") or {}).values()),
+        "crypto_material_edges": sum(len(v) for v in (tls.get("depends") or {}).values()),
+        "relationship_records": len(relationships) + edge_total,
+        "relationship_records_by_basis": {k: rel_basis.get(k, 0) + by_basis.get(k, 0)
+                                          for k in ("DECLARED", "OBSERVED", "INFERRED", "RUNTIME_VERIFIED",
+                                                    "HUMAN_APPROVED")},
+        "relationship_records_by_type": dict(sorted(rel_types.items())),
+        "runtime_verified_edges": rel_basis.get("RUNTIME_VERIFIED", 0),
+        "runtime_verified_scope": ("endpoint-level TLS handshake observations only: protocol→algorithm/certificate "
+                                   "edges at a listener; no system-internal call path is runtime verified"),
+        "human_approved_edges": 0,
+        "basis": "every edge carries a relationship record (type, basis, evidence id, confidence, verification, "
+                 "first/last seen); CycloneDX dependency entries cannot hold metadata, so records travel as "
+                 "cryptoscan:relationship:* / cryptoscan:system:dependency_edges properties",
     }
     return components, deps, summary
 

@@ -76,7 +76,7 @@ def test_fields_only_when_supported():
     ("DHE", 1024, "KEY_EXCHANGE", "HIGH"),
     ("AES", 256, "ENCRYPTION", "NONE"),
     ("TLS", None, None, "REVIEW"),
-    ("TLS 1.2", None, None, "LOW"),
+    ("TLS 1.2", None, None, "REVIEW"),  # version alone is neither approved nor deprecated
 ])
 def test_weak_algorithm_risk_is_purpose_aware(algorithm, size, purpose, expected):
     result = assess(normalize(algorithm, key_size=size, purpose=purpose), purpose=purpose)

@@ -81,6 +81,11 @@ _EKU_MAP = {
 }
 
 
+
+#: cryptography's curve names → NIST/SECG display names used in the CBOM.
+_NAMED_CURVES = {"secp256r1": "P-256", "prime256v1": "P-256", "secp384r1": "P-384", "secp521r1": "P-521",
+                 "secp224r1": "P-224", "brainpoolP256r1": "brainpoolP256r1", "brainpoolP384r1": "brainpoolP384r1"}
+
 def fingerprint_der(der: bytes) -> str:
     return hashlib.sha256(der).hexdigest()
 
@@ -265,6 +270,9 @@ def openssl_parse(pem: str) -> dict[str, Any]:
         "ocsp_url": None,
         "crl_url": None,
     }
+    curve_match = re.search(r"NIST CURVE:\s*(P-\d+)", text) or re.search(r"ASN1 OID:\s*(\S+)", text)
+    if curve_match:
+        info["curve"] = _NAMED_CURVES.get(curve_match.group(1), curve_match.group(1))
     info.update(_expiry_fields(not_after, not_before))
     if fp_match and not info.get("fingerprint_sha256"):
         info["fingerprint_sha256"] = fp_match.group(1).replace(":", "").lower()
@@ -308,6 +316,9 @@ def _cryptography_parse(pem: str) -> dict[str, Any]:
         elif isinstance(public, ec.EllipticCurvePublicKey):
             info["public_key_algorithm"] = "EC"
             info["public_key_size"] = public.curve.key_size
+            # the named curve is in the certificate's SubjectPublicKeyInfo —
+            # record it from there, never infer it from the key size
+            info["curve"] = _NAMED_CURVES.get(public.curve.name, public.curve.name)
         elif isinstance(public, dsa.DSAPublicKey):
             info["public_key_algorithm"] = "DSA"
             info["public_key_size"] = public.key_size

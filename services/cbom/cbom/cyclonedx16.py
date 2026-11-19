@@ -97,7 +97,8 @@ SAFE_PROPERTIES |= {
 #: from arbitrary user properties): evidence chain, identity, ownership mapping,
 #: risk, system/certificate/library provenance.
 SAFE_PREFIXES = ("cryptoscan:evidence:", "cryptoscan:identity:", "cryptoscan:mapping_", "cryptoscan:risk:",
-                 "cryptoscan:system:", "cryptoscan:certificate:", "cryptoscan:library:")
+                 "cryptoscan:system:", "cryptoscan:certificate:", "cryptoscan:library:", "cryptoscan:tls:",
+                 "cryptoscan:pqc:", "cryptoscan:relationship", "cryptoscan:runtime_", "cryptoscan:hsm:")
 
 
 def _safe(name: Any) -> bool:
@@ -166,7 +167,8 @@ def validate_cyclonedx16(bom: Any) -> dict[str, Any]:
             for component in bom.get("components", []):
                 collect(component)
             for dependency in bom.get("dependencies", []):
-                if dependency["ref"] not in refs or any(c not in refs for c in dependency.get("dependsOn", [])):
+                if dependency["ref"] not in refs or any(c not in refs for c in dependency.get("dependsOn", [])) \
+                        or any(c not in refs for c in dependency.get("provides", [])):
                     errors.append("dependencies: dangling component reference")
             for composition in bom.get("compositions", []):
                 for field in ("assemblies", "dependencies"):
@@ -195,6 +197,15 @@ _METADATA_PREFIXES = ("cryptoscan:portfolio:", "cryptoscan:coverage", "cryptosca
                       "cryptoscan:collection:", "cryptoscan:organization")
 _OCCURRENCE_FIELDS = ("bom-ref", "location", "line", "offset", "symbol", "additionalContext")
 _CONFIDENCE = {"HIGH": 0.9, "CONFIRMED": 0.9, "MEDIUM": 0.6, "LIKELY": 0.6, "LOW": 0.3, "TENTATIVE": 0.3}
+
+
+def _json_prop(value: Any) -> Any:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return json.loads(value)
+    except ValueError:
+        return None
 
 
 def _props_dict(props: list[dict[str, str]]) -> dict[str, str]:
@@ -362,19 +373,55 @@ def to_cyclonedx16(bom: dict, *, omit_inventory_dependencies: bool = False) -> d
                     component["cryptoProperties"] = {"assetType": "algorithm", "algorithmProperties": _algorithm_block(n)}
                     if n.oid:
                         component["cryptoProperties"]["oid"] = n.oid
+                tls_facts = _json_prop(known.get("cryptoscan:tls:observation"))
+                tls_view = None
+                if n.asset_type == "protocol" and n.family in {"TLS", "DTLS"} and isinstance(tls_facts, dict):
+                    from cbom import tls_analysis
+                    tls_view = tls_analysis.assess(
+                        version=tls_facts.get("version") or (f"TLS {n.protocol_version}" if n.protocol_version else None),
+                        cipher_suite=tls_facts.get("cipher_suite"), key_exchange=tls_facts.get("key_exchange"),
+                        group=tls_facts.get("key_exchange_group"),
+                        cert_public_key_algorithm=tls_facts.get("certificate_public_key_algorithm"),
+                        cert_public_key_bits=tls_facts.get("certificate_public_key_bits"),
+                        cert_curve=tls_facts.get("certificate_curve"),
+                        cert_signature_algorithm=tls_facts.get("certificate_signature_algorithm"),
+                        not_before=tls_facts.get("certificate_not_before"), not_after=tls_facts.get("certificate_not_after"),
+                        self_signed=tls_facts.get("certificate_self_signed"),
+                        chain_status=tls_facts.get("chain_status"), trust_status=tls_facts.get("trust_status"))
+                    props.append(_property("cryptoscan:tls:assessment", json.dumps(tls_view, sort_keys=True)))
                 if location or known.get("cryptoscan:component_role") != "ALGORITHM_REFERENCE":
                     risk = crypto_risk.assess(
                         n, purpose=known.get("cryptoscan:purpose"), criticality=known.get("cryptoscan:criticality"),
                         exposure=known.get("cryptoscan:exposure"), data_classification=known.get("cryptoscan:data_classification"),
                         retention_years=known.get("cryptoscan:retention_years"), confidence=known.get("cryptoscan:confidence"),
-                        deployment_stage=stage, hardcoded_key=known.get("cryptoscan:hardcoded_key") == "true")
+                        deployment_stage=stage, hardcoded_key=known.get("cryptoscan:hardcoded_key") == "true",
+                        tls=tls_view, location=location)
+                    dims = risk["dimensions"]
                     props += [_property("cryptoscan:risk:algorithm_risk", risk["algorithm_risk"]),
                               _property("cryptoscan:risk:priority", risk["priority"]),
                               _property("cryptoscan:risk:quantum_exposure", risk["quantum_exposure"]),
                               _property("cryptoscan:risk:finding_status", risk["finding_status"]),
-                              _property("cryptoscan:risk:factors", json.dumps(risk["factors"], sort_keys=True))]
+                              _property("cryptoscan:risk:factors", json.dumps(risk["factors"], sort_keys=True)),
+                              _property("cryptoscan:risk:summary", risk["summary"])]
+                    props += [_property(f"cryptoscan:risk:{axis}", dims[axis]["level"]) for axis in dims]
+                    props.append(_property("cryptoscan:risk:dimensions", json.dumps(dims, sort_keys=True)))
+                    if dims["quantum"]["shor_exposed"]:
+                        props.append(_property("cryptoscan:risk:shor_exposure", json.dumps(
+                            {k: dims["quantum"][k] for k in ("mechanism", "curve", "curve_note") if k in dims["quantum"]},
+                            sort_keys=True)))
                     if risk["reasons"]:
                         props.append(_property("cryptoscan:risk:reasons", json.dumps(risk["reasons"])))
+                from cbom import pqc_deployment
+                if pqc_deployment.is_pqc(n):
+                    stages = [stage] if stage else []
+                    negotiated = bool(isinstance(tls_facts, dict) and tls_facts.get("pqc_group_negotiated"))
+                    # no production-approval record exists in the store, so
+                    # APPROVED_FOR_PRODUCTION is never claimed from properties
+                    ladder = pqc_deployment.stage_ladder(stages, negotiated=negotiated, approval_ref=None)
+                    props += [_property("cryptoscan:pqc:highest_stage", ladder["highest_stage"]),
+                              _property("cryptoscan:pqc:ready", "true" if ladder["pqc_ready"] else "false"),
+                              _property("cryptoscan:pqc:ready_reason", ladder["reason"]),
+                              _property("cryptoscan:pqc:stage_ladder", json.dumps(ladder["ladder"]))]
                 if stage and "cryptoscan:deployment_stage" not in known:
                     props.append(_property("cryptoscan:deployment_stage", stage))
             # The old OID table contains family/variant ambiguities; only the
@@ -497,7 +544,23 @@ def _inventory_summary(document: dict[str, Any]) -> dict[str, Any]:
         if props.get("cryptoscan:classification"):
             classes[props["cryptoscan:classification"]] = classes.get(props["cryptoscan:classification"], 0) + 1
     deps = document.get("dependencies") or []
+    axes: dict[str, dict[str, int]] = {}
+    pqc: dict[str, int] = {}
+    pqc_ready = 0
+    for component in document.get("components", []):
+        props = _props_dict(component.get("properties") or [])
+        for axis in ("classical", "quantum", "configuration", "migration_urgency", "deployment_verification"):
+            level = props.get(f"cryptoscan:risk:{axis}")
+            if level:
+                axes.setdefault(axis, {})[level] = axes.setdefault(axis, {}).get(level, 0) + 1
+        if props.get("cryptoscan:pqc:highest_stage"):
+            stage = props["cryptoscan:pqc:highest_stage"]
+            pqc[stage] = pqc.get(stage, 0) + 1
+            pqc_ready += props.get("cryptoscan:pqc:ready") == "true"
     return {
+        "risk_dimensions": {axis: dict(sorted(levels.items())) for axis, levels in sorted(axes.items())},
+        "pqc_deployment": {"by_highest_stage": dict(sorted(pqc.items())), "pqc_ready": pqc_ready,
+                           "basis": "ready only when negotiated and approved for production"},
         "components_total": len(document.get("components", [])),
         "components_by_kind": dict(sorted(kinds.items())),
         "crypto_classification": dict(sorted(classes.items())),

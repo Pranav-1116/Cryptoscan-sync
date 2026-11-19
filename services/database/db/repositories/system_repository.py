@@ -304,11 +304,21 @@ class SystemRepository(BaseRepository[System]):
 
     def coverage_summary(self, *, stale_days: int = STALE_DAYS) -> dict[str, Any]:
         cutoff = datetime.now(timezone.utc) - timedelta(days=int(stale_days))
+        from db.models.scan import Scan
+
+        # the latest recorded job decides: a stored CURRENT over a FAILED last
+        # scan is a failed collection, not current coverage
         rows = list(
-            self.session.execute(select(System.coverage_status, System.scan_target, coverage_scanned_at_clause(), legacy_coverage_review_clause())).all()
+            self.session.execute(
+                select(System.coverage_status, System.scan_target, coverage_scanned_at_clause(),
+                       legacy_coverage_review_clause(), Scan.status)
+                .outerjoin(Scan, Scan.id == System.last_scan_id)
+            ).all()
         )
         counts = {key: 0 for key in ("NO_TARGET", "NEVER_SCANNED", "CURRENT", "STALE", "FAILED")}
-        for status, target, scanned, review in rows:
+        for status, target, scanned, review, last_job in rows:
+            if str(last_job or "").upper() == "FAILED" and not review:
+                status = "FAILED"
             key = initial_status(target) if review else effective_status(
                 coverage_status=status,
                 scan_target=target,
@@ -318,6 +328,7 @@ class SystemRepository(BaseRepository[System]):
             counts[key] = counts.get(key, 0) + 1
         summary = rollup(counts)
         summary["legacy_coverage_unproven"] = sum(bool(row[3]) for row in rows)
+        summary["last_job_failed"] = sum(str(row[4] or "").upper() == "FAILED" for row in rows)
         summary["stale_after_days"] = stale_days
         summary["cutoff"] = cutoff.isoformat()
         return summary

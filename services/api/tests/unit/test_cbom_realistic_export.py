@@ -190,7 +190,7 @@ async def test_evidence_is_content_addressed_and_verification_is_not_confidence(
     assert linked["cryptoscan:confidence"] == "HIGH"
     assert linked["cryptoscan:verification_status"] == "UNVERIFIED_DETECTION"
     assert _props(by_ref[ids["aes_gcm_named"]])["cryptoscan:verification_status"] == "HUMAN_VERIFIED_LIFECYCLE"
-    assert _props(by_ref[ids["aes_gcm_named"]])["cryptoscan:evidence_link_status"] == "NOT_LINKED"
+    assert _props(by_ref[ids["aes_gcm_named"]])["cryptoscan:evidence_link_status"] == "NO_EVIDENCE_RECORD"
 
 
 @pytest.mark.asyncio
@@ -239,7 +239,7 @@ async def test_relationships_carry_provenance_and_counts_are_consistent(estate):
     assert summary["dependency_records"] == len(bom["dependencies"])
     assert meta["cryptoscan:normalizer_version"].startswith("cryptoscan-cbom-normalizer/")
     revisions = json.loads(meta["cryptoscan:export:source_revisions"])
-    assert {"repository": "https://git.example/bank/payments.git", "commit": "a" * 40} in revisions
+    assert any(r["repository"] == "https://git.example/bank/payments.git" and r["commit"] == "a" * 40 for r in revisions)
     from cbom.inventory import records_from_bom
     assert len(records_from_bom(bom)) == 8  # 9 assets minus the excluded marker; systems are not crypto
 

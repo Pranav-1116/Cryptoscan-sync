@@ -301,6 +301,10 @@ def _normalize(
     if proto:
         return _normalize_protocol(raw, proto.group("proto").upper(), proto.group("version"), location)
 
+    sig = _X509_SIGNATURE.match(raw.replace("_", "-").strip())
+    if sig or raw.lower().replace("_", "-") in _X509_SIGNATURE_ALIASES:
+        return _normalize_x509_signature(raw, purpose_key)
+
     info = parse_algorithm(raw)
     if info.family == "tls-suite":
         return _normalize_suite(raw, info, location)
@@ -352,8 +356,11 @@ def _normalize(
     if bits is None and reported_bits and info.parameter_kind not in {"public_key_bytes", "digest_bits"}:
         bits = reported_bits
     if bits is None and info.key_size and info.parameter_kind in {"key_bits", "curve_bits"} \
-            and (len(info.allowed_key_sizes) <= 1 and info.canonical.upper() != "3DES"):
-        bits = info.key_size   # single fixed size (DES = 56); 3DES keying option is never assumed
+            and (len(info.allowed_key_sizes) <= 1 and info.canonical.upper() != "3DES") \
+            and info.min_key_size != info.key_size:
+        # single fixed size (DES = 56); 3DES keying option is never assumed, and a
+        # registry *minimum* (RSA-OAEP >= 2048) is not the size that was deployed
+        bits = info.key_size
     if bits:
         sized = parse_algorithm(f"{info.canonical.split('-')[0] if info.canonical.upper().startswith('AES') else info.canonical}-{bits}")
         if sized.recognized and sized.canonical.split("-")[0] == info.canonical.split("-")[0]:
@@ -627,6 +634,11 @@ def _normalize_protocol(raw: str, proto: str, version: str | None, location: Any
         info = parse_algorithm(f"{label} {version}")
         if info.recognized:
             status, notes = info.status, info.notes
+        if proto == "TLS" and version == "1.2":
+            # not a blanket deprecation: SP 800-52 Rev. 2 permits TLS 1.2 with
+            # approved suites; the observed suite/kex/certificate decide
+            status, notes = "CONDITIONAL", ("permitted with approved cipher suites (NIST SP 800-52 Rev. 2); posture "
+                                            "depends on the negotiated suite, key exchange and certificate")
     elif proto == "SSL":
         status, notes = "DISALLOWED", "SSL is prohibited (RFC 6176 / RFC 7568)"
     n = Normalized(raw=raw, classification=ASSET, asset_type="protocol", family=label,
@@ -636,6 +648,56 @@ def _normalize_protocol(raw: str, proto: str, version: str | None, location: Any
                    protocol_type=ptype, protocol_version=version)
     if not version:
         n.notes.append("protocol recorded without a version; negotiated versions and cipher suites not established")
+    return n
+
+
+#: X.509 / PKIX signature algorithm names (RFC 4055, RFC 5758, RFC 8410). The
+#: issuer key size is not part of the name and is never invented.
+_X509_SIGNATURE = re.compile(
+    r"^(?:(?P<h1>md5|sha-?1|sha-?224|sha-?256|sha-?384|sha-?512)-?with-?(?P<k1>rsa(?:encryption)?|ecdsa|dsa)"
+    r"|(?P<k2>ecdsa|dsa)-with-(?P<h2>sha-?1|sha-?224|sha-?256|sha-?384|sha-?512)"
+    # OpenSSL digest names (RSA-SHA256, ecdsa-sha384)
+    r"|(?P<k3>rsa|ecdsa|dsa)-(?P<h3>md5|sha-?1|sha-?224|sha-?256|sha-?384|sha-?512))$", re.IGNORECASE)
+_X509_SIGNATURE_ALIASES = {"rsassa-pss": ("RSASSA-PSS", None), "rsassapss": ("RSASSA-PSS", None),
+                           "id-rsassa-pss": ("RSASSA-PSS", None)}
+_X509_SIGNATURE_OIDS = {
+    ("RSA", "MD5"): "1.2.840.113549.1.1.4", ("RSA", "SHA-1"): "1.2.840.113549.1.1.5",
+    ("RSA", "SHA-224"): "1.2.840.113549.1.1.14", ("RSA", "SHA-256"): "1.2.840.113549.1.1.11",
+    ("RSA", "SHA-384"): "1.2.840.113549.1.1.12", ("RSA", "SHA-512"): "1.2.840.113549.1.1.13",
+    ("ECDSA", "SHA-1"): "1.2.840.10045.4.1", ("ECDSA", "SHA-224"): "1.2.840.10045.4.3.1",
+    ("ECDSA", "SHA-256"): "1.2.840.10045.4.3.2", ("ECDSA", "SHA-384"): "1.2.840.10045.4.3.3",
+    ("ECDSA", "SHA-512"): "1.2.840.10045.4.3.4", ("RSASSA-PSS", None): "1.2.840.113549.1.1.10",
+}
+
+
+def _normalize_x509_signature(raw: str, purpose_key: str) -> Normalized:
+    text = raw.replace("_", "-").strip()
+    m = _X509_SIGNATURE.match(text)
+    if m:
+        key = (m.group("k1") or m.group("k2") or m.group("k3")).upper()
+        key = "RSA" if key.startswith("RSA") else key
+        digest = (m.group("h1") or m.group("h2") or m.group("h3")).upper().replace("SHA-", "SHA").replace("SHA", "SHA-")
+        digest = "MD5" if digest == "MD5" else digest
+    else:
+        key, digest = _X509_SIGNATURE_ALIASES[text.lower()]
+    name = f"{digest.replace('-', '')}with{key}" if digest else key  # JCA standard names
+    broken = digest in {"MD5", "SHA-1"}
+    n = Normalized(raw=raw, classification=ASSET, family=key if key != "RSASSA-PSS" else "RSA-PSS", name=name,
+                   primitive="signature", primitive_basis="X509_SIGNATURE_ALGORITHM_NAME",
+                   registry_status="DISALLOWED" if broken else "ALLOWED",
+                   registry_notes=(f"{digest} signatures are disallowed (SP 800-131A Rev. 2)" if broken else
+                                   "signature scheme; strength depends on the issuer key, which the name does not carry"))
+    n.oid = _X509_SIGNATURE_OIDS.get((key, digest))
+    n.quantum_level = 0
+    n.quantum_impact = "shor"
+    n.crypto_functions, n.crypto_functions_basis = ["verify"], "CERTIFICATE_SIGNATURE_VERIFIED_BY_RELYING_PARTY"
+    n.parameter_facts = {"signature_scheme": key, "digest": digest or "NOT_IN_NAME",
+                         "issuer_key_size": "NOT_RECORDED"}
+    n.security_level_basis = "issuer key size not recorded; no security level stated"
+    n.standard = {"RSA": "RFC 8017 (PKCS #1 v1.5)", "RSASSA-PSS": "RFC 8017 / RFC 4055",
+                  "ECDSA": "FIPS 186-5", "DSA": "FIPS 186-4 (DSA withdrawn for signing in FIPS 186-5)"}.get(key)
+    if broken:
+        n.notes.append(f"{name}: {digest} is collision-broken; certificate signatures with it are disallowed")
     return n
 
 

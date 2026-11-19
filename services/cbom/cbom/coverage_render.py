@@ -65,17 +65,29 @@ PROPERTY_EMPTY_STATEMENT = "cryptoscan:empty_bom_statement"
 
 def inventory_coverage(rollup: Mapping[str, Any] | None = None, *,
                        assets: int = 0, unit: str = "application",
-                       as_of: str | None = None) -> dict[str, Any]:
+                       as_of: str | None = None, systems_inspected: int | None = None,
+                       failed_jobs: int = 0, partial_systems: int = 0) -> dict[str, Any]:
     """The coverage block: what was inspected, what was found, and what may be quoted.
 
     ``rollup`` is the estate scan rollup (``coverage.rollup``): systems by status.
     An asset count over a partial estate is a **floor**; only ``COMPLETE`` lets it
     be read as a total, which is what ``may_report_total`` says.
+
+    ``systems_inspected`` overrides the rollup's stored-status count with one
+    derived from collection facts (a stored ``CURRENT`` is not an inspection).
+    A failed job or a partially inspected system makes the block ``PARTIAL``:
+    an estate with a failed collection is never ``COMPLETE``.
     """
     counts = dict((rollup or {}).get("counts") or {})
     total = int((rollup or {}).get("systems") or 0)
-    inspected = int((rollup or {}).get("with_cbom") or 0)
+    inspected = int((rollup or {}).get("with_cbom") or 0) if systems_inspected is None else int(systems_inspected)
     block = ue.coverage(total, inspected, assets, unit=unit)
+    if block["completeness"] == "COMPLETE" and (failed_jobs or partial_systems):
+        block["completeness"] = "PARTIAL"
+        block["quotable_as_total"] = False
+        block["statement"] = (f"{assets} crypto asset(s) discovered; {inspected}/{total} {unit}(s) inspected, but "
+                              f"{failed_jobs} collection job(s) failed and {partial_systems} {unit}(s) are only "
+                              "partially inspected; the count is what was discovered, not what exists")
     never_scanned = int(counts.get("NEVER_SCANNED") or 0)
     failed = int(counts.get("FAILED") or 0)
     stale = int(counts.get("STALE") or 0)
@@ -93,6 +105,10 @@ def inventory_coverage(rollup: Mapping[str, Any] | None = None, *,
                        f"{scan_coverage.STALE_DAYS} days")
     if no_target:
         caveats.append(f"{no_target} {unit}(s) have no scan target configured")
+    if failed_jobs:
+        caveats.append(f"{failed_jobs} collection job(s) failed; their targets' current cryptography is unknown")
+    if partial_systems:
+        caveats.append(f"{partial_systems} {unit}(s) were only partially inspected")
     return {
         "schema": SCHEMA,
         "as_of": as_of or datetime.now(timezone.utc).isoformat(),
@@ -108,6 +124,8 @@ def inventory_coverage(rollup: Mapping[str, Any] | None = None, *,
         "failed": failed,
         "stale": stale,
         "no_target": no_target,
+        "failed_jobs": int(failed_jobs),
+        "partial_systems": int(partial_systems),
         "caveats": caveats,
         "statement": (block["statement"]
                       + f"; {never_scanned} never scanned, {failed} failed, {stale} stale"),
@@ -130,6 +148,8 @@ def document_properties(block: Mapping[str, Any]) -> list[dict[str, str]]:
         "may_report_total": block.get("may_report_total"),
         "assets_discovered": block.get("assets_discovered"),
         "status_counts": block.get("status_counts"),
+        "failed_jobs": block.get("failed_jobs", 0),
+        "partial_systems": block.get("partial_systems", 0),
         "as_of": block.get("as_of"),
     }
     return [
