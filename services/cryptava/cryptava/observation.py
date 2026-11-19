@@ -29,12 +29,34 @@ ASSET_TYPES = {
 }
 EVIDENCE_TYPES = {
     "RUNTIME_OBSERVED", "NETWORK_ACTIVE_OBSERVED", "NETWORK_PASSIVE_OBSERVED", "STATIC_OBSERVED",
-    "CERTIFICATE_OBSERVED", "CONFIGURED", "VENDOR_DECLARED", "INFERRED",
+    "CERTIFICATE_OBSERVED", "CONFIGURED", "VENDOR_DECLARED", "IMPORTED", "INFERRED",
 }
 LAYERS = {"APPLICATION", "NETWORK_TRANSPORT", "STORAGE", "HSM", "KMS", "PLATFORM", "UNKNOWN"}
 BASES = {"CONFIGURATION", "RUNTIME_OBSERVATION", "NETWORK_OBSERVATION", "DEPLOYMENT_CONFIG",
-         "APPROVED_MAPPING"}
+         "APPROVED_MAPPING", "IMPORTED"}
 PLANE_STATUSES = {"COMPLETE", "PARTIAL", "FAILED", "NOT_ATTEMPTED"}
+#: what happened to one source a plane reads — shown per BOM as "how this was collected"
+SOURCE_STATES = {"READ", "EMPTY", "ABSENT", "DENIED", "UNAVAILABLE", "DISABLED", "NOT_CONFIGURED"}
+MAX_SOURCES = 24
+
+
+def source(where: str, reads: str, state: str, found: int | None = None, note: str | None = None) -> dict[str, Any]:
+    """One row of a plane's provenance: *where* was read, *what* it yields, and what happened.
+
+    ``state`` is what this run saw — READ (data came back), EMPTY (readable, nothing in it),
+    ABSENT (not on this host), DENIED (present but not readable with the agent's rights),
+    UNAVAILABLE (tool missing or failed), DISABLED (turned off in config), NOT_CONFIGURED
+    (an input the bank has to supply, e.g. the asset register).
+    """
+    kind = state.upper()
+    if kind not in SOURCE_STATES:
+        raise ValueError(f"unknown source state {state!r}")
+    row: dict[str, Any] = {"source": str(where)[:160], "reads": str(reads)[:160], "state": kind}
+    if found is not None:
+        row["found"] = max(0, int(found))
+    if note:
+        row["note"] = str(note)[:200]
+    return row
 
 
 def _now() -> str:
@@ -134,7 +156,8 @@ class Observation:
 
     # -- plane outcomes ------------------------------------------------------- #
     def plane(self, name: str, status: str, reason: str, *, expected: int = 1,
-              collected: int | None = None, details: dict[str, Any] | None = None) -> None:
+              collected: int | None = None, details: dict[str, Any] | None = None,
+              sources: list[dict[str, Any]] | None = None) -> None:
         state = status.upper()
         if state not in PLANE_STATUSES:
             raise ValueError(f"unknown plane status {status!r}")
@@ -144,6 +167,8 @@ class Observation:
                              "expected": max(0, int(expected)), "collected": max(0, int(collected))}
         if details:
             self.planes[name]["details"] = details
+        if sources:
+            self.planes[name]["sources"] = list(sources)[:MAX_SOURCES]
 
     def cover(self, target: str, expected: int, collected: int, reason: str | None = None) -> None:
         row = {"target": target, "expected": max(0, int(expected)), "collected": max(0, int(collected))}

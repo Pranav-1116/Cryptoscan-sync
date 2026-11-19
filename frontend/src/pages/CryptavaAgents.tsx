@@ -27,7 +27,93 @@ export const BOMS = [
 
 type Agent = Record<string, any>;
 type Contribution = Record<string, any>;
-type Plane = { plane?: string; status?: string; reason?: string };
+export type Source = { source?: string; reads?: string; state?: string; found?: number; note?: string };
+type Plane = { plane?: string; status?: string; reason?: string; sources?: Source[] };
+
+/** How the agent builds each BOM: what it reads on the server, and what the bank supplies. */
+export const HOW_COLLECTED: Record<string, { reads: string; supplied: string; complete: string }> = {
+  HBOM: {
+    reads: "/sys/class/dmi/id (platform, serial, BIOS), /proc/cpuinfo, /proc/meminfo, dmidecode (DIMMs), /sys/block, /sys/class/net, /sys/bus/pci, /sys/class/tpm",
+    supplied: "Asset register record (hardware: model, serial, asset tag, rack, warranty) — needed where the platform has no firmware tables (containers, many VMs)",
+    complete: "Platform identity comes from firmware or the asset register, and nothing readable was refused",
+  },
+  SBOM: {
+    reads: "dpkg status, apk installed DB, rpmdb.sqlite, Python dist-info, Java .jar files",
+    supplied: "Nothing",
+    complete: "An OS package database was read in full",
+  },
+  CBOM: {
+    reads: "Crypto shared libraries, /proc/<pid>/maps (who loaded them), certificate files, trust store, SSH host keys + sshd_config, openssl.cnf, nginx/Apache/HAProxy/PostgreSQL TLS settings, java.security",
+    supplied: "Nothing (private keys are never read)",
+    complete: "Every process's memory map was readable",
+  },
+  NBOM: {
+    reads: "/proc/net sockets, /proc/<pid>/fd (owner), a local probe of each TCP listener (TLS handshake, SSH, PostgreSQL, HTTP/Redis), established outbound peers",
+    supplied: "Nothing",
+    complete: "Sockets were visible and every owner process was inspectable",
+  },
+  VBOM: {
+    reads: "Vendors from the other planes: OS publisher (/etc/os-release), hardware/CPU/PCI vendors, crypto-library projects, certificate issuers, package suppliers",
+    supplied: "Asset register record (contracts: vendor, contract id, support level, dates, account manager)",
+    complete: "The contract register was supplied; vendors with no contract are flagged as findings",
+  },
+  TechBOM: {
+    reads: "The evidenced links between everything above (runs on, hosted on, exposes, loads, provided by …)",
+    supplied: "Business-system mapping ('system' in the agent config)",
+    complete: "The host is mapped to a business system",
+  },
+};
+
+/** The simulated bank servers the sandbox can put an agent beside. */
+export const SANDBOX_HOSTS = [
+  "mobile-api", "legacy-branch", "hsm-sim", "internet-banking", "swift-gateway", "payments-bastion", "core-banking-db",
+] as const;
+
+type Target = "linux" | "container" | "sandbox";
+
+export function installCommand(target: Target, issued: { agent_id: string; enrollment_token: string }, origin: string, host = "mobile-api"): string {
+  if (target === "sandbox") return `bash sandbox/run_sandbox.sh agents add ${host} ${issued.agent_id} ${issued.enrollment_token}`;
+  if (target === "container") {
+    return [
+      `CRYPTAVA_SERVER=${origin}`,
+      `CRYPTAVA_AGENT_ID=${issued.agent_id}`,
+      `CRYPTAVA_ENROLLMENT_TOKEN=${issued.enrollment_token}`,
+    ].join("\n");
+  }
+  return `sudo ./install.sh --server ${origin} --agent-id ${issued.agent_id} --token ${issued.enrollment_token}`;
+}
+
+const SOURCE_TONE: Record<string, string> = {
+  READ: "green", EMPTY: "", ABSENT: "", DENIED: "red", UNAVAILABLE: "amber", DISABLED: "", NOT_CONFIGURED: "amber",
+};
+const SOURCE_WORD: Record<string, string> = {
+  READ: "read", EMPTY: "nothing found", ABSENT: "not on host", DENIED: "no permission", UNAVAILABLE: "unavailable",
+  DISABLED: "turned off", NOT_CONFIGURED: "not supplied",
+};
+
+function Sources({ rows }: { rows: Source[] }) {
+  return (
+    <table className="cv-sources" style={{ width: "100%", fontSize: 12, marginTop: 6, borderCollapse: "collapse" }}>
+      <tbody>
+        {rows.map((r, i) => {
+          const state = String(r.state || "").toUpperCase();
+          return (
+            <tr key={i} style={{ borderTop: "1px solid var(--line)" }}>
+              <td style={{ padding: "4px 6px 4px 0", verticalAlign: "top" }}>
+                <span className="mono">{r.source}</span>
+                <div className="muted">{r.reads}{r.note ? ` · ${r.note}` : ""}</div>
+              </td>
+              <td style={{ padding: "4px 0", textAlign: "right", verticalAlign: "top", whiteSpace: "nowrap" }}>
+                <Badge tone={SOURCE_TONE[state] ?? ""}>{SOURCE_WORD[state] ?? state.toLowerCase()}</Badge>
+                {typeof r.found === "number" && <div className="num muted">{r.found}</div>}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
 
 export type AgentState = "online" | "offline" | "waiting" | "retired";
 
@@ -110,6 +196,8 @@ export default function CryptavaAgents() {
   const [name, setName] = React.useState("");
   const [issued, setIssued] = React.useState<{ agent_id: string; name: string; enrollment_token: string } | null>(null);
   const [openId, setOpenId] = React.useState<string | null>(null);
+  const [target, setTarget] = React.useState<Target>("linux");
+  const [sandboxHost, setSandboxHost] = React.useState<string>(SANDBOX_HOSTS[0]);
 
   const agentRows = ((agents.data ?? []) as Agent[]);
   const byName = React.useMemo(() => {
@@ -154,9 +242,7 @@ export default function CryptavaAgents() {
     } finally { setBusy(""); }
   };
 
-  const command = issued
-    ? `sudo ./install.sh --server ${window.location.origin} --agent-id ${issued.agent_id} --token ${issued.enrollment_token}`
-    : "";
+  const command = issued ? installCommand(target, issued, window.location.origin, sandboxHost) : "";
   const open = openId ? agentRows.find((a) => String(a.id) === openId) : undefined;
   const openReport = open ? byName.get(String(open.name)) : undefined;
 
@@ -240,6 +326,25 @@ export default function CryptavaAgents() {
               <strong className="mono">{issued.name}</strong>
               <span className="muted">token shown once</span>
             </div>
+            <div role="tablist" aria-label="where to install" style={{ display: "flex", gap: 6, margin: "10px 0 6px", flexWrap: "wrap" }}>
+              {([["linux", "Linux server"], ["container", "Container / Kubernetes"], ["sandbox", "Sandbox bank server"]] as const).map(([k, label]) => (
+                <button key={k} role="tab" aria-selected={target === k} className={`btn${target === k ? " primary" : ""}`}
+                  onClick={() => setTarget(k)}>{label}</button>
+              ))}
+            </div>
+            {target === "sandbox" && (
+              <label style={{ display: "flex", gap: 8, alignItems: "center", margin: "6px 0" }}>
+                <span className="muted">bank server</span>
+                <select className="input mono" aria-label="sandbox bank server" value={sandboxHost} onChange={(e) => setSandboxHost(e.target.value)}>
+                  {SANDBOX_HOSTS.map((h) => <option key={h} value={h}>{h}</option>)}
+                </select>
+              </label>
+            )}
+            <p className="muted" style={{ margin: "4px 0", fontSize: 12 }}>
+              {target === "linux" && "Run on the server, from the unpacked agent folder (services/cryptava/packaging). Add --asset-record FILE to supply the CMDB record."}
+              {target === "container" && "Set these on the agent container (sidecar or DaemonSet); it enrols on first start. Mount the CMDB record at /etc/cryptava/asset-record.json."}
+              {target === "sandbox" && "Run in the repository folder on the machine running the sandbox. The agent joins that bank server and reports within a minute."}
+            </p>
             <pre className="mono" style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", margin: "8px 0", fontSize: 12 }}>{command}</pre>
             <span style={{ display: "flex", gap: 6 }}>
               <button className="btn" onClick={() => {
@@ -249,6 +354,22 @@ export default function CryptavaAgents() {
             </span>
           </div>
         )}
+      </Panel>
+
+      <Panel title="How each BOM is collected" sub="What the agent reads on the server, and what the bank supplies">
+        <Table
+          head={["BOM", "read from the server", "supplied by the bank", "complete when"]}
+          rows={BOMS.map((b) => [
+            <span><strong>{b.key}</strong> <span className="muted">{b.label}</span></span>,
+            <span style={{ fontSize: 12 }}>{HOW_COLLECTED[b.key].reads}</span>,
+            <span style={{ fontSize: 12 }}>{HOW_COLLECTED[b.key].supplied}</span>,
+            <span className="muted" style={{ fontSize: 12 }}>{HOW_COLLECTED[b.key].complete}</span>,
+          ])}
+        />
+        <p className="muted" style={{ fontSize: 12, marginBottom: 0 }}>
+          The asset register record is a small JSON file at /etc/cryptava/asset-record.json (hardware + contracts), exported from the CMDB.
+          Open an agent above to see, per BOM, every source it read on its last run.
+        </p>
       </Panel>
 
       {open && (
@@ -277,6 +398,12 @@ export default function CryptavaAgents() {
                       </span>
                     </div>
                     {p?.reason && <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>{p.reason}</div>}
+                    {p?.sources && p.sources.length > 0 && (
+                      <details style={{ marginTop: 4 }}>
+                        <summary style={{ cursor: "pointer", fontSize: 12 }}>how it was collected · {p.sources.length} sources</summary>
+                        <Sources rows={p.sources} />
+                      </details>
+                    )}
                   </div>
                 );
               })}

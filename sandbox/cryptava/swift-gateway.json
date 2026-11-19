@@ -1,0 +1,51 @@
+{
+  "source": "Meridian Bank CMDB export (sandbox)",
+  "exported_at": "2026-11-01",
+  "hardware": {
+    "manufacturer": "Hewlett Packard Enterprise",
+    "model": "ProLiant DL380 Gen10 Plus",
+    "platform": "physical",
+    "serial_number": "CZJ2190KQ7",
+    "asset_tag": "MRDN-DC1-000377",
+    "location": "DC1 / Chennai (Ambattur) / Hall A / Rack 11 / U20 (SWIFT secure zone)",
+    "rack": "A-11",
+    "purchase_date": "2022-09-30",
+    "warranty_end": "2027-09-30",
+    "end_of_life": "2029-09-30",
+    "owner": "Payments Operations"
+  },
+  "contracts": [
+    {
+      "vendor": "Hewlett Packard Enterprise",
+      "contract_id": "HPE-PC-5521873",
+      "support_level": "Pointnext Tech Care Critical",
+      "start": "2022-10-01",
+      "end": "2027-09-30",
+      "account_manager": "S. Menon (HPE India)",
+      "covers": [
+        "Intel",
+        "AMD",
+        "Broadcom",
+        "Red Hat"
+      ]
+    },
+    {
+      "vendor": "Alpine Linux",
+      "support_level": "community",
+      "note": "no commercial support \u2014 patched by Meridian Platform Engineering"
+    },
+    {
+      "vendor": "OpenSSL Software Foundation",
+      "contract_id": "OSF-PS-2024-117",
+      "support_level": "Premium Support",
+      "start": "2024-04-01",
+      "end": "2027-03-31",
+      "account_manager": "OpenSSL Corporation support desk"
+    },
+    {
+      "vendor": "Meridian Bank (Sandbox)",
+      "support_level": "internal",
+      "note": "Meridian internal PKI \u2014 certificates issued by the bank's own CA"
+    }
+  ]
+}

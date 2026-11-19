@@ -1,0 +1,52 @@
+{
+  "source": "Meridian Bank CMDB export (sandbox)",
+  "exported_at": "2026-11-01",
+  "hardware": {
+    "manufacturer": "Hewlett Packard Enterprise",
+    "model": "ProLiant DL360 Gen9",
+    "platform": "physical",
+    "serial_number": "CZ3611AB2K",
+    "asset_tag": "MRDN-BR-000058",
+    "location": "Branch 0142 / T. Nagar, Chennai / comms room",
+    "rack": "BR-0142",
+    "purchase_date": "2016-08-19",
+    "warranty_end": "2024-10-31",
+    "end_of_life": "2025-12-31",
+    "owner": "Branch Technology"
+  },
+  "contracts": [
+    {
+      "vendor": "Hewlett Packard Enterprise",
+      "contract_id": "HPE-FC-3301190",
+      "support_level": "Foundation Care NBD",
+      "start": "2019-11-01",
+      "end": "2024-10-31",
+      "account_manager": "S. Menon (HPE India)",
+      "covers": [
+        "Intel",
+        "AMD",
+        "Broadcom",
+        "Red Hat"
+      ],
+      "note": "lapsed \u2014 hardware past end of life, replacement planned"
+    },
+    {
+      "vendor": "Alpine Linux",
+      "support_level": "community",
+      "note": "no commercial support \u2014 patched by Meridian Platform Engineering"
+    },
+    {
+      "vendor": "OpenSSL Software Foundation",
+      "contract_id": "OSF-PS-2024-117",
+      "support_level": "Premium Support",
+      "start": "2024-04-01",
+      "end": "2027-03-31",
+      "account_manager": "OpenSSL Corporation support desk"
+    },
+    {
+      "vendor": "Meridian Bank (Sandbox)",
+      "support_level": "internal",
+      "note": "Meridian internal PKI \u2014 certificates issued by the bank's own CA"
+    }
+  ]
+}

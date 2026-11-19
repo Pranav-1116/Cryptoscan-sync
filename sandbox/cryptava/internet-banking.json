@@ -1,0 +1,57 @@
+{
+  "source": "Meridian Bank CMDB export (sandbox)",
+  "exported_at": "2026-11-01",
+  "hardware": {
+    "manufacturer": "VMware, Inc.",
+    "model": "VMware7,1 virtual platform",
+    "platform": "virtual machine",
+    "serial_number": "VMware-42 1c 8f 3a 77 d2 10 6b-91 e0 55 0c 2a 7d 41 b3",
+    "asset_tag": "MRDN-VM-IBANK01",
+    "cluster": "DC1-CL02 (vSphere 8.0U3)",
+    "location": "DC1 / Chennai (Ambattur) / vSphere cluster DC1-CL02",
+    "owner": "Meridian Platform Engineering"
+  },
+  "contracts": [
+    {
+      "vendor": "VMware",
+      "contract_id": "VVF-2025-0419",
+      "support_level": "vSphere Foundation \u00b7 Production 24x7",
+      "start": "2025-07-01",
+      "end": "2027-06-30",
+      "account_manager": "Broadcom India enterprise desk"
+    },
+    {
+      "vendor": "Dell Technologies",
+      "contract_id": "PSP-90577-CL02",
+      "support_level": "ProSupport Plus \u00b7 4h mission critical",
+      "start": "2024-02-01",
+      "end": "2029-01-31",
+      "account_manager": "R. Iyer (Dell India)",
+      "covers": [
+        "Intel",
+        "AMD",
+        "Broadcom",
+        "Red Hat"
+      ],
+      "note": "ESXi cluster DC1-CL02 hardware (PowerEdge R760) \u2014 covers the physical CPUs and NICs"
+    },
+    {
+      "vendor": "Alpine Linux",
+      "support_level": "community",
+      "note": "no commercial support \u2014 patched by Meridian Platform Engineering"
+    },
+    {
+      "vendor": "OpenSSL Software Foundation",
+      "contract_id": "OSF-PS-2024-117",
+      "support_level": "Premium Support",
+      "start": "2024-04-01",
+      "end": "2027-03-31",
+      "account_manager": "OpenSSL Corporation support desk"
+    },
+    {
+      "vendor": "Meridian Bank (Sandbox)",
+      "support_level": "internal",
+      "note": "Meridian internal PKI \u2014 certificates issued by the bank's own CA"
+    }
+  ]
+}

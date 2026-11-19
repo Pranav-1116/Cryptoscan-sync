@@ -145,7 +145,9 @@ def summary(contributions: Mapping[str, Mapping[str, Any]]) -> list[dict[str, An
                 "asset_types": dict(sorted(types.items())),
                 "planes": [
                     {"plane": row.get("plane"), "status": row.get("status") or row.get("state"),
-                     "reason": row.get("reason")}
+                     "reason": row.get("reason"),
+                     # how the agent collected this plane: one row per source and what it yielded
+                     "sources": [dict(item) for item in (row.get("sources") or []) if isinstance(item, Mapping)][:24]}
                     for row in entry.get("collectors") or []
                 ],
                 **{key: meta.get(key) for key in ("observed_at", "received_at", "authenticity",

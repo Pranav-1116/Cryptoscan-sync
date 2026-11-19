@@ -59,6 +59,8 @@ class Context:
     system_ref: str | None = None
     system_evidence: str | None = None
     notes: list[str] = field(default_factory=list)
+    #: the bank's asset-register record for this host (cryptava.register), loaded once
+    register: Any = None
 
     @property
     def environment(self) -> str | None:

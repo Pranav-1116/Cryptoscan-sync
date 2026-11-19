@@ -1,0 +1,54 @@
+{
+  "source": "Meridian Bank CMDB export (sandbox)",
+  "exported_at": "2026-11-01",
+  "hardware": {
+    "manufacturer": "Dell Technologies",
+    "model": "PowerEdge R750",
+    "platform": "physical",
+    "serial_number": "7Q2K3X3",
+    "asset_tag": "MRDN-DC1-000412",
+    "location": "DC1 / Chennai (Ambattur) / Hall B / Rack 04 / U12",
+    "rack": "B-04",
+    "purchase_date": "2023-04-12",
+    "warranty_end": "2028-04-30",
+    "end_of_life": "2030-04-30",
+    "owner": "Core Banking Platform"
+  },
+  "contracts": [
+    {
+      "vendor": "Dell Technologies",
+      "contract_id": "PSP-88213-R750",
+      "support_level": "ProSupport Plus \u00b7 4h mission critical",
+      "start": "2023-05-01",
+      "end": "2028-04-30",
+      "account_manager": "R. Iyer (Dell India)",
+      "covers": [
+        "Intel",
+        "AMD",
+        "Broadcom",
+        "Samsung",
+        "Micron",
+        "Red Hat"
+      ]
+    },
+    {
+      "vendor": "Alpine Linux",
+      "support_level": "community",
+      "note": "no commercial support \u2014 patched by Meridian Platform Engineering"
+    },
+    {
+      "vendor": "OpenSSL Software Foundation",
+      "contract_id": "OSF-PS-2023-052",
+      "support_level": "Premium Support",
+      "start": "2023-12-15",
+      "end": "2026-12-31",
+      "account_manager": "OpenSSL Corporation support desk",
+      "note": "renewal under negotiation"
+    },
+    {
+      "vendor": "Meridian Bank (Sandbox)",
+      "support_level": "internal",
+      "note": "Meridian internal PKI \u2014 certificates issued by the bank's own CA"
+    }
+  ]
+}

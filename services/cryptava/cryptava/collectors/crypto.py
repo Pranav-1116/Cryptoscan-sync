@@ -27,6 +27,7 @@ import struct
 from typing import Any
 
 from cryptava.collectors import Context, certs
+from cryptava.observation import source
 from cryptava.util import slug
 from cryptava.x509 import certificates_in
 
@@ -270,7 +271,7 @@ def _certificates_on_disk(ctx: Context) -> tuple[int, int]:
     return found, skipped_keys
 
 
-def _trust_store(ctx: Context) -> None:
+def _trust_store(ctx: Context) -> tuple[str, int] | None:
     for path in TRUST_STORES:
         data = ctx.view.read_bytes(path, limit=4 * 1024 * 1024)
         if not data:
@@ -288,7 +289,8 @@ def _trust_store(ctx: Context) -> None:
             "trust_store": path, "trusted_root_certificates": len(ders), "weak_signature_roots": sha1,
             "role": "system-trust-store",
         }, layer="PLATFORM", source="cryptava-truststore")
-        return
+        return path, len(ders)
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -572,10 +574,12 @@ def collect(ctx: Context) -> None:
     libs = _static_libraries(ctx)
     inspected, denied, edges = _runtime_libraries(ctx)
     certs_found, keys_skipped = _certificates_on_disk(ctx)
-    _trust_store(ctx)
+    trust = _trust_store(ctx)
     ssh_keys = _ssh(ctx)
     system_settings, openssl_defaults = _openssl_cnf(ctx)
-    config_settings = system_settings + _server_tls(ctx) + _java_security(ctx)
+    server_settings = _server_tls(ctx)
+    java_settings = _java_security(ctx)
+    config_settings = system_settings + server_settings + java_settings
     served = len(ctx.served_certificates)
     notes = []
     if denied:
@@ -583,11 +587,35 @@ def collect(ctx: Context) -> None:
     if keys_skipped:
         notes.append(f"{keys_skipped} private-key files skipped unread")
     status = "PARTIAL" if denied else "COMPLETE"
+    cert_dirs = list(dict.fromkeys(CERT_DIRS + list(ctx.config.get("cert_dirs") or [])))
+    provenance = [
+        source("shared libraries (" + ", ".join(LIB_DIRS[:4]) + ", /usr/local, /opt)",
+               "OpenSSL, GnuTLS, NSS, libgcrypt, libsodium, Mbed TLS, wolfSSL, BoringSSL, Nettle, liboqs",
+               "READ" if ctx.libraries else "EMPTY", len(ctx.libraries)),
+        source("/proc/<pid>/maps", "which running process loaded which crypto library",
+               "DENIED" if denied and not inspected else "READ", edges,
+               f"{inspected} processes inspected" + (f", {denied} not readable" if denied else "")),
+        source(f"certificate files in {len(cert_dirs)} server locations", "X.509 certificates on disk "
+               "(private-key files are never parsed)", "READ" if certs_found else "EMPTY", certs_found,
+               f"{keys_skipped} private-key files skipped unread" if keys_skipped else None),
+        source(trust[0] if trust else "system trust store", "trusted root CA count and weak-signature roots",
+               "READ" if trust else "ABSENT", trust[1] if trust else None),
+        source("/etc/ssh (host keys, sshd_config)", "SSH host public keys and allowed algorithms",
+               "READ" if ssh_keys else "EMPTY", ssh_keys),
+        source("openssl.cnf / crypto-policies", "system-wide TLS policy",
+               "READ", system_settings, "library defaults (no MinProtocol / CipherString)" if openssl_defaults else None),
+        source("nginx / Apache / HAProxy / PostgreSQL configs", "TLS protocols, ciphers, curves, certificate paths",
+               "READ" if server_settings else "EMPTY", server_settings),
+        source("java.security", "JDK disabled TLS / certpath algorithms", "READ" if java_settings else "EMPTY",
+               java_settings),
+        source("TLS handshakes (NBOM probe)", "certificates actually served by listeners", "READ" if served else "EMPTY",
+               served),
+    ]
     ctx.obs.plane("CBOM · cryptography", status,
                   f"{len(ctx.libraries)} crypto libraries ({edges} loaded by running processes), "
                   f"{len(ctx.certificates)} certificates ({certs_found} on disk, {served} served), "
                   f"{ssh_keys} SSH host keys, {config_settings} TLS/crypto settings"
                   + (" (system TLS policy: OpenSSL library defaults)" if openssl_defaults else "")
-                  + (f"; {'; '.join(notes)}" if notes else ""), expected=1, collected=1)
+                  + (f"; {'; '.join(notes)}" if notes else ""), expected=1, collected=1, sources=provenance)
     ctx.obs.cover(f"{ctx.hostname} · processes inspected for crypto libraries", inspected + denied, inspected)
     del libs

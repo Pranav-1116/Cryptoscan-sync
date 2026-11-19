@@ -336,3 +336,157 @@ def test_distinct_ipv6_listeners_get_distinct_refs():
 
     assert _host_slug("1::2:3") != _host_slug("1:2::3")
     assert _host_slug("10.210.0.4") == "10-210-0-4"  # IPv4 refs unchanged
+
+
+# --------------------------------------------------------------------------- #
+# asset register: HBOM identity where firmware is hidden, VBOM contracts
+# --------------------------------------------------------------------------- #
+
+import shutil  # noqa: E402
+from datetime import date, timedelta  # noqa: E402
+
+REPO = HERE.parents[2]
+SOURCE_STATES = {"READ", "EMPTY", "ABSENT", "DENIED", "UNAVAILABLE", "DISABLED", "NOT_CONFIGURED"}
+
+
+def _plane(payload, key):
+    return next(p for p in payload["collectors"] if p["plane"].split(" ")[0] == key)
+
+
+def _no_dmi(host):
+    shutil.rmtree(Path(host["sys"]) / "class/dmi", ignore_errors=True)
+
+
+def _record(tmp_path, **data):
+    path = tmp_path / "asset-record.json"
+    path.write_text(json.dumps({"source": "Test CMDB", "exported_at": "2026-11-01", **data}))
+    return str(path)
+
+
+HARDWARE = {"manufacturer": "Dell Technologies", "model": "PowerEdge R750", "serial_number": "7Q2K3X3",
+            "asset_tag": "MRDN-DC1-000412", "location": "DC1 / Rack 04", "warranty_end": "2099-01-01"}
+
+
+def test_hbom_without_firmware_or_register_is_partial_and_says_what_to_supply(host):
+    _no_dmi(host)
+    hbom = _plane(_payload(host), "HBOM")
+    assert hbom["status"] == "PARTIAL"
+    assert "no asset-register hardware record" in hbom["reason"]
+    assert "/etc/cryptava/asset-record.json" in hbom["reason"]
+    states = {s["source"]: s["state"] for s in hbom["sources"]}
+    assert states["/sys/class/dmi/id"] == "ABSENT"
+    assert states["/etc/cryptava/asset-record.json"] == "NOT_CONFIGURED"
+
+
+def test_hbom_identity_from_the_asset_register_is_complete_and_marked_imported(host, tmp_path):
+    _no_dmi(host)
+    host["asset_record"] = _record(tmp_path, hardware=HARDWARE)
+    payload = _payload(host)
+    hbom = _plane(payload, "HBOM")
+    assert hbom["status"] == "COMPLETE", hbom["reason"]
+    assert "asset register (Test CMDB)" in hbom["reason"]
+    system = next(a for a in payload["assets"] if a["ref"] == "hw:system")
+    assert system["name"] == "Dell Technologies PowerEdge R750"
+    assert system["identity"]["serial_number"] == "7Q2K3X3"
+    assert system["attributes"]["identity_source"] == "asset register"
+    assert system["attributes"]["warranty_state"] == "IN_WARRANTY"
+    imported = [e for e in payload["evidence"] if e["target"] == "hw:system" and e["evidence_type"] == "IMPORTED"]
+    assert imported and imported[0]["facts"]["source"] == "Test CMDB"
+    # the vendor edge from a register entry is IMPORTED, not observed
+    edge = next(r for r in payload["relationships"] if r["subject"] == "hw:system" and r["predicate"] == "provided_by")
+    assert edge["basis"] == "IMPORTED"
+
+
+def test_hbom_register_and_firmware_disagreeing_is_reported_not_resolved(host, tmp_path):
+    host["asset_record"] = _record(tmp_path, hardware={**HARDWARE, "serial_number": "NOT-THE-SAME"})
+    payload = _payload(host)
+    hbom = _plane(payload, "HBOM")
+    assert hbom["status"] == "COMPLETE"
+    assert "differs from firmware serial" in hbom["reason"]
+    assert any(e["facts"].get("role") == "asset-register-mismatch" for e in payload["evidence"])
+    system = next(a for a in payload["assets"] if a["ref"] == "hw:system")
+    assert system["attributes"]["identity_source"] == "firmware (DMI)"
+
+
+def test_hbom_in_a_container_does_not_expect_dimm_layout(host, tmp_path, monkeypatch):
+    _no_dmi(host)
+    (Path(host["root"]) / ".dockerenv").write_text("")
+    host["dmidecode"] = True
+    host["asset_record"] = _record(tmp_path, hardware=HARDWARE)
+    from cryptava.collectors import hardware
+    from cryptava.util import CommandResult
+    monkeypatch.setattr(hardware, "run_allowed",
+                        lambda *a, **k: CommandResult(("dmidecode",), 127, b"", "dmidecode: not installed", available=False))
+    hbom = _plane(_payload(host), "HBOM")
+    assert hbom["status"] == "COMPLETE", hbom["reason"]
+    assert "inside a container" in hbom["reason"]
+    assert {s["source"]: s["state"] for s in hbom["sources"]}["dmidecode -t memory"] == "UNAVAILABLE"
+
+
+def test_vbom_without_a_contract_register_is_partial(host):
+    vbom = _plane(_payload(host), "VBOM")
+    assert vbom["status"] == "PARTIAL"
+    assert "asset-register record" in vbom["reason"]
+
+
+def test_vbom_contracts_are_matched_to_observed_vendors_with_a_state(host, tmp_path):
+    today = date.today()
+    host["asset_record"] = _record(tmp_path, contracts=[
+        {"vendor": "OpenSSL Software Foundation", "contract_id": "OSF-1", "support_level": "Premium",
+         "end": (today + timedelta(days=30)).isoformat()},
+        {"vendor": "Debian Project", "support_level": "community"},
+        {"vendor": "Meridian Bank", "support_level": "internal"},
+        {"vendor": "Dell Technologies", "contract_id": "PSP-1", "end": (today - timedelta(days=1)).isoformat(),
+         "covers": ["Intel"]},
+        {"vendor": "Oracle", "contract_id": "never-seen"},
+    ])
+    payload = _payload(host)
+    vbom = _plane(payload, "VBOM")
+    assert vbom["status"] == "COMPLETE", vbom["reason"]
+    assert "1 register entry names a vendor not seen on this host" in vbom["reason"]
+    vendors = {a["identity"]["name"]: a for a in payload["assets"] if a["type"] == "VENDOR"}
+    states = {name: a["attributes"].get("contract_state") for name, a in vendors.items()}
+    assert states["OpenSSL Software Foundation"] == "EXPIRING_SOON"
+    assert states["Debian Project"] == "COMMUNITY"
+    assert states["Intel"] == "EXPIRED"            # covered by the (lapsed) OEM contract
+    assert "Oracle" not in vendors                 # a register entry never invents a vendor
+    assert all(state for state in states.values())  # every vendor has a state, NONE_ON_RECORD included
+    contract_ev = [e for e in payload["evidence"] if e["facts"].get("record") == "vendor-contract"]
+    assert contract_ev and all(e["evidence_type"] == "IMPORTED" for e in contract_ev)
+    assert any(e["facts"].get("contract_id") == "OSF-1" for e in contract_ev)
+
+
+def test_inline_contracts_from_the_environment(tmp_path):
+    config = load_config(env={"CRYPTAVA_CONTRACTS": '[{"vendor": "Red Hat", "contract_id": "RH-1"}]',
+                              "CRYPTAVA_HARDWARE": '{"manufacturer": "HPE", "model": "DL380", "asset_tag": "A1"}'})
+    from cryptava.register import load
+    reg = load(config)
+    assert reg.state == "READ" and reg.has_contract_register and reg.hardware_identified()
+    assert reg.contracts[0]["contract_id"] == "RH-1"
+
+
+def test_every_plane_reports_how_it_was_collected(host):
+    payload = _payload(host)
+    assert {p["plane"].split(" ")[0] for p in payload["collectors"]} == PLANES
+    for plane in payload["collectors"]:
+        assert plane.get("sources"), plane["plane"]
+        for row in plane["sources"]:
+            assert row["state"] in SOURCE_STATES and row["source"] and row["reads"]
+
+
+def test_sandbox_asset_records_cover_every_bank_server():
+    records = sorted((REPO / "sandbox/cryptava").glob("*.json"))
+    hosts = {p.stem for p in records}
+    assert hosts == {"internet-banking", "mobile-api", "swift-gateway", "legacy-branch", "hsm-sim",
+                     "core-banking-db", "payments-bastion"}
+    from cryptava.register import Register
+    for path in records:
+        reg = Register(json.loads(path.read_text()), str(path), "READ")
+        assert reg.hardware_identified(), path.name
+        assert reg.has_contract_register and reg.contracts, path.name
+    compose = (REPO / "sandbox/docker-compose.sandbox.yml").read_text()
+    for host in ("swift-gateway", "internet-banking", "core-banking-db", "payments-bastion"):
+        assert f"./sandbox/cryptava/{host}.json:/etc/cryptava/asset-record.json:ro" in compose
+    runner = (REPO / "sandbox/run_sandbox.sh").read_text()
+    for host in hosts:
+        assert f"\n        {host})" in runner, host

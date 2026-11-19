@@ -7,10 +7,12 @@
 #   # or, for scripted rollouts, with an admin API key in the environment:
 #   sudo CRYPTAVA_PROVISION_KEY=... ./install.sh --server https://... --name mrdn-prod-dc1-swiftgw01
 #
-# Options: --config FILE (use your own cryptava.toml), --ca-file FILE, --no-start
+# Options: --config FILE (use your own cryptava.toml), --ca-file FILE, --no-start,
+#          --asset-record FILE (this server's CMDB record: hardware identity + vendor
+#          contracts, JSON — see cryptava/register.py; makes HBOM/VBOM complete)
 set -eu
 
-SERVER="" AGENT_ID="" TOKEN="" NAME="" CONFIG="" CA_FILE="" START=1
+SERVER="" AGENT_ID="" TOKEN="" NAME="" CONFIG="" CA_FILE="" ASSET_RECORD="" START=1
 while [ $# -gt 0 ]; do
   case "$1" in
     --server) SERVER="$2"; shift 2 ;;
@@ -19,8 +21,9 @@ while [ $# -gt 0 ]; do
     --name) NAME="$2"; shift 2 ;;
     --config) CONFIG="$2"; shift 2 ;;
     --ca-file) CA_FILE="$2"; shift 2 ;;
+    --asset-record) ASSET_RECORD="$2"; shift 2 ;;
     --no-start) START=0; shift ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -63,6 +66,12 @@ elif [ ! -f /etc/cryptava/cryptava.toml ] && [ ! -f /etc/cryptava/cryptava.json 
     printf '{"server": "%s"%s}\n' "$SERVER" "${CA_FILE:+, \"ca_file\": \"$CA_FILE\"}" > /etc/cryptava/cryptava.json
     chmod 0644 /etc/cryptava/cryptava.json
   fi
+fi
+if [ -n "$ASSET_RECORD" ]; then
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert isinstance(d, dict)' "$ASSET_RECORD" \
+    || { echo "--asset-record: $ASSET_RECORD is not a JSON object" >&2; exit 2; }
+  install -m 0644 "$ASSET_RECORD" /etc/cryptava/asset-record.json
+  echo "    asset register record -> /etc/cryptava/asset-record.json"
 fi
 install -d -m 0700 /var/lib/cryptava
 

@@ -24,6 +24,10 @@ probe_exclude_ports = []
 cert_dirs = []
 # jar_dirs = ["/opt", "/srv", "/app"]
 
+# The server's CMDB record: hardware identity (HBOM, where firmware tables are hidden)
+# and vendor contracts (VBOM). JSON — see cryptava/register.py. Default path:
+# asset_record = "/etc/cryptava/asset-record.json"
+
 [tags]
 environment = "prod"
 datacenter = "dc1"

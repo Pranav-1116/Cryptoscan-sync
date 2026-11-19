@@ -3,13 +3,18 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { renderWithProviders } from "../test/render";
 import { mockFetch } from "../test/setup";
 import { rendersAnHonestEmptyState } from "../test/pageSmoke";
-import CryptavaAgents, { agentState, ago, planeOf } from "./CryptavaAgents";
+import CryptavaAgents, { agentState, ago, planeOf, installCommand, HOW_COLLECTED, BOMS } from "./CryptavaAgents";
 
 const NOW = Date.parse("2026-11-18T12:00:00Z");
 const iso = (secondsAgo: number) => new Date(Date.now() - secondsAgo * 1000).toISOString();
 
 const PLANES = [
-  { plane: "HBOM · hardware", status: "PARTIAL", reason: "no DMI tables" },
+  { plane: "HBOM · hardware", status: "PARTIAL", reason: "no DMI tables",
+    sources: [
+      { source: "/sys/class/dmi/id", reads: "platform vendor, model, serial, UUID, BIOS", state: "ABSENT" },
+      { source: "/etc/cryptava/asset-record.json", reads: "hardware record", state: "NOT_CONFIGURED", note: "supply it from the CMDB" },
+      { source: "/proc/cpuinfo", reads: "CPU model, vendor, cores, crypto extensions", state: "READ", found: 8 },
+    ] },
   { plane: "SBOM · software", status: "COMPLETE", reason: "283 packages from dpkg" },
   { plane: "CBOM · cryptography", status: "COMPLETE", reason: "5 crypto libraries" },
   { plane: "NBOM · network", status: "COMPLETE", reason: "8 listeners" },
@@ -118,5 +123,57 @@ describe("Cryptava agents page", () => {
     fireEvent.change(await screen.findByLabelText("agent name"), { target: { value: "mrdn-sbx-dc1-swiftgw01" } });
     fireEvent.click(screen.getByRole("button", { name: "enrol" }));
     expect(await screen.findByText(/already exists/)).toBeInTheDocument();
+  });
+});
+
+describe("how the BOMs are collected", () => {
+  it("documents all six BOMs", () => {
+    expect(BOMS.map((b) => b.key).every((k) => HOW_COLLECTED[k]?.reads && HOW_COLLECTED[k]?.complete)).toBe(true);
+    expect(HOW_COLLECTED.HBOM.supplied).toMatch(/asset register/i);
+    expect(HOW_COLLECTED.VBOM.supplied).toMatch(/contracts/i);
+  });
+
+  it("shows every source an agent read for a BOM, with what came back", async () => {
+    mockFetch(fleet());
+    await act(async () => { renderWithProviders(<CryptavaAgents />); });
+    fireEvent.click(await screen.findByText("mrdn-sbx-dc1-swiftgw01"));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByText("how it was collected · 3 sources"));
+    expect(within(dialog).getByText("/sys/class/dmi/id")).toBeInTheDocument();
+    expect(within(dialog).getByText("not on host")).toBeInTheDocument();
+    expect(within(dialog).getByText("not supplied")).toBeInTheDocument();
+    expect(within(dialog).getByText("read")).toBeInTheDocument();
+    expect(within(dialog).getByText(/supply it from the CMDB/)).toBeInTheDocument();
+  });
+
+  it("has a reference table on the page", async () => {
+    mockFetch(fleet());
+    await act(async () => { renderWithProviders(<CryptavaAgents />); });
+    expect(await screen.findByText("How each BOM is collected")).toBeInTheDocument();
+    expect(screen.getByText(HOW_COLLECTED.VBOM.complete)).toBeInTheDocument();
+  });
+});
+
+describe("install targets", () => {
+  const issued = { agent_id: "a9", enrollment_token: "tok-1" };
+
+  it("builds the command for each place an agent can run", () => {
+    expect(installCommand("linux", issued, "https://cs.bank")).toBe("sudo ./install.sh --server https://cs.bank --agent-id a9 --token tok-1");
+    expect(installCommand("sandbox", issued, "https://cs.bank", "hsm-sim")).toBe("bash sandbox/run_sandbox.sh agents add hsm-sim a9 tok-1");
+    expect(installCommand("container", issued, "https://cs.bank")).toContain("CRYPTAVA_ENROLLMENT_TOKEN=tok-1");
+  });
+
+  it("configures a sandbox bank server from Add a server", async () => {
+    mockFetch({
+      ...fleet(),
+      "/api/v1/control/agents/enroll": () => ({ agent_id: "a9", name: "mrdn-sbx-dc1-mobileapi01", enrollment_token: "tok-999" }),
+    });
+    await act(async () => { renderWithProviders(<CryptavaAgents />); });
+    fireEvent.change(await screen.findByLabelText("agent name"), { target: { value: "mrdn-sbx-dc1-mobileapi01" } });
+    fireEvent.click(screen.getByRole("button", { name: "enrol" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Sandbox bank server" }));
+    expect(screen.getByText("bash sandbox/run_sandbox.sh agents add mobile-api a9 tok-999")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("sandbox bank server"), { target: { value: "legacy-branch" } });
+    expect(screen.getByText("bash sandbox/run_sandbox.sh agents add legacy-branch a9 tok-999")).toBeInTheDocument();
   });
 });

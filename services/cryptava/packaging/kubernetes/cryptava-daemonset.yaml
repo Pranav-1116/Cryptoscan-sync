@@ -16,6 +16,9 @@ data:
   CRYPTAVA_SERVER: "https://cryptoscan.bank.example"
   CRYPTAVA_ESTATE: "meridian"
   CRYPTAVA_ROOT: "/host"
+  # Each node's CMDB record (hardware identity + vendor contracts), dropped on the node by
+  # your provisioning; read through the host mount. Missing = HBOM/VBOM say what is missing.
+  CRYPTAVA_ASSET_RECORD: "/host/etc/cryptava/asset-record.json"
   CRYPTAVA_INTERVAL: "3600"
   CRYPTAVA_TAGS: '{"environment": "prod", "datacenter": "dc1"}'
   NAME_PREFIX: "mrdn-prod-dc1"

@@ -54,12 +54,15 @@ DEFAULTS: dict[str, Any] = {
     "max_packages": 6000,
     "max_certificates": 500,
     "dmidecode": True,
+    "asset_record": None,           # CMDB/procurement record (default /etc/cryptava/asset-record.json)
+    "hardware": None,               # inline hardware record (overrides the file's "hardware")
+    "contracts": None,              # inline vendor contracts (overrides the file's "contracts")
 }
 
 _BOOL = {"insecure_skip_verify", "probe_listeners", "python_packages", "java_archives", "dmidecode"}
 _INT = {"interval", "heartbeat_interval", "jitter", "timeout", "max_probes", "max_packages", "max_certificates"}
 _FLOAT = {"probe_timeout"}
-_JSON = {"tags", "system", "probe_exclude_ports", "cert_dirs", "jar_dirs"}
+_JSON = {"tags", "system", "probe_exclude_ports", "cert_dirs", "jar_dirs", "hardware", "contracts"}
 
 
 class ConfigError(ValueError):

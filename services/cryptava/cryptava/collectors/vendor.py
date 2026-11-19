@@ -10,17 +10,27 @@ release line is known) — the platform keeps these as *declarations*, never as 
 of use.
 
 Contracts, support entitlements and account managers are not on the host; they come
-from the bank's CMDB / procurement import and are reported as not collected.
+from the bank's asset-register record (:mod:`cryptava.register`, the CMDB / procurement
+export dropped next to the agent config). Each register entry is matched to the vendors
+this host actually attributed and sent as ``IMPORTED`` evidence on that vendor, with a
+contract state (ACTIVE, EXPIRING_SOON, EXPIRED, COMMUNITY, INTERNAL). A vendor the host uses but the
+register does not mention is marked ``NONE_ON_RECORD`` — that is a VBOM *finding* (a
+supplier without a contract), not a collection gap. The plane is PARTIAL only while no
+register has been supplied at all.
 """
 
 from __future__ import annotations
 
 import re
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
+from cryptava import register as asset_register
 from cryptava.collectors import Context
+from cryptava.observation import source
 from cryptava.util import slug
+
+EXPIRING_WITHIN_DAYS = 90
 
 VENDOR_ALIASES = {
     "genuineintel": "Intel", "intel corporation": "Intel", "intel corp.": "Intel", "intel": "Intel",
@@ -143,6 +153,8 @@ def collect(ctx: Context) -> None:
             basis = "DEPLOYMENT_CONFIG"
         elif subject.startswith(("ca:", "cert:")):
             basis = "CONFIGURATION"
+        elif note.startswith("asset register"):
+            basis = "IMPORTED"
         else:
             basis = "RUNTIME_OBSERVATION"
         vendors.link(subject, vendor_raw, product, version, note, basis=basis, extra=extra)
@@ -163,15 +175,118 @@ def collect(ctx: Context) -> None:
                                      f"{package['ecosystem']} package metadata", basis="DEPLOYMENT_CONFIG"):
             linked_packages += 1
 
+    queued = len(ctx.vendor_links)
     total = len(ctx.vendors)
+    reg = asset_register.get(ctx)
+    contracts = _contracts(ctx, reg) if total else {"matched": 0, "unmatched": [], "states": {}, "without": []}
+
+    sources = [
+        source("/etc/os-release", "operating-system publisher and support lifecycle",
+               "READ" if distro_vendor else "EMPTY", 1 if distro_vendor else 0),
+        source("HBOM · CBOM vendor fields", "hardware / firmware / CPU / PCI vendor, crypto-library project, "
+               "certificate issuer", "READ" if queued else "EMPTY", queued),
+        source("package metadata", "supplier of each crypto-relevant package (rpm Vendor tag, deb/apk distribution)",
+               "READ" if linked_packages else "EMPTY", linked_packages),
+        source(reg.path or asset_register.DEFAULT_RECORD_PATH, "contracts, support entitlements, account managers",
+               "READ" if reg.has_contract_register else ("EMPTY" if reg.state == "READ" else reg.state),
+               len(reg.contracts) if reg.has_contract_register else None,
+               reg.note or (reg.label if reg.has_contract_register else "supply the procurement / CMDB export")),
+    ]
     if total == 0:
         obs.plane("VBOM · vendors", "FAILED", "no vendor could be attributed from hardware, OS or packages",
-                  expected=1, collected=0)
+                  expected=1, collected=0, sources=sources)
         return
-    obs.plane("VBOM · vendors", "PARTIAL",
-              f"{total} vendor products ({linked_packages} crypto-relevant packages attributed); contracts and "
-              "support entitlements are not on the host — import them from the CMDB",
-              expected=2, collected=1)
+    head = f"{total} vendor products ({linked_packages} crypto-relevant packages attributed)"
+    if not reg.has_contract_register:
+        obs.plane("VBOM · vendors", "PARTIAL",
+                  f"{head}; contracts and support entitlements are not on the host — supply the asset-register "
+                  f"record ({reg.path or asset_register.DEFAULT_RECORD_PATH}) from the CMDB / procurement export",
+                  expected=2, collected=1, sources=sources)
+        return
+    states = contracts["states"]
+    parts = [f"{count} {state.lower().replace('_', ' ')}" for state, count in sorted(states.items())]
+    detail = f"contract register '{reg.label}' read — vendor products by contract state: " + ", ".join(parts)
+    if contracts["without"]:
+        names = ", ".join(contracts["without"][:4]) + ("…" if len(contracts["without"]) > 4 else "")
+        detail += f" (no contract on record: {names})"
+    if contracts["unmatched"]:
+        n = len(contracts["unmatched"])
+        detail += f"; {n} register {'entry names a vendor' if n == 1 else 'entries name vendors'} not seen on this host"
+    obs.plane("VBOM · vendors", "COMPLETE", f"{head}; {detail}", expected=2, collected=2, sources=sources)
+
+
+def _contract_state(entry: dict[str, Any]) -> str:
+    level = str(entry.get("support_level") or "").strip().lower()
+    if level in asset_register.COMMUNITY_LEVELS:
+        return "COMMUNITY"
+    if level in asset_register.INTERNAL_LEVELS:
+        return "INTERNAL"
+    end = entry.get("end")
+    if not end:
+        return "ACTIVE"
+    try:
+        when = date.fromisoformat(str(end)[:10])
+    except ValueError:
+        return "ACTIVE"
+    today = date.today()
+    if when < today:
+        return "EXPIRED"
+    if when <= today + timedelta(days=EXPIRING_WITHIN_DAYS):
+        return "EXPIRING_SOON"
+    return "ACTIVE"
+
+
+def _contracts(ctx: Context, reg: asset_register.Register) -> dict[str, Any]:
+    """Match register entries to the vendors this host attributed; never invent a vendor."""
+    obs = ctx.obs
+    by_vendor: dict[str, list[tuple[str, str]]] = {}
+    for (vendor, product), ref in ctx.vendors.items():
+        by_vendor.setdefault(vendor.lower(), []).append((product, ref))
+    covered: set[str] = set()
+    states: dict[str, int] = {}
+    unmatched: list[str] = []
+    matched = 0
+    for entry in reg.contracts:
+        name = canonical_vendor(entry["vendor"]) or entry["vendor"]
+        targets = list(by_vendor.get(str(name).lower(), []))
+        wanted = [str(p).lower() for p in entry.get("products") or [] if str(p).strip() and str(p) != "*"]
+        if wanted:
+            targets = [(product, ref) for product, ref in targets if any(w in product.lower() for w in wanted)]
+        covers = entry.get("covers") if isinstance(entry.get("covers"), list) else []
+        for covered_name in covers:
+            # an OEM contract also covers the components inside the box (CPU, NIC, disks)
+            targets.extend(by_vendor.get(str(canonical_vendor(str(covered_name)) or covered_name).lower(), []))
+        if not targets:
+            unmatched.append(str(name))
+            continue
+        state = _contract_state(entry)
+        matched += 1
+        for product, ref in targets:
+            if ref not in covered:
+                states[state] = states.get(state, 0) + 1
+            covered.add(ref)
+            obs.observe(ref, "IMPORTED", {
+                "record": "vendor-contract", "vendor": name, "product": product, "contract_state": state,
+                "contract_vendor": name,
+                **{k: v for k, v in entry.items() if k not in {"vendor", "products", "covers"}},
+                "host": ctx.fqdn, "source": reg.label, "exported_at": reg.exported_at,
+            }, layer="PLATFORM", source="cryptava-asset-register")
+            attrs = obs.assets[ref]["attributes"]
+            attrs.update({k: v for k, v in {
+                "contract_state": state, "contract_id": entry.get("contract_id"),
+                "support_level": entry.get("support_level"), "contract_end": entry.get("end"),
+                "account_manager": entry.get("account_manager"),
+            }.items() if v})
+    without = []
+    for (vendor, _product), ref in sorted(ctx.vendors.items()):
+        if ref in covered:
+            continue
+        obs.assets[ref]["attributes"]["contract_state"] = "NONE_ON_RECORD"
+        if vendor not in without:
+            without.append(vendor)
+    if without:
+        states["NONE_ON_RECORD"] = sum(1 for ref in ctx.vendors.values() if ref not in covered)
+    return {"matched": matched, "unmatched": unmatched, "states": states, "without": without}
 
 
 def _library_pqc(family: str, version: str | None) -> bool | None:

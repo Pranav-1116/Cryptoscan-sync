@@ -22,6 +22,7 @@ import struct
 from typing import Any
 
 from cryptava.collectors import Context, certs
+from cryptava.observation import source
 from cryptava.util import slug
 
 TCP_STATES = {"0A": "LISTEN", "01": "ESTABLISHED"}
@@ -463,8 +464,21 @@ def collect(ctx: Context) -> None:
     if not sockets:
         status = "PARTIAL"
         notes.append("no sockets visible in /proc/net (different network namespace?)")
+    provenance = [
+        source("/proc/net/{tcp,tcp6,udp,udp6}", "listening and established sockets",
+               "READ" if sockets else "EMPTY", len(sockets)),
+        source("/proc/<pid>/fd", "which process owns each socket (never the command line)",
+               "DENIED" if denied and not processes else "READ", len(processes),
+               f"{denied} processes not inspectable" if denied else None),
+        source("local protocol probe", "SSH banner, PostgreSQL SSLRequest, TLS handshake (version, cipher, "
+               "certificate, legacy versions accepted), plaintext HTTP / Redis",
+               "DISABLED" if not probe_enabled else ("READ" if probed else "EMPTY"),
+               probed if probe_enabled else None, "connects to this host only"),
+        source("/proc/net/tcp ESTABLISHED", "outbound peers this host depends on",
+               "READ" if outbound else "EMPTY", len(outbound)),
+    ]
     obs.plane("NBOM · network", status,
               f"{len(endpoints)} listeners ({tls_found} TLS, {plaintext} plaintext), {len(outbound)} outbound peers"
-              + (f"; {'; '.join(notes)}" if notes else ""), expected=1, collected=1)
+              + (f"; {'; '.join(notes)}" if notes else ""), expected=1, collected=1, sources=provenance)
     obs.cover(f"{ctx.hostname} · TCP listeners probed", tcp_listeners, probed if probe_enabled else 0,
               None if probe_enabled else "probing disabled")

@@ -5,6 +5,14 @@ Sources, in order of preference: sysfs (``/sys/class/dmi/id``, ``/sys/block``,
 ``meminfo``), and — only when present and permitted — ``dmidecode -t memory`` for
 DIMM detail. Serial numbers and the platform UUID are root-only in sysfs; when the
 agent is unprivileged they are reported as unavailable, never guessed.
+
+Platform identity needs one authoritative source: the firmware (DMI) or, where the
+platform exposes none (containers, many VMs, WSL), the bank's asset-register record
+(:mod:`cryptava.register`). Register facts are sent as ``IMPORTED`` evidence; when both
+exist they are cross-checked and a serial mismatch is reported, never resolved silently.
+The plane is COMPLETE when identity is established and nothing readable was refused;
+DIMM layout is only expected where the agent runs on the machine itself (inside a
+container the node's memory modules are outside the workload's view by design).
 """
 
 from __future__ import annotations
@@ -15,7 +23,9 @@ import socket
 from typing import Any
 
 from cryptava import __version__
+from cryptava import register as asset_register
 from cryptava.collectors import Context
+from cryptava.observation import source
 from cryptava.util import clean, run_allowed, slug
 
 DMI_FIELDS = (
@@ -453,32 +463,68 @@ def collect(ctx: Context) -> None:
         }, layer="PLATFORM", source="cryptava-host")
 
     # -- the platform (chassis / board) -------------------------------------- #
+    reg = asset_register.get(ctx)
+    hw = reg.hardware
+    register_identity = reg.hardware_identified()
     vendor = dmi.get("sys_vendor") or dmi.get("board_vendor")
     model = dmi.get("product_name") or dmi.get("board_name")
+    from_register = not dmi and register_identity
+    if from_register:
+        vendor, model = hw.get("manufacturer"), hw.get("model")
     system_name = " ".join(x for x in (vendor, model) if x) or (
         f"{virtualization} virtual machine" if virtualization else "Unidentified platform (no DMI)")
-    serial = dmi.get("product_serial") or dmi.get("chassis_serial")
+    serial = dmi.get("product_serial") or dmi.get("chassis_serial") or (hw.get("serial_number") if from_register else None)
+    asset_tag = dmi.get("chassis_asset_tag") or hw.get("asset_tag")
     system_identity = {"serial_number": serial, "model": model} if serial else {
         "asset_tag": f"{ctx.machine_key}:system", "model": model or system_name}
+    warranty = asset_register.date_state(hw.get("warranty_end"), active="IN_WARRANTY",
+                                         lapsed="OUT_OF_WARRANTY") if hw.get("warranty_end") else None
     ctx.system_ref = obs.asset("hw:system", "HARDWARE", system_name, identity=system_identity, attributes={
         "component": "system", "vendor": vendor, "model": model, "family": dmi.get("product_family"),
         "version": dmi.get("product_version"), "serial_number": serial, "uuid": dmi.get("product_uuid"),
         "board": " ".join(x for x in (dmi.get("board_vendor"), dmi.get("board_name")) if x) or None,
         "chassis_type": CHASSIS_TYPES.get(dmi.get("chassis_type", ""), dmi.get("chassis_type")),
-        "asset_tag": dmi.get("chassis_asset_tag"), "virtualization": virtualization,
+        "asset_tag": asset_tag, "virtualization": virtualization,
         "memory_mb": memory_mb,
-    }, source="cryptava-dmi")
+        "identity_source": "firmware (DMI)" if dmi else ("asset register" if from_register else None),
+        "platform": hw.get("platform"), "location": hw.get("location"), "rack": hw.get("rack"),
+        "cluster": hw.get("cluster"), "warranty_end": hw.get("warranty_end"), "warranty_state": warranty,
+        "end_of_life": hw.get("end_of_life"), "hardware_owner": hw.get("owner"),
+    }, source="cryptava-dmi" if dmi or not from_register else "cryptava-asset-register")
     ctx.system_evidence = obs.observe(ctx.system_ref, "STATIC_OBSERVED", {
-        "vendor": vendor, "model": model, "serial_number": serial, "virtualization": virtualization,
+        "vendor": dmi.get("sys_vendor") or dmi.get("board_vendor"),
+        "model": dmi.get("product_name") or dmi.get("board_name"),
+        "serial_number": dmi.get("product_serial") or dmi.get("chassis_serial"),
+        "virtualization": virtualization, "container_runtime": runtime,
         "memory_mb": memory_mb, "dmi_available": bool(dmi),
         "dmi_unreadable": dmi_unreadable or None,
         "source": "/sys/class/dmi/id" if dmi else "no DMI tables exposed by this platform",
     }, layer="PLATFORM", source="cryptava-dmi")
+    system_evidence = [ctx.host_evidence, ctx.system_evidence]
+    register_mismatch = None
+    if hw:
+        register_ev = obs.observe(ctx.system_ref, "IMPORTED", {
+            **hw, "record": "hardware-asset", "warranty_state": warranty, "host": ctx.fqdn,
+            "source": reg.label, "exported_at": reg.exported_at, "file": reg.path,
+        }, layer="PLATFORM", source="cryptava-asset-register")
+        system_evidence.append(register_ev)
+        if from_register:
+            ctx.system_evidence = register_ev
+        firmware_serial = dmi.get("product_serial") or dmi.get("chassis_serial")
+        if firmware_serial and hw.get("serial_number") and \
+                firmware_serial.strip().lower() != str(hw["serial_number"]).strip().lower():
+            register_mismatch = (f"asset register serial {hw['serial_number']} differs from firmware serial "
+                                 f"{firmware_serial}")
+            obs.observe(ctx.system_ref, "STATIC_OBSERVED", {
+                "register_serial": hw["serial_number"], "firmware_serial": firmware_serial,
+                "role": "asset-register-mismatch", "host": ctx.fqdn,
+                "note": "the CMDB record and the firmware disagree; the firmware value is used",
+            }, layer="PLATFORM", source="cryptava-dmi")
     obs.relate(ctx.host_ref, "hosted_on", ctx.system_ref, basis="RUNTIME_OBSERVATION",
-               evidence=[ctx.host_evidence, ctx.system_evidence])
+               evidence=system_evidence)
     if vendor:
-        ctx.vendor_links.append((ctx.system_ref, vendor, model or "platform", dmi.get("product_version"),
-                                 "DMI system vendor"))
+        note = "DMI system vendor" if dmi else "asset register (CMDB)"
+        ctx.vendor_links.append((ctx.system_ref, vendor, model or "platform", dmi.get("product_version"), note))
 
     components = 0
     # -- firmware ------------------------------------------------------------ #
@@ -592,7 +638,9 @@ def collect(ctx: Context) -> None:
         components += 1
 
     # -- PCI (storage/network/GPU/crypto accelerators) ----------------------- #
-    for device in _pci(ctx):
+    pci_devices = _pci(ctx)
+    pci_count = len(pci_devices)
+    for device in pci_devices:
         ref = f"hw:pci:{device['slot']}"
         name = f"{device['vendor']} {device['class_label']} [{device['device_id']}]"
         obs.asset(ref, "HARDWARE", name,
@@ -628,16 +676,58 @@ def collect(ctx: Context) -> None:
             }, layer="PLATFORM", source="cryptava-sysfs")
         components += 1
 
-    reasons = []
-    if not dmi:
-        reasons.append("no DMI tables (platform identity from procfs only)")
-    elif dmi_unreadable:
-        reasons.append(f"{len(dmi_unreadable)} DMI fields need root ({', '.join(dmi_unreadable[:4])})")
-    if dimm_reason and ctx.config.get("dmidecode", True):
-        reasons.append(f"DIMM detail unavailable: {dimm_reason[:80]}")
-    status = "COMPLETE" if dmi and not dmi_unreadable else "PARTIAL"
-    obs.plane("HBOM · hardware", status,
-              f"{components} hardware components read" + (f"; {'; '.join(reasons)}" if reasons else ""),
-              expected=1, collected=1,
-              details={"virtual_nics": virtual_nics, "encrypted_volumes": len(encrypted)})
+    # -- status: identity + nothing refused --------------------------------- #
+    dimm_wanted = bool(ctx.config.get("dmidecode", True))
+    gaps: list[str] = []
+    notes: list[str] = []
+    if dmi:
+        notes.append("platform identity from firmware (DMI)")
+    elif register_identity:
+        notes.append(f"platform identity from the asset register ({reg.label}); this platform exposes no "
+                     "firmware tables" + (f" — {runtime} container" if runtime else ""))
+    else:
+        where = reg.path or asset_register.DEFAULT_RECORD_PATH
+        gaps.append("no DMI tables and no asset-register hardware record (platform identity unknown) — "
+                    f"add a 'hardware' record to {where}")
+    if dmi and dmi_unreadable and not (register_identity and hw.get("serial_number")):
+        gaps.append(f"{len(dmi_unreadable)} DMI fields need root ({', '.join(dmi_unreadable[:4])})")
+    if register_mismatch:
+        notes.append(register_mismatch)
+    if dimm_wanted and dimm_reason:
+        if dmi and not runtime:
+            gaps.append(f"DIMM detail unavailable: {dimm_reason[:80]}")
+        else:
+            notes.append("memory size from /proc/meminfo (DIMM layout is not visible "
+                         + ("inside a container" if runtime else "without firmware tables") + ")")
+    status = "PARTIAL" if gaps else "COMPLETE"
+
+    sources = [
+        source("/sys/class/dmi/id", "platform vendor, model, serial, UUID, BIOS",
+               "READ" if dmi and not dmi_unreadable else ("DENIED" if dmi_unreadable else "ABSENT"),
+               len(dmi) or None, f"{len(dmi_unreadable)} root-only fields unreadable" if dmi_unreadable else None),
+        source(reg.path or asset_register.DEFAULT_RECORD_PATH, "hardware record: model, serial, asset tag, rack, warranty",
+               "READ" if hw else ("EMPTY" if reg.state == "READ" else reg.state),
+               len(hw) or None, reg.note or (reg.label if hw else "supply it from the CMDB")),
+        source("/proc/cpuinfo", "CPU model, vendor, cores, crypto extensions", "READ" if cpu.get("model") or
+               cpu.get("logical_cpus") else "EMPTY", cpu.get("logical_cpus")),
+        source("/proc/meminfo", "installed memory", "READ" if memory_mb else "EMPTY", None,
+               f"{round(memory_mb / 1024, 1)} GiB" if memory_mb else None),
+        source("dmidecode -t memory", "memory modules (DIMMs)",
+               "DISABLED" if not dimm_wanted else ("READ" if dimms else "UNAVAILABLE"),
+               len(dimms) if dimms else None, dimm_reason[:120] if dimm_reason else None),
+        source("/sys/block", "disks, disk firmware, dm-crypt volumes", "READ" if disks else "EMPTY",
+               len(disks), f"{len(encrypted)} encrypted volumes" if encrypted else None),
+        source("/sys/class/net", "network interfaces", "READ" if nics else "EMPTY", len(nics),
+               f"{virtual_nics} virtual interfaces skipped" if virtual_nics else None),
+        source("/sys/bus/pci/devices", "storage / network / GPU / crypto PCI devices",
+               "READ" if pci_count else ("EMPTY" if (view.sys / "bus/pci/devices").is_dir() else "ABSENT"), pci_count),
+        source("/sys/class/tpm", "TPM version and manufacturer", "READ" if tpm else "ABSENT", 1 if tpm else 0),
+    ]
+    reason = f"{components} hardware components read"
+    if gaps:
+        reason += "; " + "; ".join(gaps)
+    if notes:
+        reason += "; " + "; ".join(notes)
+    obs.plane("HBOM · hardware", status, reason, expected=1, collected=1,
+              details={"virtual_nics": virtual_nics, "encrypted_volumes": len(encrypted)}, sources=sources)
     obs.cover(f"{ctx.hostname} · hardware components", components or 1, components)

@@ -270,3 +270,49 @@ def test_one_step_rollout_and_rebuilt_host_keep_the_name(route_agent, tmp_path):
                    json={"agent_id": first["agent_id"]})
     assert stale.status_code in (401, 403)
     assert cryptava_agent.run_once(cfg, rebuilt)["response"]["authenticity"] == "VALID"
+
+
+def test_asset_register_completes_hbom_and_vbom_end_to_end(route_agent, tmp_path):
+    """A host with no firmware tables + the bank's CMDB record: HBOM and VBOM complete,
+    the console sees how each BOM was collected, and the contracts reach the VBOM."""
+    import json
+    import shutil
+
+    c = route_agent
+    h = _admin(c)
+    cfg, state = _host(tmp_path, "c", "mobileapi01", "10.210.0.3", system={"name": "Mobile Banking API"})
+    shutil.rmtree(Path(cfg["sys"]) / "class/dmi", ignore_errors=True)
+    record = tmp_path / "asset-record.json"
+    record.write_text(json.dumps({
+        "source": "Meridian CMDB export",
+        "hardware": {"manufacturer": "VMware, Inc.", "model": "VMware7,1", "serial_number": "VMware-42 1c 6d",
+                     "asset_tag": "MRDN-VM-MOBAPI01"},
+        "contracts": [
+            {"vendor": "OpenSSL Software Foundation", "contract_id": "OSF-PS-2024-117",
+             "support_level": "Premium Support", "end": "2099-03-31"},
+            {"vendor": "Debian Project", "support_level": "community"},
+        ],
+    }))
+    cfg["asset_record"] = str(record)
+    enrolled = _enrol(c, h, "mrdn-sbx-dc1-mobileapi01")
+    cryptava_agent.enroll(cfg, state, agent_id=enrolled["agent_id"], token=enrolled["enrollment_token"])
+    run = cryptava_agent.run_once(cfg, state)
+    assert run["delivered"], run.get("error")
+    assert run["response"]["authenticity"] == "VALID"
+
+    rows = {row["contributor"]: row for row in c.get("/api/v1/ingestion/contributors", headers=h).json()["contributors"]}
+    planes = {p["plane"].split(" ")[0]: p for p in rows["mrdn-sbx-dc1-mobileapi01"]["planes"]}
+    assert planes["HBOM"]["status"] == "COMPLETE", planes["HBOM"]["reason"]
+    assert planes["VBOM"]["status"] == "COMPLETE", planes["VBOM"]["reason"]
+    for key, plane in planes.items():
+        assert plane["sources"], f"{key} has no sources"
+    hbom_sources = {s["source"]: s["state"] for s in planes["HBOM"]["sources"]}
+    assert hbom_sources["/sys/class/dmi/id"] == "ABSENT"
+    assert hbom_sources[str(record)] == "READ"
+
+    boms = c.get("/api/v1/estate/evidence/boms", headers=h).json()["boms"]
+    contracts = boms["VBOM"].get("contracts") or []
+    assert any(row["contract_id"] == "OSF-PS-2024-117" and row["contract_state"] == "ACTIVE" for row in contracts)
+    assert all(row["register"] == "Meridian CMDB export" for row in contracts)
+    graph = c.get("/api/v1/estate/evidence/graph", headers=h).json()
+    assert graph["unresolved_edges"] == [], graph["unresolved_edges"][:3]

@@ -37,6 +37,13 @@
     mode: "0644"
   notify: restart cryptava
 
+- name: Asset-register record (CMDB hardware identity + vendor contracts)
+  ansible.builtin.copy:
+    content: "{{ cryptava_asset_record | to_nice_json }}\n"
+    dest: /etc/cryptava/asset-record.json
+    mode: "0644"
+  when: cryptava_asset_record | length > 0
+
 - name: Is this host enrolled?
   ansible.builtin.stat:
     path: /var/lib/cryptava/identity.json

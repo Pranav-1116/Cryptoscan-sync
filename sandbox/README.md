@@ -256,9 +256,56 @@ Each agent enrols itself once (your login is used only for that), gets its own
 signing key, and then sends every 5 minutes. Open **Discovery → Cryptava agents**
 in the console: each agent shows as `online`, with its six BOM results and
 `verified` once its signed report is checked. Click an agent for the reason
-behind each result and links to the BOM workspaces. Their findings are added next to the `collect` pass and
-never overwrite it. See `services/cryptava/README.md` for what each of the six
-BOMs contains and how to install the agent on a real server.
+behind each result, **how each BOM was collected** (every source it read and what
+came back), and links to the BOM workspaces. Their findings are added next to the
+`collect` pass and never overwrite it. See `services/cryptava/README.md` for what
+each of the six BOMs contains and how to install the agent on a real server.
+
+#### Add a bank server from the console (the real enrolment flow)
+
+The other three bank servers — `mobile-api`, `legacy-branch`, `hsm-sim` — have no
+agent until you add one, exactly as an operator would for a new server:
+
+1. Console → **Discovery → Cryptava agents → Add a server**.
+2. Type a unique name, e.g. `mrdn-sbx-dc1-mobileapi01`, and click **enrol**.
+   The console shows the agent id and a one-time token.
+3. Choose **Sandbox bank server**, pick the server (`mobile-api`), click **copy**.
+4. Paste the command in a terminal in the repository folder:
+
+   ```bash
+   bash sandbox/run_sandbox.sh agents add mobile-api <agent-id> <token>
+   ```
+
+   The agent joins that server (its processes, network and files), enrols with the
+   token, and its first signed report shows on the page within a minute.
+
+```bash
+bash sandbox/run_sandbox.sh agents list              # every agent container and its state
+bash sandbox/run_sandbox.sh agents remove mobile-api # stop + delete it (retire it in the console too)
+```
+
+A token works once and expires. If enrolment fails, open the agent in the
+console → **new token**, run `agents remove <host>`, then `agents add` again.
+
+#### Why HBOM and VBOM are complete here
+
+A container cannot read firmware tables, and contracts are never on a server.
+Like a real bank, each sandbox server has a **CMDB record** —
+`sandbox/cryptava/<host>.json` — mounted into its agent at
+`/etc/cryptava/asset-record.json`:
+
+* **HBOM** takes the platform identity (manufacturer, model, serial, asset tag,
+  rack, warranty) from it, marked as *imported from the asset register*, never as
+  observed. `core-banking-db` and `swift-gateway` are physical Dell/HPE servers,
+  `legacy-branch` is an HPE Gen9 **past its warranty**, the rest are VMware VMs.
+* **VBOM** matches its contracts to the vendors the agent found. Each vendor gets a
+  contract state: `active`, `expiring soon` (core-db's OpenSSL support ends
+  2026-12-31), `expired` (legacy-branch's HPE contract), `community` (Alpine) or
+  `internal` (the bank's own CA). A vendor with no contract is flagged as a
+  finding — `no contract on record` — it does not make the BOM partial.
+
+Edit a record and the next report (≤ 5 minutes) reflects it. Remove the mount and
+HBOM/VBOM go back to `partial`, saying exactly what is missing.
 
 ## Dependencies — crypto map and cascade (Twin & dependencies)
 

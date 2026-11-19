@@ -13,6 +13,57 @@ The console turns that into six BOMs:
 | **VBOM** (vendors) | who supplies each thing found above: hardware maker, CPU vendor, OS publisher (with its public end-of-support date), package supplier, crypto-library project, certificate authority |
 | **TechBOM** (topology) | built from all of the above (service → host → hardware, service → library, endpoint → certificate …), plus the business system you name in the config |
 
+## How each BOM is collected — and when it is complete
+
+Every report carries, per BOM, the list of **sources** the agent read and what each one
+returned (`read`, `nothing found`, `not on host`, `no permission`, `unavailable`,
+`turned off`, `not supplied`). The console shows it per agent: **Discovery → Cryptava
+agents →** click an agent **→ how it was collected**. `cryptava collect --json` prints
+the same thing on the server (`planes[].sources`).
+
+| BOM | Read from the server | Supplied by the bank | `COMPLETE` when |
+|---|---|---|---|
+| **HBOM** | `/sys/class/dmi/id`, `/proc/cpuinfo`, `/proc/meminfo`, `dmidecode -t memory`, `/sys/block`, `/sys/class/net`, `/sys/bus/pci/devices`, `/sys/class/tpm` | asset-register **hardware** record — needed where the platform exposes no firmware tables (containers, many VMs, WSL) | platform identity comes from firmware **or** the register, and nothing readable was refused (DIMM layout is only expected when the agent runs on the machine itself) |
+| **SBOM** | `/var/lib/dpkg/status`, `/lib/apk/db/installed`, `rpmdb.sqlite` (or `rpm -qa`), `*.dist-info/METADATA`, `*.jar` | — | an OS package database was read in full |
+| **CBOM** | crypto `.so` files, `/proc/<pid>/maps`, certificate files in 23 server locations, the trust store, `/etc/ssh`, `openssl.cnf` / crypto-policies, nginx / Apache / HAProxy / PostgreSQL configs, `java.security`, certificates served in TLS handshakes | — | every process's memory map was readable |
+| **NBOM** | `/proc/net/{tcp,tcp6,udp,udp6}`, `/proc/<pid>/fd`, a local probe of every TCP listener, established outbound peers | — | sockets were visible and every owner process inspectable |
+| **VBOM** | vendor fields of everything above: `/etc/os-release`, DMI / CPU / PCI vendors, crypto-library projects, certificate issuers, package suppliers | asset-register **contracts** (vendor, contract id, support level, dates, account manager) | the contract register was supplied. A vendor without a contract is a *finding* (`no contract on record`), not a gap |
+| **TechBOM** | the evidenced links between everything above | business-system mapping (`system` in the config) | the host is mapped to a business system |
+
+### The asset-register record (`/etc/cryptava/asset-record.json`)
+
+The two things a server cannot tell about itself — *what box is this* when firmware is
+hidden, and *who are we paying to support it* — come from the bank's CMDB / procurement
+system as one small JSON file per server. Install it with `install.sh --asset-record
+FILE`, the Ansible variable `cryptava_asset_record`, a container mount at
+`/etc/cryptava/asset-record.json`, or point `asset_record` / `CRYPTAVA_ASSET_RECORD`
+elsewhere. Everything taken from it is sent as `IMPORTED` evidence naming the register,
+never as an observation; when firmware is also readable the serials are cross-checked
+and a mismatch is reported.
+
+```json
+{
+  "source": "Meridian CMDB export",
+  "exported_at": "2026-11-01",
+  "hardware": {"manufacturer": "Dell Technologies", "model": "PowerEdge R750",
+               "serial_number": "7Q2K3X3", "asset_tag": "MRDN-DC1-000412",
+               "location": "DC1 / Hall B / Rack 04 / U12", "warranty_end": "2028-04-30"},
+  "contracts": [
+    {"vendor": "Dell Technologies", "contract_id": "PSP-88213", "support_level": "ProSupport Plus 4h",
+     "start": "2023-05-01", "end": "2028-04-30", "account_manager": "R. Iyer",
+     "covers": ["Intel", "Broadcom"]},
+    {"vendor": "OpenSSL Software Foundation", "contract_id": "OSF-PS-117", "end": "2027-03-31"},
+    {"vendor": "Alpine Linux", "support_level": "community"},
+    {"vendor": "Meridian Bank", "support_level": "internal", "note": "our own PKI"}
+  ]
+}
+```
+
+`covers` lists component vendors an OEM contract also covers (the CPU and NIC inside a
+Dell server); `products` narrows an entry to some of a vendor's products. Contract
+states: `ACTIVE`, `EXPIRING_SOON` (≤ 90 days), `EXPIRED`, `COMMUNITY`, `INTERNAL`,
+`NONE_ON_RECORD`. The sandbox ships one record per bank server in `sandbox/cryptava/`.
+
 ## Safety rules (what Cryptava will never do)
 
 * **It reads, it never changes.** Files are opened read-only. The only programs it may
@@ -34,10 +85,14 @@ The console turns that into six BOMs:
 
 1. **Console → Discovery → Cryptava agents → Add a server.** Type a unique name, e.g.
    `mrdn-prod-dc1-swiftgw01` (`<bank>-<env>-<dc>-<hostname>`). Names are unique; a
-   duplicate is refused. The console shows a **one-time token** and the install command.
+   duplicate is refused. The console shows a **one-time token** and the install command
+   for where the agent will run: **Linux server** (`install.sh`), **Container /
+   Kubernetes** (three environment variables) or **Sandbox bank server**
+   (`run_sandbox.sh agents add <host> <id> <token>` — see `sandbox/README.md`).
 2. **On the server**, run the command it shows:
    ```sh
-   sudo ./install.sh --server https://cryptoscan.bank.example --agent-id <id> --token <token>
+   sudo ./install.sh --server https://cryptoscan.bank.example --agent-id <id> --token <token> \
+        --asset-record /path/to/this-server.cmdb.json     # optional: HBOM identity + VBOM contracts
    ```
    The agent makes its own Ed25519 key pair (the private key never leaves the host),
    sends the public key with the token, and receives a machine key that can only post
@@ -81,7 +136,8 @@ set as `CRYPTAVA_<KEY>`). Identity and key: `/var/lib/cryptava/` (mode 0700, fil
 * Windows, AIX and mainframe hosts (Linux only).
 * Database-internal encryption (TDE) and HSM partition contents — these need the
   agentless readers with database/HSM credentials.
-* Vendor contracts and support entitlements — import them from the CMDB.
+* Pulling contracts straight from a CMDB API — the agent reads the per-server export
+  (`/etc/cryptava/asset-record.json`); producing that file is the bank's CMDB job.
 
 ## Tests
 

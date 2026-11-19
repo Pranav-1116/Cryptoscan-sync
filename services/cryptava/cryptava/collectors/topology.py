@@ -18,6 +18,7 @@ from __future__ import annotations
 
 
 from cryptava.collectors import Context
+from cryptava.observation import source
 from cryptava.util import slug
 
 TECH_TYPES = {"SYSTEM", "APPLICATION", "SERVICE", "CONTAINER", "HOST", "DATABASE", "HSM", "VENDOR", "HARDWARE"}
@@ -63,11 +64,18 @@ def collect(ctx: Context) -> None:
     tech_assets = sum(1 for a in obs.assets.values() if a["type"] in TECH_TYPES)
     tech_edges = sum(1 for r in obs.relationships.values()
                      if obs.assets[r["subject"]]["type"] in TECH_TYPES and obs.assets[r["object"]]["type"] in TECH_TYPES)
+    provenance = [
+        source("evidenced edges from the other five planes", "runs on, hosted on, exposes, loads library, "
+               "provided by, uses certificate …", "READ" if tech_edges else "EMPTY", tech_edges),
+        source("agent config 'system'", "approved business-system mapping (name, owner, criticality, applications)",
+               "READ" if mapped else "NOT_CONFIGURED", mapped or None,
+               system.get("name") if mapped else "set 'system' in the agent config"),
+    ]
     if mapped:
         obs.plane("TechBOM · topology", "COMPLETE",
                   f"{tech_assets} technology assets, {tech_edges} evidenced links; business system "
-                  f"'{system['name']}' from the approved mapping", expected=1, collected=1)
+                  f"'{system['name']}' from the approved mapping", expected=1, collected=1, sources=provenance)
     else:
         obs.plane("TechBOM · topology", "PARTIAL",
                   f"{tech_assets} technology assets, {tech_edges} evidenced links; no business system mapped "
-                  "(set 'system' in the agent config)", expected=2, collected=1)
+                  "(set 'system' in the agent config)", expected=2, collected=1, sources=provenance)

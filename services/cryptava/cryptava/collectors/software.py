@@ -19,6 +19,7 @@ import struct
 from typing import Any
 
 from cryptava.collectors import Context
+from cryptava.observation import source
 from cryptava.util import run_allowed, slug
 
 DEFAULT_JAR_DIRS = ["/opt", "/usr/share/java", "/srv", "/app", "/usr/local/lib"]
@@ -228,18 +229,21 @@ def collect(ctx: Context) -> None:
     problems: list[str] = []
     packages: list[dict[str, Any]] = []
 
+    found: dict[str, int] = {}
     dpkg = view.read_text("/var/lib/dpkg/status", limit=64 * 1024 * 1024)
     if dpkg:
         parsed = parse_dpkg_status(dpkg)
         packages.extend(parsed)
         ctx.file_owner.update(_dpkg_owners(ctx, [p["name"] for p in parsed]))
         sources.append(f"dpkg ({len(parsed)})")
+        found["dpkg"] = len(parsed)
     apk = view.read_text("/lib/apk/db/installed", limit=64 * 1024 * 1024)
     if apk:
         parsed, owners = parse_apk_installed(apk)
         packages.extend(parsed)
         ctx.file_owner.update(owners)
         sources.append(f"apk ({len(parsed)})")
+        found["apk"] = len(parsed)
     rpm_db = next((p for p in ("/var/lib/rpm/rpmdb.sqlite", "/usr/lib/sysimage/rpm/rpmdb.sqlite") if view.exists(p)), None)
     if rpm_db:
         try:
@@ -247,6 +251,7 @@ def collect(ctx: Context) -> None:
             packages.extend(parsed)
             ctx.file_owner.update(owners)
             sources.append(f"rpm ({len(parsed)})")
+            found["rpm"] = len(parsed)
         except sqlite3.Error as exc:
             problems.append(f"rpmdb.sqlite unreadable: {exc}")
     elif view.exists("/var/lib/rpm/Packages") and str(view.root) == "/":
@@ -254,6 +259,7 @@ def collect(ctx: Context) -> None:
         if parsed:
             packages.extend(parsed)
             sources.append(f"rpm -qa ({len(parsed)})")
+            found["rpm"] = len(parsed)
         else:
             problems.append("BerkeleyDB rpm database present but `rpm -qa` failed")
 
@@ -291,12 +297,26 @@ def collect(ctx: Context) -> None:
         ctx.packages.setdefault(name, {"version": version, "ecosystem": eco, "ref": ref,
                                        "maintainer": package.get("maintainer"), "vendor": package.get("vendor")})
 
+    py_on, jar_on = ctx.config.get("python_packages", True), ctx.config.get("java_archives", True)
+    rpm_problem = next((p for p in problems if "rpm" in p), None)
+    provenance = [
+        source("/var/lib/dpkg/status", "Debian / Ubuntu packages (+ info/*.list file ownership)",
+               "READ" if "dpkg" in found else "ABSENT", found.get("dpkg")),
+        source("/lib/apk/db/installed", "Alpine packages and file ownership",
+               "READ" if "apk" in found else "ABSENT", found.get("apk")),
+        source(rpm_db or "/var/lib/rpm", "RHEL / SUSE / Fedora packages (rpmdb.sqlite, or rpm -qa for BerkeleyDB)",
+               "READ" if "rpm" in found else ("UNAVAILABLE" if rpm_problem else "ABSENT"), found.get("rpm"), rpm_problem),
+        source("*.dist-info/METADATA", "Python packages (system and /opt prefixes)",
+               "DISABLED" if not py_on else ("READ" if python else "EMPTY"), len(python) if py_on else None),
+        source("*.jar", "Java archives under the application directories",
+               "DISABLED" if not jar_on else ("READ" if jars else "EMPTY"), len(jars) if jar_on else None),
+    ]
     if not packages:
         obs.plane("SBOM · software", "FAILED",
                   "no package database found (dpkg, apk, rpm) and no Python/Java packages" +
-                  (f"; {'; '.join(problems)}" if problems else ""), expected=1, collected=0)
+                  (f"; {'; '.join(problems)}" if problems else ""), expected=1, collected=0, sources=provenance)
         return
     status = "PARTIAL" if problems or not os_packages else "COMPLETE"
     obs.plane("SBOM · software", status, f"{len(packages)} packages from {', '.join(sources)}" +
-              (f"; {'; '.join(problems)}" if problems else ""), expected=1, collected=1)
+              (f"; {'; '.join(problems)}" if problems else ""), expected=1, collected=1, sources=provenance)
     obs.cover(f"{ctx.hostname} · package databases", max(1, len(sources)), len(sources))

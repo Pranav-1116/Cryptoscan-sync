@@ -1635,10 +1635,29 @@ def _project_vbom(graph: EstateGraph) -> dict[str, Any]:
     types = {"VENDOR"}
     components = [_component(asset) for asset in graph.assets() if asset["type"] in types]
     declared: list[dict[str, Any]] = []
+    contracts: list[dict[str, Any]] = []
     for record in graph.evidence():
+        facts = record.get("facts") or {}
+        if record["evidence_type"] == "IMPORTED" and facts.get("record") == "vendor-contract":
+            # a commercial fact from the bank's own register — imported, never observed
+            contracts.append(
+                {
+                    "vendor_asset_id": record["target"],
+                    "vendor": facts.get("vendor"),
+                    "product": facts.get("product"),
+                    "contract_state": facts.get("contract_state"),
+                    "contract_id": facts.get("contract_id"),
+                    "support_level": facts.get("support_level"),
+                    "start": facts.get("start"),
+                    "end": facts.get("end"),
+                    "account_manager": facts.get("account_manager"),
+                    "register": facts.get("source"),
+                    "evidence_id": record["evidence_id"],
+                }
+            )
+            continue
         if record["evidence_type"] != "VENDOR_DECLARED":
             continue
-        facts = record.get("facts") or {}
         declared.append(
             {
                 "vendor_asset_id": record["target"],
@@ -1665,7 +1684,7 @@ def _project_vbom(graph: EstateGraph) -> dict[str, Any]:
             "'the product supports AES-256' is a vendor declaration about a product, never proof that "
             "this bank uses AES-256"
         ),
-        extra={"declared_capabilities": declared, "declared_only": True},
+        extra={"declared_capabilities": declared, "declared_only": True, "contracts": contracts},
     )
 
 

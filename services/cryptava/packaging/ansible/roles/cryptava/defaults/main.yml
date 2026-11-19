@@ -17,6 +17,18 @@ cryptava_cert_dirs: []
 # cryptava_system: {name: "SWIFT Gateway", owner: "Payments Ops",
 #                   applications: [{name: "Alliance Access", services: ["java", "nginx"]}]}
 cryptava_system: {}
+# Optional asset-register record from the CMDB (HBOM hardware identity + VBOM vendor
+# contracts), written to /etc/cryptava/asset-record.json. Usually generated per host from
+# a CMDB export, e.g.
+# cryptava_asset_record:
+#   source: "Meridian CMDB export"
+#   hardware: {manufacturer: "Dell Technologies", model: "PowerEdge R750", serial_number: "7Q2K3X3",
+#              asset_tag: "MRDN-DC1-000412", location: "DC1 / Rack 04 / U12", warranty_end: "2028-04-30"}
+#   contracts:
+#     - {vendor: "Dell Technologies", contract_id: "PSP-88213", support_level: "ProSupport Plus",
+#        end: "2028-04-30", covers: ["Intel", "Broadcom"]}
+#     - {vendor: "Red Hat", contract_id: "RH-9921", support_level: "Premium", end: "2027-01-31"}
+cryptava_asset_record: {}
 # Admin API key used only for enrolment (keep it in Ansible Vault). Never written to disk.
 cryptava_provision_key: ""
 # Where the agent source is on the control node.

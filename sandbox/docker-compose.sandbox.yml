@@ -225,6 +225,11 @@ services:
   #   ./sandbox/run_sandbox.sh agents        (or: ... --profile agents up -d)
   # Container names deliberately do NOT start with cryptoscan-sbx- so the sandbox
   # collector never mistakes an agent for a bank host.
+  # Each agent also gets its host's CMDB record (sandbox/cryptava/<host>.json) at
+  # /etc/cryptava/asset-record.json: the hardware identity a container cannot read from
+  # firmware (HBOM) and the vendor contracts that are never on a host (VBOM).
+  # The other bank hosts (mobile-api, legacy-branch, hsm-sim) are left for the console:
+  # Discovery -> Cryptava agents -> Add a server -> "Sandbox bank server".
   cryptava-swift-gateway:
     <<: *cryptava-agent
     container_name: cryptoscan-cryptava-swift-gateway
@@ -241,6 +246,7 @@ services:
     volumes:
       - ./services/cryptava:/opt/cryptava:ro
       - cryptava_swift_gateway:/var/lib/cryptava
+      - ./sandbox/cryptava/swift-gateway.json:/etc/cryptava/asset-record.json:ro
 
   cryptava-internet-banking:
     <<: *cryptava-agent
@@ -258,6 +264,7 @@ services:
     volumes:
       - ./services/cryptava:/opt/cryptava:ro
       - cryptava_internet_banking:/var/lib/cryptava
+      - ./sandbox/cryptava/internet-banking.json:/etc/cryptava/asset-record.json:ro
 
   cryptava-core-banking-db:
     <<: *cryptava-agent
@@ -275,6 +282,7 @@ services:
     volumes:
       - ./services/cryptava:/opt/cryptava:ro
       - cryptava_core_banking_db:/var/lib/cryptava
+      - ./sandbox/cryptava/core-banking-db.json:/etc/cryptava/asset-record.json:ro
 
   cryptava-payments-bastion:
     <<: *cryptava-agent
@@ -292,6 +300,7 @@ services:
     volumes:
       - ./services/cryptava:/opt/cryptava:ro
       - cryptava_payments_bastion:/var/lib/cryptava
+      - ./sandbox/cryptava/payments-bastion.json:/etc/cryptava/asset-record.json:ro
 
 volumes:
   sandbox_certs:
