@@ -511,3 +511,19 @@ def test_brief_status_says_whether_the_agent_is_connected():
     assert line.startswith("CONNECTED") and "signature verified" in line and "HBOM:complete" in line
     down = brief_status(identity, {"delivered": False, "error": "cannot reach http://api:8010", "summary": {}})
     assert down.startswith("NOT DELIVERED") and "cannot reach" in down
+
+
+def test_declared_system_dependencies_are_approved_mapping_edges(host):
+    host["system"] = {"name": "SWIFT Gateway", "criticality": "tier-0",
+                      "depends_on": [{"name": "Core Banking", "via": "ISO 20022 over TLS"}, "Payment HSM",
+                                     "SWIFT Gateway", ""]}
+    payload = build_payload(collect(host), host, contributor=None, key=None)
+    systems = {a["name"]: a["ref"] for a in _by_type(payload, "SYSTEM")}
+    assert set(systems) == {"SWIFT Gateway", "Core Banking", "Payment HSM"}
+    edges = [r for r in payload["relationships"] if r["predicate"] == "depends_on"
+             and r["subject"] == systems["SWIFT Gateway"]]
+    assert {r["object"] for r in edges} == {systems["Core Banking"], systems["Payment HSM"]}
+    assert all(r["basis"] == "APPROVED_MAPPING" and r["evidence_refs"] for r in edges)
+    declared = [f for f in _facts(payload, systems["SWIFT Gateway"]) if f.get("depends_on")]
+    assert {f["depends_on"] for f in declared} == {"Core Banking", "Payment HSM"}
+    assert any(f.get("via") == "ISO 20022 over TLS" for f in declared)

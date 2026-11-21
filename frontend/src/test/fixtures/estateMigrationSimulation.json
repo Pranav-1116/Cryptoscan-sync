@@ -1,0 +1,1033 @@
+{
+ "result": {
+  "run_id": "run-meridian",
+  "projection_id": null,
+  "estate": "meridian-bank",
+  "source": "ESTATE_GRAPH",
+  "graph_counts": {
+   "assets": 24,
+   "relationships": 22,
+   "evidence": 33,
+   "systems": 4,
+   "unowned_crypto_assets": 1
+  },
+  "migration": {
+   "schema": "cryptoscan.migration-simulation/1",
+   "change": {
+    "from": "RSA",
+    "to": "ML-KEM-768",
+    "from_profile": {
+     "name": "RSA",
+     "family": "ASYMMETRIC_CLASSICAL",
+     "pqc": false,
+     "hybrid": false,
+     "roles": [
+      "key_establishment",
+      "signature"
+     ]
+    },
+    "to_profile": {
+     "name": "ML-KEM-768",
+     "family": "PQC",
+     "pqc": true,
+     "hybrid": false,
+     "roles": [
+      "key_establishment"
+     ]
+    },
+    "scope": null
+   },
+   "headline": "RSA \u2192 ML-KEM-768: 2 system(s) \u2014 0 blocked, 2 need a parallel run, 0 can migrate directly. Recommended: parallel migration",
+   "strategy": {
+    "recommended": "PARALLEL",
+    "meaning": "run the old and the new algorithm side by side, then retire the old one",
+    "systems": {
+     "BLOCKED": 0,
+     "PARALLEL": 2,
+     "DIRECT": 0
+    },
+    "reasons": {
+     "EXTERNAL_CLIENTS_UNKNOWN": 2,
+     "PEER_OUTSIDE_CHANGE": 2,
+     "RELYING_PARTIES": 2,
+     "VENDOR_INVOLVED": 1,
+     "VENDOR_RELEASE_NOT_READY": 1
+    },
+    "parallel_mechanisms": [
+     {
+      "mechanism": "HYBRID_KEY_EXCHANGE",
+      "how": "offer a hybrid group (classical + ML-KEM-768, e.g. X25519MLKEM768) on TLS 1.3: upgraded peers negotiate it, the rest fall back to the classical group"
+     },
+     {
+      "mechanism": "DUAL_CERTIFICATE_CHAIN",
+      "how": "serve both the RSA and the ML-KEM-768 chain (or a composite certificate) until every relying party trusts the new root"
+     },
+     {
+      "mechanism": "PER_CONNECTION_SWITCH",
+      "how": "make the algorithm a per-connection setting so each peer and vendor moves on its own date and can be rolled back alone"
+     }
+    ],
+    "direct_is_safe_when": "no connected system outside the change, no network endpoint with unseen clients, no vendor, no stored data or signatures under the old algorithm, and every device's capability is recorded"
+   },
+   "twin_context": {
+    "source": "Live estate graph \u2014 the agents' observations (systems from the bank-approved mapping, hosts, services, libraries, listening endpoints and their negotiated TLS, certificates, HSMs, platform servers, vendors and their contracts, declared and observed system connections)",
+    "kind": "ESTATE_GRAPH",
+    "systems_in_change": 2,
+    "hardware": 0,
+    "servers": 1,
+    "software_libraries": 1,
+    "connected_systems": 2,
+    "network_endpoints": 2,
+    "vendors": 2,
+    "certificates": 2,
+    "matched": {
+     "twin_assets": 3,
+     "evidence_records": 4,
+     "certificates": 3,
+     "network_endpoints": 0
+    }
+   },
+   "systems": [
+    {
+     "system_id": "sys-branch",
+     "name": "Branch Banking",
+     "environment": "production-sandbox",
+     "criticality": "medium",
+     "migration_wave": null,
+     "why_in_change": [
+      "a certificate this system uses carries it",
+      "a twin crypto asset of this system uses it",
+      "source evidence linked to this system uses it"
+     ],
+     "strategy": "PARALLEL",
+     "blocked_by": [],
+     "parallel_because": [
+      {
+       "code": "PEER_OUTSIDE_CHANGE",
+       "text": "Core Banking still needs RSA on its connection"
+      },
+      {
+       "code": "EXTERNAL_CLIENTS_UNKNOWN",
+       "text": "1 network endpoint(s): clients that connect to them are not assets in the twin, so their support for the target cannot be checked"
+      },
+      {
+       "code": "RELYING_PARTIES",
+       "text": "relying parties must trust the new chain before the old one is withdrawn"
+      }
+     ],
+     "considerations": [],
+     "twin": {
+      "crypto_assets": [
+       "cert-legacy",
+       "ep-legacy"
+      ],
+      "crypto_assets_using_source": [
+       "cert-legacy"
+      ],
+      "evidence_records_using_source": 1,
+      "hardware": [],
+      "platform": [],
+      "software": {
+       "libraries": [],
+       "deployments": []
+      },
+      "connections": [
+       {
+        "system_id": "sys-core",
+        "name": "Core Banking",
+        "direction": "CALLS",
+        "relation": "depends_on",
+        "provenance": "APPROVED_MAPPING",
+        "in_change": false,
+        "uses_source": false,
+        "uses_target": false,
+        "crypto_recorded": false,
+        "registered": true
+       }
+      ],
+      "network_endpoints": [
+       {
+        "endpoint": "10.210.0.5:443",
+        "protocol": "tls",
+        "tls_version": "TLSv1",
+        "cipher_suite": "AES128-SHA",
+        "observed": true,
+        "negotiates_source": false
+       }
+      ],
+      "vendors": [],
+      "certificates": [
+       {
+        "fingerprint_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "subject": "legacy-branch",
+        "issuer": null,
+        "public_key_algorithm": "RSA",
+        "not_after": null,
+        "days_until_expiry": null
+       }
+      ],
+      "business_processes": []
+     },
+     "findings": [
+      {
+       "code": "PEER_OUTSIDE_CHANGE",
+       "severity": "HIGH",
+       "title": "Core Banking is connected to Branch Banking but is not part of this change",
+       "detail": "Branch Banking calls Core Banking; its crypto is not recorded in the twin, so its support for ML-KEM-768 is unknown",
+       "system": "Branch Banking",
+       "subject": "Core Banking",
+       "who_acts": "the owner of Core Banking",
+       "mitigation": "keep RSA available on this connection until Core Banking confirms ML-KEM-768, then retire it",
+       "if_ignored": "the connection between Branch Banking and Core Banking fails its handshake or signature check at cut-over",
+       "basis": "SYSTEM_DEPENDENCY"
+      },
+      {
+       "code": "TLS_VERSION_TOO_OLD",
+       "severity": "HIGH",
+       "title": "10.210.0.5:443 negotiates TLS TLSv1",
+       "detail": "post-quantum and hybrid key exchange (ML-KEM-768) is only defined for TLS 1.3",
+       "system": "Branch Banking",
+       "subject": "10.210.0.5:443",
+       "who_acts": "the platform / network team",
+       "mitigation": "enable TLS 1.3 on this endpoint (and its load balancer) first",
+       "if_ignored": "the endpoint can never offer the new key exchange",
+       "basis": "NETWORK_OBSERVATION"
+      },
+      {
+       "code": "CERTIFICATES_TO_REISSUE",
+       "severity": "MEDIUM",
+       "title": "1 RSA certificate(s) to reissue",
+       "detail": "issuers: unknown",
+       "system": "Branch Banking",
+       "subject": null,
+       "who_acts": "the PKI team",
+       "mitigation": "confirm the issuing CA can sign with the new algorithm, issue the new certificates, and distribute the new chain to every relying party before switching",
+       "if_ignored": "relying parties that do not trust the new chain reject the connection",
+       "basis": "CERTIFICATE_USAGE"
+      },
+      {
+       "code": "HANDSHAKE_SIZE",
+       "severity": "MEDIUM",
+       "title": "larger keys and signatures on 1 endpoint(s)",
+       "detail": "ML-KEM-768 keys/ciphertexts/signatures are much larger than RSA's; handshakes grow by kilobytes",
+       "system": "Branch Banking",
+       "subject": null,
+       "who_acts": "the network team",
+       "mitigation": "test through every load balancer, WAF and TLS-inspecting middlebox on the path; check MTU/fragmentation and constrained clients",
+       "if_ignored": "middleboxes that cap ClientHello size drop the new handshakes",
+       "basis": "ALGORITHM_PROPERTY"
+      }
+     ]
+    },
+    {
+     "system_id": "sys-swift",
+     "name": "SWIFT Gateway",
+     "environment": "production-sandbox",
+     "criticality": "critical",
+     "migration_wave": null,
+     "why_in_change": [
+      "a certificate this system uses carries it",
+      "a twin crypto asset of this system uses it",
+      "source evidence linked to this system uses it"
+     ],
+     "strategy": "PARALLEL",
+     "blocked_by": [],
+     "parallel_because": [
+      {
+       "code": "PEER_OUTSIDE_CHANGE",
+       "text": "Core Banking still needs RSA on its connection"
+      },
+      {
+       "code": "PEER_OUTSIDE_CHANGE",
+       "text": "Payment HSM still needs RSA on its connection"
+      },
+      {
+       "code": "EXTERNAL_CLIENTS_UNKNOWN",
+       "text": "1 network endpoint(s): clients that connect to them are not assets in the twin, so their support for the target cannot be checked"
+      },
+      {
+       "code": "VENDOR_INVOLVED",
+       "text": "Alpine Linux's support for ML-KEM-768 is unconfirmed"
+      },
+      {
+       "code": "VENDOR_RELEASE_NOT_READY",
+       "text": "OpenSSL Software Foundation must be upgraded to a ML-KEM-768-capable release"
+      },
+      {
+       "code": "RELYING_PARTIES",
+       "text": "relying parties must trust the new chain before the old one is withdrawn"
+      }
+     ],
+     "considerations": [
+      {
+       "code": "BUSINESS_CRITICAL",
+       "text": "criticality critical \u2014 schedule a change window with a tested rollback"
+      }
+     ],
+     "twin": {
+      "crypto_assets": [
+       "cert-gw",
+       "ep-gw-443",
+       "lib-openssl"
+      ],
+      "crypto_assets_using_source": [
+       "cert-gw"
+      ],
+      "evidence_records_using_source": 2,
+      "hardware": [],
+      "platform": [
+       {
+        "asset_id": "hw-gw",
+        "name": "VMware7,1 virtual platform",
+        "manufacturer": "VMware, Inc.",
+        "model": "VMware7,1",
+        "virtual": null,
+        "vendors": [
+         "VMware"
+        ]
+       }
+      ],
+      "software": {
+       "libraries": [
+        {
+         "name": "OpenSSL 3.3.2",
+         "version": "3.3.2",
+         "target_support": "NOT_SUPPORTED",
+         "basis": "the catalog lists TLSv1.3, RSA, ECDSA, X25519, AES-GCM",
+         "deprecated": false,
+         "vendor": "OpenSSL Software Foundation"
+        }
+       ],
+       "deployments": []
+      },
+      "connections": [
+       {
+        "system_id": "sys-core",
+        "name": "Core Banking",
+        "direction": "CALLS",
+        "relation": "connects_to",
+        "provenance": "RUNTIME_OBSERVATION",
+        "in_change": false,
+        "uses_source": false,
+        "uses_target": false,
+        "crypto_recorded": false,
+        "registered": true
+       },
+       {
+        "system_id": "sys-hsm",
+        "name": "Payment HSM",
+        "direction": "CALLS",
+        "relation": "depends_on",
+        "provenance": "APPROVED_MAPPING",
+        "in_change": false,
+        "uses_source": false,
+        "uses_target": false,
+        "crypto_recorded": true,
+        "registered": true
+       }
+      ],
+      "network_endpoints": [
+       {
+        "endpoint": "swift-gateway:443",
+        "protocol": "tls",
+        "tls_version": "TLSv1.3",
+        "cipher_suite": "TLS_AES_256_GCM_SHA384",
+        "observed": true,
+        "negotiates_source": false
+       }
+      ],
+      "vendors": [
+       {
+        "vendor_id": "vendor:alpine linux",
+        "name": "Alpine Linux",
+        "criticality": null,
+        "vendor_type": null,
+        "dependency_type": "operating system",
+        "readiness": "UNKNOWN",
+        "uses_source": false,
+        "products": [],
+        "sub_tier": [],
+        "contract_state": "NONE_ON_RECORD",
+        "contract_end": null,
+        "supplies": [
+         "Alpine Linux (operating system)"
+        ]
+       },
+       {
+        "vendor_id": "vendor:openssl software foundation",
+        "name": "OpenSSL Software Foundation",
+        "criticality": null,
+        "vendor_type": null,
+        "dependency_type": "crypto library",
+        "readiness": "RELEASE_NOT_READY",
+        "uses_source": false,
+        "products": [
+         {
+          "algorithm": null,
+          "key_size": null,
+          "pqc_ready": false,
+          "use_case": "OpenSSL"
+         }
+        ],
+        "sub_tier": [],
+        "contract_state": "ACTIVE",
+        "contract_end": null,
+        "supplies": [
+         "OpenSSL"
+        ]
+       }
+      ],
+      "certificates": [
+       {
+        "fingerprint_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "subject": "swift-gateway.bank.sandbox",
+        "issuer": "CN=Meridian Bank Issuing CA",
+        "public_key_algorithm": "RSA",
+        "not_after": "2027-01-10T00:00:00+00:00",
+        "days_until_expiry": 55
+       }
+      ],
+      "business_processes": []
+     },
+     "findings": [
+      {
+       "code": "LIBRARY_LACKS_TARGET",
+       "severity": "HIGH",
+       "title": "library OpenSSL 3.3.2 does not implement ML-KEM-768",
+       "detail": "the catalog lists TLSv1.3, RSA, ECDSA, X25519, AES-GCM",
+       "system": "SWIFT Gateway",
+       "subject": "OpenSSL 3.3.2",
+       "who_acts": "the application team",
+       "mitigation": "upgrade to a version (or add a provider) that implements ML-KEM-768, then rebuild and redeploy",
+       "if_ignored": "the code cannot call the new algorithm at all",
+       "basis": "LIBRARY_CATALOG"
+      },
+      {
+       "code": "PEER_OUTSIDE_CHANGE",
+       "severity": "HIGH",
+       "title": "Core Banking is connected to SWIFT Gateway but is not part of this change",
+       "detail": "SWIFT Gateway calls Core Banking; its crypto is not recorded in the twin, so its support for ML-KEM-768 is unknown",
+       "system": "SWIFT Gateway",
+       "subject": "Core Banking",
+       "who_acts": "the owner of Core Banking",
+       "mitigation": "keep RSA available on this connection until Core Banking confirms ML-KEM-768, then retire it",
+       "if_ignored": "the connection between SWIFT Gateway and Core Banking fails its handshake or signature check at cut-over",
+       "basis": "SYSTEM_DEPENDENCY"
+      },
+      {
+       "code": "PEER_OUTSIDE_CHANGE",
+       "severity": "HIGH",
+       "title": "Payment HSM is connected to SWIFT Gateway but is not part of this change",
+       "detail": "SWIFT Gateway calls Payment HSM; the twin holds no evidence that Payment HSM supports ML-KEM-768",
+       "system": "SWIFT Gateway",
+       "subject": "Payment HSM",
+       "who_acts": "the owner of Payment HSM",
+       "mitigation": "keep RSA available on this connection until Payment HSM confirms ML-KEM-768, then retire it",
+       "if_ignored": "the connection between SWIFT Gateway and Payment HSM fails its handshake or signature check at cut-over",
+       "basis": "SYSTEM_DEPENDENCY"
+      },
+      {
+       "code": "VENDOR_RELEASE_NOT_READY",
+       "severity": "HIGH",
+       "title": "the deployed OpenSSL Software Foundation release is not ML-KEM-768-capable",
+       "detail": "OpenSSL Software Foundation declares no post-quantum support in the release this system runs: OpenSSL 3.3.2",
+       "system": "SWIFT Gateway",
+       "subject": "OpenSSL Software Foundation",
+       "who_acts": "the platform team, with OpenSSL Software Foundation",
+       "mitigation": "upgrade to a OpenSSL Software Foundation release that ships ML-KEM-768 (and test it) before this system's cut-over",
+       "if_ignored": "the software cannot negotiate or verify ML-KEM-768 at all",
+       "basis": "VENDOR_DECLARATION"
+      },
+      {
+       "code": "CERTIFICATES_TO_REISSUE",
+       "severity": "MEDIUM",
+       "title": "1 RSA certificate(s) to reissue",
+       "detail": "issuers: CN=Meridian Bank Issuing CA; 1 expire within 90 days \u2014 renew straight into the new algorithm",
+       "system": "SWIFT Gateway",
+       "subject": null,
+       "who_acts": "the PKI team",
+       "mitigation": "confirm the issuing CA can sign with the new algorithm, issue the new certificates, and distribute the new chain to every relying party before switching",
+       "if_ignored": "relying parties that do not trust the new chain reject the connection",
+       "basis": "CERTIFICATE_USAGE"
+      },
+      {
+       "code": "HANDSHAKE_SIZE",
+       "severity": "MEDIUM",
+       "title": "larger keys and signatures on 1 endpoint(s)",
+       "detail": "ML-KEM-768 keys/ciphertexts/signatures are much larger than RSA's; handshakes grow by kilobytes",
+       "system": "SWIFT Gateway",
+       "subject": null,
+       "who_acts": "the network team",
+       "mitigation": "test through every load balancer, WAF and TLS-inspecting middlebox on the path; check MTU/fragmentation and constrained clients",
+       "if_ignored": "middleboxes that cap ClientHello size drop the new handshakes",
+       "basis": "ALGORITHM_PROPERTY"
+      },
+      {
+       "code": "VENDOR_CAPABILITY_UNKNOWN",
+       "severity": "MEDIUM",
+       "title": "Alpine Linux: ML-KEM-768 support is not recorded",
+       "detail": "no vendor crypto inventory is recorded for this vendor",
+       "system": "SWIFT Gateway",
+       "subject": "Alpine Linux",
+       "who_acts": "Alpine Linux (vendor)",
+       "mitigation": "ask the vendor for its supported-algorithm statement and add it to the vendor crypto inventory",
+       "if_ignored": "the vendor side of the integration may reject the new algorithm",
+       "basis": "NO_VENDOR_RECORD"
+      },
+      {
+       "code": "VENDOR_NO_SUPPORT_CONTRACT",
+       "severity": "MEDIUM",
+       "title": "1 supplier(s) in this change without an active support contract",
+       "detail": "none on record: Alpine Linux",
+       "system": "SWIFT Gateway",
+       "subject": "Alpine Linux",
+       "who_acts": "vendor management / procurement",
+       "mitigation": "put support agreements in place so the ML-KEM-768 releases, fixes and an escalation path are available during the migration",
+       "if_ignored": "a failure during cut-over has no vendor to escalate to",
+       "basis": "ASSET_REGISTER"
+      }
+     ]
+    }
+   ],
+   "problems": [
+    {
+     "code": "LIBRARY_LACKS_TARGET",
+     "severity": "HIGH",
+     "title": "library OpenSSL 3.3.2 does not implement ML-KEM-768",
+     "detail": "the catalog lists TLSv1.3, RSA, ECDSA, X25519, AES-GCM",
+     "system": "SWIFT Gateway",
+     "subject": "OpenSSL 3.3.2",
+     "who_acts": "the application team",
+     "mitigation": "upgrade to a version (or add a provider) that implements ML-KEM-768, then rebuild and redeploy",
+     "if_ignored": "the code cannot call the new algorithm at all",
+     "basis": "LIBRARY_CATALOG"
+    },
+    {
+     "code": "PEER_OUTSIDE_CHANGE",
+     "severity": "HIGH",
+     "title": "Core Banking is connected to Branch Banking but is not part of this change",
+     "detail": "Branch Banking calls Core Banking; its crypto is not recorded in the twin, so its support for ML-KEM-768 is unknown",
+     "system": "Branch Banking",
+     "subject": "Core Banking",
+     "who_acts": "the owner of Core Banking",
+     "mitigation": "keep RSA available on this connection until Core Banking confirms ML-KEM-768, then retire it",
+     "if_ignored": "the connection between Branch Banking and Core Banking fails its handshake or signature check at cut-over",
+     "basis": "SYSTEM_DEPENDENCY"
+    },
+    {
+     "code": "PEER_OUTSIDE_CHANGE",
+     "severity": "HIGH",
+     "title": "Core Banking is connected to SWIFT Gateway but is not part of this change",
+     "detail": "SWIFT Gateway calls Core Banking; its crypto is not recorded in the twin, so its support for ML-KEM-768 is unknown",
+     "system": "SWIFT Gateway",
+     "subject": "Core Banking",
+     "who_acts": "the owner of Core Banking",
+     "mitigation": "keep RSA available on this connection until Core Banking confirms ML-KEM-768, then retire it",
+     "if_ignored": "the connection between SWIFT Gateway and Core Banking fails its handshake or signature check at cut-over",
+     "basis": "SYSTEM_DEPENDENCY"
+    },
+    {
+     "code": "PEER_OUTSIDE_CHANGE",
+     "severity": "HIGH",
+     "title": "Payment HSM is connected to SWIFT Gateway but is not part of this change",
+     "detail": "SWIFT Gateway calls Payment HSM; the twin holds no evidence that Payment HSM supports ML-KEM-768",
+     "system": "SWIFT Gateway",
+     "subject": "Payment HSM",
+     "who_acts": "the owner of Payment HSM",
+     "mitigation": "keep RSA available on this connection until Payment HSM confirms ML-KEM-768, then retire it",
+     "if_ignored": "the connection between SWIFT Gateway and Payment HSM fails its handshake or signature check at cut-over",
+     "basis": "SYSTEM_DEPENDENCY"
+    },
+    {
+     "code": "TARGET_COVERS_PART",
+     "severity": "HIGH",
+     "title": "ML-KEM-768 replaces only part of RSA",
+     "detail": "RSA can also be used for digital signatures, which ML-KEM-768 cannot do \u2014 and the twin records a signing use for an affected asset",
+     "system": null,
+     "subject": null,
+     "who_acts": "the migration owner",
+     "mitigation": "run a second simulation for the remaining use (e.g. RSA signatures \u2192 ML-DSA-65)",
+     "if_ignored": "the digital signatures uses keep RSA",
+     "basis": "TWIN_USAGE"
+    },
+    {
+     "code": "TLS_VERSION_TOO_OLD",
+     "severity": "HIGH",
+     "title": "10.210.0.5:443 negotiates TLS TLSv1",
+     "detail": "post-quantum and hybrid key exchange (ML-KEM-768) is only defined for TLS 1.3",
+     "system": "Branch Banking",
+     "subject": "10.210.0.5:443",
+     "who_acts": "the platform / network team",
+     "mitigation": "enable TLS 1.3 on this endpoint (and its load balancer) first",
+     "if_ignored": "the endpoint can never offer the new key exchange",
+     "basis": "NETWORK_OBSERVATION"
+    },
+    {
+     "code": "VENDOR_RELEASE_NOT_READY",
+     "severity": "HIGH",
+     "title": "the deployed OpenSSL Software Foundation release is not ML-KEM-768-capable",
+     "detail": "OpenSSL Software Foundation declares no post-quantum support in the release this system runs: OpenSSL 3.3.2",
+     "system": "SWIFT Gateway",
+     "subject": "OpenSSL Software Foundation",
+     "who_acts": "the platform team, with OpenSSL Software Foundation",
+     "mitigation": "upgrade to a OpenSSL Software Foundation release that ships ML-KEM-768 (and test it) before this system's cut-over",
+     "if_ignored": "the software cannot negotiate or verify ML-KEM-768 at all",
+     "basis": "VENDOR_DECLARATION"
+    },
+    {
+     "code": "CERTIFICATES_TO_REISSUE",
+     "severity": "MEDIUM",
+     "title": "1 RSA certificate(s) to reissue",
+     "detail": "issuers: unknown",
+     "system": "Branch Banking",
+     "subject": null,
+     "who_acts": "the PKI team",
+     "mitigation": "confirm the issuing CA can sign with the new algorithm, issue the new certificates, and distribute the new chain to every relying party before switching",
+     "if_ignored": "relying parties that do not trust the new chain reject the connection",
+     "basis": "CERTIFICATE_USAGE"
+    },
+    {
+     "code": "CERTIFICATES_TO_REISSUE",
+     "severity": "MEDIUM",
+     "title": "1 RSA certificate(s) to reissue",
+     "detail": "issuers: CN=Meridian Bank Issuing CA; 1 expire within 90 days \u2014 renew straight into the new algorithm",
+     "system": "SWIFT Gateway",
+     "subject": null,
+     "who_acts": "the PKI team",
+     "mitigation": "confirm the issuing CA can sign with the new algorithm, issue the new certificates, and distribute the new chain to every relying party before switching",
+     "if_ignored": "relying parties that do not trust the new chain reject the connection",
+     "basis": "CERTIFICATE_USAGE"
+    },
+    {
+     "code": "HANDSHAKE_SIZE",
+     "severity": "MEDIUM",
+     "title": "larger keys and signatures on 1 endpoint(s)",
+     "detail": "ML-KEM-768 keys/ciphertexts/signatures are much larger than RSA's; handshakes grow by kilobytes",
+     "system": "Branch Banking",
+     "subject": null,
+     "who_acts": "the network team",
+     "mitigation": "test through every load balancer, WAF and TLS-inspecting middlebox on the path; check MTU/fragmentation and constrained clients",
+     "if_ignored": "middleboxes that cap ClientHello size drop the new handshakes",
+     "basis": "ALGORITHM_PROPERTY"
+    },
+    {
+     "code": "HANDSHAKE_SIZE",
+     "severity": "MEDIUM",
+     "title": "larger keys and signatures on 1 endpoint(s)",
+     "detail": "ML-KEM-768 keys/ciphertexts/signatures are much larger than RSA's; handshakes grow by kilobytes",
+     "system": "SWIFT Gateway",
+     "subject": null,
+     "who_acts": "the network team",
+     "mitigation": "test through every load balancer, WAF and TLS-inspecting middlebox on the path; check MTU/fragmentation and constrained clients",
+     "if_ignored": "middleboxes that cap ClientHello size drop the new handshakes",
+     "basis": "ALGORITHM_PROPERTY"
+    },
+    {
+     "code": "VENDOR_CAPABILITY_UNKNOWN",
+     "severity": "MEDIUM",
+     "title": "Alpine Linux: ML-KEM-768 support is not recorded",
+     "detail": "no vendor crypto inventory is recorded for this vendor",
+     "system": "SWIFT Gateway",
+     "subject": "Alpine Linux",
+     "who_acts": "Alpine Linux (vendor)",
+     "mitigation": "ask the vendor for its supported-algorithm statement and add it to the vendor crypto inventory",
+     "if_ignored": "the vendor side of the integration may reject the new algorithm",
+     "basis": "NO_VENDOR_RECORD"
+    },
+    {
+     "code": "VENDOR_NO_SUPPORT_CONTRACT",
+     "severity": "MEDIUM",
+     "title": "1 supplier(s) in this change without an active support contract",
+     "detail": "none on record: Alpine Linux",
+     "system": "SWIFT Gateway",
+     "subject": "Alpine Linux",
+     "who_acts": "vendor management / procurement",
+     "mitigation": "put support agreements in place so the ML-KEM-768 releases, fixes and an escalation path are available during the migration",
+     "if_ignored": "a failure during cut-over has no vendor to escalate to",
+     "basis": "ASSET_REGISTER"
+    }
+   ],
+   "problem_counts": {
+    "BLOCKER": 0,
+    "HIGH": 7,
+    "MEDIUM": 6,
+    "INFO": 0
+   },
+   "vendor_impact": [
+    {
+     "vendor_id": "vendor:openssl software foundation",
+     "name": "OpenSSL Software Foundation",
+     "criticality": null,
+     "vendor_type": null,
+     "readiness": "RELEASE_NOT_READY",
+     "systems": [
+      "SWIFT Gateway"
+     ],
+     "dependency_types": [
+      "crypto library"
+     ],
+     "products": [
+      {
+       "algorithm": null,
+       "key_size": null,
+       "pqc_ready": false,
+       "use_case": "OpenSSL"
+      }
+     ],
+     "sub_tier": [],
+     "contract_state": "ACTIVE",
+     "contract_end": null,
+     "needs_to": "provide (and support) the release that ships ML-KEM-768; the deployed one does not",
+     "if_it_does_not": "its integrations with the listed systems fail at cut-over, or keep RSA alive indefinitely"
+    },
+    {
+     "vendor_id": "vendor:alpine linux",
+     "name": "Alpine Linux",
+     "criticality": null,
+     "vendor_type": null,
+     "readiness": "UNKNOWN",
+     "systems": [
+      "SWIFT Gateway"
+     ],
+     "dependency_types": [
+      "operating system"
+     ],
+     "products": [],
+     "sub_tier": [],
+     "contract_state": "NONE_ON_RECORD",
+     "contract_end": null,
+     "needs_to": "state whether its product supports ML-KEM-768",
+     "if_it_does_not": "its integrations with the listed systems fail at cut-over, or keep RSA alive indefinitely"
+    }
+   ],
+   "connected_impact": [
+    {
+     "system_id": "sys-core",
+     "name": "Core Banking",
+     "registered": true,
+     "in_change": false,
+     "uses_source": false,
+     "uses_target": false,
+     "crypto_recorded": false,
+     "criticality": "critical",
+     "links": [
+      {
+       "with": "Branch Banking",
+       "direction": "CALLED_BY",
+       "relation": "depends_on"
+      },
+      {
+       "with": "SWIFT Gateway",
+       "direction": "CALLED_BY",
+       "relation": "connects_to"
+      }
+     ],
+     "effect": "keeps using RSA; if the connected system switches without it, the connection fails",
+     "action": "confirm ML-KEM-768 support, or keep RSA on this connection"
+    },
+    {
+     "system_id": "sys-hsm",
+     "name": "Payment HSM",
+     "registered": true,
+     "in_change": false,
+     "uses_source": false,
+     "uses_target": false,
+     "crypto_recorded": true,
+     "criticality": null,
+     "links": [
+      {
+       "with": "SWIFT Gateway",
+       "direction": "CALLED_BY",
+       "relation": "depends_on"
+      }
+     ],
+     "effect": "keeps using RSA; if the connected system switches without it, the connection fails",
+     "action": "confirm ML-KEM-768 support, or keep RSA on this connection"
+    }
+   ],
+   "plan": [
+    {
+     "phase": "PREREQUISITES",
+     "title": "Clear what stops the migration",
+     "systems": [
+      "Branch Banking",
+      "SWIFT Gateway"
+     ],
+     "actions": [
+      "library OpenSSL 3.3.2 does not implement ML-KEM-768 \u2014 upgrade to a version (or add a provider) that implements ML-KEM-768, then rebuild and redeploy",
+      "10.210.0.5:443 negotiates TLS TLSv1 \u2014 enable TLS 1.3 on this endpoint (and its load balancer) first",
+      "Alpine Linux: ML-KEM-768 support is not recorded \u2014 ask the vendor for its supported-algorithm statement and add it to the vendor crypto inventory"
+     ],
+     "exit_criteria": "every blocker is closed with evidence (capability list, vendor statement, release) and recorded in the twin",
+     "rollback": "nothing to roll back \u2014 no production change yet",
+     "order": 1
+    },
+    {
+     "phase": "KEYS_AND_TRUST",
+     "title": "Prepare ML-KEM-768 keys and trust",
+     "systems": [
+      "Branch Banking",
+      "SWIFT Gateway"
+     ],
+     "actions": [
+      "generate ML-KEM-768 keys for Branch Banking",
+      "generate ML-KEM-768 keys for SWIFT Gateway",
+      "issue ML-KEM-768 certificates for Branch Banking, SWIFT Gateway and distribute the new trust anchors to relying parties"
+     ],
+     "exit_criteria": "new keys exist where the system will use them; relying parties trust the new chain",
+     "rollback": "unused keys and certificates are revoked; nothing is serving them yet",
+     "order": 2
+    },
+    {
+     "phase": "ENABLE_ALONGSIDE",
+     "wave": 1,
+     "title": "Wave 1: enable ML-KEM-768 next to RSA",
+     "systems": [
+      "Branch Banking",
+      "SWIFT Gateway"
+     ],
+     "actions": [
+      "Branch Banking: accept and offer ML-KEM-768 while still accepting RSA",
+      "SWIFT Gateway: accept and offer ML-KEM-768 while still accepting RSA"
+     ],
+     "exit_criteria": "both algorithms negotiate; monitoring shows which peers use which",
+     "rollback": "switch ML-KEM-768 off again \u2014 RSA never stopped working",
+     "order": 3
+    },
+    {
+     "phase": "CUT_OVER",
+     "wave": 1,
+     "title": "Wave 1: move to ML-KEM-768",
+     "systems": [
+      "Branch Banking",
+      "SWIFT Gateway"
+     ],
+     "actions": [
+      "Branch Banking: prefer ML-KEM-768; move each connected peer and vendor once it confirms",
+      "SWIFT Gateway: prefer ML-KEM-768; move each connected peer and vendor once it confirms"
+     ],
+     "exit_criteria": "handshakes, signatures and business transactions succeed on the new algorithm for every listed system",
+     "rollback": "re-enable RSA on the affected connections",
+     "providers_first": "systems that others call move before their callers",
+     "order": 4
+    },
+    {
+     "phase": "VERIFY",
+     "title": "Verify on the twin and in production",
+     "systems": [
+      "Branch Banking",
+      "SWIFT Gateway"
+     ],
+     "actions": [
+      "re-scan the changed systems so the twin shows the new algorithm",
+      "run each business process's smoke test",
+      "confirm no connection still negotiates RSA"
+     ],
+     "exit_criteria": "the twin no longer reports RSA on these systems",
+     "rollback": "per-wave rollback above",
+     "order": 5
+    },
+    {
+     "phase": "DECOMMISSION",
+     "title": "Retire RSA",
+     "systems": [
+      "Branch Banking",
+      "SWIFT Gateway"
+     ],
+     "actions": [
+      "disable RSA once every peer and vendor has confirmed ML-KEM-768",
+      "keep RSA verification until old signatures expire"
+     ],
+     "exit_criteria": "no system, peer or vendor depends on RSA",
+     "rollback": "re-enable RSA (keys are destroyed only after a holding period)",
+     "order": 6
+    }
+   ],
+   "dependency_order": [
+    {
+     "wave": 1,
+     "system": "Branch Banking",
+     "cyclic": false
+    },
+    {
+     "wave": 1,
+     "system": "SWIFT Gateway",
+     "cyclic": false
+    }
+   ],
+   "unknowns": [
+    "which algorithm each connection negotiates is not recorded on dependency edges; a connected system is treated as needing the old algorithm until it confirms",
+    "clients of a network endpoint are not assets in the twin, so they cannot be checked",
+    "hardware and vendor capability is as recorded or declared \u2014 not independently tested",
+    "performance of the new algorithm on this estate is not measured here",
+    "1 twin asset(s) and 1 evidence record(s) use RSA but are linked to no system, so they are not in any wave",
+    "Branch Banking: no crypto\u2194hardware link is recorded, so whether its keys live in an HSM (and whether that HSM can run the target) is unknown",
+    "SWIFT Gateway: no crypto\u2194hardware link is recorded, so whether its keys live in an HSM (and whether that HSM can run the target) is unknown"
+   ],
+   "deterministic": true,
+   "mutates_nothing": true
+  },
+  "mutates_nothing": true
+ },
+ "context": {
+  "run_id": "run-meridian",
+  "projection_id": null,
+  "estate": "meridian-bank",
+  "observed_at": "2026-11-16T09:00:00+00:00",
+  "systems": [
+   {
+    "system_id": "sys-branch",
+    "name": "Branch Banking",
+    "owner": null,
+    "criticality": "medium",
+    "hosts": [
+     "legacy-branch"
+    ],
+    "crypto_assets": 2,
+    "certificates": 1,
+    "libraries": 0,
+    "endpoints": 1,
+    "hsms": 0,
+    "servers": 0,
+    "vendors": 0,
+    "algorithms": {
+     "AES128-SHA": 1,
+     "RSA": 1
+    }
+   },
+   {
+    "system_id": "sys-core",
+    "name": "Core Banking",
+    "owner": "Core Banking Platform",
+    "criticality": "critical",
+    "hosts": [
+     "core-banking-db"
+    ],
+    "crypto_assets": 0,
+    "certificates": 0,
+    "libraries": 0,
+    "endpoints": 0,
+    "hsms": 0,
+    "servers": 0,
+    "vendors": 0,
+    "algorithms": {}
+   },
+   {
+    "system_id": "sys-hsm",
+    "name": "Payment HSM",
+    "owner": "Payments Security",
+    "criticality": null,
+    "hosts": [
+     "hsm-sim"
+    ],
+    "crypto_assets": 1,
+    "certificates": 0,
+    "libraries": 0,
+    "endpoints": 0,
+    "hsms": 1,
+    "servers": 0,
+    "vendors": 0,
+    "algorithms": {
+     "3DES-112": 1,
+     "AES-256": 1
+    }
+   },
+   {
+    "system_id": "sys-swift",
+    "name": "SWIFT Gateway",
+    "owner": "Payments Operations",
+    "criticality": "critical",
+    "hosts": [
+     "swift-gateway"
+    ],
+    "crypto_assets": 3,
+    "certificates": 1,
+    "libraries": 1,
+    "endpoints": 1,
+    "hsms": 0,
+    "servers": 1,
+    "vendors": 2,
+    "algorithms": {
+     "RSA": 1,
+     "SHA256withRSA": 1,
+     "TLS_AES_256_GCM_SHA384": 1
+    }
+   }
+  ],
+  "algorithms": [
+   {
+    "algorithm": "RSA",
+    "evidence": 3,
+    "systems": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ]
+   },
+   {
+    "algorithm": "3DES-112",
+    "evidence": 1,
+    "systems": [
+     "Payment HSM"
+    ]
+   },
+   {
+    "algorithm": "AES-256",
+    "evidence": 1,
+    "systems": [
+     "Payment HSM"
+    ]
+   },
+   {
+    "algorithm": "AES128-SHA",
+    "evidence": 1,
+    "systems": [
+     "Branch Banking"
+    ]
+   },
+   {
+    "algorithm": "SHA256withRSA",
+    "evidence": 1,
+    "systems": [
+     "SWIFT Gateway"
+    ]
+   },
+   {
+    "algorithm": "TLS_AES_256_GCM_SHA384",
+    "evidence": 1,
+    "systems": [
+     "SWIFT Gateway"
+    ]
+   }
+  ],
+  "unowned_algorithms": {
+   "RSA": 1
+  },
+  "dependencies": [
+   {
+    "from": "Branch Banking",
+    "to": "Core Banking",
+    "type": "depends_on",
+    "provenance": "APPROVED_MAPPING"
+   },
+   {
+    "from": "SWIFT Gateway",
+    "to": "Core Banking",
+    "type": "connects_to",
+    "provenance": "RUNTIME_OBSERVATION"
+   },
+   {
+    "from": "SWIFT Gateway",
+    "to": "Payment HSM",
+    "type": "depends_on",
+    "provenance": "APPROVED_MAPPING"
+   }
+  ],
+  "counts": {
+   "assets": 24,
+   "relationships": 22,
+   "evidence": 33,
+   "systems": 4,
+   "unowned_crypto_assets": 1
+  }
+ }
+}

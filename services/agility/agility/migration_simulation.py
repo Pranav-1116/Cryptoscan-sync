@@ -287,6 +287,10 @@ class _Twin:
         self.processes = {str(k): list(v or []) for k, v in
                           (snapshot.get("business_processes") or {}).items()}
         self.library_catalog = dict(snapshot.get("library_catalog") or {})
+        # the servers a system runs on (estate graph): listed, never checked as key holders —
+        # a general-purpose CPU runs any algorithm in software
+        self.platform = {str(k): [dict(row) for row in v or []]
+                         for k, v in (snapshot.get("platform_hardware") or {}).items()}
         self.deployments: dict[str, list[dict[str, Any]]] = {}
         for row in snapshot.get("software_deployments") or []:
             if row.get("system_id"):
@@ -660,6 +664,7 @@ def simulate_migration(snapshot: Mapping[str, Any], *, from_algo: str, to_algo: 
 
         # -- vendors behind this system
         vendors = []
+        uncontracted: list[tuple[str, str]] = []
         for row in twin.system_vendor_rows.get(sid, []):
             vendor_id = str(row.get("vendor_id"))
             vendor = twin.vendors.get(vendor_id, {"id": vendor_id, "name": vendor_id})
@@ -667,14 +672,21 @@ def simulate_migration(snapshot: Mapping[str, Any], *, from_algo: str, to_algo: 
             uses_source = any(_matches(r.get("algorithm"), source) for r in rows)
             supports_target = any(_matches(r.get("algorithm"), target) for r in rows) or (
                 target_profile["pqc"] and any(r.get("pqc_ready") for r in rows))
+            # a release the vendor itself declares not PQC-ready (e.g. OpenSSL < 3.5); only a
+            # row that states readiness counts — an absent flag is not a "no"
+            release_not_ready = target_profile["pqc"] and any(
+                r.get("pqc_ready_declared") and not r.get("pqc_ready") for r in rows)
             if not rows:
                 readiness = "UNKNOWN"
             elif supports_target:
                 readiness = "READY"
             elif uses_source:
                 readiness = "NOT_READY"
+            elif release_not_ready:
+                readiness = "RELEASE_NOT_READY"
             else:
                 readiness = "NOT_RECORDED_FOR_TARGET"
+            contract = str(vendor.get("contract_state") or "").upper() or None
             children = [twin.vendors.get(str(c.get("child")), {}).get("name") or str(c.get("child"))
                         for c in twin.vendor_children.get(vendor_id, [])]
             view = {"vendor_id": vendor_id, "name": vendor.get("name") or vendor_id,
@@ -684,11 +696,14 @@ def simulate_migration(snapshot: Mapping[str, Any], *, from_algo: str, to_algo: 
                     "products": [{"algorithm": r.get("algorithm"), "key_size": r.get("key_size"),
                                   "pqc_ready": bool(r.get("pqc_ready")),
                                   "use_case": r.get("crypto_use_case")} for r in rows[:10]],
-                    "sub_tier": sorted(children)}
+                    "sub_tier": sorted(children), "contract_state": contract,
+                    "contract_end": vendor.get("contract_end"),
+                    "supplies": vendor.get("products") if isinstance(vendor.get("products"), list) else None}
             vendors.append(view)
             agg = vendor_index.setdefault(vendor_id, {**{k: view[k] for k in (
                 "vendor_id", "name", "criticality", "vendor_type", "readiness", "uses_source",
-                "products", "sub_tier")}, "systems": [], "dependency_types": set()})
+                "products", "sub_tier", "contract_state", "contract_end")},
+                "systems": [], "dependency_types": set()})
             agg["systems"].append(name)
             if row.get("dependency_type"):
                 agg["dependency_types"].add(str(row["dependency_type"]))
@@ -704,6 +719,21 @@ def simulate_migration(snapshot: Mapping[str, Any], *, from_algo: str, to_algo: 
                     basis="VENDOR_CRYPTO_INVENTORY"))
                 reasons_block.append({"code": "VENDOR_NOT_READY",
                                       "text": f"waiting on {vname} for {target}"})
+            elif readiness == "RELEASE_NOT_READY":
+                releases = sorted({f"{r.get('product')} {r.get('version') or ''}".strip()
+                                   for r in rows if r.get("pqc_ready_declared") and not r.get("pqc_ready")})
+                add(_finding(
+                    "VENDOR_RELEASE_NOT_READY", "HIGH",
+                    f"the deployed {vname} release is not {target}-capable",
+                    f"{vname} declares no post-quantum support in the release this system runs: "
+                    + ", ".join(releases[:4]),
+                    system=name, subject=vname, who_acts="the platform team, with " + vname,
+                    mitigation=f"upgrade to a {vname} release that ships {target} (and test it) "
+                               "before this system's cut-over",
+                    if_ignored=f"the software cannot negotiate or verify {target} at all",
+                    basis="VENDOR_DECLARATION"))
+                reasons_parallel.append({"code": "VENDOR_RELEASE_NOT_READY",
+                                         "text": f"{vname} must be upgraded to a {target}-capable release"})
             elif readiness in ("UNKNOWN", "NOT_RECORDED_FOR_TARGET"):
                 add(_finding(
                     "VENDOR_CAPABILITY_UNKNOWN", "MEDIUM",
@@ -721,6 +751,8 @@ def simulate_migration(snapshot: Mapping[str, Any], *, from_algo: str, to_algo: 
                 reasons_parallel.append({
                     "code": "VENDOR_INVOLVED",
                     "text": f"{vname} must switch its side in step with {name}"})
+            if contract in ("EXPIRED", "NONE_ON_RECORD") and readiness != "READY":
+                uncontracted.append((vname, contract))
             if children:
                 add(_finding(
                     "VENDOR_SUB_TIER", "INFO", f"{vname} depends on {len(children)} sub-tier vendor(s)",
@@ -729,6 +761,22 @@ def simulate_migration(snapshot: Mapping[str, Any], *, from_algo: str, to_algo: 
                     mitigation="ask the vendor to confirm its own suppliers' readiness",
                     if_ignored="a supplier further down can hold the vendor's release back",
                     basis="VENDOR_DEPENDENCY"))
+
+        if uncontracted:
+            expired = sorted(n for n, state in uncontracted if state == "EXPIRED")
+            missing = sorted(n for n, state in uncontracted if state != "EXPIRED")
+            add(_finding(
+                "VENDOR_NO_SUPPORT_CONTRACT", "MEDIUM",
+                f"{len(uncontracted)} supplier(s) in this change without an active support contract",
+                "; ".join(part for part in (
+                    ("expired: " + ", ".join(expired)) if expired else "",
+                    ("none on record: " + ", ".join(missing)) if missing else "") if part),
+                system=name, subject=", ".join(sorted(n for n, _ in uncontracted))[:200],
+                who_acts="vendor management / procurement",
+                mitigation=f"put support agreements in place so the {target} releases, fixes and an "
+                           "escalation path are available during the migration",
+                if_ignored="a failure during cut-over has no vendor to escalate to",
+                basis="ASSET_REGISTER"))
 
         # -- certificates this system presents
         certificates = []
@@ -823,6 +871,7 @@ def simulate_migration(snapshot: Mapping[str, Any], *, from_algo: str, to_algo: 
                 "evidence_records_using_source": sum(
                     1 for e in matched_evidence if str(e.get("system_id")) == sid),
                 "hardware": hardware,
+                "platform": twin.platform.get(sid, [])[:20],
                 "software": {"libraries": sorted(libraries.values(), key=lambda x: x["name"]),
                              "deployments": [{"deployment_key": d.get("deployment_key"),
                                               "environment": d.get("environment"),
@@ -996,16 +1045,19 @@ def simulate_migration(snapshot: Mapping[str, Any], *, from_algo: str, to_algo: 
             "systems": sorted(set(agg["systems"])),
             "dependency_types": sorted(agg["dependency_types"]),
             "products": agg["products"], "sub_tier": agg["sub_tier"],
+            "contract_state": agg.get("contract_state"), "contract_end": agg.get("contract_end"),
             "needs_to": {
                 "READY": "switch its side of each integration in the same window as the system",
                 "NOT_READY": f"ship {target} support — the listed systems wait for it",
+                "RELEASE_NOT_READY": f"provide (and support) the release that ships {target}; the "
+                                     "deployed one does not",
                 "UNKNOWN": f"state whether its product supports {target}",
                 "NOT_RECORDED_FOR_TARGET": f"confirm {target} support for the products in use",
             }[readiness],
             "if_it_does_not": "its integrations with the listed systems fail at cut-over, or keep "
                               f"{source} alive indefinitely"})
-    vendor_impact.sort(key=lambda v: ({"NOT_READY": 0, "UNKNOWN": 1, "NOT_RECORDED_FOR_TARGET": 2,
-                                       "READY": 3}[v["readiness"]], str(v["name"])))
+    vendor_impact.sort(key=lambda v: ({"NOT_READY": 0, "RELEASE_NOT_READY": 1, "UNKNOWN": 2,
+                                       "NOT_RECORDED_FOR_TARGET": 3, "READY": 4}[v["readiness"]], str(v["name"])))
     connected_impact = []
     for entry in connected_index.values():
         if entry["in_change"]:
@@ -1044,7 +1096,10 @@ def simulate_migration(snapshot: Mapping[str, Any], *, from_algo: str, to_algo: 
                        if isinstance(row, Mapping) and row.get("truncated"))
     if truncated:
         base_unknowns.append("the twin snapshot hit read limits on: " + ", ".join(truncated))
-    if not twin.hardware:
+    if not twin.hardware and snapshot.get("source") == "ESTATE_GRAPH":
+        base_unknowns.append("no HSM is linked to any system in the estate graph, so no key-holding "
+                             "device capability could be checked")
+    elif not twin.hardware:
         base_unknowns.append("the twin holds no hardware fleet, so no device capability could be checked")
     if not twin.vendor_crypto:
         base_unknowns.append("no vendor crypto inventory is recorded, so no vendor readiness is proven")
@@ -1055,6 +1110,7 @@ def simulate_migration(snapshot: Mapping[str, Any], *, from_algo: str, to_algo: 
                                                       str(f.get("system")), str(f.get("subject"))))
     severity_counts = {name: sum(1 for f in findings if f["severity"] == name) for name in SEVERITIES}
     all_hw = {h["asset_id"] for r in system_reports for h in r["twin"]["hardware"]}
+    all_servers = {h["asset_id"] for r in system_reports for h in r["twin"].get("platform") or []}
     all_libs = {lib["name"] for r in system_reports for lib in r["twin"]["software"]["libraries"]}
     all_peers = {c["system_id"] for r in system_reports for c in r["twin"]["connections"]}
     all_eps = {e["endpoint"] for r in system_reports for e in r["twin"]["network_endpoints"]}
@@ -1086,11 +1142,18 @@ def simulate_migration(snapshot: Mapping[str, Any], *, from_algo: str, to_algo: 
                                    "old algorithm, and every device's capability is recorded",
         },
         "twin_context": {
-            "source": "Digital Twin snapshot (systems, hardware fleet, crypto↔hardware links, "
-                      "system↔vendor links, vendor crypto inventory, system dependencies, observed "
-                      "TLS endpoints, certificate usage, library catalog, software deployments)",
+            "source": (
+                "Live estate graph — the agents' observations (systems from the bank-approved "
+                "mapping, hosts, services, libraries, listening endpoints and their negotiated "
+                "TLS, certificates, HSMs, platform servers, vendors and their contracts, "
+                "declared and observed system connections)"
+                if snapshot.get("source") == "ESTATE_GRAPH" else
+                "Digital Twin snapshot (systems, hardware fleet, crypto↔hardware links, "
+                "system↔vendor links, vendor crypto inventory, system dependencies, observed "
+                "TLS endpoints, certificate usage, library catalog, software deployments)"),
+            "kind": "ESTATE_GRAPH" if snapshot.get("source") == "ESTATE_GRAPH" else "DIGITAL_TWIN",
             "systems_in_change": len(system_reports),
-            "hardware": len(all_hw), "software_libraries": len(all_libs),
+            "hardware": len(all_hw), "servers": len(all_servers), "software_libraries": len(all_libs),
             "connected_systems": len(all_peers), "network_endpoints": len(all_eps),
             "vendors": len(vendor_index), "certificates": len(all_certs),
             "matched": {"twin_assets": len(matched_assets), "evidence_records": len(matched_evidence),

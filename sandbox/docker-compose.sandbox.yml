@@ -247,7 +247,7 @@ services:
       CRYPTAVA_HOSTNAME: "swift-gateway"
       CRYPTAVA_FQDN: "swift-gateway.bank.sandbox"
       CRYPTAVA_PRIMARY_IP: "10.210.0.4"
-      CRYPTAVA_SYSTEM: '{"name": "SWIFT Gateway", "owner": "Payments Operations"}'
+      CRYPTAVA_SYSTEM: '{"name": "SWIFT Gateway", "owner": "Payments Operations", "criticality": "tier-0", "business_service": "Cross-border payments (SWIFT FIN / ISO 20022)", "depends_on": [{"name": "Core Banking", "via": "ISO 20022 pacs messages over TLS"}, {"name": "Payment HSM", "via": "message signing keys (PKCS#11)"}]}'
     volumes:
       - ./services/cryptava:/opt/cryptava:ro
       - cryptava_swift_gateway:/var/lib/cryptava
@@ -265,7 +265,7 @@ services:
       CRYPTAVA_HOSTNAME: "internet-banking"
       CRYPTAVA_FQDN: "internet-banking.bank.sandbox"
       CRYPTAVA_PRIMARY_IP: "10.210.0.2"
-      CRYPTAVA_SYSTEM: '{"name": "Internet Banking", "owner": "Digital Channels"}'
+      CRYPTAVA_SYSTEM: '{"name": "Internet Banking", "owner": "Digital Channels", "criticality": "tier-0", "business_service": "Retail and corporate internet banking", "depends_on": [{"name": "Core Banking", "via": "account and ledger API over TLS"}]}'
     volumes:
       - ./services/cryptava:/opt/cryptava:ro
       - cryptava_internet_banking:/var/lib/cryptava
@@ -283,7 +283,7 @@ services:
       CRYPTAVA_HOSTNAME: "core-db"
       CRYPTAVA_FQDN: "core-db.bank.sandbox"
       CRYPTAVA_PRIMARY_IP: "10.210.0.7"
-      CRYPTAVA_SYSTEM: '{"name": "Core Banking", "owner": "Core Banking Platform"}'
+      CRYPTAVA_SYSTEM: '{"name": "Core Banking", "owner": "Core Banking Platform", "criticality": "tier-0", "business_service": "Accounts, ledger and posting", "depends_on": [{"name": "Payment HSM", "via": "PIN and card keys"}]}'
     volumes:
       - ./services/cryptava:/opt/cryptava:ro
       - cryptava_core_banking_db:/var/lib/cryptava
@@ -301,7 +301,7 @@ services:
       CRYPTAVA_HOSTNAME: "payments-bastion"
       CRYPTAVA_FQDN: "payments-bastion.bank.sandbox"
       CRYPTAVA_PRIMARY_IP: "10.210.0.8"
-      CRYPTAVA_SYSTEM: '{"name": "SWIFT Gateway", "owner": "Payments Operations"}'
+      CRYPTAVA_SYSTEM: '{"name": "SWIFT Gateway", "owner": "Payments Operations", "criticality": "tier-0", "business_service": "Cross-border payments (SWIFT FIN / ISO 20022)", "depends_on": [{"name": "Core Banking", "via": "ISO 20022 pacs messages over TLS"}, {"name": "Payment HSM", "via": "message signing keys (PKCS#11)"}]}'
     volumes:
       - ./services/cryptava:/opt/cryptava:ro
       - cryptava_payments_bastion:/var/lib/cryptava
@@ -319,7 +319,7 @@ services:
       CRYPTAVA_HOSTNAME: "mobile-api"
       CRYPTAVA_FQDN: "mobile-api.bank.sandbox"
       CRYPTAVA_PRIMARY_IP: "10.210.0.3"
-      CRYPTAVA_SYSTEM: '{"name": "Mobile Banking API", "owner": "Digital Channels"}'
+      CRYPTAVA_SYSTEM: '{"name": "Mobile Banking API", "owner": "Digital Channels", "criticality": "tier-1", "business_service": "Mobile banking app back end", "depends_on": [{"name": "Core Banking", "via": "account and ledger API over TLS"}]}'
     volumes:
       - ./services/cryptava:/opt/cryptava:ro
       - cryptava_mobile_api:/var/lib/cryptava
@@ -337,7 +337,7 @@ services:
       CRYPTAVA_HOSTNAME: "legacy-branch"
       CRYPTAVA_FQDN: "legacy-branch.bank.sandbox"
       CRYPTAVA_PRIMARY_IP: "10.210.0.5"
-      CRYPTAVA_SYSTEM: '{"name": "Branch Banking", "owner": "Branch Technology"}'
+      CRYPTAVA_SYSTEM: '{"name": "Branch Banking", "owner": "Branch Technology", "criticality": "tier-2", "business_service": "Branch teller and back office", "depends_on": [{"name": "Core Banking", "via": "teller posting over TLS"}]}'
       CRYPTAVA_TAGS: '{"environment": "production-sandbox", "datacenter": "branch-0142", "owner": "Meridian Bank"}'
     volumes:
       - ./services/cryptava:/opt/cryptava:ro
@@ -358,7 +358,7 @@ services:
       CRYPTAVA_HOSTNAME: "hsm-sim"
       CRYPTAVA_FQDN: "hsm-sim.bank.sandbox"
       CRYPTAVA_PRIMARY_IP: "10.210.0.6"
-      CRYPTAVA_SYSTEM: '{"name": "Payment HSM", "owner": "Payments Security"}'
+      CRYPTAVA_SYSTEM: '{"name": "Payment HSM", "owner": "Payments Security", "criticality": "tier-0", "business_service": "PIN translation, card verification and message signing"}'
     volumes:
       - ./services/cryptava:/opt/cryptava:ro
       - cryptava_hsm_sim:/var/lib/cryptava

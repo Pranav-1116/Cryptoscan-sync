@@ -11,7 +11,8 @@ Gateway". That comes from the agent config, is sent as ``CONFIGURED`` evidence w
 .. code-block:: json
 
     {"system": {"name": "SWIFT Gateway", "owner": "Payments Ops", "criticality": "tier-0",
-                "applications": [{"name": "Alliance Access", "services": ["java", "nginx"]}]}}
+                "applications": [{"name": "Alliance Access", "services": ["java", "nginx"]}],
+                "depends_on": [{"name": "Core Banking", "via": "ISO 20022 over MQ"}, "Payment HSM"]}}
 """
 
 from __future__ import annotations
@@ -60,6 +61,23 @@ def collect(ctx: Context) -> None:
                 if svc:
                     obs.relate(svc, "part_of", app_ref, basis="APPROVED_MAPPING", evidence=[app_ev])
                     mapped += 1
+        # the bank's architecture: which other business systems this one calls. A host cannot
+        # see that SWIFT Gateway needs Core Banking; the CMDB can. Sent as CONFIGURED evidence on
+        # an APPROVED_MAPPING edge, so the migration simulation can warn about a peer that is
+        # not part of a change — and never mistaken for an observed connection.
+        for peer in system.get("depends_on") or []:
+            entry = peer if isinstance(peer, dict) else {"name": peer}
+            peer_name = str(entry.get("name") or "").strip()
+            if not peer_name or peer_name == name:
+                continue
+            peer_ref = obs.asset(f"system:{slug(peer_name)}", "SYSTEM", peer_name, identity={"name": peer_name},
+                                 source="cryptava-config", environment=ctx.environment)
+            dep_ev = obs.observe(ref, "CONFIGURED", {
+                "mapping": f"{name} depends on {peer_name}", "depends_on": peer_name,
+                "via": entry.get("via"), "protocol": entry.get("protocol"),
+                "declared_by": "cryptava agent configuration (bank-approved mapping)", "host": ctx.fqdn,
+            }, layer="APPLICATION", source="cryptava-config")
+            obs.relate(ref, "depends_on", peer_ref, basis="APPROVED_MAPPING", evidence=[dep_ev])
 
     tech_assets = sum(1 for a in obs.assets.values() if a["type"] in TECH_TYPES)
     tech_edges = sum(1 for r in obs.relationships.values()

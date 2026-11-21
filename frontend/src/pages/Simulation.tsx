@@ -55,36 +55,216 @@ const chipStyle = (active: boolean): React.CSSProperties => ({
   color: "var(--text)",
 });
 
-/** The vocabulary, as chips. Clicking one fills the "before" side: that is the value the
- *  estate actually reported, which is the only value a scenario can match. */
-function VocabularyChips({ label, values, onPick }: {
-  label: string; values: Array<{ value: string; count: number }>; onPick: (value: string) => void;
-}) {
-  if (!values.length) {
-    return (
-      <div style={{ fontSize: 11.5, color: "var(--faint)" }}>
-        {label}: none reported — a scenario using a value here would match nothing.
-      </div>
-    );
-  }
+const sectionStyle: React.CSSProperties = {
+  padding: "12px 14px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)",
+};
+
+function SectionHead({ step, title, hint }: { step: string; title: string; hint?: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
-      <span className="kicker" style={{ fontSize: 9.5, marginRight: 2 }}>{label}</span>
-      {values.map((item) => (
-        <button
-          key={item.value}
-          type="button"
-          onClick={() => onPick(item.value)}
-          title={`use ${item.value} as the before value (${item.count} evidence record(s))`}
-          style={{
-            padding: "3px 9px", borderRadius: 999, fontSize: 11.5, cursor: "pointer",
-            background: "var(--panel-2)", border: "1px solid var(--line)",
-            color: "var(--text)", fontFamily: "var(--mono)",
-          }}
-        >
-          {item.value} <span style={{ color: "var(--faint)" }}>· {item.count}</span>
-        </button>
-      ))}
+    <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap", marginBottom: 8 }}>
+      <span style={{
+        width: 20, height: 20, borderRadius: 6, display: "inline-grid", placeItems: "center", fontSize: 11,
+        fontWeight: 800, background: "color-mix(in srgb, var(--violet) 18%, transparent)", color: "var(--violet)",
+      }}>{step}</span>
+      <span style={{ fontSize: 12.5, fontWeight: 800 }}>{title}</span>
+      {hint && <span style={{ fontSize: 11, color: "var(--faint)" }}>{hint}</span>}
+    </div>
+  );
+}
+
+/** The estate's vocabulary — what it actually reports — as one searchable, tabbed list.
+ *  Clicking a value fills the "before" side: that is the value the estate reported, which
+ *  is the only value a scenario can match. */
+function EstateValuePicker({ groups, current, onPick }: {
+  groups: Array<{ id: string; label: string; values: Array<{ value: string; count: number }> }>;
+  current?: string;
+  onPick: (value: string) => void;
+}) {
+  const firstWithValues = groups.find((g) => g.values.length)?.id ?? groups[0]?.id;
+  const [tab, setTab] = useState<string>(firstWithValues);
+  const [query, setQuery] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const active = groups.find((g) => g.id === tab) ?? groups[0];
+  const needle = query.trim().toLowerCase();
+  const filtered = (active?.values ?? []).filter((item) => !needle || item.value.toLowerCase().includes(needle));
+  const LIMIT = 18;
+  const shown = showAll || needle ? filtered : filtered.slice(0, LIMIT);
+  return (
+    <div aria-label="Values this estate reports">
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+        <div role="tablist" aria-label="Value type"
+             style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: "var(--r)", overflow: "hidden" }}>
+          {groups.map((group) => (
+            <button key={group.id} type="button" role="tab" aria-selected={group.id === active?.id}
+                    onClick={() => { setTab(group.id); setShowAll(false); }}
+                    style={{
+                      padding: "5px 11px", fontSize: 11.5, cursor: "pointer", border: "none",
+                      background: group.id === active?.id ? "var(--violet)" : "transparent",
+                      color: group.id === active?.id ? "#fff" : "var(--dim)", fontWeight: 700,
+                    }}>
+              {group.label} <span style={{ opacity: 0.75 }}>{group.values.length}</span>
+            </button>
+          ))}
+        </div>
+        <input aria-label="Search the estate's values" value={query} onChange={(e) => setQuery(e.target.value)}
+               placeholder="search…" style={{ ...inputStyle, width: 180, padding: "5px 9px", fontSize: 11.5 }} />
+      </div>
+      {!active || active.values.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: "var(--faint)" }}>
+          {active?.label ?? "values"}: none reported — a scenario using a value here would match nothing.
+        </div>
+      ) : (
+        <>
+          <div style={{
+            display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 6,
+            maxHeight: 156, overflowY: "auto", paddingRight: 2,
+          }}>
+            {shown.map((item) => {
+              const on = current === item.value;
+              return (
+                <button key={item.value} type="button" onClick={() => onPick(item.value)} aria-pressed={on}
+                        aria-label={`${item.value} · ${item.count}`}
+                        title={`use ${item.value} as the before value (${item.count} evidence record(s))`}
+                        style={{
+                          display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center",
+                          padding: "5px 9px", borderRadius: 6, fontSize: 11.5, cursor: "pointer",
+                          background: on ? "color-mix(in srgb, var(--accent) 16%, transparent)" : "var(--panel)",
+                          border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`, color: "var(--text)",
+                          fontFamily: "var(--mono)", textAlign: "left", minWidth: 0,
+                        }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.value}</span>
+                  <span style={{ color: "var(--faint)", flex: "none" }}>· {item.count}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 10, marginTop: 6, fontSize: 10.5, color: "var(--faint)" }}>
+            <span>{filtered.length} value(s){needle ? " match" : ""} · the number is how many evidence records hold it</span>
+            {!needle && filtered.length > LIMIT && (
+              <button type="button" onClick={() => setShowAll((v) => !v)}
+                      style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", cursor: "pointer", fontSize: 10.5 }}>
+                {showAll ? "show fewer" : `show all ${filtered.length}`}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Assets a question can be narrowed to — deduplicated, grouped by type, searchable, with the
+ *  current selection pinned above as removable tags. */
+function TargetPicker({ targets, picked, onToggle, onClear }: {
+  targets: Array<{ asset_id: string; name: string; type: string }>;
+  picked: string[];
+  onToggle: (assetId: string) => void;
+  onClear: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const unique = useMemo(() => {
+    const seen = new Map<string, { asset_id: string; name: string; type: string }>();
+    for (const target of targets) if (!seen.has(target.asset_id)) seen.set(target.asset_id, target);
+    return [...seen.values()];
+  }, [targets]);
+  const byId = useMemo(() => new Map(unique.map((t) => [t.asset_id, t])), [unique]);
+  const needle = query.trim().toLowerCase();
+  const groups = useMemo(() => {
+    const map = new Map<string, Array<{ asset_id: string; name: string; type: string }>>();
+    for (const target of unique) {
+      if (needle && !`${target.name} ${target.type}`.toLowerCase().includes(needle)) continue;
+      const list = map.get(target.type) ?? [];
+      list.push(target);
+      map.set(target.type, list);
+    }
+    return [...map.entries()]
+      .map(([type, items]) => [type, items.sort((a, b) => (a.name || "").localeCompare(b.name || ""))] as const)
+      .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+  }, [unique, needle]);
+  const openByDefault = unique.length <= 24 || Boolean(needle);
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+        <input aria-label="Search assets" value={query} onChange={(e) => setQuery(e.target.value)}
+               placeholder={`search ${unique.length} asset(s) by name or type…`}
+               style={{ ...inputStyle, width: 260, padding: "5px 9px", fontSize: 11.5 }} />
+        <span style={{ fontSize: 11, color: "var(--faint)" }}>
+          {picked.length ? `${picked.length} selected` : "none selected"}
+        </span>
+        {picked.length > 0 && (
+          <button type="button" onClick={onClear}
+                  style={{ background: "none", border: "none", padding: 0, color: "var(--accent)", cursor: "pointer", fontSize: 11 }}>
+            clear selection
+          </button>
+        )}
+      </div>
+      {picked.length > 0 && (
+        <div aria-label="Selected assets" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+          {picked.map((id) => {
+            const target = byId.get(id);
+            return (
+              <span key={id} style={{
+                display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 4px 3px 9px", borderRadius: 999,
+                fontSize: 11, background: "color-mix(in srgb, var(--accent) 14%, transparent)",
+                border: "1px solid var(--accent)",
+              }}>
+                <span style={{ fontWeight: 700 }}>{target?.name || id}</span>
+                <span style={{ color: "var(--faint)", fontSize: 10 }}>{target?.type}</span>
+                <button type="button" onClick={() => onToggle(id)} title={`remove ${target?.name || id}`}
+                        style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--dim)", fontSize: 12, padding: "0 4px" }}>
+                  ×
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {groups.length === 0 ? (
+        <div style={{ fontSize: 11.5, color: "var(--faint)" }}>No asset matches “{query}”.</div>
+      ) : (
+        <div style={{ display: "grid", gap: 6, maxHeight: 280, overflowY: "auto", paddingRight: 2 }}>
+          {groups.map(([type, items]) => {
+            const selectedHere = items.filter((t) => picked.includes(t.asset_id)).length;
+            return (
+              <details key={`${type}:${openByDefault}`} open={openByDefault || selectedHere > 0}
+                       style={{ border: "1px solid var(--line)", borderRadius: 6, background: "var(--panel)" }}>
+                <summary style={{
+                  cursor: "pointer", padding: "6px 10px", fontSize: 11, display: "flex", gap: 8, alignItems: "center",
+                  letterSpacing: ".05em", textTransform: "uppercase", color: "var(--dim)",
+                }}>
+                  <span style={{ fontWeight: 800 }}>{type.replace(/_/g, " ")}</span>
+                  <span style={{ color: "var(--faint)" }}>{items.length}</span>
+                  {selectedHere > 0 && <span style={{ color: "var(--accent)" }}>· {selectedHere} selected</span>}
+                </summary>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 4, padding: "0 8px 8px" }}>
+                  {items.map((target) => {
+                    const on = picked.includes(target.asset_id);
+                    return (
+                      <button key={target.asset_id} type="button" aria-pressed={on}
+                              aria-label={`${target.name || target.asset_id} · ${target.type}`}
+                              title={target.asset_id}
+                              onClick={() => onToggle(target.asset_id)}
+                              style={{
+                                display: "flex", gap: 7, alignItems: "center", textAlign: "left", padding: "5px 8px",
+                                borderRadius: 5, cursor: "pointer", fontSize: 11.5, color: "var(--text)", minWidth: 0,
+                                background: on ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent",
+                                border: `1px solid ${on ? "var(--accent)" : "transparent"}`,
+                              }}>
+                        <span aria-hidden style={{
+                          width: 12, height: 12, borderRadius: 3, flex: "none", display: "grid", placeItems: "center",
+                          border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`,
+                          background: on ? "var(--accent)" : "transparent", color: "#fff", fontSize: 9,
+                        }}>{on ? "✓" : ""}</span>
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{target.name || target.asset_id}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </details>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -594,222 +774,235 @@ export default function Simulation() {
             ? "a cascade starts from seed assets and follows the declared rules below"
             : (selector?.note ?? "the values below are the ones this estate reported")}
         >
+          <div style={{ display: "grid", gap: 12 }}>
+            {formFields.length > 0 && (
+              <section aria-label="What changes" style={sectionStyle}>
+                <SectionHead step="A" title={isCascade ? "What fails" : "What changes"}
+                  hint={isCascade ? "the value or asset the failure starts from" : "type a value, or pick one this estate reports below"} />
           {formFields.length > 0 && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 12 }}>
-              {formFields.map((name) => {
-                const values = [...(selector?.algorithms ?? []), ...(selector?.protocols ?? []), ...(selector?.components ?? [])];
-                const listId = `sim-values-${name}`;
-                const label = isCascade && name === "from"
-                  ? "The algorithm that breaks (from)"
-                  : FIELD_LABEL[name] ?? name;
-                return (
-                  <label key={name} style={{ display: "block" }}>
-                    <span style={labelStyle}>
-                      {label}
-                      {requiredFields.includes(name) ? " *" : " (optional)"}
-                    </span>
-                    {name === "expression" || name === "steps" ? (
-                      <textarea
-                        aria-label={label}
-                        rows={name === "steps" ? 8 : 6}
-                        value={fields[name] ?? ""}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setFields((current) => ({ ...current, [name]: value }));
-                          setPreset(null);
-                          resetOutputs();
-                        }}
-                        placeholder={
-                          name === "steps"
-                            ? '[{"kind": "DISABLE_PROTOCOL", "from": "TLSv1.0"}, {"kind": "MIGRATE_QUANTUM_VULNERABLE", "to": "ML-KEM-768"}]'
-                            : '{"when": {"fact": "algorithm", "op": "eq", "value": "RSA"}, "then": {"set": {"algorithm": "ML-DSA-65"}}}'
-                        }
-                        style={{ ...inputStyle, lineHeight: 1.5, resize: "vertical" }}
-                      />
-                    ) : (
-                    <input
-                      aria-label={label}
-                      list={listId}
-                      value={fields[name] ?? ""}
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setFields((current) => ({ ...current, [name]: value }));
-                        setPreset(null);
-                        resetOutputs();
-                      }}
-                      placeholder={name === "key_size" ? "e.g. 256" : "value from this estate"}
-                      inputMode={name === "key_size" ? "numeric" : undefined}
-                      style={inputStyle}
-                    />
-                    )}
-                    {(name === "expression" || name === "steps") && jsonFieldError[name] && (
-                      <span style={{ display: "block", fontSize: 10.5, color: "var(--amber)", marginTop: 3 }}>
-                        {jsonFieldError[name]}
-                      </span>
-                    )}
-                    {name === "steps" && (
-                      <div style={{ marginTop: 6 }}>
-                        <div style={{ fontSize: 10.5, color: "var(--faint)", lineHeight: 1.5 }}>
-                          A step may carry <code>as_of</code> with one of these ids. The step is then
-                          matched against that snapshot&apos;s evidence, while its change lands on the
-                          estate as it stands — a plan written in Q2, judged on Q2&apos;s evidence.
-                          A step without <code>as_of</code> reads today.
-                        </div>
-                        {snapshotError && (
-                          <div style={{ fontSize: 10.5, color: "var(--amber)", marginTop: 4 }}>{snapshotError}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 12 }}>
+                  {formFields.map((name) => {
+                    const values = [...(selector?.algorithms ?? []), ...(selector?.protocols ?? []), ...(selector?.components ?? [])];
+                    const listId = `sim-values-${name}`;
+                    const label = isCascade && name === "from"
+                      ? "The algorithm that breaks (from)"
+                      : FIELD_LABEL[name] ?? name;
+                    return (
+                      <label key={name} style={{ display: "block" }}>
+                        <span style={labelStyle}>
+                          {label}
+                          {requiredFields.includes(name) ? " *" : " (optional)"}
+                        </span>
+                        {name === "expression" || name === "steps" ? (
+                          <textarea
+                            aria-label={label}
+                            rows={name === "steps" ? 8 : 6}
+                            value={fields[name] ?? ""}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setFields((current) => ({ ...current, [name]: value }));
+                              setPreset(null);
+                              resetOutputs();
+                            }}
+                            placeholder={
+                              name === "steps"
+                                ? '[{"kind": "DISABLE_PROTOCOL", "from": "TLSv1.0"}, {"kind": "MIGRATE_QUANTUM_VULNERABLE", "to": "ML-KEM-768"}]'
+                                : '{"when": {"fact": "algorithm", "op": "eq", "value": "RSA"}, "then": {"set": {"algorithm": "ML-DSA-65"}}}'
+                            }
+                            style={{ ...inputStyle, lineHeight: 1.5, resize: "vertical" }}
+                          />
+                        ) : (
+                        <input
+                          aria-label={label}
+                          list={listId}
+                          value={fields[name] ?? ""}
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            setFields((current) => ({ ...current, [name]: value }));
+                            setPreset(null);
+                            resetOutputs();
+                          }}
+                          placeholder={name === "key_size" ? "e.g. 256" : "value from this estate"}
+                          inputMode={name === "key_size" ? "numeric" : undefined}
+                          style={inputStyle}
+                        />
                         )}
-                        {snapshots === null && !snapshotError && (
-                          <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 4 }}>reading stored snapshots…</div>
+                        {(name === "expression" || name === "steps") && jsonFieldError[name] && (
+                          <span style={{ display: "block", fontSize: 10.5, color: "var(--amber)", marginTop: 3 }}>
+                            {jsonFieldError[name]}
+                          </span>
                         )}
-                        {snapshots !== null && snapshots.length === 0 && (
-                          <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 4 }}>
-                            this tenant holds no stored snapshot, so no step can name one yet. Capture
-                            a baseline on the twin chain screen first — a date is not a snapshot.
-                          </div>
-                        )}
-                        {snapshots !== null && snapshots.length > 0 && (
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5, alignItems: "center" }}>
-                            {snapshots.slice(0, 6).map((snapshot) => (
-                              <button
-                                key={snapshot.id}
-                                type="button"
-                                title={`${snapshot.assets} assets · ${snapshot.evidence} evidence records · ${snapshot.note ?? "no note"}`}
-                                onClick={() => copySnapshotId(snapshot.snapshot_id)}
-                                style={{ ...chipStyle(false), fontSize: 10.5 }}
-                              >
-                                {snapshot.snapshot_id}
-                              </button>
-                            ))}
-                            {copiedSnapshot && (
-                              <span style={{ fontSize: 10.5, color: "var(--green)" }}>
-                                copied {copiedSnapshot} — paste it as <code>as_of</code> in a step
-                              </span>
+                        {name === "steps" && (
+                          <div style={{ marginTop: 6 }}>
+                            <div style={{ fontSize: 10.5, color: "var(--faint)", lineHeight: 1.5 }}>
+                              A step may carry <code>as_of</code> with one of these ids. The step is then
+                              matched against that snapshot&apos;s evidence, while its change lands on the
+                              estate as it stands — a plan written in Q2, judged on Q2&apos;s evidence.
+                              A step without <code>as_of</code> reads today.
+                            </div>
+                            {snapshotError && (
+                              <div style={{ fontSize: 10.5, color: "var(--amber)", marginTop: 4 }}>{snapshotError}</div>
+                            )}
+                            {snapshots === null && !snapshotError && (
+                              <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 4 }}>reading stored snapshots…</div>
+                            )}
+                            {snapshots !== null && snapshots.length === 0 && (
+                              <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 4 }}>
+                                this tenant holds no stored snapshot, so no step can name one yet. Capture
+                                a baseline on the twin chain screen first — a date is not a snapshot.
+                              </div>
+                            )}
+                            {snapshots !== null && snapshots.length > 0 && (
+                              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5, alignItems: "center" }}>
+                                {snapshots.slice(0, 6).map((snapshot) => (
+                                  <button
+                                    key={snapshot.id}
+                                    type="button"
+                                    title={`${snapshot.assets} assets · ${snapshot.evidence} evidence records · ${snapshot.note ?? "no note"}`}
+                                    onClick={() => copySnapshotId(snapshot.snapshot_id)}
+                                    style={{ ...chipStyle(false), fontSize: 10.5 }}
+                                  >
+                                    {snapshot.snapshot_id}
+                                  </button>
+                                ))}
+                                {copiedSnapshot && (
+                                  <span style={{ fontSize: 10.5, color: "var(--green)" }}>
+                                    copied {copiedSnapshot} — paste it as <code>as_of</code> in a step
+                                  </span>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
-                      </div>
-                    )}
-                    <datalist id={listId}>
-                      {[...new Set(values.map((item) => item.value))].map((value) => (
-                        <option key={value} value={value} />
-                      ))}
-                    </datalist>
-                  </label>
-                );
-              })}
-            </div>
-          )}
+                        <datalist id={listId}>
+                          {[...new Set(values.map((item) => item.value))].map((value) => (
+                            <option key={value} value={value} />
+                          ))}
+                        </datalist>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
 
-          {!isCascade && (
-            <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-              <VocabularyChips
-                label="algorithms in this estate"
-                values={selector?.algorithms ?? []}
-                onPick={(value) => { setFields((current) => ({ ...current, from: value })); setPreset(null); resetOutputs(); }}
+
+                {!isCascade && (
+                  <div style={{ marginTop: 12, borderTop: "1px dashed var(--line)", paddingTop: 10 }}>
+                    <EstateValuePicker
+                      current={fields.from}
+                      groups={[
+                        { id: "algorithms", label: "Algorithms", values: selector?.algorithms ?? [] },
+                        { id: "protocols", label: "Protocols", values: selector?.protocols ?? [] },
+                        { id: "components", label: "Components", values: selector?.components ?? [] },
+                      ]}
+                      onPick={(value: string) => { setFields((current) => ({ ...current, from: value })); setPreset(null); resetOutputs(); }}
+                    />
+                  </div>
+                )}
+              </section>
+            )}
+
+            <section aria-label="Scope" style={sectionStyle}>
+              <SectionHead
+                step={formFields.length > 0 ? "B" : "A"}
+                title={isCascade
+                  ? (entry.kind === "CASCADE_ALGORITHM_BREAK" ? "Seed assets (optional)" : "Seed assets")
+                  : "Scope"}
+                hint={isCascade
+                  ? (entry.kind === "CASCADE_ALGORITHM_BREAK"
+                    ? "Narrow the seeds to specific assets (optional — every use of the value above is a seed)"
+                    : "Where the failure starts — pick the seed assets *")
+                  : "Narrow to specific assets — no selection means every asset the selector matches"}
               />
-              <VocabularyChips
-                label="protocols in this estate"
-                values={selector?.protocols ?? []}
-                onPick={(value) => { setFields((current) => ({ ...current, from: value })); setPreset(null); resetOutputs(); }}
-              />
-              <VocabularyChips
-                label="components in this estate"
-                values={selector?.components ?? []}
-                onPick={(value) => { setFields((current) => ({ ...current, from: value })); setPreset(null); resetOutputs(); }}
-              />
-            </div>
-          )}
+              {selector && selector.targets.length > 0 ? (
+                <TargetPicker
+                  targets={selector.targets}
+                  picked={targets}
+                  onToggle={(assetId) => {
+                    setTargets((current) => current.includes(assetId)
+                      ? current.filter((id) => id !== assetId)
+                      : [...current, assetId]);
+                    setPreset(null);
+                    resetOutputs();
+                  }}
+                  onClear={() => { setTargets([]); setPreset(null); resetOutputs(); }}
+                />
+              ) : (
+                <div style={{ fontSize: 11.5, color: "var(--faint)" }}>
+                  The twin holds no assets that a scenario can be narrowed to.
+                </div>
+              )}
+          {isCascade && (
+                <label style={{ display: "block", marginTop: 12, maxWidth: 220 }}>
+                  <span style={labelStyle}>Hops to walk — {depth}</span>
+                  <input
+                    aria-label="Hops to walk"
+                    type="range"
+                    min={1}
+                    max={8}
+                    step={1}
+                    value={depth}
+                    onChange={(event) => { setDepth(Number(event.target.value)); setPreset(null); resetOutputs(); }}
+                    style={{ width: "100%" }}
+                  />
+                  <span style={{ fontSize: 10.5, color: "var(--faint)" }}>
+                    1 hop is direct dependents; 8 is the whole reachable estate
+                  </span>
+                </label>
+              )}
+
 
           {isCascade && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                <span style={{ fontSize: 11.5, color: "var(--dim)" }}>
-                  Rules carried: {[...new Set((preview?.data.rules ?? []).map((rule) => rule.predicate))].join(", ") || "declared on the preview"}
-                </span>
-                <span style={{ fontSize: 11, color: "var(--faint)" }}>
-                  a predicate that is not listed does not carry this failure — so the radius below is a
-                  floor, and the blind spots say where it stops being one
-                </span>
-              </div>
-            </div>
-          )}
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: 11.5, color: "var(--dim)" }}>
+                      Rules carried: {[...new Set((preview?.data.rules ?? []).map((rule) => rule.predicate))].join(", ") || "declared on the preview"}
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--faint)" }}>
+                      a predicate that is not listed does not carry this failure — so the radius below is a
+                      floor, and the blind spots say where it stops being one
+                    </span>
+                  </div>
+                </div>
+              )}
 
-          <div style={{ marginTop: 14 }}>
-            <span style={labelStyle}>
-              {isCascade
-                ? (entry.kind === "CASCADE_ALGORITHM_BREAK"
-                  ? "Narrow the seeds to specific assets (optional — every use of the value above is a seed)"
-                  : "Where the failure starts — pick the seed assets *")
-                : "Narrow to specific assets — no selection means every asset the selector matches"}
-            </span>
-            {selector && selector.targets.length > 0 ? (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {selector.targets.map((target) => {
-                  const picked = targets.includes(target.asset_id);
-                  return (
-                    <button
-                      key={target.asset_id}
-                      type="button"
-                      aria-pressed={picked}
-                      onClick={() => {
-                        setTargets((current) => picked
-                          ? current.filter((id) => id !== target.asset_id)
-                          : [...current, target.asset_id]);
-                        setPreset(null);
-                        resetOutputs();
-                      }}
-                      style={chipStyle(picked)}
-                    >
-                      {target.name} <span style={{ color: "var(--faint)" }}>· {target.type}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div style={{ fontSize: 11.5, color: "var(--faint)" }}>
-                The twin holds no assets that a scenario can be narrowed to.
-              </div>
+            </section>
+
+            {!isCascade && (
+              <details aria-label="Advanced options" style={sectionStyle}
+                       open={Boolean(performanceText.trim()) || undefined}>
+                <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 800 }}>
+                  Advanced — attach recorded performance measurements
+                  <span style={{ fontWeight: 400, fontSize: 11, color: "var(--faint)", marginLeft: 8 }}>optional</span>
+                </summary>
+          {!isCascade && (
+                  <div style={{ marginTop: 12 }}>
+                    <label style={labelStyle} htmlFor="simulation-performance-input">
+                      Recorded performance context (optional JSON — input to this simulation only)
+                    </label>
+                    <textarea id="simulation-performance-input"
+                      aria-label="Recorded performance context (optional JSON)"
+                      value={performanceText}
+                      onChange={(event) => { setPerformanceText(event.target.value); resetOutputs(); }}
+                      rows={4} style={inputStyle}
+                      placeholder={'{"tenant_id":"<tenant>","asset_ref":"app:<id>","metric_name":"crypto.tls_handshake_ms","source_id":"<exporter>","change_event_id":"<stored change>","before_start":"<ISO-8601>","before_end":"<ISO-8601>","after_start":"<ISO-8601>","after_end":"<ISO-8601>"}'} />
+                    <div style={{ marginTop: 4, fontSize: 11, color: "var(--dim)" }}>
+                      <span title={"The preview checks the Twin selector only. Run checks measurement provenance, the recorded change and exact asset identity; unsigned captures remain provisional. No future performance or migration wave is inferred."}>{"The preview checks the Twin selector only."}</span>
+                    </div>
+                    {performanceInput.error && <div role="alert" style={{ fontSize: 11, color: "var(--amber)" }}>{performanceInput.error}</div>}
+                  </div>
+                )}
+
+              </details>
             )}
           </div>
 
-          {isCascade && (
-            <label style={{ display: "block", marginTop: 12, maxWidth: 220 }}>
-              <span style={labelStyle}>Hops to walk — {depth}</span>
-              <input
-                aria-label="Hops to walk"
-                type="range"
-                min={1}
-                max={8}
-                step={1}
-                value={depth}
-                onChange={(event) => { setDepth(Number(event.target.value)); setPreset(null); resetOutputs(); }}
-                style={{ width: "100%" }}
-              />
-              <span style={{ fontSize: 10.5, color: "var(--faint)" }}>
-                1 hop is direct dependents; 8 is the whole reachable estate
-              </span>
-            </label>
-          )}
-
-          {!isCascade && (
-            <div style={{ marginTop: 14 }}>
-              <label style={labelStyle} htmlFor="simulation-performance-input">
-                Recorded performance context (optional JSON — input to this simulation only)
-              </label>
-              <textarea id="simulation-performance-input"
-                aria-label="Recorded performance context (optional JSON)"
-                value={performanceText}
-                onChange={(event) => { setPerformanceText(event.target.value); resetOutputs(); }}
-                rows={4} style={inputStyle}
-                placeholder={'{"tenant_id":"<tenant>","asset_ref":"app:<id>","metric_name":"crypto.tls_handshake_ms","source_id":"<exporter>","change_event_id":"<stored change>","before_start":"<ISO-8601>","before_end":"<ISO-8601>","after_start":"<ISO-8601>","after_end":"<ISO-8601>"}'} />
-              <div style={{ marginTop: 4, fontSize: 11, color: "var(--dim)" }}>
-                <span title={"The preview checks the Twin selector only. Run checks measurement provenance, the recorded change and exact asset identity; unsigned captures remain provisional. No future performance or migration wave is inferred."}>{"The preview checks the Twin selector only."}</span>
-              </div>
-              {performanceInput.error && <div role="alert" style={{ fontSize: 11, color: "var(--amber)" }}>{performanceInput.error}</div>}
-            </div>
-          )}
-
-          <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <div style={{
+            marginTop: 12, padding: "12px 14px", borderRadius: "var(--r)",
+            border: "1px solid color-mix(in srgb, var(--violet) 40%, var(--line))",
+            background: "color-mix(in srgb, var(--violet) 5%, transparent)",
+          }}>
+          <div style={{ marginTop: 0, display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
             <label style={{ flex: "1 1 240px" }}>
               <span style={labelStyle}>Label this run (optional)</span>
               <input
@@ -856,6 +1049,7 @@ export default function Simulation() {
                 : "this family edits nothing, so it has no BOM diff — six empty diffs would read as 'nothing changes'"}
             </div>
           )}
+          </div>
         </Panel>
       )}
 

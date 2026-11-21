@@ -534,9 +534,16 @@ export interface MigrationEndpoint {
 }
 export interface MigrationVendor {
   vendor_id: string; name: string; criticality?: string | null; vendor_type?: string | null;
-  dependency_type?: string | null; readiness: "READY" | "NOT_READY" | "UNKNOWN" | "NOT_RECORDED_FOR_TARGET";
+  dependency_type?: string | null;
+  readiness: "READY" | "NOT_READY" | "RELEASE_NOT_READY" | "UNKNOWN" | "NOT_RECORDED_FOR_TARGET";
   uses_source: boolean; sub_tier: string[];
+  /** from the asset register: ACTIVE / EXPIRING / EXPIRED / NONE_ON_RECORD (estate graph only) */
+  contract_state?: string | null; contract_end?: string | null; supplies?: string[];
   products: { algorithm?: string | null; key_size?: number | null; pqc_ready: boolean; use_case?: string | null }[];
+}
+export interface MigrationPlatform {
+  asset_id: string; name?: string | null; manufacturer?: string | null; model?: string | null;
+  virtual?: boolean | null; vendors?: string[];
 }
 export interface MigrationSystemReport {
   system_id: string; name: string; environment?: string | null; criticality?: string | null;
@@ -544,7 +551,7 @@ export interface MigrationSystemReport {
   blocked_by: MigrationReason[]; parallel_because: MigrationReason[]; considerations: MigrationReason[];
   twin: {
     crypto_assets: string[]; crypto_assets_using_source: string[]; evidence_records_using_source: number;
-    hardware: MigrationHardware[];
+    hardware: MigrationHardware[]; platform?: MigrationPlatform[];
     software: { libraries: MigrationLibrary[]; deployments: { deployment_key?: string | null; environment?: string | null; artifact_id?: string | null }[] };
     connections: MigrationConnection[]; network_endpoints: MigrationEndpoint[]; vendors: MigrationVendor[];
     certificates: { fingerprint_sha256: string; subject?: string | null; issuer?: string | null; public_key_algorithm?: string | null; not_after?: string | null; days_until_expiry?: number | null }[];
@@ -565,7 +572,8 @@ export interface MigrationSimulation {
   headline: string;
   strategy: { recommended: MigrationStrategy; meaning: string; systems: Record<"BLOCKED" | "PARALLEL" | "DIRECT", number>;
     reasons: Record<string, number>; parallel_mechanisms: { mechanism: string; how: string }[]; direct_is_safe_when: string };
-  twin_context: { source: string; systems_in_change: number; hardware: number; software_libraries: number;
+  twin_context: { source: string; kind?: "ESTATE_GRAPH" | "DIGITAL_TWIN"; servers?: number;
+    systems_in_change: number; hardware: number; software_libraries: number;
     connected_systems: number; network_endpoints: number; vendors: number; certificates: number;
     matched: Record<string, number> };
   systems: MigrationSystemReport[];
@@ -588,6 +596,34 @@ export const apiMigrationSimulation = (params: { from_algo: string; to_algo: str
   call("/api/v1/digital-twin/simulate", {
     method: "POST",
     body: JSON.stringify({ scenario: "algorithm_migration", params: params.systems ? params : { from_algo: params.from_algo, to_algo: params.to_algo } }),
+  });
+
+/* The same migration question asked of the live estate graph — the agents' observations of
+ * the bank (e.g. the Meridian sandbox): business systems from the CMDB mapping, the hosts,
+ * libraries, endpoints, certificates, HSMs, servers and vendors under them. The engine can
+ * take longer than the default 8 s read budget on a large estate, so it gets 30 s. */
+export interface EstateMigrationContext {
+  run_id: string; projection_id?: string | null; estate?: string | null; observed_at?: string | null;
+  systems: { system_id: string; name: string; owner?: string | null; criticality?: string | null;
+    hosts: string[]; crypto_assets: number; certificates: number; libraries: number; endpoints: number;
+    hsms: number; servers: number; vendors: number; algorithms: Record<string, number> }[];
+  algorithms: { algorithm: string; evidence: number; systems: string[] }[];
+  unowned_algorithms: Record<string, number>;
+  dependencies: { from: string; to: string; type?: string | null; provenance?: string | null }[];
+  counts: Record<string, number>;
+}
+export interface EstateMigrationResult {
+  run_id: string; projection_id?: string | null; estate?: string | null; source: "ESTATE_GRAPH";
+  graph_counts?: Record<string, number>; migration: MigrationSimulation; mutates_nothing: boolean;
+}
+export const apiEstateMigrationContext = (): Promise<ApiResult<EstateMigrationContext>> =>
+  call("/api/v1/estate/evidence/simulation/migration/context", { signal: AbortSignal.timeout(20000) });
+
+export const apiEstateMigrationSimulation = (params: { from_algo: string; to_algo: string; systems?: string[] }): Promise<ApiResult<EstateMigrationResult>> =>
+  call("/api/v1/estate/evidence/simulation/migration", {
+    method: "POST",
+    signal: AbortSignal.timeout(30000),
+    body: JSON.stringify(params.systems?.length ? params : { from_algo: params.from_algo, to_algo: params.to_algo }),
   });
 
 export const apiDigitalTwinTimeline = (assetId: string): Promise<ApiResult<Record<string, unknown>>> =>

@@ -50,6 +50,16 @@ host_info() {
   esac
 }
 
+# the bank-approved business-system mapping of <host> (name, owner, criticality, the systems it
+# depends on) — the same JSON the built-in agent gets in sandbox/docker-compose.sandbox.yml
+system_json() {
+  awk -v svc="  cryptava-$1:" '
+    $0 == svc { found = 1; next }
+    found && /^  [a-z]/ { exit }
+    found && /CRYPTAVA_SYSTEM:/ { sub(/^[^:]*CRYPTAVA_SYSTEM: *\047/, ""); sub(/\047 *$/, ""); print; exit }
+  ' sandbox/docker-compose.sandbox.yml
+}
+
 # true when the agent beside <host> was connected from the console (agents add)
 console_agent() {
   [ "$(docker inspect -f '{{index .Config.Labels "cryptoscan.cryptava.added"}}' "cryptoscan-cryptava-$1" 2>/dev/null)" = "1" ]
@@ -278,6 +288,7 @@ case "${1:-up}" in
         IFS='|' read -r target hname ip system owner <<EOF_INFO
 $info
 EOF_INFO
+        [ -n "$(system_json "$host")" ] || { echo "no system mapping for $host in sandbox/docker-compose.sandbox.yml" >&2; exit 1; }
         docker inspect -f '{{.State.Running}}' "$target" 2>/dev/null | grep -q true \
           || { echo "$host ($target) is not running — start the sandbox first: $0 up" >&2; exit 1; }
         agent="cryptoscan-cryptava-$host"
@@ -301,7 +312,7 @@ EOF_INFO
           -e CRYPTAVA_ROOT=/proc/1/root -e CRYPTAVA_INTERVAL=300 -e CRYPTAVA_JITTER=30 \
           -e 'CRYPTAVA_TAGS={"environment": "production-sandbox", "datacenter": "dc1", "owner": "Meridian Bank"}' \
           -e "CRYPTAVA_HOSTNAME=$hname" -e "CRYPTAVA_FQDN=$hname.bank.sandbox" -e "CRYPTAVA_PRIMARY_IP=$ip" \
-          -e "CRYPTAVA_SYSTEM={\"name\": \"$system\", \"owner\": \"$owner\"}" \
+          -e "CRYPTAVA_SYSTEM=$(system_json "$host" || true)" \
           -e "CRYPTAVA_AGENT_ID=$agent_id" -e "CRYPTAVA_ENROLLMENT_TOKEN=$token" \
           -v "$PWD/services/cryptava:/opt/cryptava:ro" \
           -v "$volume:/var/lib/cryptava" \

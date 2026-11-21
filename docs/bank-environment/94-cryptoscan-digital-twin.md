@@ -1032,6 +1032,57 @@ Each system carries its own strategy, `blocked_by` and `parallel_because` reason
 
 The function is pure (no clock, no randomness, nothing written).
 
+#### The same question against the live estate (the Meridian sandbox)
+
+The Digital Twin tables are filled by registration. A bank estate that is only *observed* —
+the Meridian sandbox, whose seven servers each run a Cryptava agent — holds its systems,
+certificates and libraries in the **estate graph** instead, so the twin snapshot found
+nothing and the panel answered `NOT_DETERMINED` while the estate plainly used RSA and ECDSA.
+The migration panel therefore reads the estate graph by default:
+
+- `GET /api/v1/estate/evidence/simulation/migration/context`: the estate's business
+  systems (with hosts, libraries, certificates, HSMs, servers and vendors per system), the
+  algorithms observed per system, and the connections between systems;
+- `POST /api/v1/estate/evidence/simulation/migration` (`from_algo`, `to_algo`, optional
+  `systems: [names]`): the same `cryptoscan.migration-simulation/1` answer, with
+  `twin_context.kind = ESTATE_GRAPH`. It mutates nothing.
+
+`services/agility/agility/estate_migration_twin.py` turns the newest stored observation
+into the snapshot the engine reads. Its rules:
+
+| Engine input | Taken from the estate graph |
+|---|---|
+| systems | `SYSTEM` assets — the bank-approved mapping each agent carries (`CRYPTAVA_SYSTEM`: name, owner, criticality, business service) |
+| what belongs to a system | assets reached from the system over evidenced `part_of` / `runs_on` / `hosted_on` / `exposes` edges — never by a name match. An asset no system reaches stays unowned and is counted in `unknowns` |
+| algorithms | evidence facts (`algorithm`, HSM `key_slots`) that were observed, not declared or inferred; a library's capability list is capability, never use |
+| libraries | `LIBRARY` assets and their capability evidence (OpenSSL 3.0 has no ML-KEM; ≥ 3.5 does) |
+| HSMs | `uses_hsm` targets — the only key-holding hardware; a missing mechanism list is `UNKNOWN` |
+| servers | the `hosted_on` platform (the agent's `hw:system`), shown as *runs on* — a platform is never a blocker, and its maker is not a migration vendor |
+| vendors | `provided_by` targets of the system's software, with the asset register's `contract_state` / `contract_end`, and the vendor's declared `pqc_ready` for the deployed release |
+| connections | declared `depends_on` (the CMDB's `depends_on` list in `CRYPTAVA_SYSTEM`, edge basis `APPROVED_MAPPING`), plus an observed `connects_to` whose remote IP is exactly another system's host IP |
+
+Two findings exist only because the estate records them:
+
+- `VENDOR_RELEASE_NOT_READY` (HIGH): the vendor's product line can do the target, but the
+  release deployed here does not (for example OpenSSL 3.0.x for ML-KEM). Upgrade first, or
+  run in parallel.
+- `VENDOR_NO_SUPPORT_CONTRACT` (MEDIUM, one per system): suppliers of the change whose
+  contract is `EXPIRED` or not on record, and who are not already ready.
+
+The sandbox's mapping lives in `sandbox/docker-compose.sandbox.yml`. SWIFT Gateway depends on
+Core Banking and the Payment HSM; Internet Banking, Mobile Banking API and Branch Banking
+depend on Core Banking; Core Banking depends on the Payment HSM. `run_sandbox.sh agents add`
+reuses the same record. Re-start the agents after changing it. The next observation carries
+the new mapping.
+
+**In the console** the panel's *Live estate (agents)* source is the default whenever an
+observation is stored, and the *Digital Twin register* source is the fallback. The panel
+lists the estate's business systems as selectable cards and the algorithms each one
+actually holds. A simulation gets 30 s rather than the default 8 s read budget, and the
+button shows the elapsed time while it runs. A missing observation is reported as such,
+never as an empty answer.
+
+
 ### What a snapshot identifies, precisely
 
 The snapshot id covers assets, relationships, evidence **content** and collector

@@ -209,6 +209,20 @@ describe("simulation workspace", () => {
     expect(screen.getByRole("button", { name: /Asset goes down/ })).toBeInTheDocument();
     // the vocabulary is the estate's, not a hardcoded list of algorithms
     expect(screen.getByRole("button", { name: /^AES · 2$/ })).toBeInTheDocument();
+    // the vocabulary is one tabbed, searchable list — not three walls of chips
+    expect(screen.getByRole("tab", { name: /Algorithms 2/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: /Protocols 1/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^TLSv1\.3 · 1$/ }));
+    expect(screen.getByLabelText(FROM)).toHaveValue("TLSv1.3");
+    fireEvent.click(screen.getByRole("tab", { name: /Algorithms 2/ }));
+    fireEvent.change(screen.getByLabelText("Search the estate's values"), { target: { value: "rs" } });
+    expect(screen.getByRole("button", { name: /^RSA · 1$/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^AES · 2$/ })).not.toBeInTheDocument();
+    // assets are grouped by type, and a selection is pinned as a removable tag
+    fireEvent.click(screen.getByRole("button", { name: /payments-api · APPLICATION/ }));
+    expect(screen.getByLabelText("Selected assets")).toHaveTextContent("payments-api");
+    fireEvent.click(screen.getByRole("button", { name: "clear selection" }));
+    expect(screen.queryByLabelText("Selected assets")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /payments-api · APPLICATION/ })).toBeInTheDocument();
     // the estate the answer is measured against is on screen
     expect(screen.getByText("3 assets · 2 evidence")).toBeInTheDocument();

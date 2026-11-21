@@ -2144,6 +2144,88 @@ def simulation_plan(
     return {"run_id": run.id, **result}
 
 
+class EstateMigrationRequest(BaseModel):
+    """One crypto change, checked against the live estate graph."""
+
+    from_algo: str = Field(min_length=1, max_length=120)
+    to_algo: str = Field(min_length=1, max_length=120)
+    #: system ids or exact system names; empty = every system that uses ``from_algo``
+    systems: list[str] | None = Field(default=None, max_length=100)
+
+
+#: (tenant, run id) → the twin translated from that run. A stored run never changes, so the
+#: translation is reused until a newer observation arrives; bounded so it cannot grow.
+_ESTATE_TWIN_CACHE: dict[tuple[str | None, Any], dict[str, Any]] = {}
+_ESTATE_TWIN_CACHE_MAX = 8
+
+
+def _estate_migration_twin(run: Any) -> dict[str, Any]:
+    from datetime import timezone
+
+    from agility.estate_migration_twin import twin_from_estate
+
+    key = (current_tenant(), getattr(run, "id", None))
+    cached = _ESTATE_TWIN_CACHE.get(key)
+    if cached is not None:
+        return cached
+    graph = _graph_from_run(run)
+    payload = (run.result or {}).get("estate_discovery") or {}
+    twin = twin_from_estate(graph.assets(), graph.relationships(), graph.evidence(),
+                            estate=payload.get("estate"), projection_id=graph.fingerprint(),
+                            now=datetime.now(timezone.utc))
+    if len(_ESTATE_TWIN_CACHE) >= _ESTATE_TWIN_CACHE_MAX:
+        _ESTATE_TWIN_CACHE.pop(next(iter(_ESTATE_TWIN_CACHE)))
+    _ESTATE_TWIN_CACHE[key] = twin
+    return twin
+
+
+@router.get("/simulation/migration/context")
+def estate_migration_context(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """What the migration form can offer for this estate: its systems and the algorithms in use.
+
+    Read from the newest stored observation (the agents' estate graph), so a bank estate such
+    as the Meridian sandbox shows its own business systems, not a generic list.
+    """
+    from agility.estate_migration_twin import migration_context
+
+    run = _latest_run(db)
+    twin = _estate_migration_twin(run)
+    return {"run_id": run.id, "projection_id": twin.get("projection_id"), "estate": twin.get("estate"),
+            "observed_at": str(getattr(run, "created_at", "") or "") or None,
+            **migration_context(twin)}
+
+
+@router.post("/simulation/migration")
+def estate_migration_simulation(
+    body: EstateMigrationRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Simulate one algorithm migration against the live estate graph. Mutates nothing.
+
+    Same engine and answer as the Digital Twin's ``algorithm_migration`` scenario
+    (parallel or direct, how, what can go wrong, vendors and connected systems), but the
+    estate is the agents' evidence graph: systems from the bank-approved mapping, the hosts,
+    libraries, endpoints, certificates, HSMs and vendors observed under them, and the
+    connections the CMDB declared or the agents saw.
+    """
+    from agility.migration_simulation import simulate_migration
+
+    run = _latest_run(db)
+    twin = _estate_migration_twin(run)
+    try:
+        migration = simulate_migration(twin, from_algo=body.from_algo, to_algo=body.to_algo,
+                                       systems=body.systems or None)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": "invalid_migration", "reason": str(exc)}) from exc
+    return {"run_id": run.id, "projection_id": twin.get("projection_id"), "estate": twin.get("estate"),
+            "source": "ESTATE_GRAPH", "graph_counts": twin.get("graph_counts"),
+            "migration": migration, "mutates_nothing": True}
+
+
 @router.post("/simulation/run")
 def simulation_run(
     body: SimulationRunRequest,
