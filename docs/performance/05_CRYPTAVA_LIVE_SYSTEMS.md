@@ -74,8 +74,14 @@ returns one card per activated agent:
 * `missing[]`: each unread figure with its reason;
 * `trend`: the last 30 points for CPU, memory, network and TLS.
 
-The console polls every 15 s. The rest of Performance Intelligence now defaults to
-**follow live: the last 30 minutes**. Picking a date range stops following.
+The console polls every 15 s. The rest of Performance Intelligence defaults to
+**follow live: the last 30 minutes**, rolled forward every 15 s. Each refresh re-reads
+only the open view (the overview reads overview, trends and alerts), so a refresh
+never fires the page's full read set at the request gate. A hidden tab skips the
+refresh and catches up when it is shown again. A failed background refresh keeps the
+last delivered figures, and the live status line says so. It never blanks to zeros.
+The status line also shows how many agents are live and when the figures were read.
+Picking a date range stops following (PAUSED).
 
 Agents with no tenant report into `CRYPTAVA_PERFORMANCE_TENANT` (default `default`).
 A console user with no organization membership reads that tenant.

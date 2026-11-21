@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import {
   PerformanceServiceRow, activeTenantId, ensureActiveTenant } from "../lib/api";
@@ -10,7 +10,7 @@ import NetworkPerfWorkspace from "../components/NetworkPerfWorkspace";
 import CryptoWorkspace from "../components/CryptoWorkspace";
 import HsmWorkspace from "../components/HsmWorkspace";
 import WorkloadWorkspace from "../components/WorkloadWorkspace";
-import LiveSystemsPanel from "../components/LiveSystemsPanel";
+import LiveSystemsPanel, { LIVE_REFRESH_MS, useLiveSystems, type LiveSystemsFeed } from "../components/LiveSystemsPanel";
 import { comparabilityGate, comparisonRows, metadataChecklist, type BenchmarkRunLike } from "../lib/benchmarkLab";
 import { CAPACITY_FEATURES, capacityQuestions, featureState, type CapacityForecastRow } from "../lib/capacityBrief";
 import {
@@ -119,7 +119,6 @@ export function TileView({ tile, label }: { tile: PerformanceTile | undefined; l
           style={{ width: 8, height: 8, borderRadius: 99, background: unknown ? "transparent" : TILE_TONE[tone], border: unknown ? `1.5px dashed ${TILE_TONE[tone]}` : "none" }}
         />
       </div>
-      <div style={{ fontSize: 11, opacity: 0.75 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 700 }}>
         <span>{unknown ? "—" : tile.value}</span>
         <span style={{ fontSize: 11, fontWeight: 400 }}>{unknown ? "" : ` ${tile.unit}`}</span>
@@ -228,23 +227,186 @@ function ErrorNote({ error }: { error: string }) {
   );
 }
 
-function useAsync<T>(loader: () => Promise<ApiResult<T>>, deps: React.DependencyList, enabled = true) {
+type AsyncRead<T> = {
+  data: T | null;
+  /** a foreground failure: nothing trustworthy to show, the panel names the failure */
+  error: string | null;
+  /** a background refresh failed: the last figures stay on screen, flagged as such */
+  refreshError: string | null;
+  loading: boolean;
+  /** when the newest successful read landed (epoch ms) */
+  updatedAt: number | null;
+  reload: () => void;
+};
+
+/* One performance read. It runs when `key` changes while it is enabled and its view is
+   on screen (an off-screen view catches up the moment it is opened), so each live
+   refresh costs the reads of one view, not all seventeen.
+
+   `scope` names what the figures belong to — the tenant and, off live, the fixed
+   window. A refresh inside the same scope is a background refresh: a failure keeps
+   the last delivered figures and says so instead of blanking the page. A new scope
+   drops the old figures first — they describe something else. */
+function useAsync<T>(
+  loader: () => Promise<ApiResult<T>>,
+  key: string,
+  { enabled, active, scope }: { enabled: boolean; active: boolean; scope: string },
+): AsyncRead<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const loaderRef = useRef(loader);
+  loaderRef.current = loader;
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const heldScope = useRef<string | null>(null);
+  const seq = useRef(0);
+  const doneKey = useRef<string | null>(null);
+
   const run = useCallback(() => {
+    const id = ++seq.current;
+    const runScope = scopeRef.current;
     setLoading(true);
-    loader()
-      .then((result) => {
-        if (result.data !== null) { setData(result.data); setError(null); }
-        else { setError(result.error ?? "read failed"); setData(null); }
-      })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "read failed"))
-      .then(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-  useEffect(() => { if (enabled) run(); }, [run, enabled]);
-  return { data, error, loading, reload: run };
+    const settle = (value: T | null, failure: string | null) => {
+      if (id !== seq.current) return; // superseded by a newer read
+      setLoading(false);
+      if (value !== null) {
+        heldScope.current = runScope;
+        setData(value);
+        setError(null);
+        setRefreshError(null);
+        setUpdatedAt(Date.now());
+        return;
+      }
+      const message = failure ?? "read failed";
+      if (heldScope.current === runScope) {
+        setRefreshError(message);
+        return;
+      }
+      heldScope.current = null;
+      setData(null);
+      setRefreshError(null);
+      setError(message);
+    };
+    loaderRef.current()
+      .then((result) => settle(result.data, result.data === null ? (result.error ?? "read failed") : null))
+      .catch((cause: unknown) => settle(null, cause instanceof Error ? cause.message : "read failed"));
+  }, []);
+
+  useEffect(() => {
+    if (heldScope.current !== null && heldScope.current !== scope) {
+      heldScope.current = null;
+      seq.current += 1;
+      setData(null);
+      setError(null);
+      setRefreshError(null);
+      setUpdatedAt(null);
+      setLoading(false);
+      doneKey.current = null;
+    }
+  }, [scope]);
+
+  useEffect(() => {
+    if (!enabled || !active || doneKey.current === key) return;
+    doneKey.current = key;
+    run();
+    // scope is a dependency so a scope change (which drops the held figures) re-reads
+  }, [key, scope, enabled, active, run]);
+
+  useEffect(() => () => { seq.current += 1; }, []);
+
+  return { data, error, refreshError, loading, updatedAt, reload: run };
+}
+
+type ReadName =
+  | "overview" | "network" | "storage" | "applications" | "databases" | "cryptography"
+  | "infrastructure" | "cloud" | "alerts" | "capacity" | "baselines" | "benchmarks"
+  | "health" | "slo" | "hsm" | "workloads" | "trends";
+
+/* The reads each view renders. Only these refresh while the view is open. */
+const VIEW_READS: Record<View, ReadName[]> = {
+  overview: ["overview", "trends", "alerts"],
+  live: [],
+  infrastructure: ["infrastructure"],
+  storage: ["storage"],
+  network: ["network"],
+  applications: ["applications"],
+  databases: ["databases"],
+  cryptography: ["cryptography"],
+  hsm: ["hsm"],
+  workloads: ["workloads"],
+  cloud: ["cloud"],
+  alerts: ["alerts"],
+  capacity: ["capacity", "baselines"],
+  benchmarks: ["benchmarks"],
+  reports: [],
+  collectors: ["health"],
+  slo: ["slo"],
+};
+
+function clock(ms: number | null): string {
+  if (ms === null) return "—";
+  return new Date(ms).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+/* The page's live line: whether figures follow the agents, how many agents are
+   reporting right now, and when the figures on screen were read. A failed refresh
+   is named — the figures shown are then the previous read, never fresh zeros. */
+function LiveStatus({ follow, feed, updatedAt, refreshError, loading, onRefresh }: {
+  follow: boolean;
+  feed: LiveSystemsFeed;
+  updatedAt: number | null;
+  refreshError: string | null;
+  loading: boolean;
+  onRefresh: () => void;
+}) {
+  const counts = feed.data?.counts;
+  const tone = !follow ? "var(--slate, #64748b)" : refreshError ? "var(--amber, #f59e0b)" : "var(--green, #3ecf8e)";
+  const agents = counts
+    ? counts.systems === 0
+      ? "no Cryptava agent has reported yet"
+      : `${counts.live} of ${counts.systems} Cryptava agent${counts.systems === 1 ? "" : "s"} live${counts.stale ? ` · ${counts.stale} stale` : ""}${counts.no_samples ? ` · ${counts.no_samples} waiting` : ""}`
+    : feed.error
+      ? `agents could not be read (${feed.error})`
+      : "reading agents…";
+  return (
+    <div
+      role="status"
+      aria-label="Live status"
+      style={{
+        display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap",
+        border: "1px solid var(--rule)", borderLeft: `3px solid ${tone}`, borderRadius: 8,
+        padding: "7px 12px", marginBottom: 12, fontSize: 11.5,
+      }}
+    >
+      <span style={{ display: "flex", gap: 6, alignItems: "center", fontWeight: 700, letterSpacing: 0.4 }}>
+        <span aria-hidden style={{ width: 8, height: 8, borderRadius: 99, background: follow ? tone : "transparent", border: follow ? "none" : `1.5px solid ${tone}` }} />
+        {follow ? "LIVE" : "PAUSED"}
+      </span>
+      <span>{agents}</span>
+      <span style={{ opacity: 0.75 }}>
+        {follow
+          ? `figures updated ${clock(updatedAt)} · last 30 min · refreshes every ${LIVE_REFRESH_MS / 1000} s`
+          : `fixed window — figures read ${clock(updatedAt)}; turn on "follow live" to refresh every ${LIVE_REFRESH_MS / 1000} s`}
+      </span>
+      {refreshError && (
+        <span style={{ color: "var(--amber, #f59e0b)" }}>
+          last refresh failed ({refreshError}) — showing the previous read
+        </span>
+      )}
+      <button
+        type="button"
+        className="btn ghost"
+        onClick={onRefresh}
+        disabled={loading}
+        style={{ marginLeft: "auto", fontSize: 11, padding: "2px 10px" }}
+      >
+        Refresh now
+      </button>
+    </div>
+  );
 }
 
 export default function Performance() {
@@ -275,40 +437,74 @@ export default function Performance() {
     };
   }, [tenant]);
   const [window, setWindow] = useState(defaultWindow);
-  // follow live: the window rolls forward every minute until the operator sets one
+  // follow live: the window rolls forward with the agents' samples (every
+  // LIVE_REFRESH_MS, the live-systems cadence) until the operator fixes one.
+  // A hidden tab skips the roll and catches up the moment it is shown again.
   const [follow, setFollow] = useState(true);
   useEffect(() => {
     if (!follow) return undefined;
-    const t = setInterval(() => setWindow(defaultWindow()), 60000);
-    return () => clearInterval(t);
+    const roll = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      setWindow(defaultWindow());
+    };
+    const t = setInterval(roll, LIVE_REFRESH_MS);
+    document.addEventListener("visibilitychange", roll);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", roll);
+    };
   }, [follow]);
+  // "Refresh now" — re-reads the open view without waiting for the next tick
+  const [nonce, setNonce] = useState(0);
 
-  const reloadKey = `${tenant}|${window.window_start}|${window.window_end}`;
+  const reloadKey = `${tenant}|${window.window_start}|${window.window_end}|${nonce}`;
+  const scope = follow ? `${tenant}|live` : `${tenant}|${window.window_start}|${window.window_end}`;
   const w = { tenant_id: tenant, ...window };
 
   // Reads wait for tenant resolution — exactly once, never twice: a batch
   // fired with a blank tenant is thrown away when the real tenant arrives,
   // and double batches blow the request gate's burst window for nothing.
   const readsReady = !tenantResolving;
-  const overview = useAsync(() => apiPerformanceOverview(w), [reloadKey], readsReady);
-  const network = useAsync(() => apiPerformanceNetwork(w), [reloadKey], readsReady);
-  const storage = useAsync(() => apiPerformanceStorage(w), [reloadKey], readsReady);
-  const applications = useAsync(() => apiPerformanceAppWorkspace(w), [reloadKey], readsReady);
-  const databases = useAsync(() => apiPerformanceDbWorkspace(w), [reloadKey], readsReady);
-  const cryptography = useAsync(() => apiPerformanceCryptography(w), [reloadKey], readsReady);
-  const infrastructure = useAsync(() => apiPerformanceInfraWorkspace(w), [reloadKey], readsReady);
-  const cloud = useAsync(() => apiPerformanceCloud(w), [reloadKey], readsReady);
-  const alerts = useAsync(() => apiPerformanceAlerts(w), [reloadKey], readsReady);
+  const reads = new Set(VIEW_READS[view]);
+  const opts = (name: ReadName) => ({ enabled: readsReady, active: reads.has(name), scope });
+  const overview = useAsync(() => apiPerformanceOverview(w), reloadKey, opts("overview"));
+  const network = useAsync(() => apiPerformanceNetwork(w), reloadKey, opts("network"));
+  const storage = useAsync(() => apiPerformanceStorage(w), reloadKey, opts("storage"));
+  const applications = useAsync(() => apiPerformanceAppWorkspace(w), reloadKey, opts("applications"));
+  const databases = useAsync(() => apiPerformanceDbWorkspace(w), reloadKey, opts("databases"));
+  const cryptography = useAsync(() => apiPerformanceCryptography(w), reloadKey, opts("cryptography"));
+  const infrastructure = useAsync(() => apiPerformanceInfraWorkspace(w), reloadKey, opts("infrastructure"));
+  const cloud = useAsync(() => apiPerformanceCloud(w), reloadKey, opts("cloud"));
+  const alerts = useAsync(() => apiPerformanceAlerts(w), reloadKey, opts("alerts"));
   // No measured capacity ceiling is configured by this page. Request the
   // recorded series as-is; the backend must say no-capacity, not forecast.
-  const capacity = useAsync(() => apiPerformanceCapacity(w), [reloadKey], readsReady);
-  const baselines = useAsync(() => apiPerformanceBaselines(w), [reloadKey], readsReady);
-  const benchmarks = useAsync(() => apiPerformanceBenchmarks({ tenant_id: tenant }), [reloadKey], readsReady);
-  const health = useAsync(() => apiPerformanceHealth({ tenant_id: tenant }), [reloadKey], readsReady);
-  const slo = useAsync(() => apiPerformanceSlo(w), [reloadKey], readsReady);
-  const hsm = useAsync(() => apiPerformanceHsm(w), [reloadKey], readsReady);
-  const workloads = useAsync(() => apiPerformanceWorkloads(w), [reloadKey], readsReady);
-  const trends = useAsync(() => apiPerformanceSamples({ ...w, limit: 240 }), [reloadKey], readsReady);
+  const capacity = useAsync(() => apiPerformanceCapacity(w), reloadKey, opts("capacity"));
+  const baselines = useAsync(() => apiPerformanceBaselines(w), reloadKey, opts("baselines"));
+  const benchmarks = useAsync(() => apiPerformanceBenchmarks({ tenant_id: tenant }), reloadKey, opts("benchmarks"));
+  const health = useAsync(() => apiPerformanceHealth({ tenant_id: tenant }), reloadKey, opts("health"));
+  const slo = useAsync(() => apiPerformanceSlo(w), reloadKey, opts("slo"));
+  const hsm = useAsync(() => apiPerformanceHsm(w), reloadKey, opts("hsm"));
+  const workloads = useAsync(() => apiPerformanceWorkloads(w), reloadKey, opts("workloads"));
+  const trends = useAsync(() => apiPerformanceSamples({ ...w, limit: 240 }), reloadKey, opts("trends"));
+
+  // one live-systems poll for the whole page: the status line and the panel share it
+  const liveFeed = useLiveSystems(tenant, readsReady);
+  const shown: AsyncRead<unknown>[] = VIEW_READS[view].map((name) => ({
+    overview, network, storage, applications, databases, cryptography, infrastructure, cloud,
+    alerts, capacity, baselines, benchmarks, health, slo, hsm, workloads, trends,
+  } as Record<ReadName, AsyncRead<unknown>>)[name]);
+  const stamps = shown.map((r) => r.updatedAt);
+  const viewUpdatedAt = shown.length === 0
+    ? liveFeed.updatedAt
+    : stamps.every((t): t is number => t !== null) ? Math.min(...stamps) : null;
+  const viewRefreshError = shown.find((r) => r.refreshError)?.refreshError
+    ?? (shown.length === 0 && liveFeed.error && liveFeed.data ? liveFeed.error : null);
+  const viewLoading = shown.some((r) => r.loading);
+  const refreshNow = () => {
+    if (follow) setWindow(defaultWindow());
+    setNonce((n) => n + 1);
+    liveFeed.reload();
+  };
 
   return (
     <div>
@@ -352,9 +548,20 @@ export default function Performance() {
             checked={follow}
             onChange={(e) => { setFollow(e.target.checked); if (e.target.checked) setWindow(defaultWindow()); }}
           />
-          follow live (last 30 min)
+          follow live (last 30 min, every 15 s)
         </label>
       </div>
+
+      {!tenantResolving && (
+        <LiveStatus
+          follow={follow}
+          feed={liveFeed}
+          updatedAt={viewUpdatedAt}
+          refreshError={viewRefreshError}
+          loading={viewLoading}
+          onRefresh={refreshNow}
+        />
+      )}
 
       {tenantResolving && (
         <div
@@ -375,10 +582,10 @@ export default function Performance() {
       )}
 
       {view === "overview" && (
-        <LiveSystemsPanel tenant={tenant} enabled={readsReady} compact onOpen={() => setView("live")} />
+        <LiveSystemsPanel tenant={tenant} enabled={readsReady} feed={liveFeed} compact onOpen={() => setView("live")} />
       )}
 
-      {view === "live" && <LiveSystemsPanel tenant={tenant} enabled={readsReady} />}
+      {view === "live" && <LiveSystemsPanel tenant={tenant} enabled={readsReady} feed={liveFeed} />}
 
       {view === "overview" && (
         overview.error ? <ErrorNote error={overview.error} /> : (
@@ -395,7 +602,7 @@ export default function Performance() {
       )}
 
       {view === "overview" && !overview.error && (
-        <Panel title="Headline metrics" sub="the brief's four cards — CPU, memory, application p95 and error rate">
+        <Panel title="Headline metrics" sub="CPU, memory, application p95 latency and error rate — newest delivered value in the window">
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
             <TileView tile={overview.data?.cpu_utilization_pct} label="CPU utilization" />
             <TileView tile={overview.data?.memory_utilization_pct} label="Memory utilization" />

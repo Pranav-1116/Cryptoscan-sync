@@ -5,7 +5,8 @@
    investigation's conclusion never upgrades correlation to causation. */
 
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { mockFetch } from "../test/setup";
 import Performance from "./Performance";
@@ -300,5 +301,86 @@ describe("ZELNX Performance Intelligence (§7)", () => {
     expect(screen.getByText(/Causation: unproven/)).toBeInTheDocument();
     expect(screen.getByText(/timestamps and traces must correlate before causation/)).toBeInTheDocument();
     expect(screen.queryByText(/caused/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("Performance page — live from the Cryptava agents", () => {
+  afterEach(() => { vi.useRealTimers(); });
+
+  const overviewWith = (cpu: number) => ({
+    storage_usage_pct: tile(6.07, "percent"), network_throughput_mbps: unknownTile,
+    api_p95_latency_ms: unknownTile, requests_per_sec: unknownTile,
+    cpu_utilization_pct: tile(cpu, "percent"), memory_utilization_pct: unknownTile,
+    app_p95_latency_ms: unknownTile, error_rate_pct: unknownTile,
+    note: "tiles show delivered values only; an unknown tile is unknown, never zero",
+  });
+  const fleet = {
+    tenant_id: "default", systems: [], note: "",
+    counts: { systems: 3, live: 2, stale: 1, no_samples: 0 },
+  };
+
+  it("names each tile once — no doubled label", async () => {
+    mockFetch({ "/api/v1/performance/overview": overviewWith(12.5) });
+    renderPage();
+    expect(await screen.findByText("12.5")).toBeInTheDocument();
+    expect(screen.getAllByText("CPU utilization")).toHaveLength(1);
+    expect(screen.getAllByText("Storage usage")).toHaveLength(1);
+    expect(screen.getAllByText("Memory utilization")).toHaveLength(1);
+  });
+
+  it("re-reads the open view every 15 s while following live", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let cpu = 12.5;
+    const fetch = mockFetch({
+      "/api/v1/performance/overview": () => overviewWith(cpu),
+      "/api/v1/performance/live-systems": fleet,
+    });
+    renderPage();
+    expect(await screen.findByText("12.5")).toBeInTheDocument();
+    expect(await screen.findByText(/2 of 3 Cryptava agents live · 1 stale/)).toBeInTheDocument();
+    expect(screen.getByText(/refreshes every 15 s/)).toBeInTheDocument();
+    cpu = 47.25;
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+    expect(await screen.findByText("47.25")).toBeInTheDocument();
+    expect(screen.queryByText("12.5")).not.toBeInTheDocument();
+    // only the open view's reads run — off-screen workspaces wait until opened
+    const paths = fetch.mock.calls.map(([u]) => String(u));
+    expect(paths.some((u) => u.includes("/performance/hsm"))).toBe(false);
+    expect(paths.some((u) => u.includes("/performance/storage"))).toBe(false);
+  });
+
+  it("keeps the last figures when a background refresh fails, and says so", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let fail = false;
+    mockFetch({
+      "/api/v1/performance/overview": () => (fail
+        ? new Response(JSON.stringify({ detail: "upstream unavailable" }), { status: 503, headers: { "Content-Type": "application/json" } })
+        : overviewWith(12.5)),
+      "/api/v1/performance/live-systems": fleet,
+    });
+    renderPage();
+    expect(await screen.findByText("12.5")).toBeInTheDocument();
+    fail = true;
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+    expect(await screen.findByText(/last refresh failed/)).toBeInTheDocument();
+    expect(screen.getByText("12.5")).toBeInTheDocument();
+    expect(screen.queryByText("Read failed")).not.toBeInTheDocument();
+  });
+
+  it("stops refreshing when the operator fixes the window", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetch = mockFetch({
+      "/api/v1/performance/overview": () => overviewWith(12.5),
+      "/api/v1/performance/live-systems": fleet,
+    });
+    renderPage();
+    expect(await screen.findByText("12.5")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Follow live"));
+    expect(await screen.findByText("PAUSED")).toBeInTheDocument();
+    const overviewReads = () => fetch.mock.calls.filter(([u]) => String(u).includes("/performance/overview")).length;
+    await waitFor(() => expect(screen.getByText("12.5")).toBeInTheDocument());
+    const before = overviewReads();
+    await act(async () => { await vi.advanceTimersByTimeAsync(45000); });
+    expect(overviewReads()).toBe(before);
   });
 });

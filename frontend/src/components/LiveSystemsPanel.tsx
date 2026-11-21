@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge, Bar, Panel } from "./ui.jsx";
 import { apiPerformanceLiveSystems, type LiveSystem, type LiveSystems } from "../lib/api.js";
@@ -171,32 +171,56 @@ function SystemCard({ s }: { s: LiveSystem }) {
   );
 }
 
-function useLiveSystems(tenant: string, enabled: boolean) {
+export type LiveSystemsFeed = {
+  data: LiveSystems | null;
+  error: string | null;
+  /** when the newest successful read landed (epoch ms) — null until the first one */
+  updatedAt: number | null;
+  reload: () => void;
+};
+
+/* One poll of the live-systems read every LIVE_REFRESH_MS. A failed refresh keeps the
+   last figures (the panel says so) instead of blanking a fleet that was just read;
+   a tenant change drops them, since they belong to another tenant. */
+export function useLiveSystems(tenant: string, enabled: boolean): LiveSystemsFeed {
   const [data, setData] = useState<LiveSystems | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const seq = useRef(0);
+  useEffect(() => {
+    seq.current += 1;
+    setData(null);
+    setError(null);
+    setUpdatedAt(null);
+  }, [tenant]);
   const load = useCallback(() => {
+    const id = ++seq.current;
     apiPerformanceLiveSystems({ tenant_id: tenant || undefined })
       .then((r) => {
-        if (r.data) { setData(r.data); setError(null); } else { setError(r.error ?? "read failed"); }
+        if (id !== seq.current) return;
+        if (r.data) { setData(r.data); setError(null); setUpdatedAt(Date.now()); } else { setError(r.error ?? "read failed"); }
       })
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : "read failed"));
+      .catch((e: unknown) => { if (id === seq.current) setError(e instanceof Error ? e.message : "read failed"); });
   }, [tenant]);
   useEffect(() => {
     if (!enabled) return undefined;
     load();
     const t = setInterval(load, LIVE_REFRESH_MS);
-    return () => clearInterval(t);
+    return () => { clearInterval(t); seq.current += 1; };
   }, [load, enabled]);
-  return { data, error, reload: load };
+  return { data, error, updatedAt, reload: load };
 }
 
-export default function LiveSystemsPanel({ tenant, enabled = true, compact = false, onOpen }: {
+export default function LiveSystemsPanel({ tenant, enabled = true, compact = false, onOpen, feed }: {
   tenant: string;
   enabled?: boolean;
   compact?: boolean;
   onOpen?: () => void;
+  /** a live-systems poll the page already runs — the panel then does not poll a second time */
+  feed?: LiveSystemsFeed;
 }) {
-  const { data, error } = useLiveSystems(tenant, enabled);
+  const own = useLiveSystems(tenant, enabled && !feed);
+  const { data, error } = feed ?? own;
   const title = "Live systems · Cryptava agents";
   if (error && !data) {
     return (
@@ -212,6 +236,7 @@ export default function LiveSystemsPanel({ tenant, enabled = true, compact = fal
   const sub = counts
     ? `${counts.systems} server${counts.systems === 1 ? "" : "s"} · ${counts.live} live · ${counts.stale} stale · ${counts.no_samples} waiting — refreshes every ${LIVE_REFRESH_MS / 1000} s`
     : "loading…";
+  const subLine = error && data ? `${sub} · last refresh failed (${error}) — showing the previous read` : sub;
   if (data && systems.length === 0) {
     return (
       <Panel title={title} sub="no Cryptava agent has reported performance yet">
@@ -225,7 +250,7 @@ export default function LiveSystemsPanel({ tenant, enabled = true, compact = fal
   }
   if (compact) {
     return (
-      <Panel title={title} sub={sub}>
+      <Panel title={title} sub={subLine}>
         <table style={{ width: "100%", fontSize: 12 }}>
           <thead>
             <tr>
@@ -270,7 +295,7 @@ export default function LiveSystemsPanel({ tenant, enabled = true, compact = fal
     );
   }
   return (
-    <Panel title={title} sub={sub}>
+    <Panel title={title} sub={subLine}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(310px, 1fr))", gap: 12 }}>
         {systems.map((s) => <SystemCard key={s.agent} s={s} />)}
       </div>
