@@ -155,8 +155,6 @@ export const PRIMARY_SECTIONS: NavSection[] = [
           { to: "/digital-twin", label: "Replica & scenarios", icon: Stack },
           { to: "/dependency-graph", label: "Cascade", icon: Graph },
           { to: "/graph", label: "Graph explorer", icon: Graph },
-          { to: "/estate-twin", label: "Twin chain", icon: Graph },
-          { to: "/twin-walkthrough", label: "Thirteen-step walkthrough", icon: Graph },
           { to: "/simulation", label: "BOM migration simulation", icon: MagnifyingGlass },
           { to: "/what-if", label: "Migration what-if", icon: Key },
         ],
@@ -542,7 +540,6 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
                             <item.icon size={18} weight={active ? "fill" : "regular"} />
                           </span>
                           <span className="nav-text">{item.label}</span>
-                          <span className="nav-count" aria-hidden="true">{children.length}</span>
                           <IconCaretDown className="nav-caret" size={ICON_SM} />
                         </button>
                         <div id={`nav-group-${groupKey}`} className="nav-sub" hidden={!groupOpen}>

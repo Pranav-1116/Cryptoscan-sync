@@ -64,8 +64,7 @@ describe("classic sidebar navigation", () => {
     expect(sectionOf("/os-kernel-intelligence")).toBe("Intelligence");
     expect(groupOf("/os-kernel-intelligence")).toBeNull();
     // one twin & dependency workspace: replica, graph and simulations together
-    for (const twin of ["/digital-twin", "/dependency-graph", "/graph", "/estate-twin",
-      "/twin-walkthrough", "/simulation", "/what-if"])
+    for (const twin of ["/digital-twin", "/dependency-graph", "/graph", "/simulation", "/what-if"])
       expect(groupOf(twin)).toBe("Twin & dependencies");
     // one evidence & assurance workspace: provenance through customer assurance
     for (const ev of ["/evidence", "/assurance-records", "/assurance-coverage", "/assurance-trace",
