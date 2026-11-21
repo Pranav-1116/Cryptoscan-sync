@@ -307,3 +307,71 @@ def test_the_workspace_never_returns_a_result_that_moved_the_estate(api, monkeyp
 
     assert response.status_code == 500
     assert response.json()["detail"]["error"] == "simulation_modified_live_state"
+
+
+class _FakeGraph:
+    """The two reads ``seed_targets`` makes, over a Meridian-shaped slice of an estate."""
+
+    def __init__(self, assets, relationships):
+        self._assets, self._relationships = assets, relationships
+
+    def assets(self):
+        return list(self._assets)
+
+    def relationships(self):
+        return list(self._relationships)
+
+
+def test_seeds_are_ranked_by_usefulness_not_by_the_alphabet():
+    """An alphabetical slice of 40 hid half the bank's systems behind '.postgresql-rundeps',
+    '12th Gen Intel…' and 25 'Alpine Linux · …' suppliers. Seeds rank business →
+    infrastructure → components, and each part says which server it sits on."""
+    from api import estate_simulation
+
+    def a(asset_id, kind, name):
+        return {"asset_id": asset_id, "type": kind, "name": name}
+
+    def e(subject, predicate, obj):
+        return {"subject": subject, "predicate": predicate, "object": obj}
+
+    assets = [
+        a("system:swift", "SYSTEM", "SWIFT Gateway"), a("system:core", "SYSTEM", "Core Banking"),
+        a("host:swift", "HOST", "swift-gateway"), a("host:core", "HOST", "core-db"),
+        a("hw:swift", "HARDWARE", "VMware7,1"), a("hw:core", "HARDWARE", "VMware7,1"),
+        a("cpu:swift", "HARDWARE", "12th Gen Intel(R) Core(TM) i5-12450H"),
+        a("cpu:core", "HARDWARE", "12th Gen Intel(R) Core(TM) i5-12450H"),
+        a("pkg:pg", "PACKAGE", ".postgresql-rundeps"),
+        a("vendor:alpine:nginx", "VENDOR", "Alpine Linux · nginx"),
+        a("svc:nginx", "SERVICE", "nginx"), a("lib:ssl", "LIBRARY", "OpenSSL 3.3.2"),
+        a("cert:gw", "CERTIFICATE", "swift-gateway.bank.sandbox"),
+        a("ep:gw", "NETWORK_ENDPOINT", "swift-gateway:443/tls"),
+    ]
+    edges = [
+        e("host:swift", "part_of", "system:swift"), e("host:core", "part_of", "system:core"),
+        e("system:swift", "depends_on", "system:core"),
+        e("host:swift", "hosted_on", "hw:swift"), e("host:core", "hosted_on", "hw:core"),
+        e("cpu:swift", "part_of", "hw:swift"), e("cpu:core", "part_of", "hw:core"),
+        e("pkg:pg", "part_of", "host:core"), e("svc:nginx", "runs_on", "host:swift"),
+        e("svc:nginx", "exposes", "ep:gw"), e("ep:gw", "uses_certificate", "cert:gw"),
+        e("lib:ssl", "part_of", "host:swift"), e("lib:ssl", "part_of", "host:core"),
+        e("svc:nginx", "provided_by", "vendor:alpine:nginx"),
+    ]
+    targets, total = estate_simulation.seed_targets(_FakeGraph(assets, edges))
+    assert total == len(assets) == len(targets)
+    groups = [t["group"] for t in targets]
+    assert groups == sorted(groups, key=["BUSINESS", "INFRASTRUCTURE", "COMPONENT"].index)
+    # the business systems come first, the one others rest on before the other
+    assert [t["name"] for t in targets[:2]] == ["Core Banking", "SWIFT Gateway"]
+    assert targets[0]["dependents"] == 1
+    assert targets[1]["context"] == "1 host(s): swift-gateway"
+    by_id = {t["asset_id"]: t for t in targets}
+    # identically named CPUs are told apart by the server they sit on
+    assert by_id["cpu:swift"]["context"] == "on swift-gateway"
+    assert by_id["cpu:core"]["context"] == "on core-db"
+    # a library both servers carry names both; a supplier says what it supplies
+    assert by_id["lib:ssl"]["context"] == "on 2 hosts: core-db, swift-gateway"
+    assert by_id["vendor:alpine:nginx"]["context"] == "supplies 1 asset(s)"
+    assert by_id["ep:gw"]["context"] == "on swift-gateway"
+    # lowercase host names are no longer sorted out of reach
+    assert by_id["host:core"]["group"] == "INFRASTRUCTURE"
+    assert by_id["pkg:pg"]["group"] == "COMPONENT" and by_id["pkg:pg"]["context"] == "on core-db"

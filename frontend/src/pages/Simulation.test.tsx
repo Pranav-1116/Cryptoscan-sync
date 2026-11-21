@@ -566,6 +566,50 @@ describe("simulation workspace", () => {
     expect(screen.getByText(/not stored: a result that matched nothing/)).toBeInTheDocument();
   });
 
+  it("ranks seeds business → infrastructure → components and says where each part sits", async () => {
+    const seeded = {
+      ...catalog,
+      selector: {
+        ...catalog.selector,
+        targets: [
+          { asset_id: "system:core", name: "Core Banking", type: "SYSTEM", group: "BUSINESS", dependents: 5, context: "1 host(s): core-db" },
+          { asset_id: "system:swift", name: "SWIFT Gateway", type: "SYSTEM", group: "BUSINESS", dependents: 0, context: "2 host(s): payments-bastion, swift-gateway" },
+          { asset_id: "host:core-db", name: "core-db", type: "HOST", group: "INFRASTRUCTURE", dependents: 4, context: null },
+          { asset_id: "hw:cpu:a", name: "12th Gen Intel(R) Core(TM) i5-12450H", type: "HARDWARE", group: "COMPONENT", dependents: 0, context: "on swift-gateway" },
+          { asset_id: "hw:cpu:b", name: "12th Gen Intel(R) Core(TM) i5-12450H", type: "HARDWARE", group: "COMPONENT", dependents: 0, context: "on core-db" },
+          { asset_id: "vendor:alpine:nginx", name: "Alpine Linux · nginx", type: "VENDOR", group: "COMPONENT", dependents: 0, context: "supplies 7 asset(s)" },
+          { asset_id: "host:core-db", name: "core-db", type: "HOST", group: "INFRASTRUCTURE", dependents: 4, context: null },
+        ],
+        targets_total: 409,
+      },
+    };
+    mockFetch({ [`${BASE}/catalog`]: seeded, [`${BASE}/runs`]: emptyHistory });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+    fireEvent.click(screen.getByRole("button", { name: /Asset goes down/ }));
+
+    // tiers in order, the business systems first
+    const tiers = screen.getAllByText(/^(Business systems|Infrastructure|Components — suppliers, packages, hardware parts)$/)
+      .map((node) => node.textContent);
+    expect(tiers).toEqual(["Business systems", "Infrastructure", "Components — suppliers, packages, hardware parts"]);
+    expect(screen.getByText(/showing the 6 most useful of 409 assets/)).toBeInTheDocument();
+    // components start folded; business and infrastructure open
+    expect(screen.getByLabelText("Business systems")).toHaveAttribute("open");
+    expect(screen.getByLabelText("Components — suppliers, packages, hardware parts")).not.toHaveAttribute("open");
+    // two identically named CPUs are told apart by the server they sit on
+    const cpus = screen.getAllByRole("button", { name: /12th Gen Intel.*· HARDWARE/ });
+    expect(cpus).toHaveLength(2);
+    expect(cpus[0]).toHaveAttribute("title", expect.stringContaining("on "));
+    expect(screen.getByText("on swift-gateway")).toBeInTheDocument();
+    expect(screen.getByText("on core-db")).toBeInTheDocument();
+    // the duplicate host is listed once, and searching by host finds what sits on it
+    expect(screen.getAllByRole("button", { name: "core-db · HOST" })).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText("Search assets"), { target: { value: "swift-gateway" } });
+    expect(screen.getByRole("button", { name: "SWIFT Gateway · SYSTEM" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Core Banking · SYSTEM" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /12th Gen Intel.*· HARDWARE/ })).toHaveLength(1);
+  });
+
   it("says there is no twin instead of simulating over nothing, and offers the job that creates one", async () => {
     const fetchMock = mockFetch({
       [`${BASE}/catalog`]: new Response(JSON.stringify({ detail: { error: "no_estate_discovery" } }), { status: 404 }),

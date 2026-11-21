@@ -8570,10 +8570,19 @@ export const apiAssuranceRedisQualification = (objectivesId: string): Promise<Ap
  * Both carry the projection id they were measured against, so a stale answer is visible. */
 
 export interface SimulationSelectorValue { value: string; count: number }
-export interface SimulationSelectorTarget { asset_id: string; name: string; type: string }
+export interface SimulationSelectorTarget {
+  asset_id: string; name: string; type: string;
+  /** BUSINESS → INFRASTRUCTURE → COMPONENT: the order a failure question usually starts in */
+  group?: "BUSINESS" | "INFRASTRUCTURE" | "COMPONENT";
+  /** how many established edges rest on it */
+  dependents?: number;
+  /** the host(s) it sits on, the hosts a system spans, or what a supplier supplies */
+  context?: string | null;
+}
 export interface SimulationSelector {
   algorithms: SimulationSelectorValue[]; protocols: SimulationSelectorValue[];
   components: SimulationSelectorValue[]; targets: SimulationSelectorTarget[];
+  targets_total?: number; targets_truncated_to?: number;
   truncated_to: number; note: string;
 }
 export type SimulationMode = "SCENARIO" | "CASCADE";

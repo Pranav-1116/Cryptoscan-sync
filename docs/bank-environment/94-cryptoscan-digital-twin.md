@@ -971,6 +971,26 @@ system stops with it, and a system holding a stopped workload is degraded. A pre
 that is not listed does not carry that failure, and the payload says so: the radius is a
 floor derived from the established topology, not a claim about the estate.
 
+**Which assets are offered as seeds or narrowing targets.** The catalog's
+`selector.targets` used to be the first 40 assets in alphabetical order. In a bank estate of
+about 400 assets that slice held suppliers ("Alpine Linux · …"), hardware parts and a
+dot-prefixed package. Python's sort also puts capital letters first, so every lowercase
+host name was excluded, along with half of the business systems. `seed_targets()`
+(`services/api/api/estate_simulation.py`) now offers up to 400 targets, ranked in this order:
+
+1. by tier: `BUSINESS` (systems, business services, applications), then `INFRASTRUCTURE`
+   (hosts, services, databases, HSMs, endpoints, certificates, CAs, keys, libraries), then
+   `COMPONENT` (suppliers, packages, hardware parts, firmware);
+2. by how many established edges rest on the asset (`dependents`);
+3. by name, ignoring case.
+
+Each target carries a `context`. For a part it is the host or hosts it sits on, found
+within three placement hops; for a system, the hosts it spans; for a supplier, what it
+supplies. Two identically named parts on two servers, such as the CPU each agent reports,
+can therefore be told apart. `targets_total` says how many assets the estate holds. The
+console groups targets by tier and then by type, folds the components tier, searches by
+name, type and host, and lists a duplicate asset ID once.
+
 Because a cascade changes nothing, it has **no BOM diff** — `bom_diff` is empty and
 `bom_diff_note` says why. Six empty diffs would read as "nothing changes", which is the
 opposite of what a cascade answers. `simulated_projection_id` is therefore the live

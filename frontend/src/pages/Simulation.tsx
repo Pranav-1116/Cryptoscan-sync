@@ -153,43 +153,120 @@ function EstateValuePicker({ groups, current, onPick }: {
   );
 }
 
-/** Assets a question can be narrowed to — deduplicated, grouped by type, searchable, with the
- *  current selection pinned above as removable tags. */
-function TargetPicker({ targets, picked, onToggle, onClear }: {
-  targets: Array<{ asset_id: string; name: string; type: string }>;
+type SeedTarget = { asset_id: string; name: string; type: string; group?: string; dependents?: number; context?: string | null };
+
+const TIER_ORDER: Record<string, number> = { BUSINESS: 0, INFRASTRUCTURE: 1, COMPONENT: 2 };
+const TIER_LABEL: Record<string, string> = {
+  BUSINESS: "Business systems",
+  INFRASTRUCTURE: "Infrastructure",
+  COMPONENT: "Components — suppliers, packages, hardware parts",
+};
+const TIER_HINT: Record<string, string> = {
+  BUSINESS: "the services the bank runs",
+  INFRASTRUCTURE: "hosts, services, endpoints, certificates, keys, libraries — what usually fails",
+  COMPONENT: "inventoried inside the servers; rarely where a failure question starts",
+};
+/* types older servers send without a group */
+const BUSINESS_TYPES = new Set(["SYSTEM", "BUSINESS_SERVICE", "BUSINESS_PROCESS", "APPLICATION"]);
+const COMPONENT_TYPES = new Set(["VENDOR", "PACKAGE", "HARDWARE", "FIRMWARE"]);
+const tierOf = (t: SeedTarget) => t.group
+  ?? (BUSINESS_TYPES.has(t.type) ? "BUSINESS" : COMPONENT_TYPES.has(t.type) ? "COMPONENT" : "INFRASTRUCTURE");
+
+/** Assets a question can be narrowed to — deduplicated, ranked business → infrastructure →
+ *  components, grouped by type, searchable, each labelled with where it sits so identically
+ *  named parts on different servers can be told apart; the selection is pinned above. */
+function TargetPicker({ targets, total, picked, onToggle, onClear }: {
+  targets: SeedTarget[];
+  total?: number;
   picked: string[];
   onToggle: (assetId: string) => void;
   onClear: () => void;
 }) {
   const [query, setQuery] = useState("");
   const unique = useMemo(() => {
-    const seen = new Map<string, { asset_id: string; name: string; type: string }>();
+    const seen = new Map<string, SeedTarget>();
     for (const target of targets) if (!seen.has(target.asset_id)) seen.set(target.asset_id, target);
     return [...seen.values()];
   }, [targets]);
   const byId = useMemo(() => new Map(unique.map((t) => [t.asset_id, t])), [unique]);
   const needle = query.trim().toLowerCase();
-  const groups = useMemo(() => {
-    const map = new Map<string, Array<{ asset_id: string; name: string; type: string }>>();
+  const tiers = useMemo(() => {
+    const out = new Map<string, Map<string, SeedTarget[]>>();
     for (const target of unique) {
-      if (needle && !`${target.name} ${target.type}`.toLowerCase().includes(needle)) continue;
-      const list = map.get(target.type) ?? [];
+      if (needle && !`${target.name} ${target.type} ${target.context ?? ""}`.toLowerCase().includes(needle)) continue;
+      const tier = tierOf(target);
+      const types = out.get(tier) ?? new Map<string, SeedTarget[]>();
+      const list = types.get(target.type) ?? [];
       list.push(target);
-      map.set(target.type, list);
+      types.set(target.type, list);
+      out.set(tier, types);
     }
-    return [...map.entries()]
-      .map(([type, items]) => [type, items.sort((a, b) => (a.name || "").localeCompare(b.name || ""))] as const)
-      .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
+    return [...out.entries()]
+      .sort((a, b) => (TIER_ORDER[a[0]] ?? 9) - (TIER_ORDER[b[0]] ?? 9))
+      .map(([tier, types]) => ({
+        tier,
+        count: [...types.values()].reduce((n, list) => n + list.length, 0),
+        types: [...types.entries()]
+          .map(([type, items]) => [type, [...items].sort((a, b) =>
+            (b.dependents ?? 0) - (a.dependents ?? 0) || (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }))] as const)
+          .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0])),
+      }));
   }, [unique, needle]);
-  const openByDefault = unique.length <= 24 || Boolean(needle);
+  const shownCount = tiers.reduce((n, t) => n + t.count, 0);
+  const sameName = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const t of unique) counts.set(t.name, (counts.get(t.name) ?? 0) + 1);
+    return counts;
+  }, [unique]);
+
+  const renderItem = (target: SeedTarget) => {
+    const on = picked.includes(target.asset_id);
+    const label = target.name || target.asset_id;
+    const tooltip = [label, target.type, target.context, target.dependents ? `${target.dependents} edge(s) rest on it` : null]
+      .filter(Boolean).join(" · ");
+    return (
+      <button key={target.asset_id} type="button" aria-pressed={on}
+              aria-label={`${label} · ${target.type}`}
+              title={tooltip}
+              onClick={() => onToggle(target.asset_id)}
+              style={{
+                display: "flex", gap: 8, alignItems: "flex-start", textAlign: "left", padding: "5px 8px",
+                borderRadius: 5, cursor: "pointer", fontSize: 11.5, color: "var(--text)", minWidth: 0,
+                background: on ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent",
+                border: `1px solid ${on ? "var(--accent)" : "transparent"}`,
+              }}>
+        <span aria-hidden style={{
+          width: 12, height: 12, marginTop: 2, borderRadius: 3, flex: "none", display: "grid", placeItems: "center",
+          border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`,
+          background: on ? "var(--accent)" : "transparent", color: "#fff", fontSize: 9,
+        }}>{on ? "✓" : ""}</span>
+        <span style={{ minWidth: 0, display: "grid" }}>
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {label}
+            {(target.dependents ?? 0) > 0 && (
+              <span style={{ color: "var(--amber)", fontSize: 10, marginLeft: 6 }}>{target.dependents} rest on it</span>
+            )}
+          </span>
+          {target.context && (
+            <span style={{
+              fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+              color: (sameName.get(target.name) ?? 0) > 1 ? "var(--dim)" : "var(--faint)",
+            }}>{target.context}</span>
+          )}
+        </span>
+      </button>
+    );
+  };
+
   return (
     <div>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
         <input aria-label="Search assets" value={query} onChange={(e) => setQuery(e.target.value)}
-               placeholder={`search ${unique.length} asset(s) by name or type…`}
-               style={{ ...inputStyle, width: 260, padding: "5px 9px", fontSize: 11.5 }} />
+               placeholder={`search ${unique.length} asset(s) by name, type or host…`}
+               style={{ ...inputStyle, width: 300, padding: "5px 9px", fontSize: 11.5 }} />
         <span style={{ fontSize: 11, color: "var(--faint)" }}>
           {picked.length ? `${picked.length} selected` : "none selected"}
+          {needle ? ` · ${shownCount} match` : ""}
         </span>
         {picked.length > 0 && (
           <button type="button" onClick={onClear}
@@ -198,18 +275,23 @@ function TargetPicker({ targets, picked, onToggle, onClear }: {
           </button>
         )}
       </div>
+      {total != null && total > unique.length && (
+        <div style={{ fontSize: 10.5, color: "var(--faint)", marginBottom: 6 }}>
+          showing the {unique.length} most useful of {total} assets — business systems and infrastructure first
+        </div>
+      )}
       {picked.length > 0 && (
         <div aria-label="Selected assets" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
           {picked.map((id) => {
             const target = byId.get(id);
             return (
-              <span key={id} style={{
+              <span key={id} title={[target?.name, target?.type, target?.context].filter(Boolean).join(" · ")} style={{
                 display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 4px 3px 9px", borderRadius: 999,
                 fontSize: 11, background: "color-mix(in srgb, var(--accent) 14%, transparent)",
-                border: "1px solid var(--accent)",
+                border: "1px solid var(--accent)", maxWidth: 360,
               }}>
-                <span style={{ fontWeight: 700 }}>{target?.name || id}</span>
-                <span style={{ color: "var(--faint)", fontSize: 10 }}>{target?.type}</span>
+                <span style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{target?.name || id}</span>
+                <span style={{ color: "var(--faint)", fontSize: 10, flex: "none" }}>{target?.type}</span>
                 <button type="button" onClick={() => onToggle(id)} title={`remove ${target?.name || id}`}
                         style={{ border: "none", background: "transparent", cursor: "pointer", color: "var(--dim)", fontSize: 12, padding: "0 4px" }}>
                   ×
@@ -219,44 +301,40 @@ function TargetPicker({ targets, picked, onToggle, onClear }: {
           })}
         </div>
       )}
-      {groups.length === 0 ? (
+      {tiers.length === 0 ? (
         <div style={{ fontSize: 11.5, color: "var(--faint)" }}>No asset matches “{query}”.</div>
       ) : (
-        <div style={{ display: "grid", gap: 6, maxHeight: 280, overflowY: "auto", paddingRight: 2 }}>
-          {groups.map(([type, items]) => {
-            const selectedHere = items.filter((t) => picked.includes(t.asset_id)).length;
+        <div style={{ display: "grid", gap: 8, maxHeight: 360, overflowY: "auto", paddingRight: 2 }}>
+          {tiers.map(({ tier, count, types }) => {
+            const selectedInTier = types.some(([, items]) => items.some((t) => picked.includes(t.asset_id)));
+            const tierOpen = tier !== "COMPONENT" || Boolean(needle) || selectedInTier;
             return (
-              <details key={`${type}:${openByDefault}`} open={openByDefault || selectedHere > 0}
+              <details key={`${tier}:${tierOpen}`} open={tierOpen} aria-label={TIER_LABEL[tier] ?? tier}
                        style={{ border: "1px solid var(--line)", borderRadius: 6, background: "var(--panel)" }}>
-                <summary style={{
-                  cursor: "pointer", padding: "6px 10px", fontSize: 11, display: "flex", gap: 8, alignItems: "center",
-                  letterSpacing: ".05em", textTransform: "uppercase", color: "var(--dim)",
-                }}>
-                  <span style={{ fontWeight: 800 }}>{type.replace(/_/g, " ")}</span>
-                  <span style={{ color: "var(--faint)" }}>{items.length}</span>
-                  {selectedHere > 0 && <span style={{ color: "var(--accent)" }}>· {selectedHere} selected</span>}
+                <summary style={{ cursor: "pointer", padding: "7px 10px", display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12, fontWeight: 800 }}>{TIER_LABEL[tier] ?? tier}</span>
+                  <span style={{ fontSize: 11, color: "var(--faint)" }}>{count}</span>
+                  <span style={{ fontSize: 10.5, color: "var(--faint)" }}>{TIER_HINT[tier]}</span>
                 </summary>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 4, padding: "0 8px 8px" }}>
-                  {items.map((target) => {
-                    const on = picked.includes(target.asset_id);
+                <div style={{ display: "grid", gap: 6, padding: "0 8px 8px" }}>
+                  {types.map(([type, items]) => {
+                    const selectedHere = items.filter((t) => picked.includes(t.asset_id)).length;
+                    const typeOpen = items.length <= 12 || Boolean(needle) || selectedHere > 0 || types.length === 1;
                     return (
-                      <button key={target.asset_id} type="button" aria-pressed={on}
-                              aria-label={`${target.name || target.asset_id} · ${target.type}`}
-                              title={target.asset_id}
-                              onClick={() => onToggle(target.asset_id)}
-                              style={{
-                                display: "flex", gap: 7, alignItems: "center", textAlign: "left", padding: "5px 8px",
-                                borderRadius: 5, cursor: "pointer", fontSize: 11.5, color: "var(--text)", minWidth: 0,
-                                background: on ? "color-mix(in srgb, var(--accent) 14%, transparent)" : "transparent",
-                                border: `1px solid ${on ? "var(--accent)" : "transparent"}`,
-                              }}>
-                        <span aria-hidden style={{
-                          width: 12, height: 12, borderRadius: 3, flex: "none", display: "grid", placeItems: "center",
-                          border: `1px solid ${on ? "var(--accent)" : "var(--line)"}`,
-                          background: on ? "var(--accent)" : "transparent", color: "#fff", fontSize: 9,
-                        }}>{on ? "✓" : ""}</span>
-                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{target.name || target.asset_id}</span>
-                      </button>
+                      <details key={`${type}:${typeOpen}`} open={typeOpen}
+                               style={{ borderTop: "1px solid var(--line)" }}>
+                        <summary style={{
+                          cursor: "pointer", padding: "6px 2px", fontSize: 10.5, display: "flex", gap: 8, alignItems: "center",
+                          letterSpacing: ".05em", textTransform: "uppercase", color: "var(--dim)",
+                        }}>
+                          <span style={{ fontWeight: 800 }}>{type.replace(/_/g, " ")}</span>
+                          <span style={{ color: "var(--faint)" }}>{items.length}</span>
+                          {selectedHere > 0 && <span style={{ color: "var(--accent)" }}>· {selectedHere} selected</span>}
+                        </summary>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 4 }}>
+                          {items.map(renderItem)}
+                        </div>
+                      </details>
                     );
                   })}
                 </div>
@@ -917,6 +995,7 @@ export default function Simulation() {
               {selector && selector.targets.length > 0 ? (
                 <TargetPicker
                   targets={selector.targets}
+                  total={selector.targets_total}
                   picked={targets}
                   onToggle={(assetId) => {
                     setTargets((current) => current.includes(assetId)

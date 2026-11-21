@@ -309,6 +309,108 @@ def _count(values: Iterable[Any]) -> dict[str, int]:
     return dict(sorted(out.items(), key=lambda item: (-item[1], item[0])))
 
 
+#: How a seed is ranked. A cascade is asked about something that serves others, so the
+#: business systems come first, then the infrastructure that can fail (hosts, services,
+#: databases, HSMs, endpoints, certificates, CAs, keys, libraries), and last the parts
+#: inventoried inside them (suppliers, packages, hardware components) — real assets, but
+#: rarely where an operator starts a failure question.
+SEED_TIERS: dict[str, tuple[str, int]] = {
+    **{t: ("BUSINESS", 0) for t in ("SYSTEM", "BUSINESS_SERVICE", "BUSINESS_PROCESS", "APPLICATION")},
+    **{t: ("INFRASTRUCTURE", 1) for t in (
+        "HOST", "SERVICE", "DATABASE", "HSM", "KMS", "NETWORK_ENDPOINT", "LOAD_BALANCER", "GATEWAY",
+        "CLUSTER", "CONTAINER", "WORKLOAD", "CLOUD_RESOURCE", "CA", "CERTIFICATE", "KEY_METADATA",
+        "KEY", "SECRET", "LIBRARY", "IDENTITY_PROVIDER", "QUEUE", "STORAGE")},
+}
+_COMPONENT_TIER = ("COMPONENT", 2)
+_TARGET_LIMIT = 400
+#: edges that say "this sits inside / on that" — walked (both ways) to name the host a seed
+#: lives on, so two identically named parts on two servers can be told apart
+_PLACEMENT_PREDICATES = frozenset({"part_of", "runs_on", "hosted_on", "contains", "exposes", "deployed_on"})
+_PLACEMENT_STOP = frozenset({"SYSTEM", "VENDOR", "CA", "BUSINESS_SERVICE", "BUSINESS_PROCESS"})
+
+
+def seed_targets(graph: Any, *, limit: int = _TARGET_LIMIT) -> tuple[list[dict[str, Any]], int]:
+    """Every asset a scenario can be narrowed to or a cascade seeded from, most useful first.
+
+    Ranked by tier (business → infrastructure → components), then by how much rests on the
+    asset, then by name (case-insensitive). Each carries ``group``, ``dependents`` and a
+    ``context`` — the host it sits on, the hosts a system spans, or what a supplier supplies —
+    so identically named parts are distinguishable. Returns ``(targets, total)``.
+    """
+    try:
+        assets = graph.assets()
+    except Exception:  # noqa: BLE001 — a vocabulary is a convenience, never a gate
+        return [], 0
+    try:
+        relationships = graph.relationships()
+    except Exception:  # noqa: BLE001
+        relationships = []
+    by_id = {str(a.get("asset_id")): a for a in assets if a.get("asset_id")}
+    kind = {aid: str(a.get("type") or "").upper() for aid, a in by_id.items()}
+    dependents: dict[str, int] = {}
+    placement: dict[str, set[str]] = {}
+    supplies: dict[str, int] = {}
+    members: dict[str, set[str]] = {}
+    for edge in relationships:
+        subject, obj = str(edge.get("subject") or ""), str(edge.get("object") or "")
+        predicate = str(edge.get("predicate") or "")
+        if not subject or not obj:
+            continue
+        if predicate in _RESTED_ON_PREDICATES:
+            dependents[obj] = dependents.get(obj, 0) + 1
+        if predicate == "provided_by":
+            supplies[obj] = supplies.get(obj, 0) + 1
+        if predicate in _PLACEMENT_PREDICATES:
+            placement.setdefault(subject, set()).add(obj)
+            placement.setdefault(obj, set()).add(subject)
+            if kind.get(obj) == "SYSTEM" and kind.get(subject) == "HOST":
+                members.setdefault(obj, set()).add(subject)
+
+    def hosts_of(asset_id: str) -> list[str]:
+        """Hosts within three placement hops (not walking through another host, a system,
+        a supplier or a CA). An asset several hosts share — the same certificate or library
+        found on each — names all of them rather than an arbitrary one."""
+        if kind.get(asset_id) == "HOST":
+            return []
+        found: set[str] = set()
+        seen, frontier = {asset_id}, [asset_id]
+        for _ in range(3):
+            nxt: list[str] = []
+            for node in frontier:
+                for peer in placement.get(node, ()):
+                    if peer in seen or kind.get(peer) in _PLACEMENT_STOP:
+                        continue
+                    seen.add(peer)
+                    if kind.get(peer) == "HOST":
+                        found.add(str(by_id[peer].get("name") or peer))
+                    else:
+                        nxt.append(peer)
+            frontier = nxt
+        return sorted(found)
+
+    rows: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    for aid, asset in by_id.items():
+        t = kind[aid]
+        group, rank = SEED_TIERS.get(t, _COMPONENT_TIER)
+        name = str(asset.get("name") or aid)
+        if t == "SYSTEM":
+            hosts = sorted(str(by_id[h].get("name") or h) for h in members.get(aid, ()))
+            context = (f"{len(hosts)} host(s): " + ", ".join(hosts[:4])) if hosts else None
+        elif t == "VENDOR":
+            context = f"supplies {supplies[aid]} asset(s)" if supplies.get(aid) else None
+        else:
+            hosts = hosts_of(aid)
+            context = (f"on {hosts[0]}" if len(hosts) == 1
+                       else f"on {len(hosts)} hosts: " + ", ".join(hosts[:3]) + ("…" if len(hosts) > 3 else "")
+                       if hosts else None)
+        rows.append(((rank, -dependents.get(aid, 0), name.lower(), aid), {
+            "asset_id": aid, "name": name, "type": t or "UNKNOWN", "group": group,
+            "dependents": dependents.get(aid, 0), "context": context,
+        }))
+    rows.sort(key=lambda row: row[0])
+    return [row[1] for row in rows[:limit]], len(rows)
+
+
 def selector_vocabulary(graph: Any, *, limit: int = 40) -> dict[str, Any]:
     """The values this estate actually holds, so a selector can be picked, not guessed.
 
@@ -341,22 +443,15 @@ def selector_vocabulary(graph: Any, *, limit: int = 40) -> dict[str, Any]:
     for value, count in sorted(comp_counts.items(), key=lambda item: (-item[1], item[0]))[:limit]:
         components.append({"value": value, "count": count})
 
-    targets = [
-        {
-            "asset_id": asset.get("asset_id"),
-            "name": asset.get("name"),
-            "type": asset.get("type"),
-        }
-        for asset in sorted(
-            graph.assets(), key=lambda item: str(item.get("name") or item.get("asset_id"))
-        )[:limit]
-    ]
+    targets, targets_total = seed_targets(graph)
     return {
         "algorithms": algorithms,
         "protocols": protocols,
         "components": components,
         "targets": targets,
+        "targets_total": targets_total,
         "truncated_to": limit,
+        "targets_truncated_to": _TARGET_LIMIT,
         "note": (
             "these are the values this estate holds. A value that is not here is not forbidden — "
             "it is a value no collector has reported, and a scenario using it will not match"
