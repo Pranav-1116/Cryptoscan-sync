@@ -501,6 +501,95 @@ export const apiDigitalTwinScenarios = (): Promise<ApiResult<{ scenario_count: n
 export const apiDigitalTwinSimulate = (scenario: string, params: Record<string, unknown>): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/digital-twin/simulate", { method: "POST", body: JSON.stringify({ scenario, params }) });
 
+/* ── Migration simulation: one crypto change read against the Digital Twin's hardware,
+ *    software, connected systems and vendors (agility/migration_simulation.py). It rides the
+ *    existing read-only `algorithm_migration` scenario, under `migration`. ── */
+
+export type MigrationStrategy = "BLOCKED" | "PARALLEL" | "DIRECT" | "NOT_DETERMINED";
+export type MigrationSeverity = "BLOCKER" | "HIGH" | "MEDIUM" | "INFO";
+export interface MigrationReason { code: string; text: string }
+export interface MigrationProblem {
+  code: string; severity: MigrationSeverity; title: string; detail: string;
+  system: string | null; subject: string | null; who_acts: string; mitigation: string;
+  if_ignored: string; basis: string;
+}
+export interface MigrationHardware {
+  asset_id: string; kind: string; manufacturer?: string | null; model?: string | null;
+  firmware?: string | null; capabilities?: string[]; pqc_capability?: string | null;
+  target_support: "SUPPORTED" | "SUPPORTED_DECLARED" | "NOT_SUPPORTED" | "UNKNOWN";
+  basis: string; holds_affected_keys?: boolean;
+}
+export interface MigrationLibrary {
+  name: string; version: string | null; target_support: string; basis: string;
+  deprecated: boolean; vendor?: string | null;
+}
+export interface MigrationConnection {
+  system_id: string; name: string; direction: "CALLS" | "CALLED_BY"; relation?: string | null;
+  in_change: boolean; uses_source: boolean; uses_target: boolean; crypto_recorded: boolean;
+  registered: boolean;
+}
+export interface MigrationEndpoint {
+  endpoint: string; protocol?: string | null; tls_version?: string | null;
+  cipher_suite?: string | null; observed: boolean; negotiates_source: boolean;
+}
+export interface MigrationVendor {
+  vendor_id: string; name: string; criticality?: string | null; vendor_type?: string | null;
+  dependency_type?: string | null; readiness: "READY" | "NOT_READY" | "UNKNOWN" | "NOT_RECORDED_FOR_TARGET";
+  uses_source: boolean; sub_tier: string[];
+  products: { algorithm?: string | null; key_size?: number | null; pqc_ready: boolean; use_case?: string | null }[];
+}
+export interface MigrationSystemReport {
+  system_id: string; name: string; environment?: string | null; criticality?: string | null;
+  migration_wave?: number | string | null; why_in_change: string[]; strategy: MigrationStrategy;
+  blocked_by: MigrationReason[]; parallel_because: MigrationReason[]; considerations: MigrationReason[];
+  twin: {
+    crypto_assets: string[]; crypto_assets_using_source: string[]; evidence_records_using_source: number;
+    hardware: MigrationHardware[];
+    software: { libraries: MigrationLibrary[]; deployments: { deployment_key?: string | null; environment?: string | null; artifact_id?: string | null }[] };
+    connections: MigrationConnection[]; network_endpoints: MigrationEndpoint[]; vendors: MigrationVendor[];
+    certificates: { fingerprint_sha256: string; subject?: string | null; issuer?: string | null; public_key_algorithm?: string | null; not_after?: string | null; days_until_expiry?: number | null }[];
+    business_processes: { name?: string | null; role?: string | null; revenue_daily?: number | null; customer_count?: number | null }[];
+  };
+  findings: MigrationProblem[];
+}
+export interface MigrationPlanStep {
+  order: number; phase: "PREREQUISITES" | "KEYS_AND_TRUST" | "ENABLE_ALONGSIDE" | "CUT_OVER" | "VERIFY" | "DECOMMISSION";
+  wave?: number; title: string; systems: string[]; actions: string[]; exit_criteria: string; rollback: string;
+  providers_first?: string;
+}
+export interface MigrationSimulation {
+  schema: string;
+  change: { from: string; to: string; scope: string[] | null;
+    from_profile: { family: string; roles: string[]; pqc: boolean };
+    to_profile: { family: string; roles: string[]; pqc: boolean } };
+  headline: string;
+  strategy: { recommended: MigrationStrategy; meaning: string; systems: Record<"BLOCKED" | "PARALLEL" | "DIRECT", number>;
+    reasons: Record<string, number>; parallel_mechanisms: { mechanism: string; how: string }[]; direct_is_safe_when: string };
+  twin_context: { source: string; systems_in_change: number; hardware: number; software_libraries: number;
+    connected_systems: number; network_endpoints: number; vendors: number; certificates: number;
+    matched: Record<string, number> };
+  systems: MigrationSystemReport[];
+  problems: MigrationProblem[];
+  problem_counts: Record<MigrationSeverity, number>;
+  vendor_impact: (Omit<MigrationVendor, "dependency_type"> & { systems: string[]; dependency_types: string[]; needs_to: string; if_it_does_not: string })[];
+  connected_impact: { system_id: string; name: string; registered: boolean; in_change: boolean; uses_source: boolean;
+    uses_target: boolean; crypto_recorded: boolean; criticality?: string | null;
+    links: { with: string; direction: string; relation?: string | null }[]; effect: string; action: string }[];
+  plan: MigrationPlanStep[];
+  dependency_order: { wave: number; system: string; cyclic: boolean }[];
+  unknowns: string[];
+}
+export interface MigrationScenarioResult {
+  scenario: string; affected?: Record<string, unknown>; impact?: Record<string, unknown>;
+  honest_unknowns?: string[]; migration?: MigrationSimulation;
+}
+
+export const apiMigrationSimulation = (params: { from_algo: string; to_algo: string; systems?: string }): Promise<ApiResult<MigrationScenarioResult>> =>
+  call("/api/v1/digital-twin/simulate", {
+    method: "POST",
+    body: JSON.stringify({ scenario: "algorithm_migration", params: params.systems ? params : { from_algo: params.from_algo, to_algo: params.to_algo } }),
+  });
+
 export const apiDigitalTwinTimeline = (assetId: string): Promise<ApiResult<Record<string, unknown>>> =>
   call(`/api/v1/digital-twin/timeline/${encodeURIComponent(assetId)}`);
 

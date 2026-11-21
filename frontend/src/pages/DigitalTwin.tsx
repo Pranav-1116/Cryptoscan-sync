@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from "react";
+import { MigrationResult } from "../components/MigrationSimulationPanel";
+import type { MigrationSimulation } from "../lib/api.js";
 import { Panel, Badge, Bar, Ring } from "../components/ui";
 import { LiveBadge, ApiResult } from "../lib/api.js";
 import { apiDigitalTwinOverview, apiDigitalTwinFidelity, apiDigitalTwinReconciliation, apiDigitalTwinScenarios, apiDigitalTwinSimulate, apiDigitalTwinTimeline, TwinScenarioDescriptor } from "../lib/api.js";
@@ -8,10 +10,10 @@ import { useApi } from "../lib/apiUi.jsx";
 interface TwinOverview { schema?: string; twin_assets?: number; systems?: number; certificates?: number; evidence_records?: number; dependency_edges?: number; dependency_source?: string; network_endpoints?: number; network_endpoints_observed?: number; hardware_assets?: number; hardware_hsms?: number; quantum_mix?: Record<string, number>; scenarios_available?: string[]; fidelity?: TwinFidelity; }
 interface TwinReconciliation { schema?: string; verdict?: string; twin_algorithm_families?: Record<string, number>; evidence_algorithm_families?: Record<string, number>; families_in_both?: string[]; families_only_in_twin?: string[]; families_only_in_evidence?: string[]; honest_unknowns?: string[]; }
 interface TwinFidelity { schema?: string; twin?: { assets?: number; systems_known?: number; systems_with_twin_state?: number; journal_events?: number; cbom_versions?: Record<string, number> }; staleness?: { assets_fresh?: number; assets_stale?: number; staleness_pct?: number | null; age_seconds_p50?: number | null; age_seconds_max?: number | null }; coverage?: { systems_covered_pct?: number | null; network_endpoints?: number; network_endpoints_observed?: number; network_observed_pct?: number | null }; honest_unknowns?: string[]; }
-interface SimulateResp { scenario?: string; deterministic?: boolean; mutates_nothing?: boolean; verdict?: string; affected?: Record<string, unknown>; impact?: Record<string, unknown>; honest_unknowns?: string[]; inputs?: Record<string, unknown>; }
+interface SimulateResp { migration?: MigrationSimulation; scenario?: string; deterministic?: boolean; mutates_nothing?: boolean; verdict?: string; affected?: Record<string, unknown>; impact?: Record<string, unknown>; honest_unknowns?: string[]; inputs?: Record<string, unknown>; }
 interface TimelineResp { asset_id?: string; current_cbom_version?: number | null; risk?: { score?: number | null; level?: string | null } | null; events?: Array<{ event_type?: string; source?: string; observed_at?: string | null; cbom_version?: number; risk_score?: number | null }>; truncated_to?: number; }
 
-const INPUT_DEFAULTS: Record<string, string> = { from_algo: "RSA", to_algo: "ML-KEM-768", horizon_days: "90", algorithm: "RSA", vendor: "thales", protocol: "TLS", min_version: "1.2", min_key_bits: "3072", seed_asset: "", max_depth: "5", system_id: "", actions: "move_to_kms" };
+const INPUT_DEFAULTS: Record<string, string> = { from_algo: "RSA", to_algo: "ML-KEM-768", horizon_days: "90", algorithm: "RSA", vendor: "thales", protocol: "TLS", min_version: "1.2", min_key_bits: "3072", seed_asset: "", max_depth: "5", system_id: "", actions: "move_to_kms", systems: "" };
 
 export default function DigitalTwin() {
   const overview = useApi<Record<string, unknown>>(apiDigitalTwinOverview);
@@ -193,6 +195,12 @@ export default function DigitalTwin() {
               <div style={{ display: "grid", gap: 6 }}>{Object.entries(res.impact ?? {}).map(([k, v]) => <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "7px 10px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}><span style={{ fontSize: 11, color: "var(--faint)" }}>{k}</span><span style={{ fontSize: 11, fontWeight: 600 }}>{typeof v === "object" && v !== null ? JSON.stringify(v) : String(v ?? "—")}</span></div>)}</div>
             </div>
           </div>
+          {res.migration && (
+            <div style={{ margin: "0 14px 14px" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--faint)" }}>migration — hardware, software, connected systems and vendors</div>
+              <MigrationResult result={res.migration} />
+            </div>
+          )}
           {unknowns.length > 0 && <div style={{ margin: "0 14px 14px", padding: "10px 14px", background: "color-mix(in srgb, var(--amber) 8%, transparent)", border: "1px solid var(--amber)", borderRadius: "var(--r)", fontSize: 11, color: "var(--amber)" }}><Badge tone="amber">honest unknowns</Badge> the twin could not verify — never assumed true:<ul style={{ marginTop: 6, paddingLeft: 16 }}>{unknowns.map((u, i) => <li key={i} style={{ margin: "4px 0" }}>{u}</li>)}</ul></div>}
         </Panel>
       )}

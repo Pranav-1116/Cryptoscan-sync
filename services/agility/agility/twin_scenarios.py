@@ -52,6 +52,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Mapping
 
 from agility.simulation import ACTIONS, calculate_agility_score
+from agility.migration_simulation import simulate_migration
 
 #: Scenario identifiers, stable for API clients. Ten types — the count the
 #: README claims; this module is what makes that claim true.
@@ -151,8 +152,12 @@ def _result(scenario: str, inputs: dict, *, affected: dict, impact: dict,
 # ----------------------------------------------------------------- scenarios
 
 def scenario_algorithm_migration(snapshot: Mapping[str, Any], *, now: datetime,
-                                 from_algo: str, to_algo: str) -> dict:
-    """Estate-wide arbitrary algorithm migration: who uses ``from_algo`` today."""
+                                 from_algo: str, to_algo: str, systems: Any = None) -> dict:
+    """Estate-wide arbitrary algorithm migration: who uses ``from_algo`` today —
+    and, under ``migration``, the full migration answer read against the twin's
+    hardware, software, connected systems and vendors (how to migrate, what can
+    go wrong, who else is affected, parallel or direct). ``systems`` optionally
+    narrows that answer to named systems (ids or names, comma-separated)."""
     from_algo, to_algo = str(from_algo or "").strip(), str(to_algo or "").strip()
     if not from_algo or not to_algo:
         raise ValueError("from_algo and to_algo are required")
@@ -171,8 +176,11 @@ def scenario_algorithm_migration(snapshot: Mapping[str, Any], *, now: datetime,
         lib for a in target_assets
         for lib in (a.get("libraries") or {}) if isinstance(lib, str)
     })
-    return _result(
-        "algorithm_migration", {"from": from_algo, "to": to_algo},
+    migration = simulate_migration(snapshot, from_algo=from_algo, to_algo=to_algo,
+                                   systems=systems, now=now)
+    result = _result(
+        "algorithm_migration", {"from": from_algo, "to": to_algo,
+                                **({"systems": systems} if systems else {})},
         affected={
             "assets": [a.get("asset_id") for a in assets],
             "evidence_records": len(evidence),
@@ -190,10 +198,13 @@ def scenario_algorithm_migration(snapshot: Mapping[str, Any], *, now: datetime,
         unknowns=[
             "runtime/protocol negotiation is not modelled: an asset can use "
             f"{from_algo} at runtime without a matching evidence record",
-            "hardware and HSM support for the target is not verified here",
+            "hardware and HSM support for the target is read from recorded "
+            "capability lists and declared PQC capability — not tested on the device",
             "library *versions* matter for migration feasibility; the twin "
             "records library names only",
         ])
+    result["migration"] = migration
+    return result
 
 
 def scenario_certificate_expiry(snapshot: Mapping[str, Any], *, now: datetime,
@@ -635,8 +646,10 @@ def scenario_drift_regression(snapshot: Mapping[str, Any], *, now: datetime,
 SCENARIOS: dict[str, dict[str, Any]] = {
     "algorithm_migration": {
         "name": "Algorithm migration",
-        "description": "Estate-wide impact of migrating one algorithm family to another.",
-        "inputs": {"from_algo": "text", "to_algo": "text"},
+        "description": ("Estate-wide impact of migrating one algorithm family to another, "
+                        "checked against hardware, software, connected systems and vendors: "
+                        "how to migrate, what can go wrong, and parallel or direct."),
+        "inputs": {"from_algo": "text", "to_algo": "text", "systems": "text"},
         "run": scenario_algorithm_migration,
     },
     "certificate_expiry": {

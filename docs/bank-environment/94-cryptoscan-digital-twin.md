@@ -977,6 +977,61 @@ opposite of what a cascade answers. `simulated_projection_id` is therefore the l
 projection id (no second estate exists), `estate_copy` is `null`, and the run still
 asserts `live_state_modified: false` by fingerprinting the graph before and after.
 
+### Migration simulation: a crypto change against hardware, software, systems and vendors
+
+The scenarios above answer *which evidence would change*. A migration owner's next questions
+are about everything around that evidence, and the Digital Twin snapshot
+(`/digital-twin`, `_snapshot`) already holds it. The `algorithm_migration` twin scenario
+(`POST /api/v1/digital-twin/simulate`, `from_algo`, `to_algo`, optional `systems`) now
+returns, next to its existing `affected` / `impact`, a `migration` answer
+(`cryptoscan.migration-simulation/1`, `services/agility/agility/migration_simulation.py`).
+The Simulation workspace shows it in the *Migration simulation — checked against the
+Digital Twin* panel, and the Digital Twin page shows it under the scenario result.
+
+**What it checks, per system that uses the old algorithm** (found through twin crypto
+assets, linked evidence, certificate usage and observed TLS endpoints):
+
+| Twin source | Checked for |
+|---|---|
+| hardware fleet + `crypto_hardware_links` | the device holding the system's keys; can it run the target (recorded capability list, or the HSM's declared PQC capability) |
+| asset libraries + library catalog, software deployments | does the library implement the target; is it deprecated; how many releases to roll |
+| evidence (`is_hardcoded_key`) | key sites that need a code change, not a configuration switch |
+| `system_dependencies` | connected systems, which direction, and whether each is part of the change |
+| observed / registered network endpoints | TLS version (PQC key exchange needs TLS 1.3); clients the twin cannot see |
+| `system_vendors` + vendor crypto inventory + vendor sub-tier | vendor readiness for the target: `READY`, `NOT_READY`, `UNKNOWN` |
+| certificate usage | certificates to reissue, and relying parties that must trust the new chain |
+| business processes | the weight of the system (a change window and rollback, not a strategy reason) |
+
+**What it answers.** `strategy.recommended` is one of:
+
+- `BLOCKED`: something on the path cannot run the target. This happens when a device's recorded capability lacks it, a vendor's recorded products only do the old algorithm, or the target cannot do the old algorithm's job at all (for example ECDSA → ML-KEM).
+- `PARALLEL`: run old and new side by side. This applies when any of the following holds:
+  - a connected system is outside the change;
+  - a network endpoint has clients the twin cannot see;
+  - a vendor is involved;
+  - data or signatures already exist under the old algorithm;
+  - relying parties must trust a new chain;
+  - capability is unknown.
+- `DIRECT`: one planned cut-over. This is recommended only when none of the conditions above apply.
+- `NOT_DETERMINED`: nothing in the twin uses the old algorithm. This is not "no impact".
+
+Each system carries its own strategy, `blocked_by` and `parallel_because` reasons. The answer also lists:
+
+- `parallel_mechanisms`: hybrid key exchange, dual certificate chain, dual-key period, dual verify, and a per-connection switch;
+- `problems`: severity, who acts, mitigation, the consequence if ignored, and the basis;
+- `vendor_impact` and `connected_impact`;
+- a phased `plan`: prerequisites → keys and trust → run side by side → cut-over in dependency order (providers before callers) → verify → retire. Each phase has exit criteria and a rollback.
+
+**What it does not claim.**
+
+- A device, library or vendor with no recorded capability is `UNKNOWN`, never assumed capable.
+- Which algorithm a connection actually negotiates is not on dependency edges. A connected system is therefore treated as needing the old algorithm until it confirms the new one.
+- Hardware and vendor capability is as recorded or declared, not tested.
+- Performance is not measured.
+- All of this is listed in `unknowns`, with any read limit the snapshot hit.
+
+The function is pure (no clock, no randomness, nothing written).
+
 ### What a snapshot identifies, precisely
 
 The snapshot id covers assets, relationships, evidence **content** and collector

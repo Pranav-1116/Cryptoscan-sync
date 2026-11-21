@@ -1,0 +1,802 @@
+{
+ "affected": {
+  "asset_count": 2,
+  "assets": [
+   "a-core",
+   "a-pay"
+  ],
+  "certificates": [
+   "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  ],
+  "evidence_records": 1
+ },
+ "deterministic": true,
+ "honest_unknowns": [
+  "runtime/protocol negotiation is not modelled: an asset can use RSA at runtime without a matching evidence record",
+  "hardware and HSM support for the target is read from recorded capability lists and declared PQC capability \u2014 not tested on the device",
+  "library *versions* matter for migration feasibility; the twin records library names only"
+ ],
+ "impact": {
+  "key_sizes_in_play": [
+   2048
+  ],
+  "libraries_observed_with_target": [],
+  "target_already_in_use_by": []
+ },
+ "inputs": {
+  "from": "RSA",
+  "to": "ML-KEM-768"
+ },
+ "migration": {
+  "change": {
+   "from": "RSA",
+   "from_profile": {
+    "family": "ASYMMETRIC_CLASSICAL",
+    "hybrid": false,
+    "name": "RSA",
+    "pqc": false,
+    "roles": [
+     "key_establishment",
+     "signature"
+    ]
+   },
+   "scope": null,
+   "to": "ML-KEM-768",
+   "to_profile": {
+    "family": "PQC",
+    "hybrid": false,
+    "name": "ML-KEM-768",
+    "pqc": true,
+    "roles": [
+     "key_establishment"
+    ]
+   }
+  },
+  "connected_impact": [
+   {
+    "action": "confirm ML-KEM-768 support, or keep RSA on this connection",
+    "criticality": "medium",
+    "crypto_recorded": true,
+    "effect": "keeps using RSA; if the connected system switches without it, the connection fails",
+    "in_change": false,
+    "links": [
+     {
+      "direction": "CALLED_BY",
+      "relation": "writes",
+      "with": "Core Banking"
+     }
+    ],
+    "name": "Ledger",
+    "registered": true,
+    "system_id": "s-ledger",
+    "uses_source": false,
+    "uses_target": false
+   },
+   {
+    "action": "move in its own wave of the plan",
+    "criticality": "critical",
+    "crypto_recorded": true,
+    "effect": "also changes in this simulation \u2014 coordinate the order (providers first)",
+    "in_change": true,
+    "links": [
+     {
+      "direction": "CALLED_BY",
+      "relation": "calls",
+      "with": "Payments"
+     }
+    ],
+    "name": "Core Banking",
+    "registered": true,
+    "system_id": "s-core",
+    "uses_source": true,
+    "uses_target": false
+   },
+   {
+    "action": "move in its own wave of the plan",
+    "criticality": "high",
+    "crypto_recorded": true,
+    "effect": "also changes in this simulation \u2014 coordinate the order (providers first)",
+    "in_change": true,
+    "links": [
+     {
+      "direction": "CALLS",
+      "relation": "calls",
+      "with": "Core Banking"
+     }
+    ],
+    "name": "Payments",
+    "registered": true,
+    "system_id": "s-pay",
+    "uses_source": true,
+    "uses_target": false
+   }
+  ],
+  "dependency_order": [
+   {
+    "cyclic": false,
+    "system": "Core Banking",
+    "wave": 1
+   },
+   {
+    "cyclic": false,
+    "system": "Payments",
+    "wave": 2
+   }
+  ],
+  "deterministic": true,
+  "headline": "RSA \u2192 ML-KEM-768: 2 system(s) \u2014 2 blocked, 0 need a parallel run, 0 can migrate directly. Recommended: blocked migration",
+  "mutates_nothing": true,
+  "plan": [
+   {
+    "actions": [
+     "HSM hsm-1 cannot run ML-KEM-768 \u2014 upgrade the firmware to a release that lists the target, or replace the device; until then keys for this system cannot be generated or used under ML-KEM-768 on it",
+     "Acme Switch has no ML-KEM-768 support on record \u2014 get Acme Switch's ML-KEM-768 release and date; plan this system's cut-over after it ships",
+     "1 hard-coded RSA key site(s) \u2014 move the key to the HSM/KMS, change the code, rebuild and release (0 recorded deployment(s) to roll)",
+     "library openssl does not implement ML-KEM-768 \u2014 upgrade to a version (or add a provider) that implements ML-KEM-768, then rebuild and redeploy",
+     "pay.bank:443 negotiates TLS TLSv1.2 \u2014 enable TLS 1.3 on this endpoint (and its load balancer) first",
+     "library openssl is deprecated \u2014 replace it as part of the same change rather than patching it"
+    ],
+    "exit_criteria": "every blocker is closed with evidence (capability list, vendor statement, release) and recorded in the twin",
+    "order": 1,
+    "phase": "PREREQUISITES",
+    "rollback": "nothing to roll back \u2014 no production change yet",
+    "systems": [
+     "Core Banking",
+     "Payments"
+    ],
+    "title": "Clear what stops the migration"
+   },
+   {
+    "actions": [
+     "generate ML-KEM-768 keys for Core Banking in hsm-1",
+     "generate ML-KEM-768 keys for Payments",
+     "issue ML-KEM-768 certificates for Payments and distribute the new trust anchors to relying parties"
+    ],
+    "exit_criteria": "new keys exist where the system will use them; relying parties trust the new chain",
+    "order": 2,
+    "phase": "KEYS_AND_TRUST",
+    "rollback": "unused keys and certificates are revoked; nothing is serving them yet",
+    "systems": [
+     "Core Banking",
+     "Payments"
+    ],
+    "title": "Prepare ML-KEM-768 keys and trust"
+   },
+   {
+    "actions": [
+     "Core Banking: accept and offer ML-KEM-768 while still accepting RSA"
+    ],
+    "exit_criteria": "both algorithms negotiate; monitoring shows which peers use which",
+    "order": 3,
+    "phase": "ENABLE_ALONGSIDE",
+    "rollback": "switch ML-KEM-768 off again \u2014 RSA never stopped working",
+    "systems": [
+     "Core Banking"
+    ],
+    "title": "Wave 1: enable ML-KEM-768 next to RSA",
+    "wave": 1
+   },
+   {
+    "actions": [
+     "Core Banking: prefer ML-KEM-768; move each connected peer and vendor once it confirms"
+    ],
+    "exit_criteria": "handshakes, signatures and business transactions succeed on the new algorithm for every listed system",
+    "order": 4,
+    "phase": "CUT_OVER",
+    "providers_first": "systems that others call move before their callers",
+    "rollback": "re-enable RSA on the affected connections",
+    "systems": [
+     "Core Banking"
+    ],
+    "title": "Wave 1: move to ML-KEM-768",
+    "wave": 1
+   },
+   {
+    "actions": [
+     "Payments: accept and offer ML-KEM-768 while still accepting RSA"
+    ],
+    "exit_criteria": "both algorithms negotiate; monitoring shows which peers use which",
+    "order": 5,
+    "phase": "ENABLE_ALONGSIDE",
+    "rollback": "switch ML-KEM-768 off again \u2014 RSA never stopped working",
+    "systems": [
+     "Payments"
+    ],
+    "title": "Wave 2: enable ML-KEM-768 next to RSA",
+    "wave": 2
+   },
+   {
+    "actions": [
+     "Payments: prefer ML-KEM-768; move each connected peer and vendor once it confirms"
+    ],
+    "exit_criteria": "handshakes, signatures and business transactions succeed on the new algorithm for every listed system",
+    "order": 6,
+    "phase": "CUT_OVER",
+    "providers_first": "systems that others call move before their callers",
+    "rollback": "re-enable RSA on the affected connections",
+    "systems": [
+     "Payments"
+    ],
+    "title": "Wave 2: move to ML-KEM-768",
+    "wave": 2
+   },
+   {
+    "actions": [
+     "re-scan the changed systems so the twin shows the new algorithm",
+     "run each business process's smoke test",
+     "confirm no connection still negotiates RSA"
+    ],
+    "exit_criteria": "the twin no longer reports RSA on these systems",
+    "order": 7,
+    "phase": "VERIFY",
+    "rollback": "per-wave rollback above",
+    "systems": [
+     "Core Banking",
+     "Payments"
+    ],
+    "title": "Verify on the twin and in production"
+   },
+   {
+    "actions": [
+     "disable RSA once every peer and vendor has confirmed ML-KEM-768",
+     "keep RSA verification until old signatures expire"
+    ],
+    "exit_criteria": "no system, peer or vendor depends on RSA",
+    "order": 8,
+    "phase": "DECOMMISSION",
+    "rollback": "re-enable RSA (keys are destroyed only after a holding period)",
+    "systems": [
+     "Core Banking",
+     "Payments"
+    ],
+    "title": "Retire RSA"
+   }
+  ],
+  "problem_counts": {
+   "BLOCKER": 2,
+   "HIGH": 5,
+   "INFO": 0,
+   "MEDIUM": 3
+  },
+  "problems": [
+   {
+    "basis": "HARDWARE_CAPABILITY_RECORDED",
+    "code": "HARDWARE_CANNOT_RUN_TARGET",
+    "detail": "Thales Luna 7 firmware 7.4: the device declares PQC capability NOT_SUPPORTED",
+    "if_ignored": "key generation or signing on this device fails the moment the system switches",
+    "mitigation": "upgrade the firmware to a release that lists the target, or replace the device; until then keys for this system cannot be generated or used under ML-KEM-768 on it",
+    "severity": "BLOCKER",
+    "subject": "hsm-1",
+    "system": "Core Banking",
+    "title": "HSM hsm-1 cannot run ML-KEM-768",
+    "who_acts": "hardware owner / Thales"
+   },
+   {
+    "basis": "VENDOR_CRYPTO_INVENTORY",
+    "code": "VENDOR_NOT_READY",
+    "detail": "Acme Switch's recorded products implement RSA and none implements ML-KEM-768",
+    "if_ignored": "the payment_switch integration breaks at cut-over",
+    "mitigation": "get Acme Switch's ML-KEM-768 release and date; plan this system's cut-over after it ships",
+    "severity": "BLOCKER",
+    "subject": "Acme Switch",
+    "system": "Payments",
+    "title": "Acme Switch has no ML-KEM-768 support on record",
+    "who_acts": "Acme Switch (vendor)"
+   },
+   {
+    "basis": "SOURCE_EVIDENCE",
+    "code": "HARDCODED_KEYS",
+    "detail": "keys embedded in source cannot be switched by configuration: src/Keys.java",
+    "if_ignored": "the old key keeps working in the binary after the 'migration'",
+    "mitigation": "move the key to the HSM/KMS, change the code, rebuild and release (0 recorded deployment(s) to roll)",
+    "severity": "HIGH",
+    "subject": null,
+    "system": "Core Banking",
+    "title": "1 hard-coded RSA key site(s)",
+    "who_acts": "the application team"
+   },
+   {
+    "basis": "LIBRARY_CATALOG",
+    "code": "LIBRARY_LACKS_TARGET",
+    "detail": "the catalog lists RSA, AES, ECDSA",
+    "if_ignored": "the code cannot call the new algorithm at all",
+    "mitigation": "upgrade to a version (or add a provider) that implements ML-KEM-768, then rebuild and redeploy",
+    "severity": "HIGH",
+    "subject": "openssl",
+    "system": "Core Banking",
+    "title": "library openssl does not implement ML-KEM-768",
+    "who_acts": "the application team"
+   },
+   {
+    "basis": "SYSTEM_DEPENDENCY",
+    "code": "PEER_OUTSIDE_CHANGE",
+    "detail": "Core Banking calls Ledger; the twin holds no evidence that Ledger supports ML-KEM-768",
+    "if_ignored": "the connection between Core Banking and Ledger fails its handshake or signature check at cut-over",
+    "mitigation": "keep RSA available on this connection until Ledger confirms ML-KEM-768, then retire it",
+    "severity": "HIGH",
+    "subject": "Ledger",
+    "system": "Core Banking",
+    "title": "Ledger is connected to Core Banking but is not part of this change",
+    "who_acts": "the owner of Ledger"
+   },
+   {
+    "basis": "ALGORITHM_PROPERTY",
+    "code": "TARGET_COVERS_PART",
+    "detail": "RSA can also be used for digital signatures, which ML-KEM-768 cannot do",
+    "if_ignored": "the digital signatures uses keep RSA",
+    "mitigation": "run a second simulation for the remaining use (e.g. RSA signatures \u2192 ML-DSA-65)",
+    "severity": "HIGH",
+    "subject": null,
+    "system": null,
+    "title": "ML-KEM-768 replaces only part of RSA",
+    "who_acts": "the migration owner"
+   },
+   {
+    "basis": "NETWORK_OBSERVATION",
+    "code": "TLS_VERSION_TOO_OLD",
+    "detail": "post-quantum and hybrid key exchange (ML-KEM-768) is only defined for TLS 1.3",
+    "if_ignored": "the endpoint can never offer the new key exchange",
+    "mitigation": "enable TLS 1.3 on this endpoint (and its load balancer) first",
+    "severity": "HIGH",
+    "subject": "pay.bank:443",
+    "system": "Payments",
+    "title": "pay.bank:443 negotiates TLS TLSv1.2",
+    "who_acts": "the platform / network team"
+   },
+   {
+    "basis": "CERTIFICATE_USAGE",
+    "code": "CERTIFICATES_TO_REISSUE",
+    "detail": "issuers: Bank CA; 1 expire within 90 days \u2014 renew straight into the new algorithm",
+    "if_ignored": "relying parties that do not trust the new chain reject the connection",
+    "mitigation": "confirm the issuing CA can sign with the new algorithm, issue the new certificates, and distribute the new chain to every relying party before switching",
+    "severity": "MEDIUM",
+    "subject": null,
+    "system": "Payments",
+    "title": "1 RSA certificate(s) to reissue",
+    "who_acts": "the PKI team"
+   },
+   {
+    "basis": "ALGORITHM_PROPERTY",
+    "code": "HANDSHAKE_SIZE",
+    "detail": "ML-KEM-768 keys/ciphertexts/signatures are much larger than RSA's; handshakes grow by kilobytes",
+    "if_ignored": "middleboxes that cap ClientHello size drop the new handshakes",
+    "mitigation": "test through every load balancer, WAF and TLS-inspecting middlebox on the path; check MTU/fragmentation and constrained clients",
+    "severity": "MEDIUM",
+    "subject": null,
+    "system": "Payments",
+    "title": "larger keys and signatures on 1 endpoint(s)",
+    "who_acts": "the network team"
+   },
+   {
+    "basis": "LIBRARY_CATALOG",
+    "code": "LIBRARY_DEPRECATED",
+    "detail": "the catalog marks it deprecated",
+    "if_ignored": "the migration lands on a library with no future fixes",
+    "mitigation": "replace it as part of the same change rather than patching it",
+    "severity": "MEDIUM",
+    "subject": "openssl",
+    "system": "Core Banking",
+    "title": "library openssl is deprecated",
+    "who_acts": "the application team"
+   }
+  ],
+  "schema": "cryptoscan.migration-simulation/1",
+  "strategy": {
+   "direct_is_safe_when": "no connected system outside the change, no network endpoint with unseen clients, no vendor, no stored data or signatures under the old algorithm, and every device's capability is recorded",
+   "meaning": "cannot start: something on the path cannot run the target algorithm yet",
+   "parallel_mechanisms": [
+    {
+     "how": "offer a hybrid group (classical + ML-KEM-768, e.g. X25519MLKEM768) on TLS 1.3: upgraded peers negotiate it, the rest fall back to the classical group",
+     "mechanism": "HYBRID_KEY_EXCHANGE"
+    },
+    {
+     "how": "serve both the RSA and the ML-KEM-768 chain (or a composite certificate) until every relying party trusts the new root",
+     "mechanism": "DUAL_CERTIFICATE_CHAIN"
+    },
+    {
+     "how": "make the algorithm a per-connection setting so each peer and vendor moves on its own date and can be rolled back alone",
+     "mechanism": "PER_CONNECTION_SWITCH"
+    }
+   ],
+   "reasons": {
+    "EXTERNAL_CLIENTS_UNKNOWN": 1,
+    "HARDWARE_CANNOT_RUN_TARGET": 1,
+    "PEER_OUTSIDE_CHANGE": 1,
+    "RELYING_PARTIES": 1,
+    "VENDOR_NOT_READY": 1
+   },
+   "recommended": "BLOCKED",
+   "systems": {
+    "BLOCKED": 2,
+    "DIRECT": 0,
+    "PARALLEL": 0
+   }
+  },
+  "systems": [
+   {
+    "blocked_by": [
+     {
+      "code": "HARDWARE_CANNOT_RUN_TARGET",
+      "text": "HSM hsm-1 cannot run ML-KEM-768"
+     }
+    ],
+    "considerations": [
+     {
+      "code": "BUSINESS_CRITICAL",
+      "text": "criticality critical \u2014 schedule a change window with a tested rollback"
+     }
+    ],
+    "criticality": "critical",
+    "environment": null,
+    "findings": [
+     {
+      "basis": "HARDWARE_CAPABILITY_RECORDED",
+      "code": "HARDWARE_CANNOT_RUN_TARGET",
+      "detail": "Thales Luna 7 firmware 7.4: the device declares PQC capability NOT_SUPPORTED",
+      "if_ignored": "key generation or signing on this device fails the moment the system switches",
+      "mitigation": "upgrade the firmware to a release that lists the target, or replace the device; until then keys for this system cannot be generated or used under ML-KEM-768 on it",
+      "severity": "BLOCKER",
+      "subject": "hsm-1",
+      "system": "Core Banking",
+      "title": "HSM hsm-1 cannot run ML-KEM-768",
+      "who_acts": "hardware owner / Thales"
+     },
+     {
+      "basis": "SOURCE_EVIDENCE",
+      "code": "HARDCODED_KEYS",
+      "detail": "keys embedded in source cannot be switched by configuration: src/Keys.java",
+      "if_ignored": "the old key keeps working in the binary after the 'migration'",
+      "mitigation": "move the key to the HSM/KMS, change the code, rebuild and release (0 recorded deployment(s) to roll)",
+      "severity": "HIGH",
+      "subject": null,
+      "system": "Core Banking",
+      "title": "1 hard-coded RSA key site(s)",
+      "who_acts": "the application team"
+     },
+     {
+      "basis": "LIBRARY_CATALOG",
+      "code": "LIBRARY_LACKS_TARGET",
+      "detail": "the catalog lists RSA, AES, ECDSA",
+      "if_ignored": "the code cannot call the new algorithm at all",
+      "mitigation": "upgrade to a version (or add a provider) that implements ML-KEM-768, then rebuild and redeploy",
+      "severity": "HIGH",
+      "subject": "openssl",
+      "system": "Core Banking",
+      "title": "library openssl does not implement ML-KEM-768",
+      "who_acts": "the application team"
+     },
+     {
+      "basis": "SYSTEM_DEPENDENCY",
+      "code": "PEER_OUTSIDE_CHANGE",
+      "detail": "Core Banking calls Ledger; the twin holds no evidence that Ledger supports ML-KEM-768",
+      "if_ignored": "the connection between Core Banking and Ledger fails its handshake or signature check at cut-over",
+      "mitigation": "keep RSA available on this connection until Ledger confirms ML-KEM-768, then retire it",
+      "severity": "HIGH",
+      "subject": "Ledger",
+      "system": "Core Banking",
+      "title": "Ledger is connected to Core Banking but is not part of this change",
+      "who_acts": "the owner of Ledger"
+     },
+     {
+      "basis": "LIBRARY_CATALOG",
+      "code": "LIBRARY_DEPRECATED",
+      "detail": "the catalog marks it deprecated",
+      "if_ignored": "the migration lands on a library with no future fixes",
+      "mitigation": "replace it as part of the same change rather than patching it",
+      "severity": "MEDIUM",
+      "subject": "openssl",
+      "system": "Core Banking",
+      "title": "library openssl is deprecated",
+      "who_acts": "the application team"
+     }
+    ],
+    "migration_wave": null,
+    "name": "Core Banking",
+    "parallel_because": [
+     {
+      "code": "PEER_OUTSIDE_CHANGE",
+      "text": "Ledger still needs RSA on its connection"
+     }
+    ],
+    "strategy": "BLOCKED",
+    "system_id": "s-core",
+    "twin": {
+     "business_processes": [],
+     "certificates": [],
+     "connections": [
+      {
+       "crypto_recorded": true,
+       "direction": "CALLED_BY",
+       "in_change": true,
+       "name": "Payments",
+       "provenance": null,
+       "registered": true,
+       "relation": "calls",
+       "system_id": "s-pay",
+       "uses_source": true,
+       "uses_target": false
+      },
+      {
+       "crypto_recorded": true,
+       "direction": "CALLS",
+       "in_change": false,
+       "name": "Ledger",
+       "provenance": null,
+       "registered": true,
+       "relation": "writes",
+       "system_id": "s-ledger",
+       "uses_source": false,
+       "uses_target": false
+      }
+     ],
+     "crypto_assets": [
+      "a-core"
+     ],
+     "crypto_assets_using_source": [
+      "a-core"
+     ],
+     "evidence_records_using_source": 1,
+     "hardware": [
+      {
+       "asset_id": "hsm-1",
+       "basis": "the device declares PQC capability NOT_SUPPORTED",
+       "capabilities": [
+        "RSA",
+        "ECDSA",
+        "AES"
+       ],
+       "firmware": "7.4",
+       "holds_affected_keys": true,
+       "kind": "HSM",
+       "manufacturer": "Thales",
+       "model": "Luna 7",
+       "pqc_capability": "NOT_SUPPORTED",
+       "target_support": "NOT_SUPPORTED"
+      }
+     ],
+     "network_endpoints": [],
+     "software": {
+      "deployments": [],
+      "libraries": [
+       {
+        "basis": "the catalog lists RSA, AES, ECDSA",
+        "deprecated": true,
+        "name": "openssl",
+        "target_support": "NOT_SUPPORTED",
+        "vendor": null,
+        "version": "1.1.1"
+       }
+      ]
+     },
+     "vendors": []
+    },
+    "why_in_change": [
+     "a twin crypto asset of this system uses it",
+     "source evidence linked to this system uses it"
+    ]
+   },
+   {
+    "blocked_by": [
+     {
+      "code": "VENDOR_NOT_READY",
+      "text": "waiting on Acme Switch for ML-KEM-768"
+     }
+    ],
+    "considerations": [
+     {
+      "code": "BUSINESS_CRITICAL",
+      "text": "criticality high; 1 business process(es) \u2014 schedule a change window with a tested rollback"
+     }
+    ],
+    "criticality": "high",
+    "environment": null,
+    "findings": [
+     {
+      "basis": "VENDOR_CRYPTO_INVENTORY",
+      "code": "VENDOR_NOT_READY",
+      "detail": "Acme Switch's recorded products implement RSA and none implements ML-KEM-768",
+      "if_ignored": "the payment_switch integration breaks at cut-over",
+      "mitigation": "get Acme Switch's ML-KEM-768 release and date; plan this system's cut-over after it ships",
+      "severity": "BLOCKER",
+      "subject": "Acme Switch",
+      "system": "Payments",
+      "title": "Acme Switch has no ML-KEM-768 support on record",
+      "who_acts": "Acme Switch (vendor)"
+     },
+     {
+      "basis": "NETWORK_OBSERVATION",
+      "code": "TLS_VERSION_TOO_OLD",
+      "detail": "post-quantum and hybrid key exchange (ML-KEM-768) is only defined for TLS 1.3",
+      "if_ignored": "the endpoint can never offer the new key exchange",
+      "mitigation": "enable TLS 1.3 on this endpoint (and its load balancer) first",
+      "severity": "HIGH",
+      "subject": "pay.bank:443",
+      "system": "Payments",
+      "title": "pay.bank:443 negotiates TLS TLSv1.2",
+      "who_acts": "the platform / network team"
+     },
+     {
+      "basis": "CERTIFICATE_USAGE",
+      "code": "CERTIFICATES_TO_REISSUE",
+      "detail": "issuers: Bank CA; 1 expire within 90 days \u2014 renew straight into the new algorithm",
+      "if_ignored": "relying parties that do not trust the new chain reject the connection",
+      "mitigation": "confirm the issuing CA can sign with the new algorithm, issue the new certificates, and distribute the new chain to every relying party before switching",
+      "severity": "MEDIUM",
+      "subject": null,
+      "system": "Payments",
+      "title": "1 RSA certificate(s) to reissue",
+      "who_acts": "the PKI team"
+     },
+     {
+      "basis": "ALGORITHM_PROPERTY",
+      "code": "HANDSHAKE_SIZE",
+      "detail": "ML-KEM-768 keys/ciphertexts/signatures are much larger than RSA's; handshakes grow by kilobytes",
+      "if_ignored": "middleboxes that cap ClientHello size drop the new handshakes",
+      "mitigation": "test through every load balancer, WAF and TLS-inspecting middlebox on the path; check MTU/fragmentation and constrained clients",
+      "severity": "MEDIUM",
+      "subject": null,
+      "system": "Payments",
+      "title": "larger keys and signatures on 1 endpoint(s)",
+      "who_acts": "the network team"
+     }
+    ],
+    "migration_wave": null,
+    "name": "Payments",
+    "parallel_because": [
+     {
+      "code": "EXTERNAL_CLIENTS_UNKNOWN",
+      "text": "1 network endpoint(s): clients that connect to them are not assets in the twin, so their support for the target cannot be checked"
+     },
+     {
+      "code": "RELYING_PARTIES",
+      "text": "relying parties must trust the new chain before the old one is withdrawn"
+     }
+    ],
+    "strategy": "BLOCKED",
+    "system_id": "s-pay",
+    "twin": {
+     "business_processes": [
+      {
+       "customer_count": null,
+       "name": "Card payments",
+       "revenue_daily": null,
+       "role": "primary"
+      }
+     ],
+     "certificates": [
+      {
+       "days_until_expiry": 40,
+       "fingerprint_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+       "issuer": "Bank CA",
+       "not_after": null,
+       "public_key_algorithm": "RSA",
+       "subject": "CN=pay.bank"
+      }
+     ],
+     "connections": [
+      {
+       "crypto_recorded": true,
+       "direction": "CALLS",
+       "in_change": true,
+       "name": "Core Banking",
+       "provenance": null,
+       "registered": true,
+       "relation": "calls",
+       "system_id": "s-core",
+       "uses_source": true,
+       "uses_target": false
+      }
+     ],
+     "crypto_assets": [
+      "a-pay"
+     ],
+     "crypto_assets_using_source": [
+      "a-pay"
+     ],
+     "evidence_records_using_source": 0,
+     "hardware": [],
+     "network_endpoints": [
+      {
+       "cipher_suite": "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+       "endpoint": "pay.bank:443",
+       "negotiates_source": true,
+       "observed": true,
+       "protocol": "tls",
+       "tls_version": "TLSv1.2"
+      }
+     ],
+     "software": {
+      "deployments": [],
+      "libraries": [
+       {
+        "basis": "the library catalog does not know this library",
+        "deprecated": false,
+        "name": "bouncycastle",
+        "target_support": "UNKNOWN",
+        "vendor": null,
+        "version": "1.70"
+       }
+      ]
+     },
+     "vendors": [
+      {
+       "criticality": "critical",
+       "dependency_type": "payment_switch",
+       "name": "Acme Switch",
+       "products": [
+        {
+         "algorithm": "RSA-2048",
+         "key_size": 2048,
+         "pqc_ready": false,
+         "use_case": "tls"
+        }
+       ],
+       "readiness": "NOT_READY",
+       "sub_tier": [],
+       "uses_source": true,
+       "vendor_id": "v-acme",
+       "vendor_type": null
+      }
+     ]
+    },
+    "why_in_change": [
+     "a certificate this system uses carries it",
+     "a twin crypto asset of this system uses it",
+     "an observed TLS endpoint of this system negotiates it"
+    ]
+   }
+  ],
+  "twin_context": {
+   "certificates": 1,
+   "connected_systems": 3,
+   "hardware": 1,
+   "matched": {
+    "certificates": 1,
+    "evidence_records": 1,
+    "network_endpoints": 1,
+    "twin_assets": 2
+   },
+   "network_endpoints": 1,
+   "software_libraries": 2,
+   "source": "Digital Twin snapshot (systems, hardware fleet, crypto\u2194hardware links, system\u2194vendor links, vendor crypto inventory, system dependencies, observed TLS endpoints, certificate usage, library catalog, software deployments)",
+   "systems_in_change": 2,
+   "vendors": 1
+  },
+  "unknowns": [
+   "which algorithm each connection negotiates is not recorded on dependency edges; a connected system is treated as needing the old algorithm until it confirms",
+   "clients of a network endpoint are not assets in the twin, so they cannot be checked",
+   "hardware and vendor capability is as recorded or declared \u2014 not independently tested",
+   "performance of the new algorithm on this estate is not measured here",
+   "Payments: no crypto\u2194hardware link is recorded, so whether its keys live in an HSM (and whether that HSM can run the target) is unknown"
+  ],
+  "vendor_impact": [
+   {
+    "criticality": "critical",
+    "dependency_types": [
+     "payment_switch"
+    ],
+    "if_it_does_not": "its integrations with the listed systems fail at cut-over, or keep RSA alive indefinitely",
+    "name": "Acme Switch",
+    "needs_to": "ship ML-KEM-768 support \u2014 the listed systems wait for it",
+    "products": [
+     {
+      "algorithm": "RSA-2048",
+      "key_size": 2048,
+      "pqc_ready": false,
+      "use_case": "tls"
+     }
+    ],
+    "readiness": "NOT_READY",
+    "sub_tier": [],
+    "systems": [
+     "Payments"
+    ],
+    "vendor_id": "v-acme",
+    "vendor_type": null
+   }
+  ]
+ },
+ "mutates_nothing": true,
+ "scenario": "algorithm_migration",
+ "verdict": "COMPUTED"
+}

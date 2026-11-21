@@ -19,6 +19,7 @@ import { Link } from "react-router-dom";
 import { Panel, Badge, Stat } from "../components/ui";
 import { IconTarget, IconSecurity } from "../components/icons";
 import EstateDiscoveryCta from "../components/EstateDiscoveryCta";
+import MigrationSimulationPanel from "../components/MigrationSimulationPanel";
 import {
   apiSimulationCatalog, apiSimulationPlan, apiSimulationRun, apiSimulationRuns,
   apiEstateTwinSnapshots, LiveBadge, ApiResult,
@@ -414,6 +415,9 @@ export default function Simulation() {
             mechanism, and what each one cannot see is stated rather than assumed away. The per-scenario
             status — and what each one cannot see — is under{" "}
             <Link to="/collector-depth">Collector depth → Simulation</Link>.
+            {" "}A crypto change can also be checked against the Digital Twin's hardware, software,
+            connected systems and vendors — the migration simulation below says how to migrate, what
+            can go wrong, who else is affected, and whether it needs a parallel run.
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -469,6 +473,11 @@ export default function Simulation() {
           ]}
         />
       </div>
+
+      <MigrationSimulationPanel
+        algorithms={catalog?.data?.selector?.algorithms?.map((item) => item.value)}
+        suggested={{ from: fields.from, to: fields.to }}
+      />
 
       {catalogProblem && (
         <Panel title="No twin to simulate against" sub="a simulation is asked of this estate's own evidence">

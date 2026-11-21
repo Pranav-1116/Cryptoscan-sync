@@ -504,6 +504,57 @@ def test_pqc_migration_reports_hardware_pqc_capability(client, session):
     assert hw["not_capable_devices"] == ["hsm-pay-02"]
 
 
+def test_algorithm_migration_reads_hardware_vendors_and_connections(client, session):
+    """The migration answer is computed from the real snapshot: the RSA key's
+    system, the HSM declared to hold it, the system's vendor and the systems it
+    is connected to — and the simulation still writes nothing."""
+    from db.models.cascade_extensions import CryptoHardwareLink
+    _seed_twin(session)
+    _seed_hardware(session)
+    record = session.query(EvidenceRecord).filter_by(algorithm="RSA-2048").one()
+    asset = CryptoAsset(algorithm="RSA-2048", file_path="src/Kek.java", line_number=10,
+                        is_hardcoded_key=True)
+    session.add(asset)
+    session.flush()
+    session.add(CryptoAssetEvidence(asset_id=asset.id, evidence_id=record.id))
+    session.add(SystemAsset(system_id="sys-core", asset_id=asset.id))
+    session.add(CryptoHardwareLink(asset_id=asset.id, hardware_asset_id="hsm-pay-02"))
+    session.commit()
+    rows_before = session.query(HardwareAsset).count(), session.query(SystemVendor).count()
+
+    r = client.post("/api/v1/digital-twin/simulate", json={
+        "scenario": "algorithm_migration",
+        "params": {"from_algo": "RSA", "to_algo": "ML-KEM-768"},
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["affected"]["assets"] == ["hsm-core-01"]  # existing answer intact
+    migration = body["migration"]
+    core = next(s for s in migration["systems"] if s["system_id"] == "sys-core")
+    # the declared HSM reports NOT_READY for PQC: a blocker, not a guess
+    assert [h["asset_id"] for h in core["twin"]["hardware"]] == ["hsm-pay-02"]
+    assert core["twin"]["hardware"][0]["target_support"] == "NOT_SUPPORTED"
+    assert core["strategy"] == "BLOCKED"
+    assert [v["name"] for v in core["twin"]["vendors"]] == ["Thales"]
+    assert [c["name"] for c in core["twin"]["connections"]] == ["Payments"]
+    assert migration["strategy"]["recommended"] == "BLOCKED"
+    assert any(v["name"] == "Thales" for v in migration["vendor_impact"])
+    assert any(c["name"] == "Payments" and not c["in_change"]
+               for c in migration["connected_impact"])
+    assert migration["plan"][0]["phase"] == "PREREQUISITES"
+    assert (session.query(HardwareAsset).count(), session.query(SystemVendor).count()) == rows_before
+
+
+def test_algorithm_migration_scope_input_is_accepted(client, session):
+    _seed_twin(session)
+    r = client.post("/api/v1/digital-twin/simulate", json={
+        "scenario": "algorithm_migration",
+        "params": {"from_algo": "RSA", "to_algo": "ML-KEM-768", "systems": "Payments"},
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["migration"]["change"]["scope"] == ["sys-pay"]
+
+
 # ---------------------------------------------------------- reconciliation
 
 def test_reconciliation_flags_divergence_between_twin_and_evidence(client, session):
