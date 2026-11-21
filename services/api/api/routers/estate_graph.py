@@ -2226,6 +2226,81 @@ def estate_migration_simulation(
             "migration": migration, "mutates_nothing": True}
 
 
+class TwinBomImpactRequest(BaseModel):
+    """An algorithm change laid over every BOM of the twin and over the system connections."""
+
+    from_algo: str = Field(min_length=1, max_length=120)
+    to_algo: str = Field(min_length=1, max_length=120)
+    #: system ids or exact system names; empty = every system that uses ``from_algo``
+    systems: list[str] | None = Field(default=None, max_length=100)
+
+
+#: (tenant, run id) → the six BOM projections and the relationships of that run, beside the twin
+_ESTATE_BOM_CACHE: dict[tuple[str | None, Any], dict[str, Any]] = {}
+
+
+def _estate_twin_boms(run: Any) -> dict[str, Any]:
+    """The twin, its six BOM projections and the relationships — one graph build per stored run."""
+    key = (current_tenant(), getattr(run, "id", None))
+    cached = _ESTATE_BOM_CACHE.get(key)
+    if cached is not None:
+        return cached
+    graph = _graph_from_run(run)
+    bundle = {"twin": _estate_migration_twin(run), "boms": graph.project_all(),
+              "relationships": graph.relationships()}
+    if len(_ESTATE_BOM_CACHE) >= _ESTATE_TWIN_CACHE_MAX:
+        _ESTATE_BOM_CACHE.pop(next(iter(_ESTATE_BOM_CACHE)))
+    _ESTATE_BOM_CACHE[key] = bundle
+    return bundle
+
+
+def _twin_bom_answer(run: Any, body: TwinBomImpactRequest | None) -> dict[str, Any]:
+    from agility.bom_migration_impact import simulate_bom_impact
+
+    bundle = _estate_twin_boms(run)
+    try:
+        result = simulate_bom_impact(
+            bundle["boms"], bundle["twin"], bundle["relationships"],
+            from_algo=body.from_algo if body else None, to_algo=body.to_algo if body else None,
+            systems=(body.systems or None) if body else None)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": "invalid_migration", "reason": str(exc)}) from exc
+    from agility.estate_migration_twin import migration_context
+
+    return {"run_id": run.id, "source": "ESTATE_GRAPH",
+            "observed_at": str(getattr(run, "created_at", "") or "") or None,
+            "context": migration_context(bundle["twin"]), **result}
+
+
+@router.get("/simulation/twin-boms")
+def estate_twin_boms(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Every BOM of the Digital Twin — CBOM, NBOM, SBOM, HBOM, VBOM and the technology BOM —
+    with the business system each component belongs to and the connections between systems.
+
+    Read from the newest stored observation; no change is applied, so no component has a status.
+    """
+    return _twin_bom_answer(_latest_run(db), None)
+
+
+@router.post("/simulation/twin-boms")
+def estate_twin_bom_impact(
+    body: TwinBomImpactRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Lay one algorithm change over every BOM and every system connection. Mutates nothing.
+
+    Each component gets AFFECTED / AT_RISK / UNKNOWN / READY / NOT_AFFECTED with its cause and
+    action; the migration engine's problems are filed under the BOM they come from; each
+    connection says which side changes, what happens to the other side and which components
+    both share; the ripple lists systems reached through the dependency chain.
+    """
+    return _twin_bom_answer(_latest_run(db), body)
+
+
 @router.post("/simulation/run")
 def simulation_run(
     body: SimulationRunRequest,

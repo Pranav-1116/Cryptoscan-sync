@@ -1,0 +1,707 @@
+import { describe, expect, it } from "vitest";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { renderWithProviders } from "../test/render";
+import { mockFetch } from "../test/setup";
+import Simulation from "./WhatIfWorkspace";
+
+const BASE = "/api/v1/estate/evidence/simulation";
+const FROM = "From (the value the evidence holds today)";
+const TO = "To (the value the scenario would use instead)";
+
+const kinds = [
+  {
+    kind: "REPLACE_ALGORITHM", mode: "SCENARIO", name: "Replace an algorithm",
+    question: "If every use of {from} became {to}, what changes and what breaks?",
+    inputs: ["from", "to"], optional: ["key_size", "targets"],
+    answers: ["which evidence records would change"],
+    does_not_answer: ["whether the target algorithm is supported by a library"],
+  },
+  {
+    kind: "RETIRE_ALGORITHM", mode: "SCENARIO", name: "Retire an algorithm",
+    question: "If every use of {from} were removed, what stops working?",
+    inputs: ["from"], optional: ["targets"],
+    answers: ["which records lose a value"], does_not_answer: ["what replaces it"],
+  },
+  {
+    kind: "CASCADE_ASSET_UNAVAILABLE", mode: "CASCADE", name: "Asset goes down",
+    question: "If {seeds} stopped serving, what breaks, wave by wave?",
+    inputs: ["targets"], optional: ["depth"],
+    answers: ["each wave of reached assets and the edge that carried the failure to it"],
+    does_not_answer: ["that service stops: redundancy is evidence the twin does not hold"],
+  },
+  {
+    kind: "CASCADE_ALGORITHM_BREAK", mode: "CASCADE", name: "An algorithm breaks everywhere",
+    question: "If {from} became untrustworthy tonight, what is reached from every use of it?",
+    inputs: ["from"], optional: ["depth", "targets"],
+    answers: ["every asset using it, as the seeds of one event"],
+    does_not_answer: ["harvest-now-decrypt-later"],
+  },
+];
+
+const catalog = {
+  schema: "cryptoscan.simulation-workspace/1",
+  run_id: "run-1",
+  base_projection_id: "2b1b8b8ac7193c2a07bc707b97b584dc",
+  estate: { assets: 3, evidence: 2, relationships: 1, coverage_state: "MEASURED", attempted: null, collected: 6 },
+  modes: [
+    { mode: "SCENARIO", name: "Change the estate", blurb: "apply a change to a copy of the twin", changes_evidence: true, has_bom_diff: true },
+    { mode: "CASCADE", name: "Cascade a failure", blurb: "propagate a failure through the established dependency edges", changes_evidence: false, has_bom_diff: false },
+  ],
+  kinds,
+  presets: [
+    { id: "retire:AES", label: "Retire AES", mode: "SCENARIO", kind: "RETIRE_ALGORITHM",
+      scenario: { kind: "RETIRE_ALGORITHM", from: "AES" }, why: "2 artefact(s) in this estate use it" },
+    { id: "down:application:abc", label: "If payments-api goes down", mode: "CASCADE",
+      kind: "CASCADE_ASSET_UNAVAILABLE",
+      scenario: { kind: "CASCADE_ASSET_UNAVAILABLE", targets: ["application:abc"] },
+      why: "2 established edge(s) rest on it" },
+  ],
+  selector: {
+    algorithms: [{ value: "AES", count: 2 }, { value: "RSA", count: 1 }],
+    protocols: [{ value: "TLSv1.3", count: 1 }],
+    components: [{ value: "OpenSSL 3.0.13", count: 1 }],
+    targets: [{ asset_id: "application:abc", name: "payments-api", type: "APPLICATION" }],
+    truncated_to: 40, note: "these are the values this estate holds",
+  },
+  note: "a scenario is applied to a copy of this twin",
+  limits: ["a simulation is a question asked of a copy"],
+};
+
+const rules = [
+  { predicate: "depends_on", direction: "object_to_subject", meaning: "a declared dependency on a stopped service is unmet" },
+  { predicate: "contains", direction: "both", meaning: "a system holding a stopped component is degraded" },
+];
+
+function preview(overrides: Record<string, unknown> = {}) {
+  return {
+    schema: "cryptoscan.estate-twin-simulation-preview/1",
+    status: "WOULD_MATCH", kind: "REPLACE_ALGORITHM",
+    scenario: { kind: "REPLACE_ALGORITHM", from: "AES", to: "ML-KEM" },
+    base_projection_id: "2b1b8b8ac7193c2a07bc707b97b584dc",
+    live_state_modified: false, evidence_considered: 2, matched_evidence: 2,
+    affected_assets: [{ asset_id: "application:abc", name: "payments-api", type: "APPLICATION", evidence_matched: 2 }],
+    affected_asset_count: 1, by_layer: { APPLICATION: 2 }, unresolved_targets: [],
+    coverage: {
+      target_classes: 4, expected: 6, collected: 6, coverage_percent: 100,
+      coverage_state: "MEASURED", by_status: {}, failed_targets: [],
+    },
+    note: "2 evidence record(s) on 1 asset(s) would change",
+    limits: ["a preview counts the evidence records a scenario would touch"],
+    ...overrides,
+  };
+}
+
+function cascadePreview(overrides: Record<string, unknown> = {}) {
+  return preview({
+    status: "WOULD_MATCH", kind: "CASCADE_ASSET_UNAVAILABLE", mode: "CASCADE", engine: "CASCADE",
+    depth: 3, matched_evidence: 1, evidence_considered: 1,
+    seeds: [{ asset_id: "application:abc", name: "payments-api", type: "APPLICATION", reason: "named by the scenario" }],
+    unresolved_seeds: [],
+    affected_assets: [
+      { asset_id: "host:1", name: "host-01", type: "HOST", hops: 1, via_predicate: "runs_on" },
+      { asset_id: "system:1", name: "Payments", type: "SYSTEM", hops: 2, via_predicate: "contains" },
+    ],
+    affected_asset_count: 2,
+    wave_counts: [{ depth: 1, count: 1 }, { depth: 2, count: 1 }],
+    business_systems_reached: 1,
+    rules,
+    note: "2 asset(s) would be reached from 1 seed(s) within 3 hop(s)",
+    limits: ["a cascade propagates over established edges only"],
+    ...overrides,
+  });
+}
+
+const zeroDiff = { added: [], removed: [], changed: [], counts: { added: 0, removed: 0, changed: 0, unchanged: 0 } };
+
+function run(overrides: Record<string, unknown> = {}) {
+  return {
+    status: "SIMULATED", run_id: "run-1", schema: "cryptoscan.estate-twin-simulation/1",
+    kind: "REPLACE_ALGORITHM", mode: "SCENARIO",
+    scenario: { kind: "REPLACE_ALGORITHM", from: "AES", to: "ML-KEM" },
+    base_snapshot: "twin:2b1b", base_projection_id: "2b1b",
+    simulated_projection_id: "9999", matched_evidence: 2,
+    affected_assets: [{ asset_id: "application:abc", name: "payments-api", type: "APPLICATION" }],
+    effects: [{
+      evidence_id: "ev-1", asset_id: "application:abc", asset_name: "payments-api",
+      layer: "APPLICATION", evidence_type: "STATIC_OBSERVED",
+      before: { algorithm: "AES", key_size: 128 }, after: { algorithm: "ML-KEM", key_size: 768 },
+    }],
+    bom_diff: { SBOM: zeroDiff, CBOM: zeroDiff, HBOM: zeroDiff, NBOM: zeroDiff, VBOM: zeroDiff, TECHBOM: zeroDiff },
+    impact: { counts: { seed: 1, direct: 0, transitive: 0, total: 1 }, by_type: { APPLICATION: 1 } },
+    blockers: [], unknown: { affected_assets_without_evidence: 0 },
+    live_state_modified: false, live_projection_unchanged: true,
+    plan: preview(), simulation_id: "sim:abc", persisted: true,
+    simulation_record: { quarantined: true, is_estate_state: false },
+    persist_note: "stored as a new quarantined run", note: "the scenario was applied to a copy of the twin",
+    ...overrides,
+  };
+}
+
+function cascadeRun(overrides: Record<string, unknown> = {}) {
+  return run({
+    status: "SIMULATED", kind: "CASCADE_ASSET_UNAVAILABLE", mode: "CASCADE", engine: "CASCADE",
+    scenario: { kind: "CASCADE_ASSET_UNAVAILABLE", targets: ["application:abc"], depth: 3 },
+    depth: 3,
+    seeds: [{ asset_id: "application:abc", name: "payments-api", type: "APPLICATION", reason: "named by the scenario" }],
+    waves: [
+      { depth: 1, count: 1, truncated: 0, assets: [{ asset_id: "host:1", name: "host-01", type: "HOST",
+        via: { from_asset: "application:abc", from_name: "payments-api", predicate: "runs_on",
+               meaning: "a workload on a stopped host stops with it", edge: { subject: "application:abc",
+               predicate: "runs_on", object: "host:1", basis: "DEPLOYMENT_CONFIG", confidence: "HIGH",
+               evidence_ids: ["ev-1"] } } }] },
+      { depth: 2, count: 1, truncated: 0, assets: [{ asset_id: "system:1", name: "Payments", type: "SYSTEM",
+        via: { from_asset: "host:1", from_name: "host-01", predicate: "contains",
+               meaning: "a system holding a stopped component is degraded", edge: { subject: "system:1",
+               predicate: "contains", object: "host:1", basis: "APPROVED_MAPPING", confidence: "HIGH",
+               evidence_ids: ["ev-1"] } } }] },
+    ],
+    wave_count: 2,
+    matched_evidence: 1,
+    affected_assets: [
+      { asset_id: "host:1", name: "host-01", type: "HOST", hops: 1, via_predicate: "runs_on" },
+      { asset_id: "system:1", name: "Payments", type: "SYSTEM", hops: 2, via_predicate: "contains" },
+    ],
+    impact: {
+      counts: { seed: 1, direct: 1, transitive: 1, total: 2 },
+      by_type: { HOST: 1, SYSTEM: 1 },
+      business_systems: [{ asset_id: "system:1", name: "Payments", hops: 2,
+        path: [{ asset_id: "application:abc", name: "payments-api", via_predicate: null, via_asset: null },
+               { asset_id: "host:1", name: "host-01", via_predicate: "runs_on", via_asset: "application:abc" },
+               { asset_id: "system:1", name: "Payments", via_predicate: "contains", via_asset: "host:1" }] }],
+    },
+    bom_diff: {},
+    bom_diff_note: "a cascade changes no evidence fact, so the six BOMs are identical before and after",
+    rules,
+    limits: ["a cascade propagates over established edges only", "redundancy is not modelled"],
+    unknown: { unresolved_relationships_in_radius: 0, reached_assets_without_evidence: 0 },
+    simulation_id: "sim:cascade", persisted: true,
+    note: "the cascade was computed over the live topology and read it only",
+    ...overrides,
+  });
+}
+
+const history = {
+  model: "cryptoscan.simulation-workspace/1", run_id: "run-1",
+  current_projection_id: "2b1b", count: 1, quarantined: true,
+  simulations: [{
+    id: "row-1", simulation_id: "sim:abc", kind: "REPLACE_ALGORITHM",
+    scenario: { kind: "REPLACE_ALGORITHM", from: "AES", to: "ML-KEM" }, label: "PQC pilot",
+    computed_against: "2b1b", superseded_by: null, superseded: false,
+    freshness: "CURRENT", matched_evidence: 2,
+    affected_assets: [{ asset_id: "application:abc", name: "payments-api", type: "APPLICATION" }],
+    observations: 1, last_run_at: "2026-10-29T10:00:00Z",
+  }],
+  note: "stored runs are quarantined",
+};
+
+const emptyHistory = { ...history, count: 0, simulations: [] };
+
+describe("simulation workspace", () => {
+  it("builds the scenario out of the values this estate actually reports", async () => {
+    mockFetch({ [`${BASE}/catalog`]: catalog, [`${BASE}/runs`]: emptyHistory });
+    renderWithProviders(<Simulation />);
+
+    expect(await screen.findByRole("heading", { name: "Simulation workspace" })).toBeInTheDocument();
+    // the two families are offered separately, each with what it does
+    expect(screen.getByText("apply a change to a copy of the twin")).toBeInTheDocument();
+    expect(screen.getByText("propagate a failure through the established dependency edges")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Replace an algorithm/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Asset goes down/ })).toBeInTheDocument();
+    // the vocabulary is the estate's, not a hardcoded list of algorithms
+    expect(screen.getByRole("button", { name: /^AES · 2$/ })).toBeInTheDocument();
+    // the vocabulary is one tabbed, searchable list — not three walls of chips
+    expect(screen.getByRole("tab", { name: /Algorithms 2/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("tab", { name: /Protocols 1/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^TLSv1\.3 · 1$/ }));
+    expect(screen.getByLabelText(FROM)).toHaveValue("TLSv1.3");
+    fireEvent.click(screen.getByRole("tab", { name: /Algorithms 2/ }));
+    fireEvent.change(screen.getByLabelText("Search the estate's values"), { target: { value: "rs" } });
+    expect(screen.getByRole("button", { name: /^RSA · 1$/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^AES · 2$/ })).not.toBeInTheDocument();
+    // assets are grouped by type, and a selection is pinned as a removable tag
+    fireEvent.click(screen.getByRole("button", { name: /payments-api · APPLICATION/ }));
+    expect(screen.getByLabelText("Selected assets")).toHaveTextContent("payments-api");
+    fireEvent.click(screen.getByRole("button", { name: "clear selection" }));
+    expect(screen.queryByLabelText("Selected assets")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /payments-api · APPLICATION/ })).toBeInTheDocument();
+    // the estate the answer is measured against is on screen
+    expect(screen.getByText("3 assets · 2 evidence")).toBeInTheDocument();
+    expect(screen.getByText(/no stored runs yet/i)).toBeInTheDocument();
+  });
+
+  it("offers the questions this estate can already be asked, and loads one into the form", async () => {
+    mockFetch({ [`${BASE}/catalog`]: catalog, [`${BASE}/runs`]: emptyHistory });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    const preset = screen.getByRole("button", { name: /Retire AES/ });
+    expect(preset).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(preset);
+
+    expect(preset).toHaveAttribute("aria-pressed", "true");
+    // the preset selects its kind and fills the value, rather than asking the operator to retype it
+    expect(screen.getByRole("button", { name: /Retire an algorithm/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByLabelText(FROM)).toHaveValue("AES");
+  });
+
+  it("refuses to run before a preview, and says a no-match preview is not no impact", async () => {
+    const plan = preview({
+      status: "WOULD_NOT_MATCH", matched_evidence: 0, affected_assets: [], affected_asset_count: 0,
+      by_layer: {}, note: "nothing matched — this is not 'no impact', it is 'nothing was found to change'",
+    });
+    const fetchSpy = mockFetch({
+      [`${BASE}/catalog`]: catalog, [`${BASE}/runs`]: emptyHistory, [`${BASE}/plan`]: plan,
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    const runButton = screen.getByRole("button", { name: "Run simulation" });
+    expect(runButton).toBeDisabled();
+    // the form says what it is still missing before it says what to do next
+    expect(screen.getByText("Still needed: from, to")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(FROM), { target: { value: "AES" } });
+    fireEvent.change(screen.getByLabelText(TO), { target: { value: "ML-KEM" } });
+    expect(screen.getByText(/Preview first —/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Preview match" }));
+
+    expect(await screen.findByText(/this is not 'no impact'/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run simulation" })).toBeDisabled();
+    const planned = fetchSpy.mock.calls.find(([url]) => String(url).includes("/simulation/plan"));
+    expect(JSON.parse(String(planned?.[1]?.body))).toEqual({ kind: "REPLACE_ALGORITHM", from: "AES", to: "ML-KEM" });
+  });
+
+  it("sends a custom scenario as parsed data, and blocks a JSON error before the engine sees it", async () => {
+    const customCatalog = {
+      ...catalog,
+      kinds: [...kinds, {
+        kind: "CUSTOM", mode: "SCENARIO", name: "Custom expression",
+        question: "Which records match this condition, and what changes if these facts are set?",
+        inputs: ["expression"], optional: ["targets"],
+        answers: ["every evidence record whose facts satisfy the condition tree"],
+        does_not_answer: ["a provenance edit: evidence id, source and evidence type are refused"],
+      }],
+      presets: [],
+    };
+    const fetchSpy = mockFetch({
+      [`${BASE}/catalog`]: customCatalog, [`${BASE}/runs`]: emptyHistory, [`${BASE}/plan`]: preview(),
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Custom expression/ }));
+    const field = await screen.findByLabelText(/Expression \(JSON/);
+
+    // a syntax error is the console's to catch: the engine would refuse it as a program
+    fireEvent.change(field, { target: { value: "{when: oops" } });
+    expect(await screen.findByText(/not valid JSON/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preview match" })).toBeDisabled();
+    expect(fetchSpy.mock.calls.some(([url]) => String(url).includes("/simulation/plan"))).toBe(false);
+
+    const expression = { when: { fact: "algorithm", op: "eq", value: "RSA" },
+      then: { set: { algorithm: "ML-DSA-65" } } };
+    fireEvent.change(field, { target: { value: JSON.stringify(expression) } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview match" }));
+
+    await waitFor(() => expect(
+      fetchSpy.mock.calls.some(([url]) => String(url).includes("/simulation/plan")),
+    ).toBe(true));
+    const planned = fetchSpy.mock.calls.find(([url]) => String(url).includes("/simulation/plan"));
+    // the scenario travels as data, not as a string the engine would have to parse
+    expect(JSON.parse(String(planned?.[1]?.body))).toEqual({ kind: "CUSTOM", expression });
+  });
+
+  it("sends a composite sequence as parsed data, and blocks a broken one before the engine sees it", async () => {
+    const compositeCatalog = {
+      ...catalog,
+      kinds: [...kinds, {
+        kind: "COMPOSITE", mode: "SCENARIO", name: "A sequence of changes",
+        question: "If these changes were applied in order, what does the estate look like after the last one?",
+        inputs: ["steps"], optional: ["targets"],
+        answers: ["each step applied to the same copy, in the order given"],
+        does_not_answer: ["branching, loops or a clock: the sequence is a fixed list of at most 5 steps"],
+      }],
+      presets: [],
+    };
+    const fetchSpy = mockFetch({
+      [`${BASE}/catalog`]: compositeCatalog, [`${BASE}/runs`]: emptyHistory, [`${BASE}/plan`]: preview(),
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    fireEvent.click(screen.getByRole("button", { name: /A sequence of changes/ }));
+    const field = await screen.findByLabelText(/Steps \(JSON/);
+
+    fireEvent.change(field, { target: { value: "[{\"kind\": oops" } });
+    expect(await screen.findByText(/not valid JSON/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preview match" })).toBeDisabled();
+
+    // an object is not a sequence — the console says so rather than letting the engine
+    // refuse a list it never received
+    fireEvent.change(field, { target: { value: "{\"kind\": \"RETIRE_ALGORITHM\"}" } });
+    expect(await screen.findByText(/must be a JSON array of scenarios/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preview match" })).toBeDisabled();
+
+    const steps = [
+      { kind: "DISABLE_PROTOCOL", from: "TLSv1.0" },
+      { kind: "MIGRATE_QUANTUM_VULNERABLE", to: "ML-KEM-768" },
+    ];
+    fireEvent.change(field, { target: { value: JSON.stringify(steps) } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview match" }));
+
+    await waitFor(() => expect(
+      fetchSpy.mock.calls.some(([url]) => String(url).includes("/simulation/plan")),
+    ).toBe(true));
+    const planned = fetchSpy.mock.calls.find(([url]) => String(url).includes("/simulation/plan"));
+    expect(JSON.parse(String(planned?.[1]?.body))).toEqual({ kind: "COMPOSITE", steps });
+  });
+
+  it("reports a run as a copy: live state untouched, six BOMs re-projected, storage quarantined", async () => {
+    mockFetch({
+      [`${BASE}/catalog`]: catalog, [`${BASE}/plan`]: preview(),
+      [`${BASE}/run`]: run(), [`${BASE}/runs`]: history,
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    fireEvent.change(screen.getByLabelText(FROM), { target: { value: "AES" } });
+    fireEvent.change(screen.getByLabelText(TO), { target: { value: "ML-KEM" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview match" }));
+    const runButton = await screen.findByRole("button", { name: "Run simulation" });
+    await waitFor(() => expect(runButton).toBeEnabled());
+    fireEvent.click(runButton);
+
+    expect(await screen.findByText("LIVE STATE UNTOUCHED")).toBeInTheDocument();
+    expect(screen.getByText("PROJECTION ID UNCHANGED")).toBeInTheDocument();
+    expect(screen.getByText("SIMULATED")).toBeInTheDocument();
+    // the effect is shown as before → after, not as a count
+    expect(screen.getByText(/algorithm:/)).toHaveTextContent("AES → ML-KEM");
+    // six BOM projections, each with its own diff
+    for (const bom of ["SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "TECHBOM"])
+      expect(screen.getByText(bom)).toBeInTheDocument();
+    // storage is stated, and so is the quarantine
+    expect(screen.getByText(/sim:abc/)).toBeInTheDocument();
+    expect(screen.getByText(/stored as a new quarantined run/)).toBeInTheDocument();
+    // the history refreshes after a run and keeps the quarantine statement
+    expect(await screen.findByText("PQC pilot")).toBeInTheDocument();
+    expect(screen.getByText(/none of these rows counts as estate state/)).toBeInTheDocument();
+    // an empty blocker list is not a clean bill of health
+    expect(screen.getByTitle(/an empty list is not evidence that the change is safe/)).toBeInTheDocument();
+  });
+
+  it("attaches Performance measurements only inside the Twin simulation", async () => {
+    const measured = {
+      schema: "cryptoscan.performance-simulation-context/1", purpose: "SIMULATION_INPUT",
+      status: "MEASURED_COMPARISON", asset_ref: "app:pay",
+      metric_name: "crypto.tls_handshake_ms", unit: "ms", source_id: "bank-exporter",
+      change_event_id: "change-1", change: { event_id: "change-1", observed_at: "2026-11-12T12:00:00Z",
+        event_type: "CRYPTO_CONFIGURATION_CHANGED", evidence_refs_unverified: [], provenance_note: "recorded" },
+      windows: {}, before: { received: 5, valid: 5, signed_capture_samples: 5,
+        partial_quality: 0, missing_or_stale: 0, p95: 20, metric_ids: [], metric_ids_truncated: false },
+      after: { received: 5, valid: 5, signed_capture_samples: 5,
+        partial_quality: 0, missing_or_stale: 0, p95: 30, metric_ids: [], metric_ids_truncated: false },
+      delta_p95: 10, delta_percent: 50, causation: "UNPROVEN",
+      benchmark: { status: "NOT_SUPPLIED", note: "no paired lab runs" },
+      input_state: "measured context only", not_proven: [],
+      link: { state: "AFFECTED_EXACT_IDENTITY", twin_asset_id: "application:abc",
+        reason: "stored identity matches" },
+      role: "MEASURED_CONTEXT_ONLY", note: "does not predict future performance or select a wave",
+    };
+    const fetchSpy = mockFetch({
+      [`${BASE}/catalog`]: catalog, [`${BASE}/plan`]: preview(),
+      [`${BASE}/run`]: run({ performance_context: measured }),
+      [`${BASE}/runs`]: emptyHistory,
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+    fireEvent.change(screen.getByLabelText(FROM), { target: { value: "AES" } });
+    fireEvent.change(screen.getByLabelText(TO), { target: { value: "ML-KEM" } });
+    const input = { tenant_id: "bank-a", asset_ref: "app:pay",
+      metric_name: "crypto.tls_handshake_ms", source_id: "bank-exporter",
+      change_event_id: "change-1", before_start: "2026-11-12T10:00:00Z",
+      before_end: "2026-11-12T11:00:00Z", after_start: "2026-11-12T13:00:00Z",
+      after_end: "2026-11-12T14:00:00Z" };
+    fireEvent.change(screen.getByLabelText("Recorded performance context (optional JSON)"),
+      { target: { value: JSON.stringify(input) } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview match" }));
+    const runButton = await screen.findByRole("button", { name: "Run simulation" });
+    await waitFor(() => expect(runButton).toBeEnabled());
+    fireEvent.click(runButton);
+    expect(await screen.findByText(/Identity link: AFFECTED_EXACT_IDENTITY/)).toBeInTheDocument();
+    expect(screen.getByText(/Causation UNPROVEN/)).toBeInTheDocument();
+    expect(screen.getByText(/does not predict future performance or select a wave/)).toBeInTheDocument();
+    const request = fetchSpy.mock.calls.find(([url]) => String(url).endsWith("/simulation/run"));
+    expect(JSON.parse(String(request?.[1]?.body)).performance_context).toEqual(input);
+  });
+
+  it("refuses malformed Performance input before running a scenario", async () => {
+    mockFetch({ [`${BASE}/catalog`]: catalog, [`${BASE}/runs`]: emptyHistory });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+    fireEvent.change(screen.getByLabelText(FROM), { target: { value: "AES" } });
+    fireEvent.change(screen.getByLabelText(TO), { target: { value: "ML-KEM" } });
+    fireEvent.change(screen.getByLabelText("Recorded performance context (optional JSON)"),
+      { target: { value: "{not-json" } });
+    expect(screen.getByRole("button", { name: "Preview match" })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/valid JSON/);
+  });
+
+  it("does not present a run that matched nothing as a finding", async () => {
+    mockFetch({
+      [`${BASE}/catalog`]: catalog,
+      [`${BASE}/plan`]: preview({ status: "WOULD_MATCH" }),
+      [`${BASE}/run`]: run({
+        status: "NO_MATCH", matched_evidence: 0, effects: [], affected_assets: [],
+        simulation_id: null, persisted: false, simulation_record: null,
+        persist_refused_because: "a result that matched nothing is not a simulation result",
+        bom_diff: {}, impact: { counts: {} }, note: "the selector matched no evidence",
+      }),
+      [`${BASE}/runs`]: emptyHistory,
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    fireEvent.change(screen.getByLabelText(FROM), { target: { value: "AES" } });
+    fireEvent.change(screen.getByLabelText(TO), { target: { value: "ML-KEM" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview match" }));
+    const runButton = await screen.findByRole("button", { name: "Run simulation" });
+    await waitFor(() => expect(runButton).toBeEnabled());
+    fireEvent.click(runButton);
+
+    expect(await screen.findByText("NO MATCH")).toBeInTheDocument();
+    expect(screen.getByText(/not stored: a result that matched nothing/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Nothing to simulate" })).toBeInTheDocument();
+    expect(screen.getByTitle(/not a statement that the change is safe/)).toBeInTheDocument();
+  });
+
+  it("switches to seeds and hops for a cascade, and needs a seed before anything is previewed", async () => {
+    mockFetch({ [`${BASE}/catalog`]: catalog, [`${BASE}/runs`]: emptyHistory });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Asset goes down/ }));
+
+    expect(screen.getByText(/Where the failure starts/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Hops to walk")).toHaveValue("3");
+    // a cascade with no starting point has nothing to propagate, so the button explains itself
+    expect(screen.getByRole("button", { name: "Preview reach" })).toBeDisabled();
+    expect(screen.getByText(/Pick at least one seed asset/)).toBeInTheDocument();
+    // no vocabulary chips: a cascade starts from an asset, not from an algorithm value
+    expect(screen.queryByText(/algorithms in this estate/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /payments-api · APPLICATION/ }));
+    expect(screen.getByRole("button", { name: "Preview reach" })).toBeEnabled();
+  });
+
+  it("runs a cascade as a route map, wave by wave, and says there is no BOM diff", async () => {
+    const fetchSpy = mockFetch({
+      [`${BASE}/catalog`]: catalog,
+      [`${BASE}/plan`]: cascadePreview(),
+      [`${BASE}/run`]: cascadeRun(),
+      [`${BASE}/runs`]: history,
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Asset goes down/ }));
+    fireEvent.click(screen.getByRole("button", { name: /payments-api · APPLICATION/ }));
+    fireEvent.change(screen.getByLabelText("Hops to walk"), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview reach" }));
+
+    expect(await screen.findByText(/2 asset\(s\) would be reached from 1 seed\(s\)/)).toBeInTheDocument();
+    // the preview states the seeds and the waves before the run
+    expect(screen.getByText("seed assets")).toBeInTheDocument();
+    expect(screen.getByText("waves")).toBeInTheDocument();
+    const planned = fetchSpy.mock.calls.find(([url]) => String(url).includes("/simulation/plan"));
+    expect(JSON.parse(String(planned?.[1]?.body))).toEqual({
+      kind: "CASCADE_ASSET_UNAVAILABLE", targets: ["application:abc"], depth: 4,
+    });
+
+    const runButton = screen.getByRole("button", { name: "Run cascade" });
+    await waitFor(() => expect(runButton).toBeEnabled());
+    fireEvent.click(runButton);
+
+    expect(await screen.findByText("NO BOM DIFF — NOTHING CHANGED")).toBeInTheDocument();
+    // the waves are shown as routes: what arrived, by which edge
+    expect(screen.getByText("wave 1")).toBeInTheDocument();
+    expect(screen.getByText("wave 2")).toBeInTheDocument();
+    expect(screen.getByText("runs_on ← payments-api")).toBeInTheDocument();
+    expect(screen.getByText("contains ← host-01")).toBeInTheDocument();
+    // the business system reached is shown with its path, not only counted
+    expect(screen.getByText(/business systems reached, with the route/)).toBeInTheDocument();
+    expect(document.body.textContent).toContain(
+      "payments-api → (runs_on) host-01 → (contains) Payments");
+    // the rules that carried the failure are inspectable
+    expect(screen.getByText(/the 2 edge rules this cascade followed/)).toBeInTheDocument();
+    // and the limits travel with the result
+    expect(screen.getByText(/redundancy is not modelled/)).toBeInTheDocument();
+    expect(screen.getByText(/a cascade changes no evidence fact/)).toBeInTheDocument();
+  });
+
+  it("does not store a cascade that reached nothing", async () => {
+    mockFetch({
+      [`${BASE}/catalog`]: catalog,
+      [`${BASE}/plan`]: cascadePreview({ status: "WOULD_MATCH" }),
+      [`${BASE}/run`]: cascadeRun({
+        status: "NO_MATCH", waves: [], wave_count: 0, affected_assets: [], persisted: false,
+        simulation_id: null, unknown: {}, blockers: [],
+        impact: { counts: { seed: 1, direct: 0, transitive: 0, total: 0 } },
+        detail: "1 seed asset(s) resolved, but no established edge carries this failure out of them within 3 hop(s).",
+        persist_refused_because: "a result that matched nothing is not a simulation result",
+      }),
+      [`${BASE}/runs`]: emptyHistory,
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    fireEvent.click(screen.getByRole("button", { name: /Asset goes down/ }));
+    fireEvent.click(screen.getByRole("button", { name: /payments-api · APPLICATION/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview reach" }));
+    const runButton = await screen.findByRole("button", { name: "Run cascade" });
+    await waitFor(() => expect(runButton).toBeEnabled());
+    fireEvent.click(runButton);
+
+    expect(await screen.findByRole("heading", { name: "Nothing reached" })).toBeInTheDocument();
+    expect(screen.getByText(/not a clean bill of health/)).toBeInTheDocument();
+    expect(screen.getByText(/not stored: a result that matched nothing/)).toBeInTheDocument();
+  });
+
+  it("ranks seeds business → infrastructure → components and says where each part sits", async () => {
+    const seeded = {
+      ...catalog,
+      selector: {
+        ...catalog.selector,
+        targets: [
+          { asset_id: "system:core", name: "Core Banking", type: "SYSTEM", group: "BUSINESS", dependents: 5, context: "1 host(s): core-db" },
+          { asset_id: "system:swift", name: "SWIFT Gateway", type: "SYSTEM", group: "BUSINESS", dependents: 0, context: "2 host(s): payments-bastion, swift-gateway" },
+          { asset_id: "host:core-db", name: "core-db", type: "HOST", group: "INFRASTRUCTURE", dependents: 4, context: null },
+          { asset_id: "hw:cpu:a", name: "12th Gen Intel(R) Core(TM) i5-12450H", type: "HARDWARE", group: "COMPONENT", dependents: 0, context: "on swift-gateway" },
+          { asset_id: "hw:cpu:b", name: "12th Gen Intel(R) Core(TM) i5-12450H", type: "HARDWARE", group: "COMPONENT", dependents: 0, context: "on core-db" },
+          { asset_id: "vendor:alpine:nginx", name: "Alpine Linux · nginx", type: "VENDOR", group: "COMPONENT", dependents: 0, context: "supplies 7 asset(s)" },
+          { asset_id: "host:core-db", name: "core-db", type: "HOST", group: "INFRASTRUCTURE", dependents: 4, context: null },
+        ],
+        targets_total: 409,
+      },
+    };
+    mockFetch({ [`${BASE}/catalog`]: seeded, [`${BASE}/runs`]: emptyHistory });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+    fireEvent.click(screen.getByRole("button", { name: /Asset goes down/ }));
+
+    // tiers in order, the business systems first
+    const tiers = screen.getAllByText(/^(Business systems|Infrastructure|Components — suppliers, packages, hardware parts)$/)
+      .map((node) => node.textContent);
+    expect(tiers).toEqual(["Business systems", "Infrastructure", "Components — suppliers, packages, hardware parts"]);
+    expect(screen.getByText(/showing the 6 most useful of 409 assets/)).toBeInTheDocument();
+    // components start folded; business and infrastructure open
+    expect(screen.getByLabelText("Business systems")).toHaveAttribute("open");
+    expect(screen.getByLabelText("Components — suppliers, packages, hardware parts")).not.toHaveAttribute("open");
+    // two identically named CPUs are told apart by the server they sit on
+    const cpus = screen.getAllByRole("button", { name: /12th Gen Intel.*· HARDWARE/ });
+    expect(cpus).toHaveLength(2);
+    expect(cpus[0]).toHaveAttribute("title", expect.stringContaining("on "));
+    expect(screen.getByText("on swift-gateway")).toBeInTheDocument();
+    expect(screen.getByText("on core-db")).toBeInTheDocument();
+    // the duplicate host is listed once, and searching by host finds what sits on it
+    expect(screen.getAllByRole("button", { name: "core-db · HOST" })).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText("Search assets"), { target: { value: "swift-gateway" } });
+    expect(screen.getByRole("button", { name: "SWIFT Gateway · SYSTEM" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Core Banking · SYSTEM" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /12th Gen Intel.*· HARDWARE/ })).toHaveLength(1);
+  });
+
+  it("says there is no twin instead of simulating over nothing, and offers the job that creates one", async () => {
+    const fetchMock = mockFetch({
+      [`${BASE}/catalog`]: new Response(JSON.stringify({ detail: { error: "no_estate_discovery" } }), { status: 404 }),
+      "/api/v1/estate/evidence/summary": new Response(
+        JSON.stringify({ detail: { error: "no_estate_discovery", reason: "no estate discovery has run for this tenant" } }),
+        { status: 404 }),
+      "/api/v1/estate/evidence/scan": {
+        model: "cryptoscan.estate-discovery-job/1", run_id: 7, estate: "default", scope: null,
+        projection_id: "p1",
+        collectors: [
+          { plane: "NETWORK", status: "COMPLETE", expected: 0, collected: 0,
+            reason: "no network observation run is stored (NOT_OBSERVED, not 'no crypto')",
+            impact: null, is_failure: false },
+          { plane: "CLOUD", status: "NOT_ATTEMPTED", expected: 0, collected: 0,
+            reason: null, impact: "CLOUD was not requested", is_failure: true },
+        ],
+        lifecycle: [], summary: { assets: 0, evidence: 0, relationships: 0, projection_id: "p1" },
+      },
+    });
+    renderWithProviders(<Simulation />);
+
+    expect(await screen.findByRole("heading", { name: "No twin to simulate against" })).toBeInTheDocument();
+    expect(screen.getByText(/Nothing has been discovered yet/)).toBeInTheDocument();
+
+    // The affordance is the discovery job itself, not a link to live scanning:
+    // scanning collects evidence, discovery is the join this page reads.
+    fireEvent.click(await screen.findByRole("button", { name: "Run estate discovery" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/estate/evidence/scan", expect.objectContaining({ method: "POST" })));
+
+    expect(await screen.findByText(/estate discovery stored \(run 7\)/)).toBeInTheDocument();
+    expect(screen.getByText(/NOT_OBSERVED, not an estate without crypto/)).toBeInTheDocument();
+    // the page re-reads its own endpoint after the job
+    await waitFor(() => expect(fetchMock.mock.calls.filter(
+      (call) => String(call[0]).includes(`${BASE}/catalog`)).length).toBeGreaterThan(1));
+  });
+});
+
+/* An `as_of` step is matched against a stored snapshot, so the only ids that can
+   resolve are the ones this tenant holds. The console lists them and copies the id;
+   it never splices one into the steps JSON, because that field is parsed before it is
+   sent and a half-typed array plus an injected id is a syntax error, not a plan. */
+describe("as-of steps in a COMPOSITE sequence", () => {
+  const compositeCatalog = {
+    ...catalog,
+    kinds: [
+      ...kinds,
+      {
+        kind: "COMPOSITE", mode: "SCENARIO", name: "A sequence of changes",
+        question: "If these changes were applied in order, what does the estate look like after the last one?",
+        inputs: ["steps"], optional: ["targets"], step_fields: ["as_of"],
+        answers: ["the BOM diff of the whole sequence"], does_not_answer: ["a clock"],
+      },
+    ],
+  };
+
+  const snapshots = {
+    model: "cryptoscan.estate-twin-snapshots/1", persisted: true, count: 1, note: "",
+    snapshots: [{
+      id: "row-1", snapshot_id: "twin:q2", projection_id: "p".repeat(32),
+      estate: "Synthetic Bank", scope: "production", assets: 8, evidence: 12, relationships: 4,
+      unresolved_relationships: 0, completeness_percent: 70, observations: 1,
+      first_seen_at: "2026-04-01T00:00:00Z", last_seen_at: "2026-04-01T00:00:00Z",
+      captured_by: "tester", note: "q2 baseline",
+    }],
+  };
+
+  it("lists the stored snapshots an as_of step could name", async () => {
+    mockFetch({
+      [`${BASE}/catalog`]: compositeCatalog, [`${BASE}/runs`]: emptyHistory,
+      "/api/v1/estate/evidence/twin/snapshots": snapshots,
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    fireEvent.click(screen.getByRole("button", { name: /A sequence of changes/ }));
+
+    expect(await screen.findByRole("button", { name: "twin:q2" })).toBeInTheDocument();
+    expect(screen.getByText(/matched against that snapshot's evidence/)).toBeInTheDocument();
+  });
+
+  it("says a tenant with no snapshot cannot name one, and never invents a date", async () => {
+    mockFetch({
+      [`${BASE}/catalog`]: compositeCatalog, [`${BASE}/runs`]: emptyHistory,
+      "/api/v1/estate/evidence/twin/snapshots": { ...snapshots, count: 0, snapshots: [] },
+    });
+    renderWithProviders(<Simulation />);
+    await screen.findByRole("heading", { name: "Simulation workspace" });
+
+    fireEvent.click(screen.getByRole("button", { name: /A sequence of changes/ }));
+
+    expect(await screen.findByText(/this tenant holds no stored snapshot/)).toBeInTheDocument();
+    expect(screen.getByText(/a date is not a snapshot/)).toBeInTheDocument();
+  });
+});

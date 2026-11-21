@@ -57,6 +57,7 @@ def client(monkeypatch, tmp_path):
     from fastapi.testclient import TestClient
 
     estate_router._ESTATE_TWIN_CACHE.clear()
+    estate_router._ESTATE_BOM_CACHE.clear()
     with TestClient(create_app()) as c:
         yield c
 
@@ -170,3 +171,46 @@ def test_no_estate_is_a_404_not_an_empty_answer(client):
                     json={"from_algo": "RSA", "to_algo": "ML-KEM-768"})
     assert r.status_code == 404
     assert r.json()["detail"]["error"] == "no_estate_discovery"
+
+
+def test_twin_boms_lists_all_six_boms_of_the_agents_estate(bank):
+    c, h = bank
+    r = c.get("/api/v1/estate/evidence/simulation/twin-boms", headers=h)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["source"] == "ESTATE_GRAPH" and body["mutates_nothing"] is True
+    assert [b["bom"] for b in body["boms"]] == ["CBOM", "NBOM", "SBOM", "HBOM", "VBOM", "TECHBOM"]
+    assert all(b["total"] > 0 for b in body["boms"]), {b["bom"]: b["total"] for b in body["boms"]}
+    assert body["change"] is None
+    names = {s["name"] for s in body["systems"]}
+    assert {"SWIFT Gateway", "Core Banking"} <= names
+    # components are tied to the systems the agents declared
+    sbom = next(b for b in body["boms"] if b["bom"] == "SBOM")
+    assert any("SWIFT Gateway" in row["systems"] for row in sbom["components"])
+    pairs = {(x["caller"], x["provider"]) for x in body["connections"]}
+    assert ("SWIFT Gateway", "Core Banking") in pairs
+    assert body["context"]["algorithms"]
+
+
+def test_twin_boms_impact_files_issues_per_bom_and_per_connection(bank):
+    c, h = bank
+    before = c.get("/api/v1/estate/evidence/graph", headers=h).json()
+    r = c.post("/api/v1/estate/evidence/simulation/twin-boms", headers=h,
+               json={"from_algo": "ECDSA", "to_algo": "ML-DSA-65"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["strategy"]["recommended"] != "NOT_DETERMINED", body["headline"]
+    boms = {b["bom"]: b for b in body["boms"]}
+    assert boms["CBOM"]["status_counts"]["AFFECTED"] >= 1
+    assert any(i["code"] == "LIBRARY_LACKS_TARGET" for i in boms["SBOM"]["issues"])
+    assert any(i["code"].startswith("VENDOR_") for i in boms["VBOM"]["issues"])
+    openssl = next(row for row in boms["SBOM"]["components"]
+                   if row["type"] == "LIBRARY" and row["name"].startswith("OpenSSL"))
+    assert openssl["status"] == "AFFECTED" and openssl["action"]
+    link = next(x for x in body["connections"]
+                if x["caller"] == "SWIFT Gateway" and x["provider"] == "Core Banking")
+    assert link["status"] in ("CALLER_CHANGES", "BOTH_CHANGE") and link["effect_on_provider"]
+    after = c.get("/api/v1/estate/evidence/graph", headers=h).json()
+    assert before.get("projection_id") == after.get("projection_id")
+    bad = c.post("/api/v1/estate/evidence/simulation/twin-boms", headers=h, json={"from_algo": "ECDSA"})
+    assert bad.status_code == 422

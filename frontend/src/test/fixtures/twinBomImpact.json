@@ -1,0 +1,4330 @@
+{
+ "inventory": {
+  "boms": [
+   {
+    "bom": "CBOM",
+    "boundary": null,
+    "by_layer": {},
+    "by_type": {},
+    "by_usage_state": {},
+    "components": [
+     {
+      "action": null,
+      "asset_id": "ca-meridian",
+      "detail": "CN=Meridian Bank Issuing CA",
+      "impact": null,
+      "kind": "asset",
+      "name": "Meridian Bank Issuing CA",
+      "ref": "ca-meridian",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "CA"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-legacy",
+      "detail": "RSA-1024 \u00b7 certificate-public-key \u00b7 network transport \u00b7 OBSERVED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "legacy-branch",
+      "ref": "a-ev-31",
+      "status": null,
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-legacy",
+      "detail": "RSA-1024",
+      "impact": null,
+      "kind": "asset",
+      "name": "legacy-branch",
+      "ref": "cert-legacy",
+      "status": null,
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-gw",
+      "detail": "RSA-3072 \u00b7 certificate-public-key \u00b7 network transport \u00b7 OBSERVED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "swift-gateway.bank.sandbox",
+      "ref": "a-ev-8",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-gw",
+      "detail": "SHA256withRSA \u00b7 certificate-signature \u00b7 network transport \u00b7 OBSERVED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "swift-gateway.bank.sandbox",
+      "ref": "a-ev-9",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-gw",
+      "detail": "RSA-3072 \u00b7 expires in 55 d \u00b7 CN=Meridian Bank Issuing CA",
+      "impact": null,
+      "kind": "asset",
+      "name": "swift-gateway.bank.sandbox",
+      "ref": "cert-gw",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": null,
+      "asset_id": "hw-gw",
+      "detail": "AES-NI \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "VMware7,1 virtual platform",
+      "ref": "s-ev-20-AES-NI",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HARDWARE"
+     },
+     {
+      "action": null,
+      "asset_id": "hw-gw",
+      "detail": "SHA-NI \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "VMware7,1 virtual platform",
+      "ref": "s-ev-20-SHA-NI",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HARDWARE"
+     },
+     {
+      "action": null,
+      "asset_id": "hsm-0",
+      "detail": "AES-256 \u00b7 key \u00b7 hardware \u00b7 OBSERVED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "payShield-10K-sim",
+      "ref": "k-ev-23-0",
+      "status": null,
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HSM"
+     },
+     {
+      "action": null,
+      "asset_id": "hsm-0",
+      "detail": "3DES-112 \u00b7 key \u00b7 hardware \u00b7 OBSERVED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "payShield-10K-sim",
+      "ref": "k-ev-23-1",
+      "status": null,
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HSM"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "TLSv1.3 \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-TLSv1.3",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "RSA \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-RSA",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "ECDSA \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-ECDSA",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "X25519 \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-X25519",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "AES-GCM \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-AES-GCM",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "ep-legacy",
+      "detail": "AES128-SHA \u00b7 negotiated-cipher-suite \u00b7 TLSv1 \u00b7 network transport \u00b7 NEGOTIATED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "legacy-branch:443",
+      "ref": "a-ev-30",
+      "status": null,
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     },
+     {
+      "action": null,
+      "asset_id": "ep-gw-443",
+      "detail": "TLS_AES_256_GCM_SHA384 \u00b7 negotiated-cipher-suite \u00b7 TLSv1.3 \u00b7 network transport \u00b7 NEGOTIATED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "swift-gateway:443/https",
+      "ref": "a-ev-7",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-stray",
+      "detail": "RSA-2048 \u00b7 certificate-public-key \u00b7 network transport \u00b7 OBSERVED",
+      "impact": null,
+      "kind": "crypto",
+      "name": "old-vpn.example",
+      "ref": "a-ev-33",
+      "status": null,
+      "systems": [],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-stray",
+      "detail": "RSA-2048",
+      "impact": null,
+      "kind": "asset",
+      "name": "old-vpn.example",
+      "ref": "cert-stray",
+      "status": null,
+      "systems": [],
+      "type": "CERTIFICATE"
+     }
+    ],
+    "issues": [],
+    "label": "Cryptography",
+    "question": "What crypto exists?",
+    "relationships": 0,
+    "status_counts": null,
+    "total": 19,
+    "truncated": false
+   },
+   {
+    "bom": "NBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": null,
+      "asset_id": "db-core",
+      "detail": "10.210.0.7:5432 \u00b7 postgresql \u00b7 production-sandbox",
+      "impact": null,
+      "kind": "asset",
+      "name": "core-banking-ledger",
+      "ref": "db-core",
+      "status": null,
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "DATABASE"
+     },
+     {
+      "action": null,
+      "asset_id": "remote-core",
+      "detail": "10.210.0.7:5432 \u00b7 tcp",
+      "impact": null,
+      "kind": "asset",
+      "name": "10.210.0.7:5432",
+      "ref": "remote-core",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     },
+     {
+      "action": null,
+      "asset_id": "ep-legacy",
+      "detail": "10.210.0.5:443 \u00b7 TLSv1 \u00b7 AES128-SHA",
+      "impact": null,
+      "kind": "asset",
+      "name": "legacy-branch:443",
+      "ref": "ep-legacy",
+      "status": null,
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     },
+     {
+      "action": null,
+      "asset_id": "ep-gw-443",
+      "detail": "swift-gateway:443 \u00b7 TLSv1.3 \u00b7 TLS_AES_256_GCM_SHA384",
+      "impact": null,
+      "kind": "asset",
+      "name": "swift-gateway:443/https",
+      "ref": "ep-gw-443",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     }
+    ],
+    "issues": [],
+    "label": "Network",
+    "question": "What is on the network?",
+    "relationships": 0,
+    "status_counts": null,
+    "total": 4,
+    "truncated": false
+   },
+   {
+    "bom": "SBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "3.3.2 \u00b7 OpenSSL",
+      "impact": null,
+      "kind": "asset",
+      "name": "OpenSSL 3.3.2",
+      "ref": "lib-openssl",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "pkg-libssl",
+      "detail": "3.3.2 \u00b7 apk",
+      "impact": null,
+      "kind": "asset",
+      "name": "libssl3",
+      "ref": "pkg-libssl",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "PACKAGE"
+     }
+    ],
+    "issues": [],
+    "label": "Software",
+    "question": "What software exists?",
+    "relationships": 0,
+    "status_counts": null,
+    "total": 2,
+    "truncated": false
+   },
+   {
+    "bom": "HBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": null,
+      "asset_id": "hw-gw",
+      "detail": "VMware, Inc. \u00b7 VMware7,1",
+      "impact": null,
+      "kind": "asset",
+      "name": "VMware7,1 virtual platform",
+      "ref": "hw-gw",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HARDWARE"
+     },
+     {
+      "action": null,
+      "asset_id": "host-db",
+      "detail": "core-banking-db.bank.sandbox",
+      "impact": null,
+      "kind": "asset",
+      "name": "core-banking-db",
+      "ref": "host-db",
+      "status": null,
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "host-hsm",
+      "detail": "hsm-sim.bank.sandbox",
+      "impact": null,
+      "kind": "asset",
+      "name": "hsm-sim",
+      "ref": "host-hsm",
+      "status": null,
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "host-legacy",
+      "detail": "legacy-branch.bank.sandbox",
+      "impact": null,
+      "kind": "asset",
+      "name": "legacy-branch",
+      "ref": "host-legacy",
+      "status": null,
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "host-gw",
+      "detail": "swift-gateway.bank.sandbox",
+      "impact": null,
+      "kind": "asset",
+      "name": "swift-gateway",
+      "ref": "host-gw",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HOST"
+     }
+    ],
+    "issues": [],
+    "label": "Hardware",
+    "question": "What hardware exists?",
+    "relationships": 0,
+    "status_counts": null,
+    "total": 5,
+    "truncated": false
+   },
+   {
+    "bom": "VBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": null,
+      "asset_id": "v-alpine",
+      "detail": "Alpine Linux (operating system) \u00b7 contract none on record",
+      "impact": null,
+      "kind": "asset",
+      "name": "Alpine Linux \u00b7 Alpine Linux (operating system)",
+      "ref": "v-alpine",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     },
+     {
+      "action": null,
+      "asset_id": "v-openssl",
+      "detail": "OpenSSL \u00b7 contract active",
+      "impact": null,
+      "kind": "asset",
+      "name": "OpenSSL Software Foundation \u00b7 OpenSSL",
+      "ref": "v-openssl",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     },
+     {
+      "action": null,
+      "asset_id": "v-vmware",
+      "detail": "VMware7,1 \u00b7 contract active",
+      "impact": null,
+      "kind": "asset",
+      "name": "VMware \u00b7 VMware7,1",
+      "ref": "v-vmware",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     }
+    ],
+    "contracts": [],
+    "declared_capabilities": [
+     {
+      "pqc_ready": false,
+      "vendor_asset_id": "v-openssl"
+     }
+    ],
+    "issues": [],
+    "label": "Vendors",
+    "question": "Which vendors?",
+    "relationships": 0,
+    "status_counts": null,
+    "total": 3,
+    "truncated": false
+   },
+   {
+    "bom": "TECHBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": null,
+      "asset_id": "db-core",
+      "detail": "10.210.0.7:5432 \u00b7 postgresql \u00b7 production-sandbox",
+      "impact": null,
+      "kind": "asset",
+      "name": "core-banking-ledger",
+      "ref": "db-core",
+      "status": null,
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "DATABASE"
+     },
+     {
+      "action": null,
+      "asset_id": "hw-gw",
+      "detail": "VMware, Inc. \u00b7 VMware7,1",
+      "impact": null,
+      "kind": "asset",
+      "name": "VMware7,1 virtual platform",
+      "ref": "hw-gw",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HARDWARE"
+     },
+     {
+      "action": null,
+      "asset_id": "host-db",
+      "detail": "core-banking-db.bank.sandbox",
+      "impact": null,
+      "kind": "asset",
+      "name": "core-banking-db",
+      "ref": "host-db",
+      "status": null,
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "host-hsm",
+      "detail": "hsm-sim.bank.sandbox",
+      "impact": null,
+      "kind": "asset",
+      "name": "hsm-sim",
+      "ref": "host-hsm",
+      "status": null,
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "host-legacy",
+      "detail": "legacy-branch.bank.sandbox",
+      "impact": null,
+      "kind": "asset",
+      "name": "legacy-branch",
+      "ref": "host-legacy",
+      "status": null,
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "host-gw",
+      "detail": "swift-gateway.bank.sandbox",
+      "impact": null,
+      "kind": "asset",
+      "name": "swift-gateway",
+      "ref": "host-gw",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "hsm-0",
+      "detail": "Meridian-Sim \u00b7 v3.4.1-sandbox",
+      "impact": null,
+      "kind": "asset",
+      "name": "payShield-10K-sim",
+      "ref": "hsm-0",
+      "status": null,
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HSM"
+     },
+     {
+      "action": null,
+      "asset_id": "svc-nginx-gw",
+      "detail": "swift-gateway \u00b7 production-sandbox",
+      "impact": null,
+      "kind": "asset",
+      "name": "nginx",
+      "ref": "svc-nginx-gw",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "SERVICE"
+     },
+     {
+      "action": null,
+      "asset_id": "sys-branch",
+      "detail": "tier-2",
+      "impact": null,
+      "kind": "asset",
+      "name": "Branch Banking",
+      "ref": "sys-branch",
+      "status": null,
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "SYSTEM"
+     },
+     {
+      "action": null,
+      "asset_id": "sys-core",
+      "detail": "Core Banking Platform \u00b7 tier-0",
+      "impact": null,
+      "kind": "asset",
+      "name": "Core Banking",
+      "ref": "sys-core",
+      "status": null,
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "SYSTEM"
+     },
+     {
+      "action": null,
+      "asset_id": "sys-hsm",
+      "detail": "Payments Security",
+      "impact": null,
+      "kind": "asset",
+      "name": "Payment HSM",
+      "ref": "sys-hsm",
+      "status": null,
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "SYSTEM"
+     },
+     {
+      "action": null,
+      "asset_id": "sys-swift",
+      "detail": "Payments Operations \u00b7 tier-0",
+      "impact": null,
+      "kind": "asset",
+      "name": "SWIFT Gateway",
+      "ref": "sys-swift",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "SYSTEM"
+     },
+     {
+      "action": null,
+      "asset_id": "v-alpine",
+      "detail": "Alpine Linux (operating system) \u00b7 contract none on record",
+      "impact": null,
+      "kind": "asset",
+      "name": "Alpine Linux \u00b7 Alpine Linux (operating system)",
+      "ref": "v-alpine",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     },
+     {
+      "action": null,
+      "asset_id": "v-openssl",
+      "detail": "OpenSSL \u00b7 contract active",
+      "impact": null,
+      "kind": "asset",
+      "name": "OpenSSL Software Foundation \u00b7 OpenSSL",
+      "ref": "v-openssl",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     },
+     {
+      "action": null,
+      "asset_id": "v-vmware",
+      "detail": "VMware7,1 \u00b7 contract active",
+      "impact": null,
+      "kind": "asset",
+      "name": "VMware \u00b7 VMware7,1",
+      "ref": "v-vmware",
+      "status": null,
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     }
+    ],
+    "issues": [],
+    "label": "Technology",
+    "question": "How is it connected?",
+    "relationships": 0,
+    "status_counts": null,
+    "total": 15,
+    "truncated": false
+   }
+  ],
+  "change": null,
+  "connections": [
+   {
+    "action": null,
+    "caller": "Branch Banking",
+    "caller_id": "sys-branch",
+    "caller_in_change": false,
+    "effect_on_caller": null,
+    "effect_on_provider": null,
+    "issues": [],
+    "provenance": "APPROVED_MAPPING",
+    "provider": "Core Banking",
+    "provider_endpoints": [],
+    "provider_id": "sys-core",
+    "provider_in_change": false,
+    "relation": "depends_on",
+    "severity": null,
+    "shared": [],
+    "status": null,
+    "via": null
+   },
+   {
+    "action": null,
+    "caller": "SWIFT Gateway",
+    "caller_id": "sys-swift",
+    "caller_in_change": false,
+    "effect_on_caller": null,
+    "effect_on_provider": null,
+    "issues": [],
+    "provenance": "RUNTIME_OBSERVATION",
+    "provider": "Core Banking",
+    "provider_endpoints": [],
+    "provider_id": "sys-core",
+    "provider_in_change": false,
+    "relation": "connects_to",
+    "severity": null,
+    "shared": [],
+    "status": null,
+    "via": "10.210.0.7:5432"
+   },
+   {
+    "action": null,
+    "caller": "SWIFT Gateway",
+    "caller_id": "sys-swift",
+    "caller_in_change": false,
+    "effect_on_caller": null,
+    "effect_on_provider": null,
+    "issues": [],
+    "provenance": "APPROVED_MAPPING",
+    "provider": "Payment HSM",
+    "provider_endpoints": [],
+    "provider_id": "sys-hsm",
+    "provider_in_change": false,
+    "relation": "depends_on",
+    "severity": null,
+    "shared": [],
+    "status": null,
+    "via": null
+   }
+  ],
+  "context": {
+   "algorithms": [
+    {
+     "algorithm": "RSA",
+     "evidence": 3,
+     "systems": [
+      "Branch Banking",
+      "SWIFT Gateway"
+     ]
+    },
+    {
+     "algorithm": "3DES-112",
+     "evidence": 1,
+     "systems": [
+      "Payment HSM"
+     ]
+    },
+    {
+     "algorithm": "AES-256",
+     "evidence": 1,
+     "systems": [
+      "Payment HSM"
+     ]
+    },
+    {
+     "algorithm": "AES128-SHA",
+     "evidence": 1,
+     "systems": [
+      "Branch Banking"
+     ]
+    },
+    {
+     "algorithm": "SHA256withRSA",
+     "evidence": 1,
+     "systems": [
+      "SWIFT Gateway"
+     ]
+    },
+    {
+     "algorithm": "TLS_AES_256_GCM_SHA384",
+     "evidence": 1,
+     "systems": [
+      "SWIFT Gateway"
+     ]
+    }
+   ],
+   "counts": {
+    "assets": 24,
+    "evidence": 33,
+    "relationships": 22,
+    "systems": 4,
+    "unowned_crypto_assets": 1
+   },
+   "dependencies": [
+    {
+     "from": "Branch Banking",
+     "provenance": "APPROVED_MAPPING",
+     "to": "Core Banking",
+     "type": "depends_on"
+    },
+    {
+     "from": "SWIFT Gateway",
+     "provenance": "RUNTIME_OBSERVATION",
+     "to": "Core Banking",
+     "type": "connects_to"
+    },
+    {
+     "from": "SWIFT Gateway",
+     "provenance": "APPROVED_MAPPING",
+     "to": "Payment HSM",
+     "type": "depends_on"
+    }
+   ],
+   "systems": [
+    {
+     "algorithms": {
+      "AES128-SHA": 1,
+      "RSA": 1
+     },
+     "certificates": 1,
+     "criticality": "medium",
+     "crypto_assets": 2,
+     "endpoints": 1,
+     "hosts": [
+      "legacy-branch"
+     ],
+     "hsms": 0,
+     "libraries": 0,
+     "name": "Branch Banking",
+     "owner": null,
+     "servers": 0,
+     "system_id": "sys-branch",
+     "vendors": 0
+    },
+    {
+     "algorithms": {},
+     "certificates": 0,
+     "criticality": "critical",
+     "crypto_assets": 0,
+     "endpoints": 0,
+     "hosts": [
+      "core-banking-db"
+     ],
+     "hsms": 0,
+     "libraries": 0,
+     "name": "Core Banking",
+     "owner": "Core Banking Platform",
+     "servers": 0,
+     "system_id": "sys-core",
+     "vendors": 0
+    },
+    {
+     "algorithms": {
+      "3DES-112": 1,
+      "AES-256": 1
+     },
+     "certificates": 0,
+     "criticality": null,
+     "crypto_assets": 1,
+     "endpoints": 0,
+     "hosts": [
+      "hsm-sim"
+     ],
+     "hsms": 1,
+     "libraries": 0,
+     "name": "Payment HSM",
+     "owner": "Payments Security",
+     "servers": 0,
+     "system_id": "sys-hsm",
+     "vendors": 0
+    },
+    {
+     "algorithms": {
+      "RSA": 1,
+      "SHA256withRSA": 1,
+      "TLS_AES_256_GCM_SHA384": 1
+     },
+     "certificates": 1,
+     "criticality": "critical",
+     "crypto_assets": 3,
+     "endpoints": 1,
+     "hosts": [
+      "swift-gateway"
+     ],
+     "hsms": 0,
+     "libraries": 1,
+     "name": "SWIFT Gateway",
+     "owner": "Payments Operations",
+     "servers": 1,
+     "system_id": "sys-swift",
+     "vendors": 2
+    }
+   ],
+   "unowned_algorithms": {
+    "RSA": 1
+   }
+  },
+  "estate": "meridian-bank",
+  "headline": null,
+  "mutates_nothing": true,
+  "observed_at": "2026-11-16T09:00:00+00:00",
+  "plan": [],
+  "problem_counts": null,
+  "projection_id": "p-1",
+  "ripple": [],
+  "run_id": "run-1",
+  "schema": "cryptoscan.twin-bom-impact/1",
+  "source": "ESTATE_GRAPH",
+  "statuses": [
+   "AFFECTED",
+   "AT_RISK",
+   "UNKNOWN",
+   "READY",
+   "NOT_AFFECTED"
+  ],
+  "strategy": null,
+  "systems": [
+   {
+    "bom_counts": {
+     "CBOM": {
+      "affected": 0,
+      "components": 3
+     },
+     "HBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "NBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "SBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "TECHBOM": {
+      "affected": 0,
+      "components": 2
+     },
+     "VBOM": {
+      "affected": 0,
+      "components": 0
+     }
+    },
+    "business_service": null,
+    "called_by": [],
+    "calls": [
+     "Core Banking"
+    ],
+    "criticality": "medium",
+    "environment": "production-sandbox",
+    "hosts": [
+     "legacy-branch"
+    ],
+    "id": "sys-branch",
+    "in_change": null,
+    "name": "Branch Banking",
+    "owner": null,
+    "strategy": null,
+    "vendors": [],
+    "why_in_change": []
+   },
+   {
+    "bom_counts": {
+     "CBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "HBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "NBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "SBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "TECHBOM": {
+      "affected": 0,
+      "components": 3
+     },
+     "VBOM": {
+      "affected": 0,
+      "components": 0
+     }
+    },
+    "business_service": null,
+    "called_by": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "calls": [],
+    "criticality": "critical",
+    "environment": "production-sandbox",
+    "hosts": [
+     "core-banking-db"
+    ],
+    "id": "sys-core",
+    "in_change": null,
+    "name": "Core Banking",
+    "owner": "Core Banking Platform",
+    "strategy": null,
+    "vendors": [],
+    "why_in_change": []
+   },
+   {
+    "bom_counts": {
+     "CBOM": {
+      "affected": 0,
+      "components": 2
+     },
+     "HBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "NBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "SBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "TECHBOM": {
+      "affected": 0,
+      "components": 3
+     },
+     "VBOM": {
+      "affected": 0,
+      "components": 0
+     }
+    },
+    "business_service": null,
+    "called_by": [
+     "SWIFT Gateway"
+    ],
+    "calls": [],
+    "criticality": null,
+    "environment": "production-sandbox",
+    "hosts": [
+     "hsm-sim"
+    ],
+    "id": "sys-hsm",
+    "in_change": null,
+    "name": "Payment HSM",
+    "owner": "Payments Security",
+    "strategy": null,
+    "vendors": [],
+    "why_in_change": []
+   },
+   {
+    "bom_counts": {
+     "CBOM": {
+      "affected": 0,
+      "components": 12
+     },
+     "HBOM": {
+      "affected": 0,
+      "components": 2
+     },
+     "NBOM": {
+      "affected": 0,
+      "components": 2
+     },
+     "SBOM": {
+      "affected": 0,
+      "components": 2
+     },
+     "TECHBOM": {
+      "affected": 0,
+      "components": 7
+     },
+     "VBOM": {
+      "affected": 0,
+      "components": 3
+     }
+    },
+    "business_service": null,
+    "called_by": [],
+    "calls": [
+     "Core Banking",
+     "Payment HSM"
+    ],
+    "criticality": "critical",
+    "environment": "production-sandbox",
+    "hosts": [
+     "swift-gateway"
+    ],
+    "id": "sys-swift",
+    "in_change": null,
+    "name": "SWIFT Gateway",
+    "owner": "Payments Operations",
+    "strategy": null,
+    "vendors": [
+     "Alpine Linux",
+     "OpenSSL Software Foundation"
+    ],
+    "why_in_change": []
+   }
+  ],
+  "totals": {
+   "affected": null,
+   "components": {
+    "CBOM": 19,
+    "HBOM": 5,
+    "NBOM": 4,
+    "SBOM": 2,
+    "TECHBOM": 15,
+    "VBOM": 3
+   },
+   "connections": 3,
+   "systems": 4,
+   "systems_in_change": null
+  },
+  "unknowns": [
+   "2 listed component(s) belong to no system through an evidenced edge, so no connection effect can be traced for them",
+   "VBOM capabilities and contracts are what vendors and the register declare \u2014 not observed on the estate"
+  ]
+ },
+ "rsa_to_mlkem": {
+  "boms": [
+   {
+    "bom": "CBOM",
+    "boundary": null,
+    "by_layer": {},
+    "by_type": {},
+    "by_usage_state": {},
+    "components": [
+     {
+      "action": "stand up (or confirm) a ML-KEM-768-capable issuing chain before reissuing",
+      "asset_id": "ca-meridian",
+      "detail": "CN=Meridian Bank Issuing CA",
+      "impact": "issued 1 certificate(s) that must be reissued with ML-KEM-768; whether this CA can issue ML-KEM-768 certificates is not recorded",
+      "kind": "asset",
+      "name": "Meridian Bank Issuing CA",
+      "ref": "ca-meridian",
+      "status": "AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "CA"
+     },
+     {
+      "action": "offer ML-KEM-768 beside RSA (hybrid), then remove RSA",
+      "asset_id": "cert-legacy",
+      "detail": "RSA-1024 \u00b7 certificate-public-key \u00b7 network transport \u00b7 OBSERVED",
+      "impact": "RSA is observed at the network transport layer of legacy-branch; this use must move to ML-KEM-768",
+      "kind": "crypto",
+      "name": "legacy-branch",
+      "ref": "a-ev-31",
+      "status": "AFFECTED",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": "reissue with a ML-KEM-768 key once relying parties trust the new chain",
+      "asset_id": "cert-legacy",
+      "detail": "RSA-1024",
+      "impact": "its key is RSA-1024",
+      "kind": "asset",
+      "name": "legacy-branch",
+      "ref": "cert-legacy",
+      "status": "AFFECTED",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": "offer ML-KEM-768 beside RSA (hybrid), then remove RSA",
+      "asset_id": "cert-gw",
+      "detail": "RSA-3072 \u00b7 certificate-public-key \u00b7 network transport \u00b7 OBSERVED",
+      "impact": "RSA is observed at the network transport layer of swift-gateway.bank.sandbox; this use must move to ML-KEM-768",
+      "kind": "crypto",
+      "name": "swift-gateway.bank.sandbox",
+      "ref": "a-ev-8",
+      "status": "AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": "replace SHA256withRSA with ML-KEM-768",
+      "asset_id": "cert-gw",
+      "detail": "SHA256withRSA \u00b7 certificate-signature \u00b7 network transport \u00b7 OBSERVED",
+      "impact": "SHA256withRSA is observed at the network transport layer of swift-gateway.bank.sandbox; this use must move to ML-KEM-768",
+      "kind": "crypto",
+      "name": "swift-gateway.bank.sandbox",
+      "ref": "a-ev-9",
+      "status": "AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": "reissue with a ML-KEM-768 key once relying parties trust the new chain",
+      "asset_id": "cert-gw",
+      "detail": "RSA-3072 \u00b7 expires in 55 d \u00b7 CN=Meridian Bank Issuing CA",
+      "impact": "its key is RSA-3072; expires in 55 days",
+      "kind": "asset",
+      "name": "swift-gateway.bank.sandbox",
+      "ref": "cert-gw",
+      "status": "AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": "offer ML-KEM-768 beside RSA (hybrid), then remove RSA",
+      "asset_id": "cert-stray",
+      "detail": "RSA-2048 \u00b7 certificate-public-key \u00b7 network transport \u00b7 OBSERVED",
+      "impact": "RSA is observed at the network transport layer of old-vpn.example; this use must move to ML-KEM-768",
+      "kind": "crypto",
+      "name": "old-vpn.example",
+      "ref": "a-ev-33",
+      "status": "AFFECTED",
+      "systems": [],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": "reissue with a ML-KEM-768 key once relying parties trust the new chain",
+      "asset_id": "cert-stray",
+      "detail": "RSA-2048",
+      "impact": "its key is RSA-2048",
+      "kind": "asset",
+      "name": "old-vpn.example",
+      "ref": "cert-stray",
+      "status": "AFFECTED",
+      "systems": [],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": "switch RSA off here once every peer uses ML-KEM-768",
+      "asset_id": "lib-openssl",
+      "detail": "RSA \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "RSA is only enabled as a capability on OpenSSL 3.3.2 (network transport); no traffic has to move, but it stays available to a downgrade",
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-RSA",
+      "status": "AT_RISK",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "hw-gw",
+      "detail": "AES-NI \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "AES-NI is not RSA",
+      "kind": "crypto",
+      "name": "VMware7,1 virtual platform",
+      "ref": "s-ev-20-AES-NI",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HARDWARE"
+     },
+     {
+      "action": null,
+      "asset_id": "hw-gw",
+      "detail": "SHA-NI \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "SHA-NI is not RSA",
+      "kind": "crypto",
+      "name": "VMware7,1 virtual platform",
+      "ref": "s-ev-20-SHA-NI",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HARDWARE"
+     },
+     {
+      "action": null,
+      "asset_id": "hsm-0",
+      "detail": "AES-256 \u00b7 key \u00b7 hardware \u00b7 OBSERVED",
+      "impact": "AES-256 is not RSA",
+      "kind": "crypto",
+      "name": "payShield-10K-sim",
+      "ref": "k-ev-23-0",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HSM"
+     },
+     {
+      "action": null,
+      "asset_id": "hsm-0",
+      "detail": "3DES-112 \u00b7 key \u00b7 hardware \u00b7 OBSERVED",
+      "impact": "3DES-112 is not RSA",
+      "kind": "crypto",
+      "name": "payShield-10K-sim",
+      "ref": "k-ev-23-1",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HSM"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "TLSv1.3 \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "TLSv1.3 is not RSA",
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-TLSv1.3",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "ECDSA \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "ECDSA is not RSA",
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-ECDSA",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "X25519 \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "X25519 is not RSA",
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-X25519",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "AES-GCM \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "AES-GCM is not RSA",
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-AES-GCM",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "ep-legacy",
+      "detail": "AES128-SHA \u00b7 negotiated-cipher-suite \u00b7 TLSv1 \u00b7 network transport \u00b7 NEGOTIATED",
+      "impact": "AES128-SHA is not RSA",
+      "kind": "crypto",
+      "name": "legacy-branch:443",
+      "ref": "a-ev-30",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     },
+     {
+      "action": null,
+      "asset_id": "ep-gw-443",
+      "detail": "TLS_AES_256_GCM_SHA384 \u00b7 negotiated-cipher-suite \u00b7 TLSv1.3 \u00b7 network transport \u00b7 NEGOTIATED",
+      "impact": "TLS_AES_256_GCM_SHA384 is not RSA",
+      "kind": "crypto",
+      "name": "swift-gateway:443/https",
+      "ref": "a-ev-7",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     }
+    ],
+    "issues": [
+     {
+      "action": "run a second simulation for the remaining use (e.g. RSA signatures \u2192 ML-DSA-65)",
+      "basis": "TWIN_USAGE",
+      "cause": "RSA can also be used for digital signatures, which ML-KEM-768 cannot do \u2014 and the twin records a signing use for an affected asset",
+      "code": "TARGET_COVERS_PART",
+      "effect": "the digital signatures uses keep RSA",
+      "severity": "HIGH",
+      "subject": null,
+      "system": null,
+      "systems": [],
+      "title": "ML-KEM-768 replaces only part of RSA",
+      "who_acts": "the migration owner"
+     },
+     {
+      "action": "confirm the issuing CA can sign with the new algorithm, issue the new certificates, and distribute the new chain to every relying party before switching",
+      "basis": "CERTIFICATE_USAGE",
+      "cause": "issuers: unknown",
+      "code": "CERTIFICATES_TO_REISSUE",
+      "effect": "relying parties that do not trust the new chain reject the connection",
+      "severity": "MEDIUM",
+      "subject": null,
+      "system": null,
+      "systems": [
+       "Branch Banking",
+       "SWIFT Gateway"
+      ],
+      "title": "1 RSA certificate(s) to reissue",
+      "who_acts": "the PKI team"
+     }
+    ],
+    "label": "Cryptography",
+    "question": "What crypto exists?",
+    "relationships": 0,
+    "status_counts": {
+     "AFFECTED": 8,
+     "AT_RISK": 1,
+     "NOT_AFFECTED": 10,
+     "READY": 0,
+     "UNKNOWN": 0
+    },
+    "total": 19,
+    "truncated": false
+   },
+   {
+    "bom": "NBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": "serve RSA and ML-KEM-768 together on this endpoint until its clients move",
+      "asset_id": "ep-legacy",
+      "detail": "10.210.0.5:443 \u00b7 TLSv1 \u00b7 AES128-SHA",
+      "impact": "presents 1 certificate(s) that carry RSA; negotiates TLSv1, and ML-KEM-768 key exchange needs TLS 1.3 \u2014 every client that connects here must accept ML-KEM-768, and those clients are not in the twin",
+      "kind": "asset",
+      "name": "legacy-branch:443",
+      "ref": "ep-legacy",
+      "status": "AFFECTED",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     },
+     {
+      "action": "serve RSA and ML-KEM-768 together on this endpoint until its clients move",
+      "asset_id": "ep-gw-443",
+      "detail": "swift-gateway:443 \u00b7 TLSv1.3 \u00b7 TLS_AES_256_GCM_SHA384",
+      "impact": "presents 1 certificate(s) that carry RSA \u2014 every client that connects here must accept ML-KEM-768, and those clients are not in the twin",
+      "kind": "asset",
+      "name": "swift-gateway:443/https",
+      "ref": "ep-gw-443",
+      "status": "AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     },
+     {
+      "action": null,
+      "asset_id": "db-core",
+      "detail": "10.210.0.7:5432 \u00b7 postgresql \u00b7 production-sandbox",
+      "impact": "holds no RSA and its systems do not change",
+      "kind": "asset",
+      "name": "core-banking-ledger",
+      "ref": "db-core",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "DATABASE"
+     },
+     {
+      "action": null,
+      "asset_id": "remote-core",
+      "detail": "10.210.0.7:5432 \u00b7 tcp",
+      "impact": "carries no RSA",
+      "kind": "asset",
+      "name": "10.210.0.7:5432",
+      "ref": "remote-core",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     }
+    ],
+    "issues": [
+     {
+      "action": "enable TLS 1.3 on this endpoint (and its load balancer) first",
+      "basis": "NETWORK_OBSERVATION",
+      "cause": "post-quantum and hybrid key exchange (ML-KEM-768) is only defined for TLS 1.3",
+      "code": "TLS_VERSION_TOO_OLD",
+      "effect": "the endpoint can never offer the new key exchange",
+      "severity": "HIGH",
+      "subject": "10.210.0.5:443",
+      "system": "Branch Banking",
+      "systems": [
+       "Branch Banking"
+      ],
+      "title": "10.210.0.5:443 negotiates TLS TLSv1",
+      "who_acts": "the platform / network team"
+     },
+     {
+      "action": "serve RSA and ML-KEM-768 together and watch which clients still pick RSA",
+      "basis": "NBOM",
+      "cause": "the clients of a network endpoint (branches, partners, customers' apps) are not assets in the twin, so their ML-KEM-768 support cannot be checked",
+      "code": "ENDPOINT_CLIENTS_UNSEEN",
+      "effect": "a client that cannot negotiate ML-KEM-768 loses the connection when RSA is switched off",
+      "severity": "MEDIUM",
+      "subject": "legacy-branch:443, swift-gateway:443/https",
+      "system": null,
+      "systems": [],
+      "title": "2 endpoint(s) carry RSA to clients the twin cannot see",
+      "who_acts": "the endpoint owners"
+     },
+     {
+      "action": "test through every load balancer, WAF and TLS-inspecting middlebox on the path; check MTU/fragmentation and constrained clients",
+      "basis": "ALGORITHM_PROPERTY",
+      "cause": "ML-KEM-768 keys/ciphertexts/signatures are much larger than RSA's; handshakes grow by kilobytes",
+      "code": "HANDSHAKE_SIZE",
+      "effect": "middleboxes that cap ClientHello size drop the new handshakes",
+      "severity": "MEDIUM",
+      "subject": null,
+      "system": null,
+      "systems": [
+       "Branch Banking",
+       "SWIFT Gateway"
+      ],
+      "title": "larger keys and signatures on 1 endpoint(s)",
+      "who_acts": "the network team"
+     }
+    ],
+    "label": "Network",
+    "question": "What is on the network?",
+    "relationships": 0,
+    "status_counts": {
+     "AFFECTED": 2,
+     "AT_RISK": 0,
+     "NOT_AFFECTED": 2,
+     "READY": 0,
+     "UNKNOWN": 0
+    },
+    "total": 4,
+    "truncated": false
+   },
+   {
+    "bom": "SBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": "upgrade to a release that implements ML-KEM-768 and rebuild what links it",
+      "asset_id": "lib-openssl",
+      "detail": "3.3.2 \u00b7 OpenSSL",
+      "impact": "does not implement ML-KEM-768 (the catalog lists TLSv1.3, RSA, ECDSA, X25519, AES-GCM)",
+      "kind": "asset",
+      "name": "OpenSSL 3.3.2",
+      "ref": "lib-openssl",
+      "status": "AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "pkg-libssl",
+      "detail": "3.3.2 \u00b7 apk",
+      "impact": "installed in SWIFT Gateway; presence is not crypto use, and no RSA use is recorded for it",
+      "kind": "asset",
+      "name": "libssl3",
+      "ref": "pkg-libssl",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "PACKAGE"
+     }
+    ],
+    "issues": [
+     {
+      "action": "upgrade to a version (or add a provider) that implements ML-KEM-768, then rebuild and redeploy",
+      "basis": "LIBRARY_CATALOG",
+      "cause": "the catalog lists TLSv1.3, RSA, ECDSA, X25519, AES-GCM",
+      "code": "LIBRARY_LACKS_TARGET",
+      "effect": "the code cannot call the new algorithm at all",
+      "severity": "HIGH",
+      "subject": "OpenSSL 3.3.2",
+      "system": "SWIFT Gateway",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "title": "library OpenSSL 3.3.2 does not implement ML-KEM-768",
+      "who_acts": "the application team"
+     }
+    ],
+    "label": "Software",
+    "question": "What software exists?",
+    "relationships": 0,
+    "status_counts": {
+     "AFFECTED": 1,
+     "AT_RISK": 0,
+     "NOT_AFFECTED": 1,
+     "READY": 0,
+     "UNKNOWN": 0
+    },
+    "total": 2,
+    "truncated": false
+   },
+   {
+    "bom": "HBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": "redeploy with the new crypto configuration and re-test",
+      "asset_id": "host-legacy",
+      "detail": "legacy-branch.bank.sandbox",
+      "impact": "part of Branch Banking, which moves to ML-KEM-768",
+      "kind": "asset",
+      "name": "legacy-branch",
+      "ref": "host-legacy",
+      "status": "AT_RISK",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": "redeploy with the new crypto configuration and re-test",
+      "asset_id": "host-gw",
+      "detail": "swift-gateway.bank.sandbox",
+      "impact": "part of SWIFT Gateway, which moves to ML-KEM-768",
+      "kind": "asset",
+      "name": "swift-gateway",
+      "ref": "host-gw",
+      "status": "AT_RISK",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "hw-gw",
+      "detail": "VMware, Inc. \u00b7 VMware7,1",
+      "impact": "platform of SWIFT Gateway: ML-KEM-768 runs in software on it, so it is not a blocker",
+      "kind": "asset",
+      "name": "VMware7,1 virtual platform",
+      "ref": "hw-gw",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HARDWARE"
+     },
+     {
+      "action": null,
+      "asset_id": "host-db",
+      "detail": "core-banking-db.bank.sandbox",
+      "impact": "holds no RSA and its systems do not change",
+      "kind": "asset",
+      "name": "core-banking-db",
+      "ref": "host-db",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "host-hsm",
+      "detail": "hsm-sim.bank.sandbox",
+      "impact": "holds no RSA and its systems do not change",
+      "kind": "asset",
+      "name": "hsm-sim",
+      "ref": "host-hsm",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HOST"
+     }
+    ],
+    "issues": [],
+    "label": "Hardware",
+    "question": "What hardware exists?",
+    "relationships": 0,
+    "status_counts": {
+     "AFFECTED": 0,
+     "AT_RISK": 2,
+     "NOT_AFFECTED": 3,
+     "READY": 0,
+     "UNKNOWN": 0
+    },
+    "total": 5,
+    "truncated": false
+   },
+   {
+    "bom": "VBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": "provide (and support) the release that ships ML-KEM-768; the deployed one does not",
+      "asset_id": "v-openssl",
+      "detail": "OpenSSL \u00b7 contract active",
+      "impact": "release not ready for ML-KEM-768 \u2014 supplies crypto library to SWIFT Gateway (declared, not observed)",
+      "kind": "asset",
+      "name": "OpenSSL Software Foundation \u00b7 OpenSSL",
+      "ref": "v-openssl",
+      "status": "AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     },
+     {
+      "action": "state whether its product supports ML-KEM-768",
+      "asset_id": "v-alpine",
+      "detail": "Alpine Linux (operating system) \u00b7 contract none on record",
+      "impact": "unknown for ML-KEM-768 \u2014 supplies operating system to SWIFT Gateway (declared, not observed)",
+      "kind": "asset",
+      "name": "Alpine Linux \u00b7 Alpine Linux (operating system)",
+      "ref": "v-alpine",
+      "status": "UNKNOWN",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     },
+     {
+      "action": null,
+      "asset_id": "v-vmware",
+      "detail": "VMware7,1 \u00b7 contract active",
+      "impact": "supplies nothing a changing system uses for this algorithm",
+      "kind": "asset",
+      "name": "VMware \u00b7 VMware7,1",
+      "ref": "v-vmware",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     }
+    ],
+    "contracts": [],
+    "declared_capabilities": [
+     {
+      "pqc_ready": false,
+      "vendor_asset_id": "v-openssl"
+     }
+    ],
+    "issues": [
+     {
+      "action": "upgrade to a OpenSSL Software Foundation release that ships ML-KEM-768 (and test it) before this system's cut-over",
+      "basis": "VENDOR_DECLARATION",
+      "cause": "OpenSSL Software Foundation declares no post-quantum support in the release this system runs: OpenSSL 3.3.2",
+      "code": "VENDOR_RELEASE_NOT_READY",
+      "effect": "the software cannot negotiate or verify ML-KEM-768 at all",
+      "severity": "HIGH",
+      "subject": "OpenSSL Software Foundation",
+      "system": "SWIFT Gateway",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "title": "the deployed OpenSSL Software Foundation release is not ML-KEM-768-capable",
+      "who_acts": "the platform team, with OpenSSL Software Foundation"
+     },
+     {
+      "action": "put support agreements in place so the ML-KEM-768 releases, fixes and an escalation path are available during the migration",
+      "basis": "ASSET_REGISTER",
+      "cause": "none on record: Alpine Linux",
+      "code": "VENDOR_NO_SUPPORT_CONTRACT",
+      "effect": "a failure during cut-over has no vendor to escalate to",
+      "severity": "MEDIUM",
+      "subject": "Alpine Linux",
+      "system": "SWIFT Gateway",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "title": "1 supplier(s) in this change without an active support contract",
+      "who_acts": "vendor management / procurement"
+     },
+     {
+      "action": "ask the vendor for its supported-algorithm statement and add it to the vendor crypto inventory",
+      "basis": "NO_VENDOR_RECORD",
+      "cause": "no vendor crypto inventory is recorded for this vendor",
+      "code": "VENDOR_CAPABILITY_UNKNOWN",
+      "effect": "the vendor side of the integration may reject the new algorithm",
+      "severity": "MEDIUM",
+      "subject": "Alpine Linux",
+      "system": "SWIFT Gateway",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "title": "Alpine Linux: ML-KEM-768 support is not recorded",
+      "who_acts": "Alpine Linux (vendor)"
+     }
+    ],
+    "label": "Vendors",
+    "question": "Which vendors?",
+    "relationships": 0,
+    "status_counts": {
+     "AFFECTED": 1,
+     "AT_RISK": 0,
+     "NOT_AFFECTED": 1,
+     "READY": 0,
+     "UNKNOWN": 1
+    },
+    "total": 3,
+    "truncated": false
+   },
+   {
+    "bom": "TECHBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": "run RSA and ML-KEM-768 side by side, then retire RSA",
+      "asset_id": "sys-branch",
+      "detail": "tier-2",
+      "impact": "holds RSA: a certificate this system uses carries it; a twin crypto asset of this system uses it; source evidence linked to this system uses it",
+      "kind": "asset",
+      "name": "Branch Banking",
+      "ref": "sys-branch",
+      "status": "AFFECTED",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "SYSTEM"
+     },
+     {
+      "action": "run RSA and ML-KEM-768 side by side, then retire RSA",
+      "asset_id": "sys-swift",
+      "detail": "Payments Operations \u00b7 tier-0",
+      "impact": "holds RSA: a certificate this system uses carries it; a twin crypto asset of this system uses it; source evidence linked to this system uses it",
+      "kind": "asset",
+      "name": "SWIFT Gateway",
+      "ref": "sys-swift",
+      "status": "AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "SYSTEM"
+     },
+     {
+      "action": "provide (and support) the release that ships ML-KEM-768; the deployed one does not",
+      "asset_id": "v-openssl",
+      "detail": "OpenSSL \u00b7 contract active",
+      "impact": "release not ready for ML-KEM-768 \u2014 supplies crypto library to SWIFT Gateway (declared, not observed)",
+      "kind": "asset",
+      "name": "OpenSSL Software Foundation \u00b7 OpenSSL",
+      "ref": "v-openssl",
+      "status": "AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     },
+     {
+      "action": "redeploy with the new crypto configuration and re-test",
+      "asset_id": "host-legacy",
+      "detail": "legacy-branch.bank.sandbox",
+      "impact": "part of Branch Banking, which moves to ML-KEM-768",
+      "kind": "asset",
+      "name": "legacy-branch",
+      "ref": "host-legacy",
+      "status": "AT_RISK",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": "redeploy with the new crypto configuration and re-test",
+      "asset_id": "host-gw",
+      "detail": "swift-gateway.bank.sandbox",
+      "impact": "part of SWIFT Gateway, which moves to ML-KEM-768",
+      "kind": "asset",
+      "name": "swift-gateway",
+      "ref": "host-gw",
+      "status": "AT_RISK",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": "redeploy with the new crypto configuration and re-test",
+      "asset_id": "svc-nginx-gw",
+      "detail": "swift-gateway \u00b7 production-sandbox",
+      "impact": "part of SWIFT Gateway, which moves to ML-KEM-768",
+      "kind": "asset",
+      "name": "nginx",
+      "ref": "svc-nginx-gw",
+      "status": "AT_RISK",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "SERVICE"
+     },
+     {
+      "action": "confirm the connection accepts ML-KEM-768",
+      "asset_id": "sys-core",
+      "detail": "Core Banking Platform \u00b7 tier-0",
+      "impact": "does not hold RSA itself, but is connected to Branch Banking, SWIFT Gateway, which changes",
+      "kind": "asset",
+      "name": "Core Banking",
+      "ref": "sys-core",
+      "status": "AT_RISK",
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "SYSTEM"
+     },
+     {
+      "action": "confirm the connection accepts ML-KEM-768",
+      "asset_id": "sys-hsm",
+      "detail": "Payments Security",
+      "impact": "does not hold RSA itself, but is connected to SWIFT Gateway, which changes",
+      "kind": "asset",
+      "name": "Payment HSM",
+      "ref": "sys-hsm",
+      "status": "AT_RISK",
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "SYSTEM"
+     },
+     {
+      "action": "state whether its product supports ML-KEM-768",
+      "asset_id": "v-alpine",
+      "detail": "Alpine Linux (operating system) \u00b7 contract none on record",
+      "impact": "unknown for ML-KEM-768 \u2014 supplies operating system to SWIFT Gateway (declared, not observed)",
+      "kind": "asset",
+      "name": "Alpine Linux \u00b7 Alpine Linux (operating system)",
+      "ref": "v-alpine",
+      "status": "UNKNOWN",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     },
+     {
+      "action": null,
+      "asset_id": "db-core",
+      "detail": "10.210.0.7:5432 \u00b7 postgresql \u00b7 production-sandbox",
+      "impact": "holds no RSA and its systems do not change",
+      "kind": "asset",
+      "name": "core-banking-ledger",
+      "ref": "db-core",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "DATABASE"
+     },
+     {
+      "action": null,
+      "asset_id": "hw-gw",
+      "detail": "VMware, Inc. \u00b7 VMware7,1",
+      "impact": "platform of SWIFT Gateway: ML-KEM-768 runs in software on it, so it is not a blocker",
+      "kind": "asset",
+      "name": "VMware7,1 virtual platform",
+      "ref": "hw-gw",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HARDWARE"
+     },
+     {
+      "action": null,
+      "asset_id": "host-db",
+      "detail": "core-banking-db.bank.sandbox",
+      "impact": "holds no RSA and its systems do not change",
+      "kind": "asset",
+      "name": "core-banking-db",
+      "ref": "host-db",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "host-hsm",
+      "detail": "hsm-sim.bank.sandbox",
+      "impact": "holds no RSA and its systems do not change",
+      "kind": "asset",
+      "name": "hsm-sim",
+      "ref": "host-hsm",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "hsm-0",
+      "detail": "Meridian-Sim \u00b7 v3.4.1-sandbox",
+      "impact": "holds no RSA and its systems do not change",
+      "kind": "asset",
+      "name": "payShield-10K-sim",
+      "ref": "hsm-0",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HSM"
+     },
+     {
+      "action": null,
+      "asset_id": "v-vmware",
+      "detail": "VMware7,1 \u00b7 contract active",
+      "impact": "supplies nothing a changing system uses for this algorithm",
+      "kind": "asset",
+      "name": "VMware \u00b7 VMware7,1",
+      "ref": "v-vmware",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     }
+    ],
+    "issues": [
+     {
+      "action": "keep RSA available on this connection until Core Banking confirms ML-KEM-768, then retire it",
+      "basis": "SYSTEM_DEPENDENCY",
+      "cause": "Branch Banking calls Core Banking; its crypto is not recorded in the twin, so its support for ML-KEM-768 is unknown",
+      "code": "PEER_OUTSIDE_CHANGE",
+      "effect": "the connection between Branch Banking and Core Banking fails its handshake or signature check at cut-over",
+      "severity": "HIGH",
+      "subject": "Core Banking",
+      "system": "Branch Banking",
+      "systems": [
+       "Branch Banking"
+      ],
+      "title": "Core Banking is connected to Branch Banking but is not part of this change",
+      "who_acts": "the owner of Core Banking"
+     },
+     {
+      "action": "keep RSA available on this connection until Core Banking confirms ML-KEM-768, then retire it",
+      "basis": "SYSTEM_DEPENDENCY",
+      "cause": "SWIFT Gateway calls Core Banking; its crypto is not recorded in the twin, so its support for ML-KEM-768 is unknown",
+      "code": "PEER_OUTSIDE_CHANGE",
+      "effect": "the connection between SWIFT Gateway and Core Banking fails its handshake or signature check at cut-over",
+      "severity": "HIGH",
+      "subject": "Core Banking",
+      "system": "SWIFT Gateway",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "title": "Core Banking is connected to SWIFT Gateway but is not part of this change",
+      "who_acts": "the owner of Core Banking"
+     },
+     {
+      "action": "keep RSA available on this connection until Payment HSM confirms ML-KEM-768, then retire it",
+      "basis": "SYSTEM_DEPENDENCY",
+      "cause": "SWIFT Gateway calls Payment HSM; the twin holds no evidence that Payment HSM supports ML-KEM-768",
+      "code": "PEER_OUTSIDE_CHANGE",
+      "effect": "the connection between SWIFT Gateway and Payment HSM fails its handshake or signature check at cut-over",
+      "severity": "HIGH",
+      "subject": "Payment HSM",
+      "system": "SWIFT Gateway",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "title": "Payment HSM is connected to SWIFT Gateway but is not part of this change",
+      "who_acts": "the owner of Payment HSM"
+     }
+    ],
+    "label": "Technology",
+    "question": "How is it connected?",
+    "relationships": 0,
+    "status_counts": {
+     "AFFECTED": 3,
+     "AT_RISK": 5,
+     "NOT_AFFECTED": 6,
+     "READY": 0,
+     "UNKNOWN": 1
+    },
+    "total": 15,
+    "truncated": false
+   }
+  ],
+  "change": {
+   "from_algo": "RSA",
+   "to_algo": "ML-KEM-768"
+  },
+  "connections": [
+   {
+    "action": "keep RSA enabled on Branch Banking's connection to Core Banking until Core Banking confirms ML-KEM-768",
+    "caller": "Branch Banking",
+    "caller_id": "sys-branch",
+    "caller_in_change": true,
+    "effect_on_caller": "Branch Banking will offer ML-KEM-768; if it stops offering RSA, its calls to Core Banking fail unless Core Banking accepts ML-KEM-768",
+    "effect_on_provider": "Core Banking is not part of this change and has no evidence of ML-KEM-768 support \u2014 it keeps expecting RSA",
+    "issues": [
+     {
+      "action": "keep RSA available on this connection until Core Banking confirms ML-KEM-768, then retire it",
+      "basis": "SYSTEM_DEPENDENCY",
+      "cause": "Branch Banking calls Core Banking; its crypto is not recorded in the twin, so its support for ML-KEM-768 is unknown",
+      "code": "PEER_OUTSIDE_CHANGE",
+      "effect": "the connection between Branch Banking and Core Banking fails its handshake or signature check at cut-over",
+      "severity": "HIGH",
+      "subject": "Core Banking",
+      "system": "Branch Banking",
+      "systems": [
+       "Branch Banking"
+      ],
+      "title": "Core Banking is connected to Branch Banking but is not part of this change",
+      "who_acts": "the owner of Core Banking"
+     }
+    ],
+    "provenance": "APPROVED_MAPPING",
+    "provider": "Core Banking",
+    "provider_endpoints": [],
+    "provider_id": "sys-core",
+    "provider_in_change": false,
+    "relation": "depends_on",
+    "severity": "HIGH",
+    "shared": [],
+    "status": "CALLER_CHANGES",
+    "via": null
+   },
+   {
+    "action": "keep RSA enabled on SWIFT Gateway's connection to Core Banking until Core Banking confirms ML-KEM-768",
+    "caller": "SWIFT Gateway",
+    "caller_id": "sys-swift",
+    "caller_in_change": true,
+    "effect_on_caller": "SWIFT Gateway will offer ML-KEM-768; if it stops offering RSA, its calls to Core Banking fail unless Core Banking accepts ML-KEM-768",
+    "effect_on_provider": "Core Banking is not part of this change and has no evidence of ML-KEM-768 support \u2014 it keeps expecting RSA",
+    "issues": [
+     {
+      "action": "keep RSA available on this connection until Core Banking confirms ML-KEM-768, then retire it",
+      "basis": "SYSTEM_DEPENDENCY",
+      "cause": "SWIFT Gateway calls Core Banking; its crypto is not recorded in the twin, so its support for ML-KEM-768 is unknown",
+      "code": "PEER_OUTSIDE_CHANGE",
+      "effect": "the connection between SWIFT Gateway and Core Banking fails its handshake or signature check at cut-over",
+      "severity": "HIGH",
+      "subject": "Core Banking",
+      "system": "SWIFT Gateway",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "title": "Core Banking is connected to SWIFT Gateway but is not part of this change",
+      "who_acts": "the owner of Core Banking"
+     }
+    ],
+    "provenance": "RUNTIME_OBSERVATION",
+    "provider": "Core Banking",
+    "provider_endpoints": [],
+    "provider_id": "sys-core",
+    "provider_in_change": false,
+    "relation": "connects_to",
+    "severity": "HIGH",
+    "shared": [],
+    "status": "CALLER_CHANGES",
+    "via": "10.210.0.7:5432"
+   },
+   {
+    "action": "keep RSA enabled on SWIFT Gateway's connection to Payment HSM until Payment HSM confirms ML-KEM-768",
+    "caller": "SWIFT Gateway",
+    "caller_id": "sys-swift",
+    "caller_in_change": true,
+    "effect_on_caller": "SWIFT Gateway will offer ML-KEM-768; if it stops offering RSA, its calls to Payment HSM fail unless Payment HSM accepts ML-KEM-768",
+    "effect_on_provider": "Payment HSM is not part of this change and has no evidence of ML-KEM-768 support \u2014 it keeps expecting RSA",
+    "issues": [
+     {
+      "action": "keep RSA available on this connection until Payment HSM confirms ML-KEM-768, then retire it",
+      "basis": "SYSTEM_DEPENDENCY",
+      "cause": "SWIFT Gateway calls Payment HSM; the twin holds no evidence that Payment HSM supports ML-KEM-768",
+      "code": "PEER_OUTSIDE_CHANGE",
+      "effect": "the connection between SWIFT Gateway and Payment HSM fails its handshake or signature check at cut-over",
+      "severity": "HIGH",
+      "subject": "Payment HSM",
+      "system": "SWIFT Gateway",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "title": "Payment HSM is connected to SWIFT Gateway but is not part of this change",
+      "who_acts": "the owner of Payment HSM"
+     }
+    ],
+    "provenance": "APPROVED_MAPPING",
+    "provider": "Payment HSM",
+    "provider_endpoints": [],
+    "provider_id": "sys-hsm",
+    "provider_in_change": false,
+    "relation": "depends_on",
+    "severity": "HIGH",
+    "shared": [],
+    "status": "CALLER_CHANGES",
+    "via": null
+   }
+  ],
+  "context": {
+   "algorithms": [
+    {
+     "algorithm": "RSA",
+     "evidence": 3,
+     "systems": [
+      "Branch Banking",
+      "SWIFT Gateway"
+     ]
+    },
+    {
+     "algorithm": "3DES-112",
+     "evidence": 1,
+     "systems": [
+      "Payment HSM"
+     ]
+    },
+    {
+     "algorithm": "AES-256",
+     "evidence": 1,
+     "systems": [
+      "Payment HSM"
+     ]
+    },
+    {
+     "algorithm": "AES128-SHA",
+     "evidence": 1,
+     "systems": [
+      "Branch Banking"
+     ]
+    },
+    {
+     "algorithm": "SHA256withRSA",
+     "evidence": 1,
+     "systems": [
+      "SWIFT Gateway"
+     ]
+    },
+    {
+     "algorithm": "TLS_AES_256_GCM_SHA384",
+     "evidence": 1,
+     "systems": [
+      "SWIFT Gateway"
+     ]
+    }
+   ],
+   "counts": {
+    "assets": 24,
+    "evidence": 33,
+    "relationships": 22,
+    "systems": 4,
+    "unowned_crypto_assets": 1
+   },
+   "dependencies": [
+    {
+     "from": "Branch Banking",
+     "provenance": "APPROVED_MAPPING",
+     "to": "Core Banking",
+     "type": "depends_on"
+    },
+    {
+     "from": "SWIFT Gateway",
+     "provenance": "RUNTIME_OBSERVATION",
+     "to": "Core Banking",
+     "type": "connects_to"
+    },
+    {
+     "from": "SWIFT Gateway",
+     "provenance": "APPROVED_MAPPING",
+     "to": "Payment HSM",
+     "type": "depends_on"
+    }
+   ],
+   "systems": [
+    {
+     "algorithms": {
+      "AES128-SHA": 1,
+      "RSA": 1
+     },
+     "certificates": 1,
+     "criticality": "medium",
+     "crypto_assets": 2,
+     "endpoints": 1,
+     "hosts": [
+      "legacy-branch"
+     ],
+     "hsms": 0,
+     "libraries": 0,
+     "name": "Branch Banking",
+     "owner": null,
+     "servers": 0,
+     "system_id": "sys-branch",
+     "vendors": 0
+    },
+    {
+     "algorithms": {},
+     "certificates": 0,
+     "criticality": "critical",
+     "crypto_assets": 0,
+     "endpoints": 0,
+     "hosts": [
+      "core-banking-db"
+     ],
+     "hsms": 0,
+     "libraries": 0,
+     "name": "Core Banking",
+     "owner": "Core Banking Platform",
+     "servers": 0,
+     "system_id": "sys-core",
+     "vendors": 0
+    },
+    {
+     "algorithms": {
+      "3DES-112": 1,
+      "AES-256": 1
+     },
+     "certificates": 0,
+     "criticality": null,
+     "crypto_assets": 1,
+     "endpoints": 0,
+     "hosts": [
+      "hsm-sim"
+     ],
+     "hsms": 1,
+     "libraries": 0,
+     "name": "Payment HSM",
+     "owner": "Payments Security",
+     "servers": 0,
+     "system_id": "sys-hsm",
+     "vendors": 0
+    },
+    {
+     "algorithms": {
+      "RSA": 1,
+      "SHA256withRSA": 1,
+      "TLS_AES_256_GCM_SHA384": 1
+     },
+     "certificates": 1,
+     "criticality": "critical",
+     "crypto_assets": 3,
+     "endpoints": 1,
+     "hosts": [
+      "swift-gateway"
+     ],
+     "hsms": 0,
+     "libraries": 1,
+     "name": "SWIFT Gateway",
+     "owner": "Payments Operations",
+     "servers": 1,
+     "system_id": "sys-swift",
+     "vendors": 2
+    }
+   ],
+   "unowned_algorithms": {
+    "RSA": 1
+   }
+  },
+  "estate": "meridian-bank",
+  "headline": "RSA \u2192 ML-KEM-768: 2 system(s) \u2014 0 blocked, 2 need a parallel run, 0 can migrate directly. Recommended: parallel migration",
+  "mutates_nothing": true,
+  "observed_at": "2026-11-16T09:00:00+00:00",
+  "plan": [
+   {
+    "actions": [
+     "library OpenSSL 3.3.2 does not implement ML-KEM-768 \u2014 upgrade to a version (or add a provider) that implements ML-KEM-768, then rebuild and redeploy",
+     "10.210.0.5:443 negotiates TLS TLSv1 \u2014 enable TLS 1.3 on this endpoint (and its load balancer) first",
+     "Alpine Linux: ML-KEM-768 support is not recorded \u2014 ask the vendor for its supported-algorithm statement and add it to the vendor crypto inventory"
+    ],
+    "exit_criteria": "every blocker is closed with evidence (capability list, vendor statement, release) and recorded in the twin",
+    "order": 1,
+    "phase": "PREREQUISITES",
+    "rollback": "nothing to roll back \u2014 no production change yet",
+    "systems": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "title": "Clear what stops the migration"
+   },
+   {
+    "actions": [
+     "generate ML-KEM-768 keys for Branch Banking",
+     "generate ML-KEM-768 keys for SWIFT Gateway",
+     "issue ML-KEM-768 certificates for Branch Banking, SWIFT Gateway and distribute the new trust anchors to relying parties"
+    ],
+    "exit_criteria": "new keys exist where the system will use them; relying parties trust the new chain",
+    "order": 2,
+    "phase": "KEYS_AND_TRUST",
+    "rollback": "unused keys and certificates are revoked; nothing is serving them yet",
+    "systems": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "title": "Prepare ML-KEM-768 keys and trust"
+   },
+   {
+    "actions": [
+     "Branch Banking: accept and offer ML-KEM-768 while still accepting RSA",
+     "SWIFT Gateway: accept and offer ML-KEM-768 while still accepting RSA"
+    ],
+    "exit_criteria": "both algorithms negotiate; monitoring shows which peers use which",
+    "order": 3,
+    "phase": "ENABLE_ALONGSIDE",
+    "rollback": "switch ML-KEM-768 off again \u2014 RSA never stopped working",
+    "systems": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "title": "Wave 1: enable ML-KEM-768 next to RSA",
+    "wave": 1
+   },
+   {
+    "actions": [
+     "Branch Banking: prefer ML-KEM-768; move each connected peer and vendor once it confirms",
+     "SWIFT Gateway: prefer ML-KEM-768; move each connected peer and vendor once it confirms"
+    ],
+    "exit_criteria": "handshakes, signatures and business transactions succeed on the new algorithm for every listed system",
+    "order": 4,
+    "phase": "CUT_OVER",
+    "providers_first": "systems that others call move before their callers",
+    "rollback": "re-enable RSA on the affected connections",
+    "systems": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "title": "Wave 1: move to ML-KEM-768",
+    "wave": 1
+   },
+   {
+    "actions": [
+     "re-scan the changed systems so the twin shows the new algorithm",
+     "run each business process's smoke test",
+     "confirm no connection still negotiates RSA"
+    ],
+    "exit_criteria": "the twin no longer reports RSA on these systems",
+    "order": 5,
+    "phase": "VERIFY",
+    "rollback": "per-wave rollback above",
+    "systems": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "title": "Verify on the twin and in production"
+   },
+   {
+    "actions": [
+     "disable RSA once every peer and vendor has confirmed ML-KEM-768",
+     "keep RSA verification until old signatures expire"
+    ],
+    "exit_criteria": "no system, peer or vendor depends on RSA",
+    "order": 6,
+    "phase": "DECOMMISSION",
+    "rollback": "re-enable RSA (keys are destroyed only after a holding period)",
+    "systems": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "title": "Retire RSA"
+   }
+  ],
+  "problem_counts": {
+   "BLOCKER": 0,
+   "HIGH": 7,
+   "INFO": 0,
+   "MEDIUM": 6
+  },
+  "projection_id": "p-1",
+  "ripple": [
+   {
+    "effect": "directly connected to a system that changes \u2014 its connection must accept ML-KEM-768 or keep RSA",
+    "hops": 1,
+    "name": "Core Banking",
+    "path": [
+     "Branch Banking",
+     "Core Banking"
+    ],
+    "system_id": "sys-core"
+   },
+   {
+    "effect": "directly connected to a system that changes \u2014 its connection must accept ML-KEM-768 or keep RSA",
+    "hops": 1,
+    "name": "Payment HSM",
+    "path": [
+     "SWIFT Gateway",
+     "Payment HSM"
+    ],
+    "system_id": "sys-hsm"
+   }
+  ],
+  "run_id": "run-1",
+  "schema": "cryptoscan.twin-bom-impact/1",
+  "source": "ESTATE_GRAPH",
+  "statuses": [
+   "AFFECTED",
+   "AT_RISK",
+   "UNKNOWN",
+   "READY",
+   "NOT_AFFECTED"
+  ],
+  "strategy": {
+   "direct_is_safe_when": "no connected system outside the change, no network endpoint with unseen clients, no vendor, no stored data or signatures under the old algorithm, and every device's capability is recorded",
+   "meaning": "run the old and the new algorithm side by side, then retire the old one",
+   "parallel_mechanisms": [
+    {
+     "how": "offer a hybrid group (classical + ML-KEM-768, e.g. X25519MLKEM768) on TLS 1.3: upgraded peers negotiate it, the rest fall back to the classical group",
+     "mechanism": "HYBRID_KEY_EXCHANGE"
+    },
+    {
+     "how": "serve both the RSA and the ML-KEM-768 chain (or a composite certificate) until every relying party trusts the new root",
+     "mechanism": "DUAL_CERTIFICATE_CHAIN"
+    },
+    {
+     "how": "make the algorithm a per-connection setting so each peer and vendor moves on its own date and can be rolled back alone",
+     "mechanism": "PER_CONNECTION_SWITCH"
+    }
+   ],
+   "reasons": {
+    "EXTERNAL_CLIENTS_UNKNOWN": 2,
+    "PEER_OUTSIDE_CHANGE": 2,
+    "RELYING_PARTIES": 2,
+    "VENDOR_INVOLVED": 1,
+    "VENDOR_RELEASE_NOT_READY": 1
+   },
+   "recommended": "PARALLEL",
+   "systems": {
+    "BLOCKED": 0,
+    "DIRECT": 0,
+    "PARALLEL": 2
+   }
+  },
+  "systems": [
+   {
+    "bom_counts": {
+     "CBOM": {
+      "affected": 2,
+      "components": 3
+     },
+     "HBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "NBOM": {
+      "affected": 1,
+      "components": 1
+     },
+     "SBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "TECHBOM": {
+      "affected": 1,
+      "components": 2
+     },
+     "VBOM": {
+      "affected": 0,
+      "components": 0
+     }
+    },
+    "business_service": null,
+    "called_by": [],
+    "calls": [
+     "Core Banking"
+    ],
+    "criticality": "medium",
+    "environment": "production-sandbox",
+    "hosts": [
+     "legacy-branch"
+    ],
+    "id": "sys-branch",
+    "in_change": true,
+    "name": "Branch Banking",
+    "owner": null,
+    "strategy": "PARALLEL",
+    "vendors": [],
+    "why_in_change": [
+     "a certificate this system uses carries it",
+     "a twin crypto asset of this system uses it",
+     "source evidence linked to this system uses it"
+    ]
+   },
+   {
+    "bom_counts": {
+     "CBOM": {
+      "affected": 4,
+      "components": 12
+     },
+     "HBOM": {
+      "affected": 0,
+      "components": 2
+     },
+     "NBOM": {
+      "affected": 1,
+      "components": 2
+     },
+     "SBOM": {
+      "affected": 1,
+      "components": 2
+     },
+     "TECHBOM": {
+      "affected": 2,
+      "components": 7
+     },
+     "VBOM": {
+      "affected": 1,
+      "components": 3
+     }
+    },
+    "business_service": null,
+    "called_by": [],
+    "calls": [
+     "Core Banking",
+     "Payment HSM"
+    ],
+    "criticality": "critical",
+    "environment": "production-sandbox",
+    "hosts": [
+     "swift-gateway"
+    ],
+    "id": "sys-swift",
+    "in_change": true,
+    "name": "SWIFT Gateway",
+    "owner": "Payments Operations",
+    "strategy": "PARALLEL",
+    "vendors": [
+     "Alpine Linux",
+     "OpenSSL Software Foundation"
+    ],
+    "why_in_change": [
+     "a certificate this system uses carries it",
+     "a twin crypto asset of this system uses it",
+     "source evidence linked to this system uses it"
+    ]
+   },
+   {
+    "bom_counts": {
+     "CBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "HBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "NBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "SBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "TECHBOM": {
+      "affected": 0,
+      "components": 3
+     },
+     "VBOM": {
+      "affected": 0,
+      "components": 0
+     }
+    },
+    "business_service": null,
+    "called_by": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "calls": [],
+    "criticality": "critical",
+    "environment": "production-sandbox",
+    "hosts": [
+     "core-banking-db"
+    ],
+    "id": "sys-core",
+    "in_change": false,
+    "name": "Core Banking",
+    "owner": "Core Banking Platform",
+    "strategy": null,
+    "vendors": [],
+    "why_in_change": []
+   },
+   {
+    "bom_counts": {
+     "CBOM": {
+      "affected": 0,
+      "components": 2
+     },
+     "HBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "NBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "SBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "TECHBOM": {
+      "affected": 0,
+      "components": 3
+     },
+     "VBOM": {
+      "affected": 0,
+      "components": 0
+     }
+    },
+    "business_service": null,
+    "called_by": [
+     "SWIFT Gateway"
+    ],
+    "calls": [],
+    "criticality": null,
+    "environment": "production-sandbox",
+    "hosts": [
+     "hsm-sim"
+    ],
+    "id": "sys-hsm",
+    "in_change": false,
+    "name": "Payment HSM",
+    "owner": "Payments Security",
+    "strategy": null,
+    "vendors": [],
+    "why_in_change": []
+   }
+  ],
+  "totals": {
+   "affected": {
+    "CBOM": 8,
+    "HBOM": 0,
+    "NBOM": 2,
+    "SBOM": 1,
+    "TECHBOM": 3,
+    "VBOM": 1
+   },
+   "components": {
+    "CBOM": 19,
+    "HBOM": 5,
+    "NBOM": 4,
+    "SBOM": 2,
+    "TECHBOM": 15,
+    "VBOM": 3
+   },
+   "connections": 3,
+   "systems": 4,
+   "systems_in_change": 2
+  },
+  "unknowns": [
+   "1 twin asset(s) and 1 evidence record(s) use RSA but are linked to no system, so they are not in any wave",
+   "2 listed component(s) belong to no system through an evidenced edge, so no connection effect can be traced for them",
+   "Branch Banking: no crypto\u2194hardware link is recorded, so whether its keys live in an HSM (and whether that HSM can run the target) is unknown",
+   "SWIFT Gateway: no crypto\u2194hardware link is recorded, so whether its keys live in an HSM (and whether that HSM can run the target) is unknown",
+   "VBOM capabilities and contracts are what vendors and the register declare \u2014 not observed on the estate",
+   "clients of a network endpoint are not assets in the twin, so they cannot be checked",
+   "hardware and vendor capability is as recorded or declared \u2014 not independently tested",
+   "performance of the new algorithm on this estate is not measured here",
+   "which algorithm each connection negotiates is not recorded on dependency edges; a connected system is treated as needing the old algorithm until it confirms"
+  ]
+ },
+ "tdes_to_aes": {
+  "boms": [
+   {
+    "bom": "CBOM",
+    "boundary": null,
+    "by_layer": {},
+    "by_type": {},
+    "by_usage_state": {},
+    "components": [
+     {
+      "action": "replace 3DES-112 with AES-256",
+      "asset_id": "hsm-0",
+      "detail": "3DES-112 \u00b7 key \u00b7 hardware \u00b7 OBSERVED",
+      "impact": "3DES-112 is observed at the hardware layer of payShield-10K-sim; this use must move to AES-256",
+      "kind": "crypto",
+      "name": "payShield-10K-sim",
+      "ref": "k-ev-23-1",
+      "status": "AFFECTED",
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HSM"
+     },
+     {
+      "action": null,
+      "asset_id": "hsm-0",
+      "detail": "AES-256 \u00b7 key \u00b7 hardware \u00b7 OBSERVED",
+      "impact": "payShield-10K-sim already uses AES-256 at the hardware layer",
+      "kind": "crypto",
+      "name": "payShield-10K-sim",
+      "ref": "k-ev-23-0",
+      "status": "READY",
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HSM"
+     },
+     {
+      "action": null,
+      "asset_id": "ep-gw-443",
+      "detail": "TLS_AES_256_GCM_SHA384 \u00b7 negotiated-cipher-suite \u00b7 TLSv1.3 \u00b7 network transport \u00b7 NEGOTIATED",
+      "impact": "swift-gateway:443/https already uses AES-256 at the network transport layer",
+      "kind": "crypto",
+      "name": "swift-gateway:443/https",
+      "ref": "a-ev-7",
+      "status": "READY",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     },
+     {
+      "action": null,
+      "asset_id": "ca-meridian",
+      "detail": "CN=Meridian Bank Issuing CA",
+      "impact": "issued no certificate that carries 3DES",
+      "kind": "asset",
+      "name": "Meridian Bank Issuing CA",
+      "ref": "ca-meridian",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "CA"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-legacy",
+      "detail": "RSA-1024 \u00b7 certificate-public-key \u00b7 network transport \u00b7 OBSERVED",
+      "impact": "RSA is not 3DES",
+      "kind": "crypto",
+      "name": "legacy-branch",
+      "ref": "a-ev-31",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-legacy",
+      "detail": "RSA-1024",
+      "impact": "carries no 3DES",
+      "kind": "asset",
+      "name": "legacy-branch",
+      "ref": "cert-legacy",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-gw",
+      "detail": "RSA-3072 \u00b7 certificate-public-key \u00b7 network transport \u00b7 OBSERVED",
+      "impact": "RSA is not 3DES",
+      "kind": "crypto",
+      "name": "swift-gateway.bank.sandbox",
+      "ref": "a-ev-8",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-gw",
+      "detail": "SHA256withRSA \u00b7 certificate-signature \u00b7 network transport \u00b7 OBSERVED",
+      "impact": "SHA256withRSA is not 3DES",
+      "kind": "crypto",
+      "name": "swift-gateway.bank.sandbox",
+      "ref": "a-ev-9",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-gw",
+      "detail": "RSA-3072 \u00b7 expires in 55 d \u00b7 CN=Meridian Bank Issuing CA",
+      "impact": "carries no 3DES",
+      "kind": "asset",
+      "name": "swift-gateway.bank.sandbox",
+      "ref": "cert-gw",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": null,
+      "asset_id": "hw-gw",
+      "detail": "AES-NI \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "AES-NI is not 3DES",
+      "kind": "crypto",
+      "name": "VMware7,1 virtual platform",
+      "ref": "s-ev-20-AES-NI",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HARDWARE"
+     },
+     {
+      "action": null,
+      "asset_id": "hw-gw",
+      "detail": "SHA-NI \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "SHA-NI is not 3DES",
+      "kind": "crypto",
+      "name": "VMware7,1 virtual platform",
+      "ref": "s-ev-20-SHA-NI",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HARDWARE"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "TLSv1.3 \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "TLSv1.3 is not 3DES",
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-TLSv1.3",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "RSA \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "RSA is not 3DES",
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-RSA",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "ECDSA \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "ECDSA is not 3DES",
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-ECDSA",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "X25519 \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "X25519 is not 3DES",
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-X25519",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "AES-GCM \u00b7 capability \u00b7 network transport \u00b7 SUPPORTED",
+      "impact": "AES-GCM is not 3DES",
+      "kind": "crypto",
+      "name": "OpenSSL 3.3.2",
+      "ref": "s-ev-13-AES-GCM",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "ep-legacy",
+      "detail": "AES128-SHA \u00b7 negotiated-cipher-suite \u00b7 TLSv1 \u00b7 network transport \u00b7 NEGOTIATED",
+      "impact": "AES128-SHA is not 3DES",
+      "kind": "crypto",
+      "name": "legacy-branch:443",
+      "ref": "a-ev-30",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-stray",
+      "detail": "RSA-2048 \u00b7 certificate-public-key \u00b7 network transport \u00b7 OBSERVED",
+      "impact": "RSA is not 3DES",
+      "kind": "crypto",
+      "name": "old-vpn.example",
+      "ref": "a-ev-33",
+      "status": "NOT_AFFECTED",
+      "systems": [],
+      "type": "CERTIFICATE"
+     },
+     {
+      "action": null,
+      "asset_id": "cert-stray",
+      "detail": "RSA-2048",
+      "impact": "carries no 3DES",
+      "kind": "asset",
+      "name": "old-vpn.example",
+      "ref": "cert-stray",
+      "status": "NOT_AFFECTED",
+      "systems": [],
+      "type": "CERTIFICATE"
+     }
+    ],
+    "issues": [
+     {
+      "action": "keep 3DES keys for decryption until the stored data is re-encrypted under AES-256",
+      "basis": "ALGORITHM_PROPERTY",
+      "cause": "changing the algorithm affects new writes only",
+      "code": "STORED_DATA",
+      "effect": "old records become unreadable the day the old key is destroyed",
+      "severity": "HIGH",
+      "subject": null,
+      "system": "Payment HSM",
+      "systems": [
+       "Payment HSM"
+      ],
+      "title": "data encrypted under 3DES stays encrypted under it",
+      "who_acts": "the data owner"
+     }
+    ],
+    "label": "Cryptography",
+    "question": "What crypto exists?",
+    "relationships": 0,
+    "status_counts": {
+     "AFFECTED": 1,
+     "AT_RISK": 0,
+     "NOT_AFFECTED": 16,
+     "READY": 2,
+     "UNKNOWN": 0
+    },
+    "total": 19,
+    "truncated": false
+   },
+   {
+    "bom": "NBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": null,
+      "asset_id": "db-core",
+      "detail": "10.210.0.7:5432 \u00b7 postgresql \u00b7 production-sandbox",
+      "impact": "holds no 3DES and its systems do not change",
+      "kind": "asset",
+      "name": "core-banking-ledger",
+      "ref": "db-core",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "DATABASE"
+     },
+     {
+      "action": null,
+      "asset_id": "remote-core",
+      "detail": "10.210.0.7:5432 \u00b7 tcp",
+      "impact": "carries no 3DES",
+      "kind": "asset",
+      "name": "10.210.0.7:5432",
+      "ref": "remote-core",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     },
+     {
+      "action": null,
+      "asset_id": "ep-legacy",
+      "detail": "10.210.0.5:443 \u00b7 TLSv1 \u00b7 AES128-SHA",
+      "impact": "carries no 3DES",
+      "kind": "asset",
+      "name": "legacy-branch:443",
+      "ref": "ep-legacy",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     },
+     {
+      "action": null,
+      "asset_id": "ep-gw-443",
+      "detail": "swift-gateway:443 \u00b7 TLSv1.3 \u00b7 TLS_AES_256_GCM_SHA384",
+      "impact": "carries no 3DES",
+      "kind": "asset",
+      "name": "swift-gateway:443/https",
+      "ref": "ep-gw-443",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "NETWORK_ENDPOINT"
+     }
+    ],
+    "issues": [],
+    "label": "Network",
+    "question": "What is on the network?",
+    "relationships": 0,
+    "status_counts": {
+     "AFFECTED": 0,
+     "AT_RISK": 0,
+     "NOT_AFFECTED": 4,
+     "READY": 0,
+     "UNKNOWN": 0
+    },
+    "total": 4,
+    "truncated": false
+   },
+   {
+    "bom": "SBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": null,
+      "asset_id": "lib-openssl",
+      "detail": "3.3.2 \u00b7 OpenSSL",
+      "impact": "not used by a system that changes",
+      "kind": "asset",
+      "name": "OpenSSL 3.3.2",
+      "ref": "lib-openssl",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "LIBRARY"
+     },
+     {
+      "action": null,
+      "asset_id": "pkg-libssl",
+      "detail": "3.3.2 \u00b7 apk",
+      "impact": "holds no 3DES and its systems do not change",
+      "kind": "asset",
+      "name": "libssl3",
+      "ref": "pkg-libssl",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "PACKAGE"
+     }
+    ],
+    "issues": [],
+    "label": "Software",
+    "question": "What software exists?",
+    "relationships": 0,
+    "status_counts": {
+     "AFFECTED": 0,
+     "AT_RISK": 0,
+     "NOT_AFFECTED": 2,
+     "READY": 0,
+     "UNKNOWN": 0
+    },
+    "total": 2,
+    "truncated": false
+   },
+   {
+    "bom": "HBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": "redeploy with the new crypto configuration and re-test",
+      "asset_id": "host-hsm",
+      "detail": "hsm-sim.bank.sandbox",
+      "impact": "part of Payment HSM, which moves to AES-256",
+      "kind": "asset",
+      "name": "hsm-sim",
+      "ref": "host-hsm",
+      "status": "AT_RISK",
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "hw-gw",
+      "detail": "VMware, Inc. \u00b7 VMware7,1",
+      "impact": "holds no 3DES and its systems do not change",
+      "kind": "asset",
+      "name": "VMware7,1 virtual platform",
+      "ref": "hw-gw",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HARDWARE"
+     },
+     {
+      "action": null,
+      "asset_id": "host-db",
+      "detail": "core-banking-db.bank.sandbox",
+      "impact": "holds no 3DES and its systems do not change",
+      "kind": "asset",
+      "name": "core-banking-db",
+      "ref": "host-db",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "host-legacy",
+      "detail": "legacy-branch.bank.sandbox",
+      "impact": "holds no 3DES and its systems do not change",
+      "kind": "asset",
+      "name": "legacy-branch",
+      "ref": "host-legacy",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "host-gw",
+      "detail": "swift-gateway.bank.sandbox",
+      "impact": "holds no 3DES and its systems do not change",
+      "kind": "asset",
+      "name": "swift-gateway",
+      "ref": "host-gw",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HOST"
+     }
+    ],
+    "issues": [
+     {
+      "action": "read the device's mechanism list (PKCS#11 / KMIP query) or get the vendor's written confirmation before scheduling",
+      "basis": "NO_CAPABILITY_RECORD",
+      "cause": "Meridian-Sim payShield-10K-sim \u2014 no capability list was collected for this device",
+      "code": "HARDWARE_CAPABILITY_UNKNOWN",
+      "effect": "the cut-over can fail on the device with no warning in the plan",
+      "severity": "HIGH",
+      "subject": "hsm-0",
+      "system": "Payment HSM",
+      "systems": [
+       "Payment HSM"
+      ],
+      "title": "HSM hsm-0: support for AES-256 is not recorded",
+      "who_acts": "hardware owner / Meridian-Sim"
+     }
+    ],
+    "label": "Hardware",
+    "question": "What hardware exists?",
+    "relationships": 0,
+    "status_counts": {
+     "AFFECTED": 0,
+     "AT_RISK": 1,
+     "NOT_AFFECTED": 4,
+     "READY": 0,
+     "UNKNOWN": 0
+    },
+    "total": 5,
+    "truncated": false
+   },
+   {
+    "bom": "VBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": null,
+      "asset_id": "v-alpine",
+      "detail": "Alpine Linux (operating system) \u00b7 contract none on record",
+      "impact": "supplies nothing a changing system uses for this algorithm",
+      "kind": "asset",
+      "name": "Alpine Linux \u00b7 Alpine Linux (operating system)",
+      "ref": "v-alpine",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     },
+     {
+      "action": null,
+      "asset_id": "v-openssl",
+      "detail": "OpenSSL \u00b7 contract active",
+      "impact": "supplies nothing a changing system uses for this algorithm",
+      "kind": "asset",
+      "name": "OpenSSL Software Foundation \u00b7 OpenSSL",
+      "ref": "v-openssl",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     },
+     {
+      "action": null,
+      "asset_id": "v-vmware",
+      "detail": "VMware7,1 \u00b7 contract active",
+      "impact": "supplies nothing a changing system uses for this algorithm",
+      "kind": "asset",
+      "name": "VMware \u00b7 VMware7,1",
+      "ref": "v-vmware",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     }
+    ],
+    "contracts": [],
+    "declared_capabilities": [
+     {
+      "pqc_ready": false,
+      "vendor_asset_id": "v-openssl"
+     }
+    ],
+    "issues": [],
+    "label": "Vendors",
+    "question": "Which vendors?",
+    "relationships": 0,
+    "status_counts": {
+     "AFFECTED": 0,
+     "AT_RISK": 0,
+     "NOT_AFFECTED": 3,
+     "READY": 0,
+     "UNKNOWN": 0
+    },
+    "total": 3,
+    "truncated": false
+   },
+   {
+    "bom": "TECHBOM",
+    "boundary": null,
+    "by_type": {},
+    "components": [
+     {
+      "action": "run 3DES and AES-256 side by side, then retire 3DES",
+      "asset_id": "sys-hsm",
+      "detail": "Payments Security",
+      "impact": "holds 3DES: a twin crypto asset of this system uses it; source evidence linked to this system uses it",
+      "kind": "asset",
+      "name": "Payment HSM",
+      "ref": "sys-hsm",
+      "status": "AFFECTED",
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "SYSTEM"
+     },
+     {
+      "action": "redeploy with the new crypto configuration and re-test",
+      "asset_id": "host-hsm",
+      "detail": "hsm-sim.bank.sandbox",
+      "impact": "part of Payment HSM, which moves to AES-256",
+      "kind": "asset",
+      "name": "hsm-sim",
+      "ref": "host-hsm",
+      "status": "AT_RISK",
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": "confirm the connection accepts AES-256",
+      "asset_id": "sys-swift",
+      "detail": "Payments Operations \u00b7 tier-0",
+      "impact": "does not hold 3DES itself, but is connected to Payment HSM, which changes",
+      "kind": "asset",
+      "name": "SWIFT Gateway",
+      "ref": "sys-swift",
+      "status": "AT_RISK",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "SYSTEM"
+     },
+     {
+      "action": "ask the vendor for the firmware that supports AES-256",
+      "asset_id": "hsm-0",
+      "detail": "Meridian-Sim \u00b7 v3.4.1-sandbox",
+      "impact": "holds affected keys; its AES-256 support is unknown \u2014 no capability list was collected for this device",
+      "kind": "asset",
+      "name": "payShield-10K-sim",
+      "ref": "hsm-0",
+      "status": "UNKNOWN",
+      "systems": [
+       "Payment HSM"
+      ],
+      "type": "HSM"
+     },
+     {
+      "action": null,
+      "asset_id": "db-core",
+      "detail": "10.210.0.7:5432 \u00b7 postgresql \u00b7 production-sandbox",
+      "impact": "holds no 3DES and its systems do not change",
+      "kind": "asset",
+      "name": "core-banking-ledger",
+      "ref": "db-core",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "DATABASE"
+     },
+     {
+      "action": null,
+      "asset_id": "hw-gw",
+      "detail": "VMware, Inc. \u00b7 VMware7,1",
+      "impact": "holds no 3DES and its systems do not change",
+      "kind": "asset",
+      "name": "VMware7,1 virtual platform",
+      "ref": "hw-gw",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HARDWARE"
+     },
+     {
+      "action": null,
+      "asset_id": "host-db",
+      "detail": "core-banking-db.bank.sandbox",
+      "impact": "holds no 3DES and its systems do not change",
+      "kind": "asset",
+      "name": "core-banking-db",
+      "ref": "host-db",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "host-legacy",
+      "detail": "legacy-branch.bank.sandbox",
+      "impact": "holds no 3DES and its systems do not change",
+      "kind": "asset",
+      "name": "legacy-branch",
+      "ref": "host-legacy",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "host-gw",
+      "detail": "swift-gateway.bank.sandbox",
+      "impact": "holds no 3DES and its systems do not change",
+      "kind": "asset",
+      "name": "swift-gateway",
+      "ref": "host-gw",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "HOST"
+     },
+     {
+      "action": null,
+      "asset_id": "svc-nginx-gw",
+      "detail": "swift-gateway \u00b7 production-sandbox",
+      "impact": "holds no 3DES and its systems do not change",
+      "kind": "asset",
+      "name": "nginx",
+      "ref": "svc-nginx-gw",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "SERVICE"
+     },
+     {
+      "action": null,
+      "asset_id": "sys-branch",
+      "detail": "tier-2",
+      "impact": "holds no 3DES and is not connected to a system that changes",
+      "kind": "asset",
+      "name": "Branch Banking",
+      "ref": "sys-branch",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Branch Banking"
+      ],
+      "type": "SYSTEM"
+     },
+     {
+      "action": null,
+      "asset_id": "sys-core",
+      "detail": "Core Banking Platform \u00b7 tier-0",
+      "impact": "holds no 3DES and is not connected to a system that changes",
+      "kind": "asset",
+      "name": "Core Banking",
+      "ref": "sys-core",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "Core Banking"
+      ],
+      "type": "SYSTEM"
+     },
+     {
+      "action": null,
+      "asset_id": "v-alpine",
+      "detail": "Alpine Linux (operating system) \u00b7 contract none on record",
+      "impact": "supplies nothing a changing system uses for this algorithm",
+      "kind": "asset",
+      "name": "Alpine Linux \u00b7 Alpine Linux (operating system)",
+      "ref": "v-alpine",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     },
+     {
+      "action": null,
+      "asset_id": "v-openssl",
+      "detail": "OpenSSL \u00b7 contract active",
+      "impact": "supplies nothing a changing system uses for this algorithm",
+      "kind": "asset",
+      "name": "OpenSSL Software Foundation \u00b7 OpenSSL",
+      "ref": "v-openssl",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     },
+     {
+      "action": null,
+      "asset_id": "v-vmware",
+      "detail": "VMware7,1 \u00b7 contract active",
+      "impact": "supplies nothing a changing system uses for this algorithm",
+      "kind": "asset",
+      "name": "VMware \u00b7 VMware7,1",
+      "ref": "v-vmware",
+      "status": "NOT_AFFECTED",
+      "systems": [
+       "SWIFT Gateway"
+      ],
+      "type": "VENDOR"
+     }
+    ],
+    "issues": [
+     {
+      "action": "keep 3DES available on this connection until SWIFT Gateway confirms AES-256, then retire it",
+      "basis": "SYSTEM_DEPENDENCY",
+      "cause": "Payment HSM is called by SWIFT Gateway; SWIFT Gateway already uses AES-256 elsewhere in the twin, but which algorithm this connection negotiates is not recorded",
+      "code": "PEER_OUTSIDE_CHANGE",
+      "effect": "the connection between Payment HSM and SWIFT Gateway fails its handshake or signature check at cut-over",
+      "severity": "MEDIUM",
+      "subject": "SWIFT Gateway",
+      "system": "Payment HSM",
+      "systems": [
+       "Payment HSM"
+      ],
+      "title": "SWIFT Gateway is connected to Payment HSM but is not part of this change",
+      "who_acts": "the owner of SWIFT Gateway"
+     }
+    ],
+    "label": "Technology",
+    "question": "How is it connected?",
+    "relationships": 0,
+    "status_counts": {
+     "AFFECTED": 1,
+     "AT_RISK": 2,
+     "NOT_AFFECTED": 11,
+     "READY": 0,
+     "UNKNOWN": 1
+    },
+    "total": 15,
+    "truncated": false
+   }
+  ],
+  "change": {
+   "from_algo": "3DES",
+   "to_algo": "AES-256"
+  },
+  "connections": [
+   {
+    "action": "run Payment HSM in parallel (3DES + AES-256) until SWIFT Gateway is upgraded and tested",
+    "caller": "SWIFT Gateway",
+    "caller_id": "sys-swift",
+    "caller_in_change": false,
+    "effect_on_caller": "once Payment HSM serves AES-256 (new keys, certificates or key exchange), SWIFT Gateway must accept it \u2014 if it cannot, every call from SWIFT Gateway to Payment HSM fails",
+    "effect_on_provider": "Payment HSM has to run 3DES and AES-256 side by side while SWIFT Gateway still calls it the old way",
+    "issues": [
+     {
+      "action": "keep 3DES available on this connection until SWIFT Gateway confirms AES-256, then retire it",
+      "basis": "SYSTEM_DEPENDENCY",
+      "cause": "Payment HSM is called by SWIFT Gateway; SWIFT Gateway already uses AES-256 elsewhere in the twin, but which algorithm this connection negotiates is not recorded",
+      "code": "PEER_OUTSIDE_CHANGE",
+      "effect": "the connection between Payment HSM and SWIFT Gateway fails its handshake or signature check at cut-over",
+      "severity": "MEDIUM",
+      "subject": "SWIFT Gateway",
+      "system": "Payment HSM",
+      "systems": [
+       "Payment HSM"
+      ],
+      "title": "SWIFT Gateway is connected to Payment HSM but is not part of this change",
+      "who_acts": "the owner of SWIFT Gateway"
+     }
+    ],
+    "provenance": "APPROVED_MAPPING",
+    "provider": "Payment HSM",
+    "provider_endpoints": [],
+    "provider_id": "sys-hsm",
+    "provider_in_change": true,
+    "relation": "depends_on",
+    "severity": "HIGH",
+    "shared": [],
+    "status": "PROVIDER_CHANGES",
+    "via": null
+   },
+   {
+    "action": null,
+    "caller": "Branch Banking",
+    "caller_id": "sys-branch",
+    "caller_in_change": false,
+    "effect_on_caller": "neither Branch Banking nor Core Banking is in this change; the connection is untouched",
+    "effect_on_provider": null,
+    "issues": [],
+    "provenance": "APPROVED_MAPPING",
+    "provider": "Core Banking",
+    "provider_endpoints": [],
+    "provider_id": "sys-core",
+    "provider_in_change": false,
+    "relation": "depends_on",
+    "severity": "INFO",
+    "shared": [],
+    "status": "NOT_AFFECTED",
+    "via": null
+   },
+   {
+    "action": null,
+    "caller": "SWIFT Gateway",
+    "caller_id": "sys-swift",
+    "caller_in_change": false,
+    "effect_on_caller": "neither SWIFT Gateway nor Core Banking is in this change; the connection is untouched",
+    "effect_on_provider": null,
+    "issues": [],
+    "provenance": "RUNTIME_OBSERVATION",
+    "provider": "Core Banking",
+    "provider_endpoints": [],
+    "provider_id": "sys-core",
+    "provider_in_change": false,
+    "relation": "connects_to",
+    "severity": "INFO",
+    "shared": [],
+    "status": "NOT_AFFECTED",
+    "via": "10.210.0.7:5432"
+   }
+  ],
+  "context": {
+   "algorithms": [
+    {
+     "algorithm": "RSA",
+     "evidence": 3,
+     "systems": [
+      "Branch Banking",
+      "SWIFT Gateway"
+     ]
+    },
+    {
+     "algorithm": "3DES-112",
+     "evidence": 1,
+     "systems": [
+      "Payment HSM"
+     ]
+    },
+    {
+     "algorithm": "AES-256",
+     "evidence": 1,
+     "systems": [
+      "Payment HSM"
+     ]
+    },
+    {
+     "algorithm": "AES128-SHA",
+     "evidence": 1,
+     "systems": [
+      "Branch Banking"
+     ]
+    },
+    {
+     "algorithm": "SHA256withRSA",
+     "evidence": 1,
+     "systems": [
+      "SWIFT Gateway"
+     ]
+    },
+    {
+     "algorithm": "TLS_AES_256_GCM_SHA384",
+     "evidence": 1,
+     "systems": [
+      "SWIFT Gateway"
+     ]
+    }
+   ],
+   "counts": {
+    "assets": 24,
+    "evidence": 33,
+    "relationships": 22,
+    "systems": 4,
+    "unowned_crypto_assets": 1
+   },
+   "dependencies": [
+    {
+     "from": "Branch Banking",
+     "provenance": "APPROVED_MAPPING",
+     "to": "Core Banking",
+     "type": "depends_on"
+    },
+    {
+     "from": "SWIFT Gateway",
+     "provenance": "RUNTIME_OBSERVATION",
+     "to": "Core Banking",
+     "type": "connects_to"
+    },
+    {
+     "from": "SWIFT Gateway",
+     "provenance": "APPROVED_MAPPING",
+     "to": "Payment HSM",
+     "type": "depends_on"
+    }
+   ],
+   "systems": [
+    {
+     "algorithms": {
+      "AES128-SHA": 1,
+      "RSA": 1
+     },
+     "certificates": 1,
+     "criticality": "medium",
+     "crypto_assets": 2,
+     "endpoints": 1,
+     "hosts": [
+      "legacy-branch"
+     ],
+     "hsms": 0,
+     "libraries": 0,
+     "name": "Branch Banking",
+     "owner": null,
+     "servers": 0,
+     "system_id": "sys-branch",
+     "vendors": 0
+    },
+    {
+     "algorithms": {},
+     "certificates": 0,
+     "criticality": "critical",
+     "crypto_assets": 0,
+     "endpoints": 0,
+     "hosts": [
+      "core-banking-db"
+     ],
+     "hsms": 0,
+     "libraries": 0,
+     "name": "Core Banking",
+     "owner": "Core Banking Platform",
+     "servers": 0,
+     "system_id": "sys-core",
+     "vendors": 0
+    },
+    {
+     "algorithms": {
+      "3DES-112": 1,
+      "AES-256": 1
+     },
+     "certificates": 0,
+     "criticality": null,
+     "crypto_assets": 1,
+     "endpoints": 0,
+     "hosts": [
+      "hsm-sim"
+     ],
+     "hsms": 1,
+     "libraries": 0,
+     "name": "Payment HSM",
+     "owner": "Payments Security",
+     "servers": 0,
+     "system_id": "sys-hsm",
+     "vendors": 0
+    },
+    {
+     "algorithms": {
+      "RSA": 1,
+      "SHA256withRSA": 1,
+      "TLS_AES_256_GCM_SHA384": 1
+     },
+     "certificates": 1,
+     "criticality": "critical",
+     "crypto_assets": 3,
+     "endpoints": 1,
+     "hosts": [
+      "swift-gateway"
+     ],
+     "hsms": 0,
+     "libraries": 1,
+     "name": "SWIFT Gateway",
+     "owner": "Payments Operations",
+     "servers": 1,
+     "system_id": "sys-swift",
+     "vendors": 2
+    }
+   ],
+   "unowned_algorithms": {
+    "RSA": 1
+   }
+  },
+  "estate": "meridian-bank",
+  "headline": "3DES \u2192 AES-256: 1 system(s) \u2014 0 blocked, 1 need a parallel run, 0 can migrate directly. Recommended: parallel migration",
+  "mutates_nothing": true,
+  "observed_at": "2026-11-16T09:00:00+00:00",
+  "plan": [
+   {
+    "actions": [
+     "HSM hsm-0: support for AES-256 is not recorded \u2014 read the device's mechanism list (PKCS#11 / KMIP query) or get the vendor's written confirmation before scheduling"
+    ],
+    "exit_criteria": "every blocker is closed with evidence (capability list, vendor statement, release) and recorded in the twin",
+    "order": 1,
+    "phase": "PREREQUISITES",
+    "rollback": "nothing to roll back \u2014 no production change yet",
+    "systems": [
+     "Payment HSM"
+    ],
+    "title": "Clear what stops the migration"
+   },
+   {
+    "actions": [
+     "generate AES-256 keys for Payment HSM in hsm-0"
+    ],
+    "exit_criteria": "new keys exist where the system will use them; relying parties trust the new chain",
+    "order": 2,
+    "phase": "KEYS_AND_TRUST",
+    "rollback": "unused keys and certificates are revoked; nothing is serving them yet",
+    "systems": [
+     "Payment HSM"
+    ],
+    "title": "Prepare AES-256 keys and trust"
+   },
+   {
+    "actions": [
+     "Payment HSM: accept and offer AES-256 while still accepting 3DES"
+    ],
+    "exit_criteria": "both algorithms negotiate; monitoring shows which peers use which",
+    "order": 3,
+    "phase": "ENABLE_ALONGSIDE",
+    "rollback": "switch AES-256 off again \u2014 3DES never stopped working",
+    "systems": [
+     "Payment HSM"
+    ],
+    "title": "Wave 1: enable AES-256 next to 3DES",
+    "wave": 1
+   },
+   {
+    "actions": [
+     "Payment HSM: prefer AES-256; move each connected peer and vendor once it confirms"
+    ],
+    "exit_criteria": "handshakes, signatures and business transactions succeed on the new algorithm for every listed system",
+    "order": 4,
+    "phase": "CUT_OVER",
+    "providers_first": "systems that others call move before their callers",
+    "rollback": "re-enable 3DES on the affected connections",
+    "systems": [
+     "Payment HSM"
+    ],
+    "title": "Wave 1: move to AES-256",
+    "wave": 1
+   },
+   {
+    "actions": [
+     "re-scan the changed systems so the twin shows the new algorithm",
+     "run each business process's smoke test",
+     "confirm no connection still negotiates 3DES"
+    ],
+    "exit_criteria": "the twin no longer reports 3DES on these systems",
+    "order": 5,
+    "phase": "VERIFY",
+    "rollback": "per-wave rollback above",
+    "systems": [
+     "Payment HSM"
+    ],
+    "title": "Verify on the twin and in production"
+   },
+   {
+    "actions": [
+     "disable 3DES once every peer and vendor has confirmed AES-256",
+     "keep 3DES keys read-only until stored data is re-encrypted"
+    ],
+    "exit_criteria": "no system, peer or vendor depends on 3DES",
+    "order": 6,
+    "phase": "DECOMMISSION",
+    "rollback": "re-enable 3DES (keys are destroyed only after a holding period)",
+    "systems": [
+     "Payment HSM"
+    ],
+    "title": "Retire 3DES"
+   }
+  ],
+  "problem_counts": {
+   "BLOCKER": 0,
+   "HIGH": 2,
+   "INFO": 0,
+   "MEDIUM": 1
+  },
+  "projection_id": "p-1",
+  "ripple": [
+   {
+    "effect": "directly connected to a system that changes \u2014 its connection must accept AES-256 or keep 3DES",
+    "hops": 1,
+    "name": "SWIFT Gateway",
+    "path": [
+     "Payment HSM",
+     "SWIFT Gateway"
+    ],
+    "system_id": "sys-swift"
+   },
+   {
+    "effect": "2 hops away: not changed itself, but it depends on a chain that does \u2014 an outage on the way reaches it",
+    "hops": 2,
+    "name": "Core Banking",
+    "path": [
+     "Payment HSM",
+     "SWIFT Gateway",
+     "Core Banking"
+    ],
+    "system_id": "sys-core"
+   },
+   {
+    "effect": "3 hops away: not changed itself, but it depends on a chain that does \u2014 an outage on the way reaches it",
+    "hops": 3,
+    "name": "Branch Banking",
+    "path": [
+     "Payment HSM",
+     "SWIFT Gateway",
+     "Core Banking",
+     "Branch Banking"
+    ],
+    "system_id": "sys-branch"
+   }
+  ],
+  "run_id": "run-1",
+  "schema": "cryptoscan.twin-bom-impact/1",
+  "source": "ESTATE_GRAPH",
+  "statuses": [
+   "AFFECTED",
+   "AT_RISK",
+   "UNKNOWN",
+   "READY",
+   "NOT_AFFECTED"
+  ],
+  "strategy": {
+   "direct_is_safe_when": "no connected system outside the change, no network endpoint with unseen clients, no vendor, no stored data or signatures under the old algorithm, and every device's capability is recorded",
+   "meaning": "run the old and the new algorithm side by side, then retire the old one",
+   "parallel_mechanisms": [
+    {
+     "how": "write new data under AES-256, keep 3DES keys read-only until the stored data is re-encrypted",
+     "mechanism": "DUAL_KEY_PERIOD"
+    },
+    {
+     "how": "make the algorithm a per-connection setting so each peer and vendor moves on its own date and can be rolled back alone",
+     "mechanism": "PER_CONNECTION_SWITCH"
+    }
+   ],
+   "reasons": {
+    "HARDWARE_CAPABILITY_UNKNOWN": 1,
+    "PEER_OUTSIDE_CHANGE": 1,
+    "STORED_DATA": 1
+   },
+   "recommended": "PARALLEL",
+   "systems": {
+    "BLOCKED": 0,
+    "DIRECT": 0,
+    "PARALLEL": 1
+   }
+  },
+  "systems": [
+   {
+    "bom_counts": {
+     "CBOM": {
+      "affected": 1,
+      "components": 2
+     },
+     "HBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "NBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "SBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "TECHBOM": {
+      "affected": 1,
+      "components": 3
+     },
+     "VBOM": {
+      "affected": 0,
+      "components": 0
+     }
+    },
+    "business_service": null,
+    "called_by": [
+     "SWIFT Gateway"
+    ],
+    "calls": [],
+    "criticality": null,
+    "environment": "production-sandbox",
+    "hosts": [
+     "hsm-sim"
+    ],
+    "id": "sys-hsm",
+    "in_change": true,
+    "name": "Payment HSM",
+    "owner": "Payments Security",
+    "strategy": "PARALLEL",
+    "vendors": [],
+    "why_in_change": [
+     "a twin crypto asset of this system uses it",
+     "source evidence linked to this system uses it"
+    ]
+   },
+   {
+    "bom_counts": {
+     "CBOM": {
+      "affected": 0,
+      "components": 3
+     },
+     "HBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "NBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "SBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "TECHBOM": {
+      "affected": 0,
+      "components": 2
+     },
+     "VBOM": {
+      "affected": 0,
+      "components": 0
+     }
+    },
+    "business_service": null,
+    "called_by": [],
+    "calls": [
+     "Core Banking"
+    ],
+    "criticality": "medium",
+    "environment": "production-sandbox",
+    "hosts": [
+     "legacy-branch"
+    ],
+    "id": "sys-branch",
+    "in_change": false,
+    "name": "Branch Banking",
+    "owner": null,
+    "strategy": null,
+    "vendors": [],
+    "why_in_change": []
+   },
+   {
+    "bom_counts": {
+     "CBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "HBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "NBOM": {
+      "affected": 0,
+      "components": 1
+     },
+     "SBOM": {
+      "affected": 0,
+      "components": 0
+     },
+     "TECHBOM": {
+      "affected": 0,
+      "components": 3
+     },
+     "VBOM": {
+      "affected": 0,
+      "components": 0
+     }
+    },
+    "business_service": null,
+    "called_by": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "calls": [],
+    "criticality": "critical",
+    "environment": "production-sandbox",
+    "hosts": [
+     "core-banking-db"
+    ],
+    "id": "sys-core",
+    "in_change": false,
+    "name": "Core Banking",
+    "owner": "Core Banking Platform",
+    "strategy": null,
+    "vendors": [],
+    "why_in_change": []
+   },
+   {
+    "bom_counts": {
+     "CBOM": {
+      "affected": 0,
+      "components": 12
+     },
+     "HBOM": {
+      "affected": 0,
+      "components": 2
+     },
+     "NBOM": {
+      "affected": 0,
+      "components": 2
+     },
+     "SBOM": {
+      "affected": 0,
+      "components": 2
+     },
+     "TECHBOM": {
+      "affected": 0,
+      "components": 7
+     },
+     "VBOM": {
+      "affected": 0,
+      "components": 3
+     }
+    },
+    "business_service": null,
+    "called_by": [],
+    "calls": [
+     "Core Banking",
+     "Payment HSM"
+    ],
+    "criticality": "critical",
+    "environment": "production-sandbox",
+    "hosts": [
+     "swift-gateway"
+    ],
+    "id": "sys-swift",
+    "in_change": false,
+    "name": "SWIFT Gateway",
+    "owner": "Payments Operations",
+    "strategy": null,
+    "vendors": [
+     "Alpine Linux",
+     "OpenSSL Software Foundation"
+    ],
+    "why_in_change": []
+   }
+  ],
+  "totals": {
+   "affected": {
+    "CBOM": 1,
+    "HBOM": 0,
+    "NBOM": 0,
+    "SBOM": 0,
+    "TECHBOM": 1,
+    "VBOM": 0
+   },
+   "components": {
+    "CBOM": 19,
+    "HBOM": 5,
+    "NBOM": 4,
+    "SBOM": 2,
+    "TECHBOM": 15,
+    "VBOM": 3
+   },
+   "connections": 3,
+   "systems": 4,
+   "systems_in_change": 1
+  },
+  "unknowns": [
+   "2 listed component(s) belong to no system through an evidenced edge, so no connection effect can be traced for them",
+   "VBOM capabilities and contracts are what vendors and the register declare \u2014 not observed on the estate",
+   "clients of a network endpoint are not assets in the twin, so they cannot be checked",
+   "hardware and vendor capability is as recorded or declared \u2014 not independently tested",
+   "performance of the new algorithm on this estate is not measured here",
+   "which algorithm each connection negotiates is not recorded on dependency edges; a connected system is treated as needing the old algorithm until it confirms"
+  ]
+ }
+}

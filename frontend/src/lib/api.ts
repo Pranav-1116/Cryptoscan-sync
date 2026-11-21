@@ -626,6 +626,72 @@ export const apiEstateMigrationSimulation = (params: { from_algo: string; to_alg
     body: JSON.stringify(params.systems?.length ? params : { from_algo: params.from_algo, to_algo: params.to_algo }),
   });
 
+/* The Digital Twin read through its six BOMs (CBOM, NBOM, SBOM, HBOM, VBOM, Tech BOM), with
+ * an algorithm change laid over every component and every system-to-system connection.
+ * GET = the inventory (no statuses); POST = the inventory plus the change's impact. */
+export type TwinBomKind = "CBOM" | "NBOM" | "SBOM" | "HBOM" | "VBOM" | "TECHBOM";
+export type TwinBomStatus = "AFFECTED" | "AT_RISK" | "UNKNOWN" | "READY" | "NOT_AFFECTED";
+export interface TwinBomIssue {
+  code: string; severity: MigrationSeverity | "LOW"; title: string; cause?: string | null;
+  effect?: string | null; action?: string | null; who_acts?: string | null; system?: string | null;
+  subject?: string | null; basis?: string | null; systems: string[];
+}
+export interface TwinBomComponent {
+  ref: string; asset_id: string; name: string; type: string; kind: "crypto" | "asset"; detail: string;
+  systems: string[]; status: TwinBomStatus | null; impact: string | null; action: string | null;
+}
+export interface TwinBom {
+  bom: TwinBomKind; label: string; question?: string | null; boundary?: string | null;
+  total: number; relationships: number; by_type: Record<string, number>;
+  status_counts: Record<TwinBomStatus, number> | null; issues: TwinBomIssue[];
+  components: TwinBomComponent[]; truncated: boolean;
+  declared_capabilities?: { vendor_asset_id?: string; algorithm?: string | null; product?: string | null;
+    version?: string | null; pqc_ready?: boolean | null; support_lifecycle?: string | null }[];
+  contracts?: { vendor?: string | null; product?: string | null; contract_state?: string | null;
+    support_level?: string | null; end?: string | null }[];
+  by_layer?: Record<string, number>; by_usage_state?: Record<string, number>;
+}
+export interface TwinBomSystem {
+  id: string; name: string; owner?: string | null; criticality?: string | null;
+  business_service?: string | null; environment?: string | null; hosts: string[]; vendors: string[];
+  calls: string[]; called_by: string[];
+  bom_counts: Record<TwinBomKind, { components: number; affected: number }>;
+  in_change: boolean | null; strategy: MigrationStrategy | null; why_in_change: string[];
+}
+export type TwinConnectionStatus = "BOTH_CHANGE" | "CALLER_CHANGES" | "PROVIDER_CHANGES" | "SHARED_COMPONENT" | "NOT_AFFECTED";
+export interface TwinBomConnection {
+  caller_id: string; caller: string; provider_id: string; provider: string;
+  relation?: string | null; provenance?: string | null; via?: string | null;
+  provider_endpoints: string[];
+  shared: { asset_id: string; name: string; type: string; kind: string; status: TwinBomStatus | null }[];
+  caller_in_change: boolean; provider_in_change: boolean;
+  status: TwinConnectionStatus | null; severity: MigrationSeverity | null;
+  effect_on_caller: string | null; effect_on_provider: string | null; action: string | null;
+  issues: TwinBomIssue[];
+}
+export interface TwinBomImpact {
+  schema: string; run_id: string; source: "ESTATE_GRAPH"; estate?: string | null;
+  projection_id?: string | null; observed_at?: string | null;
+  context?: EstateMigrationContext | Omit<EstateMigrationContext, "run_id">;
+  change: { from_algo: string; to_algo: string } | null;
+  strategy?: MigrationSimulation["strategy"] | null; headline?: string | null;
+  problem_counts?: Record<string, number> | null; plan: MigrationPlanStep[];
+  totals: { systems: number; connections: number; components: Record<TwinBomKind, number>;
+    affected: Record<TwinBomKind, number> | null; systems_in_change: number | null };
+  systems: TwinBomSystem[]; boms: TwinBom[]; connections: TwinBomConnection[];
+  ripple: { system_id: string; name: string; hops: number; path: string[]; effect: string }[];
+  unknowns: string[]; statuses: TwinBomStatus[]; mutates_nothing: boolean;
+}
+export const apiTwinBoms = (): Promise<ApiResult<TwinBomImpact>> =>
+  call("/api/v1/estate/evidence/simulation/twin-boms", { signal: AbortSignal.timeout(30000) });
+
+export const apiTwinBomImpact = (params: { from_algo: string; to_algo: string; systems?: string[] }): Promise<ApiResult<TwinBomImpact>> =>
+  call("/api/v1/estate/evidence/simulation/twin-boms", {
+    method: "POST",
+    signal: AbortSignal.timeout(30000),
+    body: JSON.stringify(params.systems?.length ? params : { from_algo: params.from_algo, to_algo: params.to_algo }),
+  });
+
 export const apiDigitalTwinTimeline = (assetId: string): Promise<ApiResult<Record<string, unknown>>> =>
   call(`/api/v1/digital-twin/timeline/${encodeURIComponent(assetId)}`);
 

@@ -468,6 +468,37 @@ def twin_from_estate(assets: Iterable[Mapping[str, Any]],
                     link(src, dst, "connects_to", str(edge.get("basis") or "NETWORK_OBSERVATION"),
                          f"{peer_host}:{_identity(nodes[obj]).get('port')}")
 
+    # ---- everything a system is built from (the per-system BOM scope) ----------------- #
+    # members + what they use + the platform server and its parts + the CA behind a member
+    # certificate + the vendors of all of it. Used to slice the six BOMs per system; still
+    # only evidenced edges, never a name match.
+    system_members: dict[str, list[str]] = {}
+    for sid in system_ids:
+        scope: set[str] = set(members[sid]) | uses[sid] | platform[sid]
+        frontier = list(platform[sid])
+        for _ in range(2):  # the server's CPU/NIC/TPM/disks, and a disk's firmware
+            nxt = []
+            for hw in frontier:
+                for edge in incoming.get(hw, []):
+                    sub = str(edge["subject"])
+                    if edge.get("predicate") == "part_of" and kind(sub) in ("HARDWARE", "FIRMWARE") \
+                            and sub not in scope:
+                        scope.add(sub)
+                        nxt.append(sub)
+            frontier = nxt
+        for node_id in list(scope):
+            for edge in outgoing.get(node_id, []):
+                obj = str(edge["object"])
+                if edge.get("predicate") == "issued_by" and kind(obj) == "CA":
+                    scope.add(obj)
+                elif edge.get("predicate") == "connects_to" and kind(obj) == "NETWORK_ENDPOINT" \
+                        and node_id in members[sid]:
+                    scope.add(obj)
+        for node_id in list(scope):
+            scope.update(vendor_of.get(node_id, []))
+        scope.discard(sid)
+        system_members[sid] = sorted(scope)
+
     # ---- systems -------------------------------------------------------------------- #
     systems = []
     for sid in system_ids:
@@ -505,6 +536,7 @@ def twin_from_estate(assets: Iterable[Mapping[str, Any]],
         "vendor_dependencies": [],
         "dependencies": sorted(dependencies.values(), key=lambda d: (d["source"], d["target"], d["type"])),
         "network_endpoints": network_endpoints,
+        "system_members": system_members,
         "certificates": sorted(certificates.values(), key=lambda c: c["fingerprint_sha256"]),
         "certificate_usages": {fp: sorted(ids) for fp, ids in sorted(certificate_usages.items())},
         "business_processes": {},

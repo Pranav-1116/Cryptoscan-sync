@@ -157,7 +157,7 @@ export const PRIMARY_SECTIONS: NavSection[] = [
           { to: "/graph", label: "Graph explorer", icon: Graph },
           { to: "/estate-twin", label: "Twin chain", icon: Graph },
           { to: "/twin-walkthrough", label: "Thirteen-step walkthrough", icon: Graph },
-          { to: "/simulation", label: "What-if workspace", icon: MagnifyingGlass },
+          { to: "/simulation", label: "BOM migration simulation", icon: MagnifyingGlass },
           { to: "/what-if", label: "Migration what-if", icon: Key },
         ],
       },

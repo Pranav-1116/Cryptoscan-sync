@@ -163,7 +163,7 @@ row for row. Rows with a group render as a disclosure; the `—` rows are links.
 | Graph explorer | Twin & dependencies | `/graph` | `Graph` | Relationships, dependencies and blast-radius exploration. |
 | Twin chain | Twin & dependencies | `/estate-twin` | `EstateTwin` | estate → assets → relationships → crypto graph → evidence graph → history → impact → simulation, link by link. |
 | Thirteen-step walkthrough | Twin & dependencies | `/twin-walkthrough` | `TwinWalkthrough` | One asset, thirteen investigations on one canvas. |
-| What-if workspace | Twin & dependencies | `/simulation` | `Simulation` | Two families over the estate twin, each previewed before it runs: scenarios change a copy of the twin and re-project the six BOMs; cascades walk a failure outward and change nothing. |
+| BOM migration simulation | Twin & dependencies | `/simulation` | `Simulation` | The Digital Twin's six BOMs (CBOM, NBOM, SBOM, HBOM, VBOM, Tech BOM) with each component's systems. For one algorithm change, it shows the status, cause and action per component, the issues per BOM layer, and the effect on every system-to-system connection. The scenario and cascade workspace is folded under Advanced. |
 | Migration what-if | Twin & dependencies | `/what-if` | `WhatIf` | Read-only migration feasibility over the inventory; the scenarios are fixed templates. |
 | Performance intelligence | — | `/performance` | `Performance` | ZELNX Performance Intelligence: infrastructure, network, application, database, TLS and HSM/KMS performance — measured samples with unknown counts kept visible. |
 
@@ -535,8 +535,14 @@ asset, thirteen investigations on one canvas: the thirteen steps with per-step
 panels reusing the same asset reads as `/assets`, with `HBars`/`StackedBar`
 summaries. The steps are navigation, not a new evidence class.
 
-**`/simulation` — What-if workspace (`Simulation`).** The scenario/cascade
-workspace: the question picker (with "start from a question this estate can
+**`/simulation` — BOM migration simulation (`Simulation`).** The page has three parts:
+
+- **Inventory.** The Digital Twin's six BOMs as tabs, each with its components and the business systems they belong to, next to the business-system cards.
+- **Migration.** A *Migrate from → to* form; choosing systems is optional. Each component gets AFFECTED / AT RISK / UNKNOWN / READY / NOT AFFECTED with a cause and an action, and every BOM shows its issues (cause, what happens if ignored, what to do).
+- **Connections.** A connection map and one card per connection: which side changes, the effect on each side, the shared crypto components, and the ripple through the dependency chain.
+
+It is read-only (`/estate/evidence/simulation/twin-boms`). The previous scenario/cascade
+workspace (`components/WhatIfWorkspace.tsx`) is folded under *Advanced*: the question picker (with "start from a question this estate can
 already be asked"), the step flow (choose → build → run → result), run history
 and the permanent "What this workspace cannot tell you" panel. Scenarios copy
 the twin and re-project the six BOMs; cascades walk established edges and

@@ -1102,6 +1102,100 @@ actually holds. A simulation gets 30 s rather than the default 8 s read budget, 
 button shows the elapsed time while it runs. A missing observation is reported as such,
 never as an empty answer.
 
+### The Simulation page: the twin's six BOMs, the migration over them, and the connections
+
+Since this change the Simulation page (`/simulation`) leads with three answers and nothing
+else. The scenario & cascade workspace described above is still available, folded under
+*Advanced — evidence scenarios and failure cascades*; the migration panel's answer is part
+of the new page.
+
+1. **What is in the Digital Twin.** Every component of the CBOM, NBOM, SBOM, HBOM, VBOM
+   and the technology BOM, each with the business systems it belongs to. Next to them, every
+   business system with its per-BOM make-up, its hosts, and the systems it calls and is
+   called by.
+2. **What breaks if we migrate.** Choose *Migrate from* (the estate's own algorithms are
+   offered with their record counts) and *Migrate to*, optionally limited to some systems.
+   Every component gets a status, a cause and an action, and the migration problems are
+   filed under the BOM they come from.
+3. **What the connections do to it.** Every system-to-system connection says which side
+   changes, what happens to the other side, which crypto-relevant components both share,
+   and how far the change ripples through the dependency chain.
+
+Endpoints (both read-only, from the newest stored observation):
+
+- `GET /api/v1/estate/evidence/simulation/twin-boms` returns the inventory: six BOMs,
+  systems, connections, and the migration context. No component carries a status.
+- `POST /api/v1/estate/evidence/simulation/twin-boms` (`from_algo`, `to_algo`, optional
+  `systems: [names]`) returns the same inventory with the change laid over it, plus the
+  strategy, headline, problem counts and plan of `cryptoscan.migration-simulation/1`.
+
+The answer is `cryptoscan.twin-bom-impact/1`, from
+`services/agility/agility/bom_migration_impact.py::simulate_bom_impact`. That function is
+pure: it reads `graph.project_all()`, the migration twin and `graph.relationships()`.
+
+**What belongs to a system, per BOM.** The twin now carries `system_members`, which holds,
+for each system:
+
+- its members;
+- what they use (certificates, HSMs, keys, crypto libraries);
+- the platform server and its parts (CPU, NIC, TPM, disks and disk firmware);
+- the CA behind a member certificate;
+- the endpoints a member connects to;
+- the vendors of all of the above.
+
+Every link comes from an evidenced edge, never a name match. A component no system reaches
+is listed with *no system*, and the count goes into `unknowns`.
+
+**Component statuses.**
+
+| Status | Meaning |
+|---|---|
+| `AFFECTED` | this component holds or presents the old algorithm, or is required to change for it (a library without the target, a vendor release not ready, a CA that issued affected certificates, an endpoint that negotiates it or needs TLS 1.3) |
+| `AT_RISK` | not holding it, but moving with it: a host or service of a changing system, a system connected to one, or a capability-only use that stays switched on until disabled |
+| `UNKNOWN` | the capability that decides it was never recorded (an HSM with no mechanism list, a vendor with no declaration) |
+| `READY` | already uses or implements the target |
+| `NOT_AFFECTED` | carries none of it. An installed package is presence, not use. A platform server runs the target in software and is never a blocker |
+
+**Rules per layer.**
+
+- **CBOM.** Each artefact is judged on its own layer and usage state, and layers never
+  merge. A `SUPPORTED` artefact is capability only, so it is `AT_RISK`, never `AFFECTED`.
+- **VBOM.** Readiness is the vendor's declaration, and the impact says *declared, not
+  observed*.
+- **Issues.** Migration problems map to BOMs by code:
+
+  | BOM | Problem codes |
+  |---|---|
+  | CBOM | target role, certificates, hard-coded keys, stored data, signatures |
+  | NBOM | TLS version, handshake size, plus `ENDPOINT_CLIENTS_UNSEEN` for endpoints whose clients are not in the twin |
+  | SBOM | library lacks target, deprecated |
+  | HBOM | HSM cannot run target, or capability unknown |
+  | VBOM | vendor readiness, sub-tier, contract |
+  | Technology BOM | peer outside the change |
+
+  The same problem in several systems is one issue that names all of those systems. Each
+  issue shows its cause, what happens if it is ignored, and what to do.
+
+**Connection statuses.** Each declared or observed connection (caller → provider) gets one
+of these:
+
+| Status | Severity | Effect |
+|---|---|---|
+| `BOTH_CHANGE` | MEDIUM | Upgrade the provider first with both algorithms on, then the caller |
+| `CALLER_CHANGES` | HIGH, or MEDIUM if the provider already uses the target elsewhere | The provider keeps expecting the old algorithm, so the caller must keep offering it |
+| `PROVIDER_CHANGES` | HIGH | The caller must accept the provider's new keys, certificates or key exchange, or every call fails |
+| `SHARED_COMPONENT` | MEDIUM | Neither side changes, but a crypto component both share does (an HSM, a CA, a crypto library, an endpoint, a supplier) |
+| `NOT_AFFECTED` | — | The connection is untouched |
+
+Shared components list only things that carry or decide crypto. A shared package, server or
+hardware maker is not listed. The *ripple* walks the connections outward from the changed
+systems, up to four hops, and lists every system that is reached, with its path.
+
+**What it does not claim.** Which algorithm a connection actually negotiates is not
+recorded on dependency edges. The clients of an endpoint are not assets in the twin. Vendor
+capability is declared, not tested. All of this is in `unknowns`, together with the
+migration engine's own unknowns.
+
 
 ### What a snapshot identifies, precisely
 
