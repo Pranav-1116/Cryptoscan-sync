@@ -123,3 +123,13 @@ describe("Simulation — Digital Twin BOMs and migration impact", () => {
     expect(screen.queryByRole("tablist", { name: "Bills of materials" })).toBeNull();
   });
 });
+
+describe("Simulation — linked from the Migration what-if", () => {
+  it("pre-fills ?from=&to= and runs that change once", async () => {
+    const spy = backend();
+    renderWithProviders(<Simulation />, { route: "/simulation?from=RSA&to=ML-KEM-768" });
+    expect(await screen.findByLabelText("Migration result")).toBeInTheDocument();
+    expect(posts(spy)).toHaveLength(1);
+    expect(screen.getByLabelText("Migrate to")).toHaveValue("ML-KEM-768");
+  });
+});

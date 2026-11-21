@@ -1197,6 +1197,27 @@ capability is declared, not tested. All of this is in `unknowns`, together with 
 migration engine's own unknowns.
 
 
+**Migration what-if (`/what-if`)** is the one-screen summary of the same answer. It calls
+`POST …/simulation/twin-boms` and condenses the per-component statuses into a verdict (from
+`strategy.recommended`) and seven checks, then shows the engine's plan:
+
+| Check | Built from |
+|---|---|
+| Crypto in use | CBOM artefacts |
+| Certificates & CAs | CBOM certificates and CAs |
+| Crypto libraries | SBOM libraries |
+| HSMs & key stores | Tech BOM HSMs and KMS keys |
+| Vendors | VBOM entries |
+| Network endpoints | NBOM endpoints |
+| Connected systems | the system-to-system connections |
+
+A check is *blocked* when its BOM holds a BLOCKER issue, *action needed* when a component is
+affected, *unknown* when a capability is unrecorded, and *ready* otherwise. The page used to
+read a separate fixed-template engine (`platform/whatif`), which had no view of the agents'
+estate and answered protocol compatibility with a constant. It now reads the agents' estate,
+so it can no longer disagree with the Simulation page.
+
+
 ### What a snapshot identifies, precisely
 
 The snapshot id covers assets, relationships, evidence **content** and collector

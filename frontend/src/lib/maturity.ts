@@ -516,7 +516,7 @@ export const CAPABILITY_LIMITS = {
   },
   "what-if": {
     "area": "Intelligence",
-    "limit": "Scenario simulation over the inventory; scenarios are fixed templates today, and a question that is not one of them is answered as not modelled rather than approximated."
+    "limit": "One-screen go / no-go for any crypto change, read from the live estate graph with the same engine as the Simulation page: a verdict (blocked, parallel run, direct cut-over, or nothing to migrate), seven feasibility checks condensed from the per-component BOM statuses (crypto in use, certificates and CAs, crypto libraries, HSMs and key stores, declared vendors, network endpoints, connected systems) and the phased plan; a check with nothing recorded is unknown, vendor readiness is declared not observed, and nothing is changed."
   }
 } as const;
 

@@ -164,7 +164,7 @@ row for row. Rows with a group render as a disclosure; the `—` rows are links.
 | Twin chain | Twin & dependencies | `/estate-twin` | `EstateTwin` | estate → assets → relationships → crypto graph → evidence graph → history → impact → simulation, link by link. |
 | Thirteen-step walkthrough | Twin & dependencies | `/twin-walkthrough` | `TwinWalkthrough` | One asset, thirteen investigations on one canvas. |
 | BOM migration simulation | Twin & dependencies | `/simulation` | `Simulation` | The Digital Twin's six BOMs (CBOM, NBOM, SBOM, HBOM, VBOM, Tech BOM) with each component's systems. For one algorithm change, it shows the status, cause and action per component, the issues per BOM layer, and the effect on every system-to-system connection. The scenario and cascade workspace is folded under Advanced. |
-| Migration what-if | Twin & dependencies | `/what-if` | `WhatIf` | Read-only migration feasibility over the inventory; the scenarios are fixed templates. |
+| Migration what-if | Twin & dependencies | `/what-if` | `WhatIf` | A one-screen go / no-go answer for any from → to change. It reads the live estate graph with the same engine as `/simulation` and shows the verdict, seven feasibility checks and the plan. |
 | Performance intelligence | — | `/performance` | `Performance` | ZELNX Performance Intelligence: infrastructure, network, application, database, TLS and HSM/KMS performance — measured samples with unknown counts kept visible. |
 
 ### Governance
@@ -550,10 +550,23 @@ change nothing. Results report the live projection id unchanged; a failed
 simulation says "The simulation did not run" — and "no impact" is never
 rendered as zero impact ("this is not 'no impact'").
 
-**`/what-if` — Migration what-if (`WhatIf`).** Read-only migration feasibility:
-scenario picker, feasibility checks, protocol compatibility and a migration
-plan with `StepRail`/`Donut`. The scenarios are fixed templates and the page
-says so; nothing is mutated.
+**`/what-if` — Migration what-if (`WhatIf`).** The one-screen go / no-go answer for
+a crypto change.
+
+- **Inputs.** Type any current and target algorithm; the algorithms the estate holds are
+  offered, each with a suggested target.
+- **Source.** The page reads the same live estate graph (the sandbox agents' data) and the
+  same engine as `/simulation`, through `twin-boms`, so the two pages always agree.
+- **Verdict.** BLOCKED / FEASIBLE — PARALLEL RUN / FEASIBLE — DIRECT CUT-OVER / NOTHING TO
+  MIGRATE, with the systems that change and the issue counts.
+- **Seven checks.** Crypto in use, certificates and CAs, crypto libraries, HSMs and key
+  stores, declared vendors, network endpoints, and connected systems. A check with nothing
+  recorded says *unknown*.
+- **Plan.** The engine's phased plan.
+- **Link.** One button opens `/simulation?from=…&to=…` with the same change already run.
+
+It no longer uses the fixed-template `platform/whatif` engine or its hard-coded protocol
+answers, and nothing is mutated.
 
 #### Performance
 

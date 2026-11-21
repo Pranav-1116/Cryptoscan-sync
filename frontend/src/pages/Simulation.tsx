@@ -15,7 +15,8 @@
  * Read-only. An unknown capability is shown as UNKNOWN, never as a pass. The evidence-level
  * scenario & cascade workspace is still available, folded away under "Advanced".
  */
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Panel, Badge } from "../components/ui";
 import { IconTarget, IconSecurity } from "../components/icons";
 import EstateDiscoveryCta from "../components/EstateDiscoveryCta";
@@ -101,8 +102,11 @@ export default function Simulation() {
   const [impact, setImpact] = useState<TwinBomImpact | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "none" | "error">("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [from, setFrom] = useState("RSA");
-  const [to, setTo] = useState("ML-KEM-768");
+  /* ?from=…&to=… (e.g. from the Migration what-if page) pre-fills the change and runs it */
+  const [params] = useSearchParams();
+  const linked = useRef({ from: params.get("from") || "", to: params.get("to") || "", done: false });
+  const [from, setFrom] = useState(linked.current.from || "RSA");
+  const [to, setTo] = useState(linked.current.to || "ML-KEM-768");
   const [scope, setScope] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
@@ -117,7 +121,7 @@ export default function Simulation() {
       setInventory(response.data);
       setLoadState("ready");
       const held = response.data.context?.algorithms ?? [];
-      if (held.length && !held.some((a) => a.algorithm.toUpperCase() === "RSA")) setFrom(held[0].algorithm);
+      if (!linked.current.from && held.length && !held.some((a) => a.algorithm.toUpperCase() === "RSA")) setFrom(held[0].algorithm);
     } else if (String(response.error || "").includes("404")) {
       setLoadState("none");
     } else {
@@ -127,11 +131,13 @@ export default function Simulation() {
   }, []);
   useEffect(() => { void load(); }, [load]);
 
-  const run = async () => {
-    if (!from.trim() || !to.trim()) return;
+  const run = async (change?: { from: string; to: string }) => {
+    const fromAlgo = (change?.from ?? from).trim();
+    const toAlgo = (change?.to ?? to).trim();
+    if (!fromAlgo || !toAlgo) return;
     setBusy(true);
     setRunError(null);
-    const response = await apiTwinBomImpact({ from_algo: from.trim(), to_algo: to.trim(), systems: scope });
+    const response = await apiTwinBomImpact({ from_algo: fromAlgo, to_algo: toAlgo, systems: change ? [] : scope });
     setBusy(false);
     if (response.data && Array.isArray(response.data.boms)) {
       setImpact(response.data);
@@ -141,6 +147,16 @@ export default function Simulation() {
       setRunError(response.detail || response.error || "the simulation could not be run");
     }
   };
+
+  useEffect(() => {
+    const link = linked.current;
+    if (loadState === "ready" && link.from && link.to && !link.done) {
+      link.done = true;
+      void run({ from: link.from, to: link.to });
+    }
+    // run is recreated each render; the ref makes this fire once
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadState]);
 
   const view = impact ?? inventory;
   const algorithms = inventory?.context?.algorithms ?? [];
