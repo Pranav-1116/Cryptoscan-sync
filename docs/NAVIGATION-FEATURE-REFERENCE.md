@@ -177,10 +177,10 @@ row for row. Rows with a group render as a disclosure; the `—` rows are links.
 | Policy & compliance | Policy & compliance | `/security-policy` | — | The policy you set, the frameworks it maps to and the evidence trail behind both. |
 | Policies | Policy & compliance | `/security-policy` | `SecurityPolicy` | Deterministic policy packs, scope and policy decisions. |
 | Compliance | Policy & compliance | `/compliance` | `Compliance` | Framework mappings and compliance evidence. |
-| Remediation | Remediation | `/remediation` | — | The task lifecycle, its ranking and the migration plan. |
-| Tasks | Remediation | `/remediation` | `Remediation` | Owned task lifecycle with machine verification against rescan evidence. |
-| Priorities | Remediation | `/priorities` | `Priorities` | Deterministic prioritisation over findings + business context. |
-| Migration | Remediation | `/migration` | `Migration` | Scan → project → tasks → velocity forecast; forecast model is simple. |
+| Remediation | Remediation | `/remediation` | — | The task lifecycle, its ranking and the migration plan, all read from the agents' estate graph. |
+| Tasks | Remediation | `/remediation` | `Remediation` | Owned task lifecycle. Tasks are opened from estate weaknesses or from a simulated migration, and verified against the agents' next report (or a rescan for scan tasks). |
+| Priorities | Remediation | `/priorities` | `Priorities` | Every crypto weakness the agents observed, ranked by severity × system criticality, each with its cause, fix, owner and closing observation. |
+| Migration | Remediation | `/migration` | `Migration` | Systems that need a post-quantum migration in dependency-ordered waves (providers first), plus estate-wide workstreams that link to Simulation and Tasks. |
 | Evidence & assurance | Evidence & assurance | `/evidence` | — | One workspace over provenance, confidence, freshness, coverage gaps, verification, audit and customer assurance. |
 | Evidence | Evidence & assurance | `/evidence` | `Evidence` | Hashes, manifests, scan and per-record verification (with an X-of-Y coverage line), and the filterable, exportable audit ledger. |
 | Records | Evidence & assurance | `/assurance-records` | `AssuranceRecords` | Independent-report and operational-duty records. |
@@ -617,20 +617,59 @@ assurance done from inside the repo.
 
 #### Remediation
 
-**`/remediation` — Tasks (`Remediation`).** The remediation task list with
-accept/complete/verify actions and machine verification against rescan
-evidence. Verification states are `StateCell` chips; an unverified fix stays
-open.
+All three Remediation pages read the same estate graph as the Digital Twin and the
+Simulation, which on the sandbox means the Meridian agents' observations. The planner is
+`agility/estate_remediation_plan.py`, served by `api/estate_remediation_work.py` under
+`/estate/evidence/remediation/*`.
 
-**`/priorities` — Priorities (`Priorities`).** The ranked remediation queue
-with ranking-input panels that state their coverage honestly ("Ranking inputs —
-honest coverage"); task creation is a write. The ranking is deterministic and
-explained per row, not a black-box score.
+**`/remediation` — Tasks (`Remediation`).** The remediation task list, with
+accept / complete / verify actions. Tasks are created in two ways:
 
-**`/migration` — Migration (`Migration`).** The migration workflow: inventory,
-the Mosca risk model, replacement workstreams, plan summary and system
-migration order. The velocity forecast states its model is simple and is drawn
-as a forecast, never as a fact.
+- **From estate weaknesses.** One click opens tasks for every critical and high finding.
+- **From a migration.** Type a change such as RSA → ML-KEM-768 and every issue the
+  simulation raises becomes a task candidate. `?from=&to=` pre-fills the change; the
+  Simulation and Migration pages link here that way.
+
+The server re-reads the estate for every request. It refuses ids the estate no longer shows
+and skips findings that already have an open task. Estate tasks are verified against the
+newest agent report:
+
+- gone, with the asset still observed → `VERIFIED`;
+- still there → `FAILED`;
+- no newer report, or the asset vanished → `INCONCLUSIVE`, and the task stays `COMPLETED`.
+
+An unchanged report is recognised through the ingestion heartbeat. Scan tasks keep their
+rescan comparison.
+
+**`/priorities` — Priorities (`Priorities`).** Every crypto weakness the agents observed,
+most urgent first. The checks are:
+
+- broken or deprecated algorithms, including HSM key slots;
+- RSA keys under 2048 bits;
+- expired or expiring certificates;
+- TLS 1.0 / 1.1 and weak or non-forward-secret cipher suites;
+- hard-coded keys;
+- Shor-vulnerable algorithms;
+- libraries without ML-KEM or ML-DSA;
+- HSMs outside FIPS mode;
+- vendors that declare no post-quantum release or have no support contract.
+
+The rank is severity × the most critical system's weight, plus a small bonus for shared
+assets; the formula is shown on the page. Each row explains why it matters, what to do, who
+acts and which observation closes it, and offers "Open task". Gaps in what the agents
+recorded are listed, not hidden.
+
+**`/migration` — Migration (`Migration`).** The post-quantum migration plan, built from the
+estate:
+
+- Systems holding broken, deprecated, quantum-vulnerable or short-key crypto are put into
+  waves. A system moves after every changing system it calls, and systems that call each
+  other move together.
+- Each system card shows its quantum-safe share, what moves to what, its open findings and
+  the reason for its place in the order.
+- Workstreams (for example RSA → ML-KEM-768 / ML-DSA-65) link to `/simulation` and to
+  `/remediation?from=&to=`.
+- Systems with nothing to migrate are listed separately; that is not stated as proof.
 
 #### Evidence & assurance
 

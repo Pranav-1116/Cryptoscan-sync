@@ -692,6 +692,79 @@ export const apiTwinBomImpact = (params: { from_algo: string; to_algo: string; s
     body: JSON.stringify(params.systems?.length ? params : { from_algo: params.from_algo, to_algo: params.to_algo }),
   });
 
+/* ── Remediation from the agents' estate (api/estate_remediation_work.py,
+   agility/estate_remediation_plan.py). Findings, waves and migration work are read from
+   the same estate graph as the Simulation page; tasks land in the ordinary
+   remediation_tasks table with source "estate" or "migration". ── */
+
+export type RemediationSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+export interface EstateTaskRef { id: string; status: string; owner?: string | null }
+export interface EstateRemediationFinding {
+  id: string; code: string; severity: RemediationSeverity; priority: string;
+  title: string; cause: string; action: string; who_acts: string; bom: string; basis: string;
+  verify_by: string; asset_id?: string | null; asset_name?: string | null; asset_type?: string | null;
+  algorithm?: string | null; replace_with?: string | null; system_ids: string[]; systems: string[];
+  score: number; rank_reason: string; task?: EstateTaskRef | null;
+}
+export interface EstateRemediationFindings {
+  run_id: string; source: string; observed_at?: string | null; schema: string;
+  findings: EstateRemediationFinding[]; total: number;
+  counts_by_severity: Record<RemediationSeverity, number>; counts_by_bom: Record<string, number>;
+  counts_by_system: Record<string, Record<RemediationSeverity, number>>;
+  unknowns: string[]; ranking: string;
+}
+export interface MigrationWaveSystem {
+  system_id: string; name: string; owner?: string | null; criticality?: string | null;
+  counts: Record<"broken" | "deprecated" | "quantum_vulnerable" | "symmetric_short" | "safe" | "unknown", number>;
+  readiness_pct: number | null;
+  moves: { algorithm: string; class: string; uses: number; replace_with: string | null }[];
+  open_findings: Record<RemediationSeverity, number>;
+  depends_on: string[]; called_by: string[]; cycle_with: string[];
+  needs_migration: boolean; wave?: number; rationale?: string;
+}
+export interface MigrationWorkstream {
+  family: string; class: string; algorithms: string[]; targets: string[]; uses: number; systems: string[];
+  simulate: { from_algo: string; to_algo: string } | null;
+}
+export interface EstateMigrationWaves {
+  run_id: string; source: string; observed_at?: string | null; schema: string;
+  waves: { wave: number; focus: string; systems: MigrationWaveSystem[] }[];
+  no_migration_needed: MigrationWaveSystem[]; systems: MigrationWaveSystem[];
+  workstreams: MigrationWorkstream[];
+  totals: { systems: number; to_migrate: number; algorithm_uses: Record<string, number>; readiness_pct: number | null };
+  rule: string; unknowns: string[];
+}
+export interface MigrationTaskCandidate {
+  id: string; code: string; severity: RemediationSeverity; priority: string; bom: string;
+  title: string; cause?: string | null; effect?: string | null; action?: string | null; who_acts?: string | null;
+  subject?: string | null; systems: string[]; algorithm?: string | null; replace_with?: string | null;
+  verify_by: string; task?: EstateTaskRef | null;
+}
+export interface MigrationTaskCandidates {
+  run_id: string; change: { from_algo: string; to_algo: string }; strategy?: string | null;
+  candidates: MigrationTaskCandidate[]; total: number; counts_by_severity: Record<RemediationSeverity, number>;
+}
+export interface EstateTasksOpened {
+  created: number; task_ids: string[]; already_open: { id: string; task_id: string; status: string }[];
+  not_found: string[]; message: string; run_id: string;
+}
+
+export const apiEstateRemediationFindings = (): Promise<ApiResult<EstateRemediationFindings>> =>
+  call("/api/v1/estate/evidence/remediation/findings", { signal: AbortSignal.timeout(30000) });
+
+export const apiEstateMigrationWaves = (): Promise<ApiResult<EstateMigrationWaves>> =>
+  call("/api/v1/estate/evidence/remediation/waves", { signal: AbortSignal.timeout(30000) });
+
+export const apiMigrationTaskCandidates = (from_algo: string, to_algo: string): Promise<ApiResult<MigrationTaskCandidates>> =>
+  call("/api/v1/estate/evidence/remediation/migration", {
+    method: "POST", signal: AbortSignal.timeout(30000), body: JSON.stringify({ from_algo, to_algo }),
+  });
+
+export const apiOpenEstateTasks = (body: {
+  source: "estate" | "migration"; ids: string[]; owner?: string; from_algo?: string; to_algo?: string;
+}): Promise<ApiResult<EstateTasksOpened>> =>
+  call("/api/v1/estate/evidence/remediation/tasks", { method: "POST", body: JSON.stringify(body) });
+
 export const apiDigitalTwinTimeline = (assetId: string): Promise<ApiResult<Record<string, unknown>>> =>
   call(`/api/v1/digital-twin/timeline/${encodeURIComponent(assetId)}`);
 

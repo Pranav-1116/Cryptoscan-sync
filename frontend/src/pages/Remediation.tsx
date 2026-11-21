@@ -4,6 +4,10 @@ import { Panel, Badge, Bar, Ring } from "../components/ui";
 import { IconCaretDown, IconCaretRight, IconClock, IconTarget, IconHardware, IconComponent } from "../components/icons";
 import { ICON_SM } from "../components/icons";
 import { apiRemediationAccept, apiRemediationComplete, apiRemediationTasks, apiRemediationVerify, RemediationTask } from "../lib/api.js";
+import CreateRemediationTasks from "../components/CreateRemediationTasks";
+
+/* tasks opened from the agents' estate are verified against the newest agent report, not a scan id */
+const fromEstate = (t: RemediationTask) => t.source === "estate" || t.source === "migration";
 
 const STATUS_TONE: Record<string, string> = { PROPOSED: "slate", ACCEPTED: "cyan", COMPLETED: "amber", VERIFIED: "green", PARTIAL: "amber", FAILED: "red", REGRESSION: "red" };
 const STATUS_MEANING: Record<string, string> = { PROPOSED: "opened, not yet owned", ACCEPTED: "owned, work in progress", COMPLETED: "work declared done — awaiting/failed verification, NOT closure", VERIFIED: "machine-verified from rescan evidence", PARTIAL: "rescan still shows some of the original problem", FAILED: "rescan still shows the problem", REGRESSION: "rescan shows a worse violation than the original" };
@@ -44,8 +48,8 @@ function TaskActions({ task, onChanged }: { task: RemediationTask; onChanged: ()
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         {task.status === "PROPOSED" && <button className="btn sm" disabled={busy !== null} onClick={() => void run("accept")} style={{ background: "var(--cyan)", color: "#fff", border: "1px solid var(--cyan)", borderRadius: "var(--r)", padding: "6px 12px", fontWeight: 700, fontSize: 12, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1 }}>{busy === "accept" ? "Accepting…" : "Accept (take ownership)"}</button>}
         {task.status === "ACCEPTED" && <button className="btn sm" disabled={busy !== null} onClick={() => void run("complete")} style={{ background: "var(--amber)", color: "#fff", border: "1px solid var(--amber)", borderRadius: "var(--r)", padding: "6px 12px", fontWeight: 700, fontSize: 12, cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.6 : 1 }}>{busy === "complete" ? "Completing…" : "Mark complete + verify"}</button>}
-        {["COMPLETED", "VERIFIED", "PARTIAL", "FAILED", "REGRESSION"].includes(task.status) && <button className="btn sm outline" disabled={busy !== null} onClick={() => void run("verify")} style={{ border: "1px solid var(--line-strong)", borderRadius: "var(--r)", padding: "6px 12px", fontSize: 12 }}>{busy === "verify" ? "Verifying…" : "Re-verify against rescan"}</button>}
-        <input value={rescan} onChange={(e) => setRescan(e.target.value)} placeholder="rescan id (optional — latest of same target is used)" aria-label={`Rescan id for task ${task.id}`} style={{ fontSize: 12, padding: "5px 8px", minWidth: 260, borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }} />
+        {["COMPLETED", "VERIFIED", "PARTIAL", "FAILED", "REGRESSION"].includes(task.status) && <button className="btn sm outline" disabled={busy !== null} onClick={() => void run("verify")} style={{ border: "1px solid var(--line-strong)", borderRadius: "var(--r)", padding: "6px 12px", fontSize: 12 }}>{busy === "verify" ? "Verifying…" : fromEstate(task) ? "Re-verify against the latest agent report" : "Re-verify against rescan"}</button>}
+        {fromEstate(task) ? <span style={{ fontSize: 11, color: "var(--dim)" }}>Checked against the newest agent report: gone → VERIFIED, still there → FAILED, no newer report → stays COMPLETED.</span> : <input value={rescan} onChange={(e) => setRescan(e.target.value)} placeholder="rescan id (optional — latest of same target is used)" aria-label={`Rescan id for task ${task.id}`} style={{ fontSize: 12, padding: "5px 8px", minWidth: 260, borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }} />}
         {task.status === "ACCEPTED" && <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="completion notes (optional)" aria-label={`Completion notes for task ${task.id}`} style={{ fontSize: 12, padding: "5px 8px", minWidth: 200, borderRadius: "var(--r)", border: "1px solid var(--line)", background: "var(--bg)", color: "var(--text)" }} />}
       </div>
       {error && <div role="alert" style={{ fontSize: 11, color: "var(--red)", background: "color-mix(in srgb, var(--red) 8%, transparent)", border: "1px solid var(--red)", borderRadius: "var(--r)", padding: "8px 10px" }}>{error}</div>}
@@ -100,7 +104,7 @@ function RemediationView() {
             Remediation Tasks
           </h1>
           <p style={{ margin: 0, fontSize: 13.5, color: "var(--dim)", lineHeight: 1.5, maxWidth: 640 }}>
-            Owned tasks — accept, complete, verify against rescan.
+            Owned tasks — open them from the estate's weaknesses or from a planned migration, then accept, complete and verify against rescan (or the agents' next report).
           </p>
           <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
             <Link to="/operator-decisions" style={{ fontSize: 11, color: "var(--amber)" }}>Operator decisions →</Link>
@@ -125,6 +129,8 @@ function RemediationView() {
       <p style={{ fontSize: 11, color: "var(--faint)", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 12px", margin: "0 0 14px" }}>
         <b style={{ color: "var(--amber)" }}>COMPLETED ≠ closure.</b> The task says the work is done; verification says whether the estate agrees. Legacy comparison alone cannot establish a verified fix.
       </p>
+
+      <CreateRemediationTasks onCreated={() => void load(statusFilter)} />
 
       {/* KPI cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 18 }}>
@@ -169,7 +175,7 @@ function RemediationView() {
 
       {!loaded && <div className="panel" style={{ padding: 16, textAlign: "center", color: "var(--dim)" }} role="status">Loading remediation tasks for the current scope…</div>}
       {offline && <Panel title="Tasks unavailable" sub="The remediation service did not answer; nothing is shown or invented."><button onClick={() => void load(statusFilter)} style={{ fontSize: 12, padding: "6px 12px", borderRadius: "var(--r)", background: "var(--amber)", color: "#fff", border: "none", cursor: "pointer" }}>Retry</button></Panel>}
-      {loaded && !offline && tasks.length === 0 && <Panel title="No remediation tasks" sub={statusFilter ? `No tasks in status ${statusFilter}.` : "Tasks appear when drift is acknowledged or a priority item is turned into a task."}><Link to="/priorities" className="btn sm" style={{ textDecoration: "none", background: "var(--amber)", color: "#fff", padding: "6px 12px", borderRadius: "var(--r)" }}>Open Priorities to create tasks</Link></Panel>}
+      {loaded && !offline && tasks.length === 0 && <Panel title="No remediation tasks" sub={statusFilter ? `No tasks in status ${statusFilter}.` : "Open tasks above — from the estate's weaknesses or from a migration — or from Priorities."}><Link to="/priorities" className="btn sm" style={{ textDecoration: "none", background: "var(--amber)", color: "#fff", padding: "6px 12px", borderRadius: "var(--r)" }}>Open Priorities to create tasks</Link></Panel>}
       {loaded && !offline && tasks.length > 0 && (
         <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
           <div style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--line)", background: "var(--bg-2)" }}>
@@ -185,7 +191,7 @@ function RemediationView() {
                     <tr>
                       <td style={{ width: 28 }}><button className="btn sm ghost" aria-label={openId === t.id ? `Collapse task ${t.id}` : `Expand task ${t.id}`} aria-expanded={openId === t.id} onClick={() => setOpenId(openId === t.id ? null : t.id)} style={{ padding: "2px 6px", background: "var(--panel-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", cursor: "pointer" }}>{openId === t.id ? <IconCaretDown size={ICON_SM} /> : <IconCaretRight size={ICON_SM} />}</button></td>
                       <td><code style={{ fontFamily: "var(--mono)", fontSize: 11, fontWeight: 700 }}>{t.rule_id}</code>{t.priority && <><span style={{ marginLeft: 6 }} /><Badge tone={t.priority === "P1" ? "red" : t.priority === "P2" ? "amber" : "slate"}>{t.priority}</Badge></>}</td>
-                      <td><div style={{ fontSize: 11 }}>{String(t.original_finding?.algorithm || "?")}<span className="dim" style={{ fontFamily: "var(--mono)", fontSize: 10 }}> {String(t.original_finding?.file_path ?? "")}{t.original_finding?.line_number ? `:${t.original_finding.line_number}` : ""}</span></div></td>
+                      <td>{fromEstate(t) ? <div style={{ fontSize: 11 }}><div style={{ fontWeight: 600 }}>{String(t.original_finding?.title || t.rule_id)}</div><span className="dim" style={{ fontSize: 10 }}>{(t.original_finding?.systems as string[] | undefined)?.join(", ") || ""}{t.original_finding?.bom ? ` · ${t.original_finding.bom}` : ""}</span></div> : <div style={{ fontSize: 11 }}>{String(t.original_finding?.algorithm || "?")}<span className="dim" style={{ fontFamily: "var(--mono)", fontSize: 10 }}> {String(t.original_finding?.file_path ?? "")}{t.original_finding?.line_number ? `:${t.original_finding.line_number}` : ""}</span></div>}</td>
                       <td><div style={{ display: "grid", gap: 2 }}><Badge tone={STATUS_TONE[t.status] || "slate"}>{t.status}</Badge><span className="dim" style={{ fontSize: 9 }}>{STATUS_MEANING[t.status] || ""}</span></div></td>
                       <td style={{ fontSize: 11 }}>{t.owner || <span className="dim">unassigned</span>}</td>
                       <td style={{ fontSize: 11 }}>{t.source}{t.source === "drift" && t.source_ref ? <div className="dim" style={{ fontSize: 9 }}>event <code style={{ fontFamily: "var(--mono)" }}>{String(t.source_ref).slice(0, 10)}…</code></div> : null}</td>
@@ -195,11 +201,18 @@ function RemediationView() {
                       <tr><td colSpan={7} style={{ background: "var(--bg-2)" }}>
                         <div style={{ padding: "10px 12px", display: "grid", gap: 10 }}>
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, fontSize: 11 }}>
-                            <div><div className="dim" style={{ fontSize: 9, letterSpacing: ".06em" }}>BOUND EVIDENCE</div><div><code style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{t.evidence_id}</code></div><div className="dim" style={{ fontSize: 10 }}>from scan <code style={{ fontFamily: "var(--mono)" }}>{t.scan_id}</code></div></div>
+                            <div><div className="dim" style={{ fontSize: 9, letterSpacing: ".06em" }}>BOUND EVIDENCE</div><div><code style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{t.evidence_id}</code></div><div className="dim" style={{ fontSize: 10 }}>{fromEstate(t) ? "from agent report" : "from scan"} <code style={{ fontFamily: "var(--mono)" }}>{t.scan_id}</code></div></div>
                             <div><div className="dim" style={{ fontSize: 9, letterSpacing: ".06em" }}>TARGET</div><div style={{ overflowWrap: "anywhere" }}>{t.target_location || "—"}</div></div>
                             <div><div className="dim" style={{ fontSize: 9, letterSpacing: ".06em" }}>REPLACEMENT</div><div>{t.replace_with || "—"}</div></div>
                             <div><div className="dim" style={{ fontSize: 9, letterSpacing: ".06em" }}>COMPLETED</div><div>{t.completed_at ? `${new Date(t.completed_at).toLocaleString()} by ${t.completed_by}` : "—"}</div></div>
                           </div>
+                          {fromEstate(t) && (
+                            <div aria-label={`Work for task ${t.id}`} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, fontSize: 11 }}>
+                              {[["WHY IT MATTERS", t.original_finding?.cause], ["WHAT TO DO", t.original_finding?.action], ["WHO ACTS", t.original_finding?.who_acts], ["CLOSED WHEN", t.original_finding?.verify_by]].map(([label, value]) => (
+                                <div key={String(label)}><div className="dim" style={{ fontSize: 9, letterSpacing: ".06em" }}>{String(label)}</div><div style={{ lineHeight: 1.45 }}>{String(value || "—")}</div></div>
+                              ))}
+                            </div>
+                          )}
                           {t.notes && <div style={{ fontSize: 11 }}><div className="dim" style={{ fontSize: 9, letterSpacing: ".06em" }}>NOTES</div><div style={{ whiteSpace: "pre-wrap", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 10px" }}>{t.notes}</div></div>}
                           <div><div className="dim" style={{ fontSize: 9, letterSpacing: ".06em", marginBottom: 6 }}>LIFECYCLE ACTIONS</div><TaskActions task={t} onChanged={() => void load(statusFilter)} /></div>
                         </div>

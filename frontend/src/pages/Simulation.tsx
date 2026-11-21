@@ -16,7 +16,7 @@
  * scenario & cascade workspace is still available, folded away under "Advanced".
  */
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Panel, Badge } from "../components/ui";
 import { IconTarget, IconSecurity } from "../components/icons";
 import EstateDiscoveryCta from "../components/EstateDiscoveryCta";
@@ -345,6 +345,12 @@ function ImpactSummary({ view }: { view: TwinBomImpact }) {
       </div>
       {view.headline && <div style={{ fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>{view.headline}</div>}
       {view.strategy?.meaning && <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 4 }}>{view.strategy.meaning}</div>}
+      {view.change && (
+        <Link to={`/remediation?from=${encodeURIComponent(view.change.from_algo)}&to=${encodeURIComponent(view.change.to_algo)}`}
+          style={{ display: "inline-block", marginTop: 8, fontSize: 12, color: "var(--amber)" }}>
+          Turn these issues into remediation tasks →
+        </Link>
+      )}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
         {view.boms.map((b) => (
           <span key={b.bom} style={{ fontSize: 11.5, padding: "3px 8px", border: "1px solid var(--line)", borderRadius: 999, color: "var(--dim)" }}>

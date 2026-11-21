@@ -100,6 +100,7 @@ def bank(client, monkeypatch, tmp_path):
         cryptava_agent.enroll(cfg, state, agent_id=enrolled["agent_id"], token=enrolled["enrollment_token"])
         result = cryptava_agent.run_once(cfg, state)
         assert result["delivered"], result.get("error")
+    client.bank_servers = servers  # a test can make the agents report again
     return client, h
 
 
@@ -214,3 +215,86 @@ def test_twin_boms_impact_files_issues_per_bom_and_per_connection(bank):
     assert before.get("projection_id") == after.get("projection_id")
     bad = c.post("/api/v1/estate/evidence/simulation/twin-boms", headers=h, json={"from_algo": "ECDSA"})
     assert bad.status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# Remediation from the agents' estate: findings, waves, migration work, tasks
+# --------------------------------------------------------------------------- #
+
+
+def test_remediation_findings_and_waves_come_from_the_agents_estate(bank):
+    c, h = bank
+    r = c.get("/api/v1/estate/evidence/remediation/findings", headers=h)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["source"] == "ESTATE_GRAPH" and body["mutates_nothing"] is True
+    assert body["total"] == len(body["findings"]) > 0
+    codes = {f["code"] for f in body["findings"]}
+    # the fake host's OpenSSL 3.0 has no ML-KEM, and its ECDSA certificate is Shor-vulnerable
+    assert "LIBRARY_NO_PQC" in codes and "QUANTUM_VULNERABLE" in codes
+    scores = [f["score"] for f in body["findings"]]
+    assert scores == sorted(scores, reverse=True)
+    assert all(f["task"] is None and f["action"] and f["verify_by"] for f in body["findings"])
+    assert any("SWIFT Gateway" in f["systems"] for f in body["findings"])
+
+    w = c.get("/api/v1/estate/evidence/remediation/waves", headers=h)
+    assert w.status_code == 200, w.text
+    waves = w.json()
+    placed = {s["name"]: wave["wave"] for wave in waves["waves"] for s in wave["systems"]}
+    assert "SWIFT Gateway" in placed
+    # SWIFT Gateway calls Core Banking: when both change, the provider moves first
+    if "Core Banking" in placed:
+        assert placed["Core Banking"] < placed["SWIFT Gateway"]
+    assert waves["workstreams"] and waves["workstreams"][0]["targets"]
+
+
+def test_remediation_tasks_from_findings_and_from_a_migration(bank):
+    c, h = bank
+    findings = c.get("/api/v1/estate/evidence/remediation/findings", headers=h).json()["findings"]
+    first = findings[0]["id"]
+    r = c.post("/api/v1/estate/evidence/remediation/tasks", headers=h,
+               json={"source": "estate", "ids": [first, "rf-not-in-the-estate"], "owner": "pki"})
+    assert r.status_code == 200, r.text
+    assert r.json()["created"] == 1 and r.json()["not_found"] == ["rf-not-in-the-estate"]
+    again = c.post("/api/v1/estate/evidence/remediation/tasks", headers=h,
+                   json={"source": "estate", "ids": [first]}).json()
+    assert again["created"] == 0 and again["already_open"][0]["status"] == "PROPOSED"
+    listed = c.get("/api/v1/estate/evidence/remediation/findings", headers=h).json()["findings"]
+    assert next(f for f in listed if f["id"] == first)["task"]["owner"] == "pki"
+    task = c.get("/api/v1/remediation/tasks", headers=h).json()["tasks"][0]
+    assert task["source"] == "estate" and task["evidence_id"] == first
+    assert task["original_finding"]["action"] and task["original_finding"]["systems"]
+
+    # completing it verifies against the estate: no newer agent report yet → INCONCLUSIVE
+    assert c.post(f"/api/v1/remediation/tasks/{task['id']}/accept", headers=h).status_code == 200
+    done = c.post(f"/api/v1/remediation/tasks/{task['id']}/complete", headers=h, json={}).json()
+    assert done["status"] == "COMPLETED"
+    assert done["latest_verification"]["result"] == "INCONCLUSIVE"
+    # the agents report again with nothing fixed → FAILED
+    for _name, cfg, state in c.bank_servers:
+        assert cryptava_agent.run_once(cfg, state)["delivered"]
+    again = c.post(f"/api/v1/remediation/tasks/{task['id']}/verify", headers=h, json={}).json()
+    assert again["latest_verification"]["result"] == "FAILED", again["latest_verification"]
+    assert again["status"] == "FAILED"
+
+    # a simulated change becomes work
+    m = c.post("/api/v1/estate/evidence/remediation/migration", headers=h,
+               json={"from_algo": "ECDSA", "to_algo": "ML-DSA-65"})
+    assert m.status_code == 200, m.text
+    cands = m.json()["candidates"]
+    assert cands and all(x["severity"] in ("CRITICAL", "HIGH", "MEDIUM", "LOW") for x in cands)
+    assert any(x["code"] == "LIBRARY_LACKS_TARGET" for x in cands)
+    opened = c.post("/api/v1/estate/evidence/remediation/tasks", headers=h,
+                    json={"source": "migration", "ids": [cands[0]["id"]],
+                          "from_algo": "ECDSA", "to_algo": "ML-DSA-65"}).json()
+    assert opened["created"] == 1
+    bad = c.post("/api/v1/estate/evidence/remediation/tasks", headers=h,
+                 json={"source": "migration", "ids": [cands[0]["id"]]})
+    assert bad.status_code == 422
+
+
+def test_remediation_without_an_estate_is_a_404(client):
+    token = client.post("/api/v1/auth/login", json={"username": "admin", "password": "cryptoscan"}).json()["token"]
+    h = {"Authorization": f"Bearer {token}"}
+    assert client.get("/api/v1/estate/evidence/remediation/findings", headers=h).status_code == 404
+    assert client.get("/api/v1/estate/evidence/remediation/waves", headers=h).status_code == 404

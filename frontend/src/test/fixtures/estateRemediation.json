@@ -1,0 +1,1025 @@
+{
+ "findings": {
+  "counts_by_bom": {
+   "CBOM": 4,
+   "HBOM": 2,
+   "NBOM": 2,
+   "SBOM": 1,
+   "VBOM": 2
+  },
+  "counts_by_severity": {
+   "CRITICAL": 1,
+   "HIGH": 2,
+   "LOW": 1,
+   "MEDIUM": 7
+  },
+  "counts_by_system": {
+   "Branch Banking": {
+    "CRITICAL": 1,
+    "HIGH": 1,
+    "LOW": 0,
+    "MEDIUM": 1
+   },
+   "Payment HSM": {
+    "CRITICAL": 0,
+    "HIGH": 1,
+    "LOW": 0,
+    "MEDIUM": 1
+   },
+   "SWIFT Gateway": {
+    "CRITICAL": 0,
+    "HIGH": 0,
+    "LOW": 1,
+    "MEDIUM": 4
+   }
+  },
+  "estate": "meridian-bank",
+  "findings": [
+   {
+    "action": "reissue the certificate with ML-DSA-65 (or RSA-3072 as an interim) and revoke the old one",
+    "algorithm": "RSA-1024",
+    "asset_id": "cert-legacy",
+    "asset_name": "legacy-branch",
+    "asset_type": "CERTIFICATE",
+    "basis": "CERTIFICATE_OBSERVED",
+    "bom": "CBOM",
+    "cause": "an RSA key of 1024 bits can be factored with today's computers",
+    "code": "WEAK_KEY",
+    "id": "rf-09efb3e94d3e1ef0",
+    "priority": "P1",
+    "rank_reason": "critical severity on Branch Banking (medium)",
+    "replace_with": "ML-DSA-65",
+    "score": 100,
+    "severity": "CRITICAL",
+    "system_ids": [
+     "sys-branch"
+    ],
+    "systems": [
+     "Branch Banking"
+    ],
+    "task": null,
+    "title": "legacy-branch has an RSA-1024 key",
+    "verify_by": "the next agent report shows a new key on legacy-branch",
+    "who_acts": "the PKI team"
+   },
+   {
+    "action": "enable TLS 1.3 (TLS 1.2 at minimum) on the endpoint and its load balancer, then turn the old version off",
+    "algorithm": "TLSv1",
+    "asset_id": "ep-legacy",
+    "asset_name": "10.210.0.5:443",
+    "asset_type": "NETWORK_ENDPOINT",
+    "basis": "NETWORK_OBSERVATION",
+    "bom": "NBOM",
+    "cause": "TLSv1 is disallowed (PCI DSS, NIST SP 800-52) and cannot carry post-quantum key exchange",
+    "code": "TLS_PROTOCOL_OLD",
+    "id": "rf-3d8669ab0f0d7a31",
+    "priority": "P2",
+    "rank_reason": "high severity on Branch Banking (medium)",
+    "replace_with": "TLS 1.3",
+    "score": 60,
+    "severity": "HIGH",
+    "system_ids": [
+     "sys-branch"
+    ],
+    "systems": [
+     "Branch Banking"
+    ],
+    "task": null,
+    "title": "10.210.0.5:443 negotiates TLSv1",
+    "verify_by": "the next network observation of 10.210.0.5:443 negotiates TLS 1.2 or 1.3",
+    "who_acts": "the platform / network team"
+   },
+   {
+    "action": "plan the move from 3DES-112 to AES-256-GCM",
+    "algorithm": "3DES-112",
+    "asset_id": "hsm-0",
+    "asset_name": "payShield-10K-sim",
+    "asset_type": "HSM",
+    "basis": "AGENT_OBSERVATION",
+    "bom": "HBOM",
+    "cause": "3DES is deprecated: its approval is ending and auditors will flag it",
+    "code": "DEPRECATED_ALGORITHM",
+    "id": "rf-1de6799855b49935",
+    "priority": "P2",
+    "rank_reason": "high severity on Payment HSM (unrated)",
+    "replace_with": "AES-256-GCM",
+    "score": 60,
+    "severity": "HIGH",
+    "system_ids": [
+     "sys-hsm"
+    ],
+    "systems": [
+     "Payment HSM"
+    ],
+    "task": null,
+    "title": "3DES-112 is deprecated on payShield-10K-sim",
+    "verify_by": "the next agent report no longer shows 3DES-112 on payShield-10K-sim",
+    "who_acts": "the system owner"
+   },
+   {
+    "action": "upgrade to a release (or add a provider, e.g. oqs-provider / OpenSSL 3.5+) that implements ML-KEM and ML-DSA",
+    "algorithm": null,
+    "asset_id": "lib-openssl",
+    "asset_name": "OpenSSL 3.3.2",
+    "asset_type": "LIBRARY",
+    "basis": "LIBRARY_CATALOG",
+    "bom": "SBOM",
+    "cause": "the library implements TLSv1.3, RSA, ECDSA, X25519, AES-GCM \u2014 no ML-KEM or ML-DSA",
+    "code": "LIBRARY_NO_PQC",
+    "id": "rf-b704568c2bd61770",
+    "priority": "P3",
+    "rank_reason": "medium severity on SWIFT Gateway (critical)",
+    "replace_with": "ML-KEM-768 / ML-DSA-65",
+    "score": 45,
+    "severity": "MEDIUM",
+    "system_ids": [
+     "sys-swift"
+    ],
+    "systems": [
+     "SWIFT Gateway"
+    ],
+    "task": null,
+    "title": "OpenSSL 3.3.2 has no post-quantum algorithms",
+    "verify_by": "the next agent report shows a OpenSSL release with ML-KEM",
+    "who_acts": "the application team"
+   },
+   {
+    "action": "ask OpenSSL Software Foundation for a dated post-quantum roadmap and put it in the contract",
+    "algorithm": null,
+    "asset_id": "vendor:openssl software foundation",
+    "asset_name": "OpenSSL Software Foundation",
+    "asset_type": "VENDOR",
+    "basis": "VENDOR_DECLARATION",
+    "bom": "VBOM",
+    "cause": "the vendor's declaration for OpenSSL 3.3.2 says it is not post-quantum ready (declared, not observed)",
+    "code": "VENDOR_NOT_PQC_READY",
+    "id": "rf-823fbf943158dda9",
+    "priority": "P3",
+    "rank_reason": "medium severity on SWIFT Gateway (critical)",
+    "replace_with": null,
+    "score": 45,
+    "severity": "MEDIUM",
+    "system_ids": [
+     "sys-swift"
+    ],
+    "systems": [
+     "SWIFT Gateway"
+    ],
+    "task": null,
+    "title": "OpenSSL Software Foundation declares no post-quantum support",
+    "verify_by": "OpenSSL Software Foundation declares a post-quantum-ready release",
+    "who_acts": "vendor management / procurement"
+   },
+   {
+    "action": "migrate to ML-KEM-768 / ML-DSA-65, running both side by side first",
+    "algorithm": "RSA, SHA256withRSA",
+    "asset_id": "cert-gw",
+    "asset_name": "swift-gateway.bank.sandbox",
+    "asset_type": "CERTIFICATE",
+    "basis": "AGENT_OBSERVATION",
+    "bom": "CBOM",
+    "cause": "RSA rests on factoring or discrete logarithms (Shor's algorithm); data captured today can be decrypted later",
+    "code": "QUANTUM_VULNERABLE",
+    "id": "rf-5fbcf5c703f279cf",
+    "priority": "P3",
+    "rank_reason": "medium severity on SWIFT Gateway (critical)",
+    "replace_with": "ML-KEM-768 / ML-DSA-65",
+    "score": 45,
+    "severity": "MEDIUM",
+    "system_ids": [
+     "sys-swift"
+    ],
+    "systems": [
+     "SWIFT Gateway"
+    ],
+    "task": null,
+    "title": "RSA, SHA256withRSA on swift-gateway.bank.sandbox will be broken by a quantum computer",
+    "verify_by": "the next agent report shows ML-KEM-768 / ML-DSA-65 instead of RSA on swift-gateway.bank.sandbox",
+    "who_acts": "the migration owner"
+   },
+   {
+    "action": "schedule the renewal; use it to move to the post-quantum target",
+    "algorithm": null,
+    "asset_id": "cert-gw",
+    "asset_name": "swift-gateway.bank.sandbox",
+    "asset_type": "CERTIFICATE",
+    "basis": "CERTIFICATE_OBSERVED",
+    "bom": "CBOM",
+    "cause": "the certificate runs out within 90 days",
+    "code": "CERT_EXPIRING",
+    "id": "rf-bc5c2bb9c7504d6a",
+    "priority": "P3",
+    "rank_reason": "medium severity on SWIFT Gateway (critical)",
+    "replace_with": null,
+    "score": 45,
+    "severity": "MEDIUM",
+    "system_ids": [
+     "sys-swift"
+    ],
+    "systems": [
+     "SWIFT Gateway"
+    ],
+    "task": null,
+    "title": "swift-gateway.bank.sandbox expires in 55 day(s)",
+    "verify_by": "the next agent report shows a later expiry on swift-gateway.bank.sandbox",
+    "who_acts": "the PKI team"
+   },
+   {
+    "action": "prefer (EC)DHE or TLS 1.3 suites, then add hybrid ML-KEM key exchange",
+    "algorithm": "AES128-SHA",
+    "asset_id": "ep-legacy",
+    "asset_name": "10.210.0.5:443",
+    "asset_type": "NETWORK_ENDPOINT",
+    "basis": "NETWORK_OBSERVATION",
+    "bom": "NBOM",
+    "cause": "RSA key transport: anyone who later obtains the server key can decrypt recorded traffic",
+    "code": "NO_FORWARD_SECRECY",
+    "id": "rf-77245ba2522522f3",
+    "priority": "P3",
+    "rank_reason": "medium severity on Branch Banking (medium)",
+    "replace_with": "TLS 1.3 + X25519MLKEM768",
+    "score": 30,
+    "severity": "MEDIUM",
+    "system_ids": [
+     "sys-branch"
+    ],
+    "systems": [
+     "Branch Banking"
+    ],
+    "task": null,
+    "title": "10.210.0.5:443 has no forward secrecy (AES128-SHA)",
+    "verify_by": "the next network observation of 10.210.0.5:443 negotiates an ephemeral key exchange",
+    "who_acts": "the platform / network team"
+   },
+   {
+    "action": "enable FIPS mode (and confirm the firmware is a validated version) in a maintenance window",
+    "algorithm": null,
+    "asset_id": "hsm-0",
+    "asset_name": "payShield-10K-sim",
+    "asset_type": "HSM",
+    "basis": "HSM_REPORT",
+    "bom": "HBOM",
+    "cause": "keys held outside FIPS-approved mode do not meet PCI PIN / PCI DSS key-management expectations",
+    "code": "HSM_NOT_FIPS_MODE",
+    "id": "rf-51f9927b7685acd8",
+    "priority": "P3",
+    "rank_reason": "medium severity on Payment HSM (unrated)",
+    "replace_with": null,
+    "score": 30,
+    "severity": "MEDIUM",
+    "system_ids": [
+     "sys-hsm"
+    ],
+    "systems": [
+     "Payment HSM"
+    ],
+    "task": null,
+    "title": "HSM payShield-10K-sim is not in FIPS mode",
+    "verify_by": "the next HSM report from payShield-10K-sim shows FIPS mode on",
+    "who_acts": "the payments security team"
+   },
+   {
+    "action": "migrate to ML-KEM-768 / ML-DSA-65, running both side by side first",
+    "algorithm": "RSA",
+    "asset_id": "cert-stray",
+    "asset_name": "old-vpn.example",
+    "asset_type": "CERTIFICATE",
+    "basis": "AGENT_OBSERVATION",
+    "bom": "CBOM",
+    "cause": "RSA rests on factoring or discrete logarithms (Shor's algorithm); data captured today can be decrypted later",
+    "code": "QUANTUM_VULNERABLE",
+    "id": "rf-ad82f2ae9ad1b3a8",
+    "priority": "P3",
+    "rank_reason": "medium severity; no system claims this asset yet",
+    "replace_with": "ML-KEM-768 / ML-DSA-65",
+    "score": 30,
+    "severity": "MEDIUM",
+    "system_ids": [],
+    "systems": [],
+    "task": null,
+    "title": "RSA on old-vpn.example will be broken by a quantum computer",
+    "verify_by": "the next agent report shows ML-KEM-768 / ML-DSA-65 instead of RSA on old-vpn.example",
+    "who_acts": "the migration owner"
+   },
+   {
+    "action": "put a support agreement in place before the migration touches this vendor's product",
+    "algorithm": null,
+    "asset_id": "vendor:alpine linux",
+    "asset_name": "Alpine Linux",
+    "asset_type": "VENDOR",
+    "basis": "ASSET_REGISTER",
+    "bom": "VBOM",
+    "cause": "without support there is no one to escalate to when a crypto change breaks",
+    "code": "VENDOR_NO_SUPPORT_CONTRACT",
+    "id": "rf-38f3eba5ba1301f7",
+    "priority": "P4",
+    "rank_reason": "low severity on SWIFT Gateway (critical)",
+    "replace_with": null,
+    "score": 15,
+    "severity": "LOW",
+    "system_ids": [
+     "sys-swift"
+    ],
+    "systems": [
+     "SWIFT Gateway"
+    ],
+    "task": null,
+    "title": "Alpine Linux: no active support contract (none on record)",
+    "verify_by": "the asset register shows an active contract for Alpine Linux",
+    "who_acts": "vendor management / procurement"
+   }
+  ],
+  "mutates_nothing": true,
+  "observed_at": "2026-11-20 09:00:00",
+  "ranking": "severity weight (critical 100, high 60, medium 30, low 10) \u00d7 the most critical system's weight (critical 1.5, high 1.25, medium 1.0, low 0.8) + 5 per extra system sharing the asset (max 20)",
+  "run_id": "run-meridian-0001",
+  "schema": "cryptoscan.estate-remediation-findings/1",
+  "source": "ESTATE_GRAPH",
+  "total": 11,
+  "unknowns": [
+   "1 finding(s) are on assets no system claims \u2014 map them to a system to rank them properly",
+   "which algorithms HSM payShield-10K-sim supports was not reported, so its post-quantum readiness is unknown"
+  ]
+ },
+ "rsa_candidates": {
+  "candidates": [
+   {
+    "action": "run a second simulation for the remaining use (e.g. RSA signatures \u2192 ML-DSA-65)",
+    "algorithm": "RSA",
+    "basis": "TWIN_USAGE",
+    "bom": "CBOM",
+    "cause": "RSA can also be used for digital signatures, which ML-KEM-768 cannot do \u2014 and the twin records a signing use for an affected asset",
+    "code": "TARGET_COVERS_PART",
+    "effect": "the digital signatures uses keep RSA",
+    "id": "rf-15318e2ce9d4b367",
+    "priority": "P2",
+    "replace_with": "ML-KEM-768",
+    "severity": "HIGH",
+    "subject": null,
+    "system_ids": [],
+    "systems": [],
+    "task": null,
+    "title": "ML-KEM-768 replaces only part of RSA",
+    "verify_by": "simulating RSA \u2192 ML-KEM-768 on a newer agent report no longer raises this issue",
+    "who_acts": "the migration owner"
+   },
+   {
+    "action": "enable TLS 1.3 on this endpoint (and its load balancer) first",
+    "algorithm": "RSA",
+    "basis": "NETWORK_OBSERVATION",
+    "bom": "NBOM",
+    "cause": "post-quantum and hybrid key exchange (ML-KEM-768) is only defined for TLS 1.3",
+    "code": "TLS_VERSION_TOO_OLD",
+    "effect": "the endpoint can never offer the new key exchange",
+    "id": "rf-9078c9dcf6c8ea4e",
+    "priority": "P2",
+    "replace_with": "ML-KEM-768",
+    "severity": "HIGH",
+    "subject": "10.210.0.5:443",
+    "system_ids": [
+     "sys-branch"
+    ],
+    "systems": [
+     "Branch Banking"
+    ],
+    "task": null,
+    "title": "10.210.0.5:443 negotiates TLS TLSv1",
+    "verify_by": "simulating RSA \u2192 ML-KEM-768 on a newer agent report no longer raises this issue",
+    "who_acts": "the platform / network team"
+   },
+   {
+    "action": "upgrade to a version (or add a provider) that implements ML-KEM-768, then rebuild and redeploy",
+    "algorithm": "RSA",
+    "basis": "LIBRARY_CATALOG",
+    "bom": "SBOM",
+    "cause": "the catalog lists TLSv1.3, RSA, ECDSA, X25519, AES-GCM",
+    "code": "LIBRARY_LACKS_TARGET",
+    "effect": "the code cannot call the new algorithm at all",
+    "id": "rf-61978315ff7502b2",
+    "priority": "P2",
+    "replace_with": "ML-KEM-768",
+    "severity": "HIGH",
+    "subject": "OpenSSL 3.3.2",
+    "system_ids": [
+     "sys-swift"
+    ],
+    "systems": [
+     "SWIFT Gateway"
+    ],
+    "task": null,
+    "title": "library OpenSSL 3.3.2 does not implement ML-KEM-768",
+    "verify_by": "simulating RSA \u2192 ML-KEM-768 on a newer agent report no longer raises this issue",
+    "who_acts": "the application team"
+   },
+   {
+    "action": "keep RSA available on this connection until Core Banking confirms ML-KEM-768, then retire it",
+    "algorithm": "RSA",
+    "basis": "SYSTEM_DEPENDENCY",
+    "bom": "TECHBOM",
+    "cause": "Branch Banking calls Core Banking; its crypto is not recorded in the twin, so its support for ML-KEM-768 is unknown",
+    "code": "PEER_OUTSIDE_CHANGE",
+    "effect": "the connection between Branch Banking and Core Banking fails its handshake or signature check at cut-over",
+    "id": "rf-b9dd64c2677d4bac",
+    "priority": "P2",
+    "replace_with": "ML-KEM-768",
+    "severity": "HIGH",
+    "subject": "Core Banking",
+    "system_ids": [
+     "sys-branch"
+    ],
+    "systems": [
+     "Branch Banking"
+    ],
+    "task": null,
+    "title": "Core Banking is connected to Branch Banking but is not part of this change",
+    "verify_by": "simulating RSA \u2192 ML-KEM-768 on a newer agent report no longer raises this issue",
+    "who_acts": "the owner of Core Banking"
+   },
+   {
+    "action": "keep RSA available on this connection until Core Banking confirms ML-KEM-768, then retire it",
+    "algorithm": "RSA",
+    "basis": "SYSTEM_DEPENDENCY",
+    "bom": "TECHBOM",
+    "cause": "SWIFT Gateway calls Core Banking; its crypto is not recorded in the twin, so its support for ML-KEM-768 is unknown",
+    "code": "PEER_OUTSIDE_CHANGE",
+    "effect": "the connection between SWIFT Gateway and Core Banking fails its handshake or signature check at cut-over",
+    "id": "rf-ed5be5136009f4ec",
+    "priority": "P2",
+    "replace_with": "ML-KEM-768",
+    "severity": "HIGH",
+    "subject": "Core Banking",
+    "system_ids": [
+     "sys-swift"
+    ],
+    "systems": [
+     "SWIFT Gateway"
+    ],
+    "task": null,
+    "title": "Core Banking is connected to SWIFT Gateway but is not part of this change",
+    "verify_by": "simulating RSA \u2192 ML-KEM-768 on a newer agent report no longer raises this issue",
+    "who_acts": "the owner of Core Banking"
+   },
+   {
+    "action": "keep RSA available on this connection until Payment HSM confirms ML-KEM-768, then retire it",
+    "algorithm": "RSA",
+    "basis": "SYSTEM_DEPENDENCY",
+    "bom": "TECHBOM",
+    "cause": "SWIFT Gateway calls Payment HSM; the twin holds no evidence that Payment HSM supports ML-KEM-768",
+    "code": "PEER_OUTSIDE_CHANGE",
+    "effect": "the connection between SWIFT Gateway and Payment HSM fails its handshake or signature check at cut-over",
+    "id": "rf-0bed09689b3b5db2",
+    "priority": "P2",
+    "replace_with": "ML-KEM-768",
+    "severity": "HIGH",
+    "subject": "Payment HSM",
+    "system_ids": [
+     "sys-swift"
+    ],
+    "systems": [
+     "SWIFT Gateway"
+    ],
+    "task": null,
+    "title": "Payment HSM is connected to SWIFT Gateway but is not part of this change",
+    "verify_by": "simulating RSA \u2192 ML-KEM-768 on a newer agent report no longer raises this issue",
+    "who_acts": "the owner of Payment HSM"
+   },
+   {
+    "action": "upgrade to a OpenSSL Software Foundation release that ships ML-KEM-768 (and test it) before this system's cut-over",
+    "algorithm": "RSA",
+    "basis": "VENDOR_DECLARATION",
+    "bom": "VBOM",
+    "cause": "OpenSSL Software Foundation declares no post-quantum support in the release this system runs: OpenSSL 3.3.2",
+    "code": "VENDOR_RELEASE_NOT_READY",
+    "effect": "the software cannot negotiate or verify ML-KEM-768 at all",
+    "id": "rf-71e49241789972dc",
+    "priority": "P2",
+    "replace_with": "ML-KEM-768",
+    "severity": "HIGH",
+    "subject": "OpenSSL Software Foundation",
+    "system_ids": [
+     "sys-swift"
+    ],
+    "systems": [
+     "SWIFT Gateway"
+    ],
+    "task": null,
+    "title": "the deployed OpenSSL Software Foundation release is not ML-KEM-768-capable",
+    "verify_by": "simulating RSA \u2192 ML-KEM-768 on a newer agent report no longer raises this issue",
+    "who_acts": "the platform team, with OpenSSL Software Foundation"
+   },
+   {
+    "action": "confirm the issuing CA can sign with the new algorithm, issue the new certificates, and distribute the new chain to every relying party before switching",
+    "algorithm": "RSA",
+    "basis": "CERTIFICATE_USAGE",
+    "bom": "CBOM",
+    "cause": "issuers: unknown",
+    "code": "CERTIFICATES_TO_REISSUE",
+    "effect": "relying parties that do not trust the new chain reject the connection",
+    "id": "rf-7f5a8c53a2e50e2f",
+    "priority": "P3",
+    "replace_with": "ML-KEM-768",
+    "severity": "MEDIUM",
+    "subject": null,
+    "system_ids": [
+     "sys-branch",
+     "sys-swift"
+    ],
+    "systems": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "task": null,
+    "title": "1 RSA certificate(s) to reissue",
+    "verify_by": "simulating RSA \u2192 ML-KEM-768 on a newer agent report no longer raises this issue",
+    "who_acts": "the PKI team"
+   },
+   {
+    "action": "serve RSA and ML-KEM-768 together and watch which clients still pick RSA",
+    "algorithm": "RSA",
+    "basis": "NBOM",
+    "bom": "NBOM",
+    "cause": "the clients of a network endpoint (branches, partners, customers' apps) are not assets in the twin, so their ML-KEM-768 support cannot be checked",
+    "code": "ENDPOINT_CLIENTS_UNSEEN",
+    "effect": "a client that cannot negotiate ML-KEM-768 loses the connection when RSA is switched off",
+    "id": "rf-4d031821fbd9da6a",
+    "priority": "P3",
+    "replace_with": "ML-KEM-768",
+    "severity": "MEDIUM",
+    "subject": "legacy-branch:443, swift-gateway:443/https",
+    "system_ids": [],
+    "systems": [],
+    "task": null,
+    "title": "2 endpoint(s) carry RSA to clients the twin cannot see",
+    "verify_by": "simulating RSA \u2192 ML-KEM-768 on a newer agent report no longer raises this issue",
+    "who_acts": "the endpoint owners"
+   },
+   {
+    "action": "test through every load balancer, WAF and TLS-inspecting middlebox on the path; check MTU/fragmentation and constrained clients",
+    "algorithm": "RSA",
+    "basis": "ALGORITHM_PROPERTY",
+    "bom": "NBOM",
+    "cause": "ML-KEM-768 keys/ciphertexts/signatures are much larger than RSA's; handshakes grow by kilobytes",
+    "code": "HANDSHAKE_SIZE",
+    "effect": "middleboxes that cap ClientHello size drop the new handshakes",
+    "id": "rf-c4ed6199c90b2771",
+    "priority": "P3",
+    "replace_with": "ML-KEM-768",
+    "severity": "MEDIUM",
+    "subject": null,
+    "system_ids": [
+     "sys-branch",
+     "sys-swift"
+    ],
+    "systems": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "task": null,
+    "title": "larger keys and signatures on 1 endpoint(s)",
+    "verify_by": "simulating RSA \u2192 ML-KEM-768 on a newer agent report no longer raises this issue",
+    "who_acts": "the network team"
+   },
+   {
+    "action": "put support agreements in place so the ML-KEM-768 releases, fixes and an escalation path are available during the migration",
+    "algorithm": "RSA",
+    "basis": "ASSET_REGISTER",
+    "bom": "VBOM",
+    "cause": "none on record: Alpine Linux",
+    "code": "VENDOR_NO_SUPPORT_CONTRACT",
+    "effect": "a failure during cut-over has no vendor to escalate to",
+    "id": "rf-6435a971d5e58843",
+    "priority": "P3",
+    "replace_with": "ML-KEM-768",
+    "severity": "MEDIUM",
+    "subject": "Alpine Linux",
+    "system_ids": [
+     "sys-swift"
+    ],
+    "systems": [
+     "SWIFT Gateway"
+    ],
+    "task": null,
+    "title": "1 supplier(s) in this change without an active support contract",
+    "verify_by": "simulating RSA \u2192 ML-KEM-768 on a newer agent report no longer raises this issue",
+    "who_acts": "vendor management / procurement"
+   },
+   {
+    "action": "ask the vendor for its supported-algorithm statement and add it to the vendor crypto inventory",
+    "algorithm": "RSA",
+    "basis": "NO_VENDOR_RECORD",
+    "bom": "VBOM",
+    "cause": "no vendor crypto inventory is recorded for this vendor",
+    "code": "VENDOR_CAPABILITY_UNKNOWN",
+    "effect": "the vendor side of the integration may reject the new algorithm",
+    "id": "rf-66cde73c6207b78e",
+    "priority": "P3",
+    "replace_with": "ML-KEM-768",
+    "severity": "MEDIUM",
+    "subject": "Alpine Linux",
+    "system_ids": [
+     "sys-swift"
+    ],
+    "systems": [
+     "SWIFT Gateway"
+    ],
+    "task": null,
+    "title": "Alpine Linux: ML-KEM-768 support is not recorded",
+    "verify_by": "simulating RSA \u2192 ML-KEM-768 on a newer agent report no longer raises this issue",
+    "who_acts": "Alpine Linux (vendor)"
+   }
+  ],
+  "change": {
+   "from_algo": "RSA",
+   "to_algo": "ML-KEM-768"
+  },
+  "counts_by_severity": {
+   "CRITICAL": 0,
+   "HIGH": 7,
+   "LOW": 0,
+   "MEDIUM": 5
+  },
+  "mutates_nothing": true,
+  "observed_at": "2026-11-20 09:00:00",
+  "run_id": "run-meridian-0001",
+  "schema": "cryptoscan.migration-remediation-candidates/1",
+  "source": "ESTATE_GRAPH",
+  "strategy": "PARALLEL",
+  "total": 12
+ },
+ "waves": {
+  "estate": "meridian-bank",
+  "mutates_nothing": true,
+  "no_migration_needed": [
+   {
+    "called_by": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "counts": {
+     "broken": 0,
+     "deprecated": 0,
+     "quantum_vulnerable": 0,
+     "safe": 0,
+     "symmetric_short": 0,
+     "unknown": 0
+    },
+    "criticality": "critical",
+    "cycle_with": [],
+    "depends_on": [],
+    "moves": [],
+    "name": "Core Banking",
+    "needs_migration": false,
+    "open_findings": {
+     "CRITICAL": 0,
+     "HIGH": 0,
+     "LOW": 0,
+     "MEDIUM": 0
+    },
+    "owner": "Core Banking Platform",
+    "readiness_pct": null,
+    "system_id": "sys-core"
+   }
+  ],
+  "observed_at": "2026-11-20 09:00:00",
+  "rule": "a system moves after every system it calls (providers first); systems that call each other move together; inside a wave, broken and deprecated crypto and critical systems go first",
+  "run_id": "run-meridian-0001",
+  "schema": "cryptoscan.estate-migration-waves/1",
+  "source": "ESTATE_GRAPH",
+  "systems": [
+   {
+    "called_by": [],
+    "counts": {
+     "broken": 0,
+     "deprecated": 0,
+     "quantum_vulnerable": 1,
+     "safe": 0,
+     "symmetric_short": 0,
+     "unknown": 0
+    },
+    "criticality": "medium",
+    "cycle_with": [],
+    "depends_on": [
+     "Core Banking"
+    ],
+    "moves": [
+     {
+      "algorithm": "RSA",
+      "class": "quantum_vulnerable",
+      "replace_with": "ML-KEM-768 / ML-DSA-65",
+      "uses": 1
+     }
+    ],
+    "name": "Branch Banking",
+    "needs_migration": true,
+    "open_findings": {
+     "CRITICAL": 1,
+     "HIGH": 1,
+     "LOW": 0,
+     "MEDIUM": 1
+    },
+    "owner": null,
+    "rationale": "no connection constrains it, so it can move as soon as its own work is done",
+    "readiness_pct": 0,
+    "system_id": "sys-branch",
+    "wave": 1
+   },
+   {
+    "called_by": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "counts": {
+     "broken": 0,
+     "deprecated": 0,
+     "quantum_vulnerable": 0,
+     "safe": 0,
+     "symmetric_short": 0,
+     "unknown": 0
+    },
+    "criticality": "critical",
+    "cycle_with": [],
+    "depends_on": [],
+    "moves": [],
+    "name": "Core Banking",
+    "needs_migration": false,
+    "open_findings": {
+     "CRITICAL": 0,
+     "HIGH": 0,
+     "LOW": 0,
+     "MEDIUM": 0
+    },
+    "owner": "Core Banking Platform",
+    "readiness_pct": null,
+    "system_id": "sys-core"
+   },
+   {
+    "called_by": [
+     "SWIFT Gateway"
+    ],
+    "counts": {
+     "broken": 0,
+     "deprecated": 1,
+     "quantum_vulnerable": 0,
+     "safe": 1,
+     "symmetric_short": 0,
+     "unknown": 0
+    },
+    "criticality": null,
+    "cycle_with": [],
+    "depends_on": [],
+    "moves": [
+     {
+      "algorithm": "3DES-112",
+      "class": "deprecated",
+      "replace_with": "AES-256-GCM",
+      "uses": 1
+     }
+    ],
+    "name": "Payment HSM",
+    "needs_migration": true,
+    "open_findings": {
+     "CRITICAL": 0,
+     "HIGH": 1,
+     "LOW": 0,
+     "MEDIUM": 1
+    },
+    "owner": "Payments Security",
+    "rationale": "goes before SWIFT Gateway, which calls it, so callers switch against a peer that already speaks the new algorithm",
+    "readiness_pct": 50,
+    "system_id": "sys-hsm",
+    "wave": 1
+   },
+   {
+    "called_by": [],
+    "counts": {
+     "broken": 0,
+     "deprecated": 0,
+     "quantum_vulnerable": 2,
+     "safe": 0,
+     "symmetric_short": 0,
+     "unknown": 0
+    },
+    "criticality": "critical",
+    "cycle_with": [],
+    "depends_on": [
+     "Core Banking",
+     "Payment HSM"
+    ],
+    "moves": [
+     {
+      "algorithm": "RSA",
+      "class": "quantum_vulnerable",
+      "replace_with": "ML-KEM-768 / ML-DSA-65",
+      "uses": 1
+     },
+     {
+      "algorithm": "SHA256withRSA",
+      "class": "quantum_vulnerable",
+      "replace_with": "ML-KEM-768 / ML-DSA-65",
+      "uses": 1
+     }
+    ],
+    "name": "SWIFT Gateway",
+    "needs_migration": true,
+    "open_findings": {
+     "CRITICAL": 0,
+     "HIGH": 0,
+     "LOW": 1,
+     "MEDIUM": 4
+    },
+    "owner": "Payments Operations",
+    "rationale": "waits for Payment HSM, which it calls",
+    "readiness_pct": 0,
+    "system_id": "sys-swift",
+    "wave": 2
+   }
+  ],
+  "totals": {
+   "algorithm_uses": {
+    "broken": 0,
+    "deprecated": 1,
+    "quantum_vulnerable": 3,
+    "safe": 1,
+    "symmetric_short": 0,
+    "unknown": 0
+   },
+   "readiness_pct": 20,
+   "systems": 4,
+   "to_migrate": 3
+  },
+  "unknowns": [],
+  "waves": [
+   {
+    "focus": "providers that other systems call",
+    "systems": [
+     {
+      "called_by": [
+       "SWIFT Gateway"
+      ],
+      "counts": {
+       "broken": 0,
+       "deprecated": 1,
+       "quantum_vulnerable": 0,
+       "safe": 1,
+       "symmetric_short": 0,
+       "unknown": 0
+      },
+      "criticality": null,
+      "cycle_with": [],
+      "depends_on": [],
+      "moves": [
+       {
+        "algorithm": "3DES-112",
+        "class": "deprecated",
+        "replace_with": "AES-256-GCM",
+        "uses": 1
+       }
+      ],
+      "name": "Payment HSM",
+      "needs_migration": true,
+      "open_findings": {
+       "CRITICAL": 0,
+       "HIGH": 1,
+       "LOW": 0,
+       "MEDIUM": 1
+      },
+      "owner": "Payments Security",
+      "rationale": "goes before SWIFT Gateway, which calls it, so callers switch against a peer that already speaks the new algorithm",
+      "readiness_pct": 50,
+      "system_id": "sys-hsm",
+      "wave": 1
+     },
+     {
+      "called_by": [],
+      "counts": {
+       "broken": 0,
+       "deprecated": 0,
+       "quantum_vulnerable": 1,
+       "safe": 0,
+       "symmetric_short": 0,
+       "unknown": 0
+      },
+      "criticality": "medium",
+      "cycle_with": [],
+      "depends_on": [
+       "Core Banking"
+      ],
+      "moves": [
+       {
+        "algorithm": "RSA",
+        "class": "quantum_vulnerable",
+        "replace_with": "ML-KEM-768 / ML-DSA-65",
+        "uses": 1
+       }
+      ],
+      "name": "Branch Banking",
+      "needs_migration": true,
+      "open_findings": {
+       "CRITICAL": 1,
+       "HIGH": 1,
+       "LOW": 0,
+       "MEDIUM": 1
+      },
+      "owner": null,
+      "rationale": "no connection constrains it, so it can move as soon as its own work is done",
+      "readiness_pct": 0,
+      "system_id": "sys-branch",
+      "wave": 1
+     }
+    ],
+    "wave": 1
+   },
+   {
+    "focus": "systems whose providers have moved",
+    "systems": [
+     {
+      "called_by": [],
+      "counts": {
+       "broken": 0,
+       "deprecated": 0,
+       "quantum_vulnerable": 2,
+       "safe": 0,
+       "symmetric_short": 0,
+       "unknown": 0
+      },
+      "criticality": "critical",
+      "cycle_with": [],
+      "depends_on": [
+       "Core Banking",
+       "Payment HSM"
+      ],
+      "moves": [
+       {
+        "algorithm": "RSA",
+        "class": "quantum_vulnerable",
+        "replace_with": "ML-KEM-768 / ML-DSA-65",
+        "uses": 1
+       },
+       {
+        "algorithm": "SHA256withRSA",
+        "class": "quantum_vulnerable",
+        "replace_with": "ML-KEM-768 / ML-DSA-65",
+        "uses": 1
+       }
+      ],
+      "name": "SWIFT Gateway",
+      "needs_migration": true,
+      "open_findings": {
+       "CRITICAL": 0,
+       "HIGH": 0,
+       "LOW": 1,
+       "MEDIUM": 4
+      },
+      "owner": "Payments Operations",
+      "rationale": "waits for Payment HSM, which it calls",
+      "readiness_pct": 0,
+      "system_id": "sys-swift",
+      "wave": 2
+     }
+    ],
+    "wave": 2
+   }
+  ],
+  "workstreams": [
+   {
+    "algorithms": [
+     "3DES-112"
+    ],
+    "class": "deprecated",
+    "family": "3DES",
+    "simulate": {
+     "from_algo": "3DES-112",
+     "to_algo": "AES-256-GCM"
+    },
+    "systems": [
+     "Payment HSM"
+    ],
+    "targets": [
+     "AES-256-GCM"
+    ],
+    "uses": 1
+   },
+   {
+    "algorithms": [
+     "RSA",
+     "SHA256withRSA"
+    ],
+    "class": "quantum_vulnerable",
+    "family": "RSA",
+    "simulate": {
+     "from_algo": "RSA",
+     "to_algo": "ML-KEM-768"
+    },
+    "systems": [
+     "Branch Banking",
+     "SWIFT Gateway"
+    ],
+    "targets": [
+     "ML-KEM-768",
+     "ML-DSA-65"
+    ],
+    "uses": 4
+   }
+  ]
+ }
+}

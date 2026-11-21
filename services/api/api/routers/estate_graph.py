@@ -3481,6 +3481,90 @@ class TwinRemediationRequest(BaseModel):
     persist: bool = False
 
 
+class RemediationMigrationRequest(BaseModel):
+    from_algo: str = Field(..., min_length=1, max_length=80)
+    to_algo: str = Field(..., min_length=1, max_length=80)
+
+
+class RemediationTasksRequest(BaseModel):
+    """Open tracked tasks for findings the estate shows. Ids are re-checked on the server."""
+
+    source: str = Field("estate", pattern="^(estate|migration)$")
+    ids: list[str] = Field(default_factory=list, max_length=200)
+    owner: str | None = Field(None, max_length=200)
+    from_algo: str | None = Field(None, max_length=80)
+    to_algo: str | None = Field(None, max_length=80)
+
+
+def _remediation_meta(run: Any) -> dict[str, Any]:
+    return {"run_id": run.id, "source": "ESTATE_GRAPH",
+            "observed_at": str(getattr(run, "created_at", "") or "") or None}
+
+
+@router.get("/remediation/findings")
+def estate_remediation_findings(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Every crypto weakness the agents observed, ranked by severity × system criticality.
+
+    Each finding says what is wrong, why, what to do, who acts and which observation closes
+    it, and whether a remediation task is already open for it. Nothing is changed.
+    """
+    from api import estate_remediation_work as work
+
+    run = _latest_run(db)
+    out = work.findings_for_run(run)
+    out["findings"] = work.with_tasks(db, out["findings"])
+    return {**_remediation_meta(run), **out}
+
+
+@router.get("/remediation/waves")
+def estate_remediation_waves(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """The systems to migrate in dependency order (providers first) and the estate workstreams."""
+    from api import estate_remediation_work as work
+
+    run = _latest_run(db)
+    return {**_remediation_meta(run), **work.waves_for_run(run)}
+
+
+@router.post("/remediation/migration")
+def estate_remediation_from_migration(
+    body: RemediationMigrationRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """The work one algorithm change needs: each simulated issue as a task candidate. Mutates nothing."""
+    from api import estate_remediation_work as work
+
+    run = _latest_run(db)
+    out = work.candidates_for_run(run, body.from_algo.strip(), body.to_algo.strip())
+    out["candidates"] = work.with_tasks(db, out["candidates"])
+    return {**_remediation_meta(run), **out}
+
+
+@router.post("/remediation/tasks")
+def estate_remediation_open_tasks(
+    body: RemediationTasksRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Open PROPOSED remediation tasks for estate findings or migration issues.
+
+    A finding that already has an open task is skipped, and an id the newest observation no
+    longer shows is refused. Tasks are verified later against the next agent report.
+    """
+    from api import estate_remediation_work as work
+
+    run = _latest_run(db)
+    return work.create_tasks(db, run, source=body.source, ids=body.ids, owner=(body.owner or "").strip() or None,
+                             from_algo=(body.from_algo or "").strip() or None,
+                             to_algo=(body.to_algo or "").strip() or None, user=user)
+
+
 @router.get("/twin/remediation")
 def estate_twin_remediation(
     user: str = Depends(get_current_user),

@@ -1,86 +1,71 @@
+/* Remediation priorities — the estate's weaknesses, ranked, read from the agents' estate graph
+ * (fixture produced by agility.estate_remediation_plan on the Meridian-shaped estate). */
 import { describe, expect, it } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { renderWithProviders } from "../test/render";
 import { mockFetch } from "../test/setup";
 import Priorities from "./Priorities";
+import fixtures from "../test/fixtures/estateRemediation.json";
 
-/* §4.7 — the ranked queue is actionable: a drift item opens owned remediation
-   task(s) that point at evidence records; a runtime item is refused honestly
-   by the API and the refusal text is shown verbatim. */
+const FINDINGS = "/api/v1/estate/evidence/remediation/findings";
+const TASKS = "/api/v1/estate/evidence/remediation/tasks";
+const posts = (spy: ReturnType<typeof mockFetch>) =>
+  spy.mock.calls.filter(([url, init]) => String(url).includes(TASKS) && (init as RequestInit | undefined)?.method === "POST");
 
-const item = (overrides: Record<string, unknown> = {}) => ({
-  rank: 1, ref_id: "drift-1", source: "drift", kind: "ALGORITHM_WEAKENED",
-  severity_in: "HIGH", priority: 62.5, effort: 12.0,
-  explanation: "3DES reintroduced in payments-core", replacement: null, plan: null,
-  correlated: [], ...overrides,
-});
-
-const priorityResponse = (ranked: unknown[]) => ({
-  ranked,
-  counts_by_severity: ranked.length ? { HIGH: 1 } : {},
-  coverage: {
-    open_drift_events: 0, runtime_findings: 0, systems_with_agility: 0,
-    systems_with_revenue_mapping: 0, graph_edges: 0, processes_linked: 0, profile: "default",
-  },
-});
-
-describe("priority item → owned remediation task (§4.7)", () => {
-  it("opens tasks for a drift item and reports what was created", async () => {
-    mockFetch({
-      "/api/v1/priority": priorityResponse([item()]),
-      "/api/v1/priority/drift-1/tasks": {
-        ref_id: "drift-1", source: "drift", owner: "crypto-team", created: 2,
-        task_ids: ["task-1", "task-2"],
-        message: "2 remediation task(s) opened from drift event drift-1 (status PROPOSED, source=drift).",
-      },
-    });
+describe("Remediation priorities", () => {
+  it("ranks the estate's weaknesses, most urgent first, with the cause and the fix", async () => {
+    mockFetch({ [FINDINGS]: fixtures.findings });
     renderWithProviders(<Priorities />);
-    fireEvent.click(await screen.findByText(/3DES reintroduced in payments-core/));
-    const input = await screen.findByPlaceholderText("owner (optional)");
-    fireEvent.change(input, { target: { value: "crypto-team" } });
-    fireEvent.click(screen.getByText("Open remediation task(s)"));
-    expect(await screen.findByText("2 task(s)")).toBeInTheDocument();
-    expect(screen.getByText(/2 remediation task\(s\) opened from drift event drift-1/)).toBeInTheDocument();
-    expect(screen.getByText(/task-1, task-2/)).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "Ranked findings" });
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows[0]).toHaveTextContent("legacy-branch has an RSA-1024 key");
+    expect(rows[0]).toHaveTextContent("CRITICAL");
+    expect(rows[0]).toHaveTextContent("Branch Banking");
+    expect(within(table).getByText("10.210.0.5:443 negotiates TLSv1")).toBeInTheDocument();
+    expect(within(table).getByText("3DES-112 is deprecated on payShield-10K-sim")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Details of legacy-branch has an RSA-1024 key" }));
+    expect(screen.getByText(/can be factored with today's computers/)).toBeInTheDocument();
+    expect(screen.getByText(/the PKI team/)).toBeInTheDocument();
   });
 
-  it("shows the honest no-op when the drift has no failing evidence", async () => {
-    mockFetch({
-      "/api/v1/priority": priorityResponse([item()]),
-      "/api/v1/priority/drift-1/tasks": {
-        ref_id: "drift-1", source: "drift", owner: null, created: 0, task_ids: [],
-        message: "No task opened: drift event drift-1 has no FAIL/WARN evidence records in its current scan to remediate.",
-      },
-    });
+  it("filters by severity and BOM", async () => {
+    mockFetch({ [FINDINGS]: fixtures.findings });
     renderWithProviders(<Priorities />);
-    fireEvent.click(await screen.findByText(/3DES reintroduced in payments-core/));
-    fireEvent.click(await screen.findByText("Open remediation task(s)"));
-    expect(await screen.findByText("0 task(s)")).toBeInTheDocument();
-    expect(screen.getByText(/No task opened/)).toBeInTheDocument();
+    const table = await screen.findByRole("table", { name: "Ranked findings" });
+    fireEvent.click(screen.getByRole("button", { name: "Show CRITICAL" }));
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Show CRITICAL" }));
+    fireEvent.click(screen.getByRole("button", { name: "Only HBOM" }));
+    const hbom = within(screen.getByRole("table", { name: "Ranked findings" })).getAllByRole("row").slice(1);
+    expect(hbom.every((r) => r.textContent?.includes("HBOM"))).toBe(true);
   });
 
-  it("shows the API's 422 refusal verbatim for runtime items — never papers over it", async () => {
-    mockFetch({
-      "/api/v1/priority": priorityResponse([item({ ref_id: "rf-1", source: "runtime", kind: "runtime_finding" })]),
-      "/api/v1/priority/rf-1/tasks": new Response(JSON.stringify({
-        detail: "Runtime findings cannot open remediation tasks: a task requires an evidence_id from the hash chain for later verification, and runtime findings are observations without one. Re-scan the host to produce chain-verified evidence, then create the task from the finding.",
-      }), { status: 422 }),
+  it("opens a task for one finding, server-side re-checked", async () => {
+    const spy = mockFetch({
+      [FINDINGS]: fixtures.findings,
+      [TASKS]: { created: 1, task_ids: ["t-1"], already_open: [], not_found: [], message: "1 task(s) opened", run_id: "run-meridian-0001" },
     });
     renderWithProviders(<Priorities />);
-    fireEvent.click(await screen.findByText(/3DES reintroduced in payments-core/));
-    // runtime rows warn before the click
-    expect(screen.getByText(/runtime findings have no evidence record/)).toBeInTheDocument();
-    fireEvent.click(await screen.findByText("Open remediation task(s)"));
-    expect(await screen.findByText(/Refused \(honest\):/)).toBeInTheDocument();
-    expect(screen.getByText(/a task requires an evidence_id from the hash chain/)).toBeInTheDocument();
-    expect(screen.getByText(/Re-scan the host to produce chain-verified evidence/)).toBeInTheDocument();
+    fireEvent.change(await screen.findByLabelText("Task owner"), { target: { value: "pki-team" } });
+    fireEvent.click(screen.getByRole("button", { name: "Open task for legacy-branch has an RSA-1024 key" }));
+    await screen.findByText("1 task(s) opened");
+    const body = JSON.parse(String((posts(spy)[0][1] as RequestInit).body));
+    expect(body).toEqual({ source: "estate", ids: [fixtures.findings.findings[0].id], owner: "pki-team" });
   });
 
-  it("flags rows without a backing record id instead of offering a dead button", async () => {
-    mockFetch({ "/api/v1/priority": priorityResponse([item({ ref_id: null })]) });
+  it("shows an open task instead of offering a second one", async () => {
+    const withTask = { ...fixtures.findings, findings: fixtures.findings.findings.map((f, i) => (i === 0 ? { ...f, task: { id: "t-1", status: "ACCEPTED", owner: "pki" } } : f)) };
+    mockFetch({ [FINDINGS]: withTask });
     renderWithProviders(<Priorities />);
-    fireEvent.click(await screen.findByText(/3DES reintroduced in payments-core/));
-    expect(await screen.findByText(/No backing record id — cannot open a task/)).toBeInTheDocument();
-    expect(screen.queryByText("Open remediation task(s)")).toBeNull();
+    await screen.findByRole("table", { name: "Ranked findings" });
+    expect(screen.queryByRole("button", { name: "Open task for legacy-branch has an RSA-1024 key" })).toBeNull();
+    expect(screen.getByText("ACCEPTED")).toBeInTheDocument();
+  });
+
+  it("says there is no estate yet instead of an empty list", async () => {
+    mockFetch({});
+    renderWithProviders(<Priorities />);
+    expect(await screen.findByText("No estate yet")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("table", { name: "Ranked findings" })).toBeNull());
   });
 });

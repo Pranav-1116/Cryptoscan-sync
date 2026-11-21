@@ -336,7 +336,7 @@ export const CAPABILITY_LIMITS = {
   },
   "migration": {
     "area": "Intelligence",
-    "limit": "Scan \u2192 project \u2192 tasks \u2192 velocity forecast; forecast model is simple."
+    "limit": "Post-quantum migration plan read from the agents' estate graph: systems holding broken, deprecated, quantum-vulnerable or short-key crypto in dependency-ordered waves (a provider moves before its callers, mutual callers together), what moves to what per system, and estate-wide workstreams linked to the Simulation and to task planning; a plan only, nothing is re-keyed, and a system with nothing observed is not stated as safe."
   },
   "nbom": {
     "area": "Intelligence",
@@ -384,7 +384,7 @@ export const CAPABILITY_LIMITS = {
   },
   "priorities": {
     "area": "Intelligence",
-    "limit": "Deterministic prioritisation over findings + business context."
+    "limit": "Every crypto weakness the agents observed (broken or deprecated algorithms, short RSA keys, expiring certificates, old TLS and weak suites, hard-coded keys, Shor-vulnerable algorithms, libraries without ML-KEM/ML-DSA, HSMs outside FIPS mode, vendors without a declared post-quantum release or support contract), ranked deterministically by severity \u00d7 system criticality with the formula shown; vendor readiness is declared, not observed, and unrecorded capabilities are listed as unknowns."
   },
   "protocols": {
     "area": "Intelligence",
@@ -396,7 +396,7 @@ export const CAPABILITY_LIMITS = {
   },
   "remediation": {
     "area": "Intelligence",
-    "limit": "Owned task lifecycle with machine verification against rescan evidence; new surface over the full task API."
+    "limit": "Owned task lifecycle: tasks opened from estate weaknesses or from the issues of a simulated migration (ids re-checked on the server, no duplicates), verified against the agents' next report (finding gone with the asset still observed: verified; still there: failed; no newer report or asset vanished: inconclusive) or against rescan evidence for scan tasks."
   },
   "reports": {
     "area": "Output",

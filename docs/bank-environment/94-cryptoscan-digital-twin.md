@@ -1218,6 +1218,39 @@ estate and answered protocol compatibility with a constant. It now reads the age
 so it can no longer disagree with the Simulation page.
 
 
+### Remediation from the twin: weaknesses, waves and tasks
+
+The Remediation pages (Tasks, Priorities, Migration) read the same estate graph as the
+Simulation. The planner is `agility/estate_remediation_plan.py`; the API layer is
+`api/estate_remediation_work.py` under `/estate/evidence/remediation/*`. Nothing is
+changed in the estate. The planner produces three things:
+
+- **Findings** (`cryptoscan.estate-remediation-findings/1`). Every weakness the agents
+  observed, ranked by severity × the weight of the most critical system that holds it.
+  Each finding names its systems, BOM, cause, fix, owner and the observation that closes it.
+  Quantum findings are merged per asset and dropped where a short-key finding already covers
+  the asset. Vendor readiness is declared, not observed, and unrecorded capabilities are
+  listed as unknowns.
+- **Waves** (`cryptoscan.estate-migration-waves/1`). Only systems holding broken,
+  deprecated, quantum-vulnerable or short-key crypto get a wave. A system moves after every
+  changing system it calls, and systems that call each other share a wave. On the Meridian
+  fixture the Payment HSM and Branch Banking are in wave 1 and the SWIFT Gateway, which calls
+  the HSM, is in wave 2. RSA used only for signatures is planned for ML-DSA-65, and RSA key
+  exchange for ML-KEM-768.
+- **Migration task candidates** (`cryptoscan.migration-remediation-candidates/1`). One
+  candidate per issue the BOM migration simulation raises, for example reissuing a
+  certificate, upgrading OpenSSL, confirming HSM firmware or a vendor follow-up.
+
+Opening tasks re-runs the planner on the server. Unknown ids are refused, and a finding with
+an open task is skipped. Verification compares the task's finding with the newest agent
+report, or with the ingestion heartbeat when the report was unchanged:
+
+- gone, with the asset still observed → `VERIFIED`;
+- still present → `FAILED`;
+- no newer report, or the asset is no longer observed → `INCONCLUSIVE`.
+
+`COMPLETED` is never treated as closure.
+
 ### What a snapshot identifies, precisely
 
 The snapshot id covers assets, relationships, evidence **content** and collector

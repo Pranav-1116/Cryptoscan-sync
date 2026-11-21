@@ -339,6 +339,11 @@ def _run_verification(
     db: Session, task: RemediationTask, rescan_id: str | None, user: str,
 ) -> RemediationVerification:
     """Compare the task's finding against rescan evidence; persist the proof."""
+    from api.estate_remediation_work import ESTATE_SOURCES, verify_estate_task
+
+    if task.source in ESTATE_SOURCES:
+        # opened from the agents' estate: the proof is the newest estate observation
+        return verify_estate_task(db, task, user)
     from db.repositories.evidence_repository import EvidenceRepository
     from remediation.verification import verify_remediation
 
