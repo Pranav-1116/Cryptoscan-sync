@@ -1,453 +1,229 @@
-/* Live estate — the bank's estate as it is connected to, changed and correlated.
+/* Live estate — the bank's business systems as the agents see them right now.
  *
- * This screen exists because the product no longer copies an estate: it keeps a twin and
- * stores changes. So the questions it answers are the live ones:
- *
- *   is the estate connected right now, and how is that known?
- *   what changed today, and what was dropped because nothing moved?
- *   which of the six BOMs can be downloaded, and from which projection?
- *   do the stored changes correlate into a pattern — and what does that pattern NOT prove?
- *
- * Every block is drawn, not narrated: a missing measurement is a hatched "not measured"
- * row with its reason, a quiet estate is an explicit absence rather than a zero, and no
- * percentage is ever computed client-side.
- */
-
-import { useCallback, useState } from "react";
+ * One combined read every 15 s (/api/v1/operations/{monitor,fleet,hosts}):
+ *   - the estate connection and the twin the screen reads;
+ *   - each business system with its hosts, their liveness, load, collector completeness,
+ *     quantum-vulnerable algorithm uses and the alerts that name it;
+ *   - collection health across every plane and source.
+ * Systems come only from what agents declare; a host with no declared system is listed as such. */
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Badge, Button, Panel, PageHead } from "../components/ui";
-import { GapBar, HBars, StackedBar, StateCell, VizEmpty } from "../components/viz";
-import { usePollingApi } from "../lib/apiUi";
+import { apiOpsFleet, apiOpsHosts, apiOpsMonitor, type ApiResult, type OpsAgent, type OpsFleet, type OpsHost, type OpsHosts, type OpsMonitor } from "../lib/api.js";
+import { IconEstate } from "../components/icons";
 import {
-  apiLiveEstateStatus,
-  apiThreatPatterns,
-  downloadBom,
-  type AttackPattern,
-  type LiveEstateStatus,
-} from "../lib/api";
+  KpiTile, LIVENESS_COLOR, LiveBar, LivenessPill, OPS_SEV_COLOR, OpsHeader, OpsLoadStates, PLANE_COLOR, SOURCE_COLOR,
+  SOURCE_MEANING, SevBadge, card, fmtAge, fmtWhen, kicker, metricValue, pctColor, useLive,
+} from "../components/opsUi";
 
-const BOM_KINDS = ["SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "TECHBOM"] as const;
+interface EstateView { monitor: OpsMonitor; fleet: OpsFleet; hosts: OpsHosts }
 
-const nf = (n: number | null | undefined) => (typeof n === "number" ? n.toLocaleString() : "—");
-
-const age = (seconds: number | null | undefined): string => {
-  if (typeof seconds !== "number") return "—";
-  if (seconds < 60) return `${seconds}s`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
-  return `${Math.floor(seconds / 86400)}d`;
-};
-
-const LEVEL_TONE = ["", "warn", "warn", "critical", "critical"];
-
-function ConnectionBand({ status }: { status: LiveEstateStatus | null }) {
-  const connection = status?.connection;
-  if (!connection) {
-    return <VizEmpty title="No connection read" note="the control plane did not answer, so nothing here is known" />;
+async function readEstate(): Promise<ApiResult<EstateView>> {
+  const [m, f, h] = await Promise.all([apiOpsMonitor(), apiOpsFleet(), apiOpsHosts()]);
+  if (!m.data || !f.data || !h.data) {
+    const failed = [m, f, h].find((r) => !r.data);
+    return { ...(failed as ApiResult<unknown>), data: null } as ApiResult<EstateView>;
   }
-  const state = connection.state;
-  const tone = state === "LIVE" ? "ok" : state === "STALE" ? "warn" : "critical";
-  const measured = typeof connection.seconds_since === "number";
+  return { ...m, data: { monitor: m.data, fleet: f.data, hosts: h.data } } as ApiResult<EstateView>;
+}
+
+const CRIT_RANK: Record<string, number> = { "tier-0": 0, tier0: 0, critical: 0, "tier-1": 1, high: 1, "tier-2": 2, medium: 2 };
+const rank = (c?: string | null) => CRIT_RANK[String(c ?? "").toLowerCase()] ?? 5;
+
+interface SystemCard {
+  name: string; criticality: string | null; owner: string | null;
+  agents: OpsAgent[]; hosts: OpsHost[]; alerts: OpsMonitor["alerts"];
+}
+
+function Bar({ parts, label }: { parts: Array<[string, number, string]>; label: string }) {
+  const total = parts.reduce((a, [, n]) => a + n, 0) || 1;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
-        <StateCell label="connection" value={state} tone={tone} note={connection.meaning} />
-        <StateCell
-          label="last observation"
-          value={connection.last_observation ? new Date(connection.last_observation).toLocaleTimeString() : "never"}
-          note={connection.last_observation ? new Date(connection.last_observation).toLocaleDateString() : "no accepted observation"}
-        />
-        <StateCell
-          label="age"
-          value={age(connection.seconds_since)}
-          note={`stale after ${age(connection.stale_after_seconds)} (${connection.interval_seconds}s interval)`}
-          tone={measured ? tone : ""}
-        />
-        <StateCell
-          label="trust keys"
-          value={nf(status?.trust?.trust_keys_configured ?? 0)}
-          note={status?.trust?.signatures_required ? "signatures required" : "signatures optional"}
-          tone={(status?.trust?.trust_keys_configured ?? 0) > 0 ? "ok" : "warn"}
-        />
-      </div>
-      {measured ? (
-        <div>
-          <div
-            style={{
-              height: 8,
-              border: "1px solid var(--line)",
-              borderRadius: 2,
-              background: "var(--bg-2)",
-              overflow: "hidden",
-            }}
-            title={`${connection.seconds_since}s since the last observation`}
-          >
-            <span
-              style={{
-                display: "block",
-                height: "100%",
-                width: `${Math.min(100, Math.max(1, (connection.seconds_since! / connection.stale_after_seconds) * 100))}%`,
-                background: tone === "ok" ? "var(--green)" : tone === "warn" ? "var(--amber)" : "var(--red)",
-              }}
-            />
-          </div>
-          <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 4 }}>
-            age against the {age(connection.stale_after_seconds)} staleness threshold — bar length is
-            this observation&apos;s age, not a health score
-          </div>
-        </div>
-      ) : (
-        <GapBar
-          label="observation interval"
-          reason="no observation has been accepted, so there is no age to draw — NOT_OBSERVED is not an estate without cryptography"
-        />
-      )}
-      {(status?.trust?.findings ?? []).map((finding) => (
-        <div key={finding} className="mono" style={{ fontSize: 10.5, color: "var(--red)", lineHeight: 1.45 }}>
-          {finding}
-        </div>
+    <div role="img" aria-label={label} style={{ display: "flex", height: 10, borderRadius: 99, overflow: "hidden", background: "var(--line)" }}>
+      {parts.filter(([, n]) => n > 0).map(([k, n, c]) => (
+        <span key={k} title={`${k}: ${n}`} style={{ width: `${(n / total) * 100}%`, background: c }} />
       ))}
     </div>
   );
 }
 
-function TwinBlock({ status }: { status: LiveEstateStatus | null }) {
-  const twin = status?.twin;
-  if (!twin) {
-    return <VizEmpty title="No twin read" note="the control plane did not answer" />;
-  }
-  if (twin.state !== "OBSERVED") {
-    return (
-      <VizEmpty
-        title={`twin ${twin.state.toLowerCase().replace("_", " ")}`}
-        note={"reason" in twin ? twin.reason : "nothing has been observed for this estate"}
-      />
-    );
-  }
-  const coverage = (twin.coverage ?? {}) as Record<string, unknown>;
-  const coverageState = String(coverage.state ?? "UNKNOWN");
+function SystemTile({ s, late, offline }: { s: SystemCard; late: number; offline: number }) {
+  const worst = s.agents.some((a) => a.liveness.state === "OFFLINE") ? "OFFLINE"
+    : s.agents.some((a) => a.liveness.state === "LATE") ? "LATE"
+    : s.agents.some((a) => a.liveness.state === "NEVER_REPORTED") ? "NEVER_REPORTED" : "LIVE";
+  const color = LIVENESS_COLOR[worst];
+  const vuln = s.hosts.reduce((a, h) => a + (h.counts.quantum_vulnerable ?? 0), 0);
+  const services = s.hosts.reduce((a, h) => a + (h.counts.running_services ?? 0), 0);
+  const planes: Record<string, number> = {};
+  s.agents.forEach((a) => Object.entries(a.plane_states ?? {}).forEach(([k, n]) => { planes[k] = (planes[k] ?? 0) + n; }));
+  const topAlert = s.alerts[0];
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8 }}>
-        <StateCell label="assets" value={nf(twin.assets)} note="distinct identities in the twin" />
-        <StateCell label="evidence" value={nf(twin.evidence)} note="content-addressed records" />
-        <StateCell label="relationships" value={nf(twin.relationships)} note="edges with a stated basis" />
-        <StateCell
-          label="coverage"
-          value={coverageState}
-          tone={coverageState === "COMPLETE" ? "ok" : coverageState === "PARTIAL" ? "warn" : "critical"}
-          note="attempted vs expected targets, never % of crypto found"
-        />
-      </div>
-      <div className="mono" style={{ fontSize: 10.5, color: "var(--faint)" }}>
-        projection {String(twin.projection_id).slice(0, 16)}… · written{" "}
-        {twin.recorded_at ? new Date(twin.recorded_at).toLocaleString() : "—"}
-      </div>
-    </div>
-  );
-}
-
-function BomDownloadGrid({ status }: { status: LiveEstateStatus | null }) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [result, setResult] = useState<{ kind: string; ok: boolean; text: string } | null>(null);
-  const counts = status?.boms?.counts ?? {};
-  const available = status?.twin?.state === "OBSERVED";
-
-  const run = useCallback(async (kind: string, fmt: "cyclonedx" | "json") => {
-    setBusy(`${kind}:${fmt}`);
-    const outcome = await downloadBom(kind, fmt);
-    setBusy(null);
-    setResult({
-      kind,
-      ok: outcome.ok,
-      text: outcome.ok
-        ? `${kind} ${fmt} written (${outcome.filename}) — a projection of the current twin`
-        : `${kind} download failed: ${outcome.error}; no file was written`,
-    });
-  }, []);
-
-  if (!available) {
-    return (
-      <VizEmpty
-        title="no BOM to download"
-        note="a download projects the twin; with no observation this would be a document about no evidence"
-        height={110}
-      />
-    );
-  }
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
-        {BOM_KINDS.map((kind) => (
-          <div
-            key={kind}
-            style={{
-              border: "1px solid var(--line)",
-              borderLeft: "2px solid var(--line-strong)",
-              borderRadius: "var(--r)",
-              background: "var(--panel-2)",
-              padding: "8px 10px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-            }}
-          >
-            <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", color: "var(--faint)" }}>
-              {kind}
-            </div>
-            <div className="mono" style={{ fontSize: 18, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>
-              {nf(counts[kind] ?? 0)}
-            </div>
-            <div style={{ display: "flex", gap: 4 }}>
-              <Button onClick={() => void run(kind, "cyclonedx")} disabled={busy === `${kind}:cyclonedx`}>
-                {busy === `${kind}:cyclonedx` ? "…" : "CycloneDX"}
-              </Button>
-              <Button onClick={() => void run(kind, "json")} disabled={busy === `${kind}:json`}>
-                {busy === `${kind}:json` ? "…" : "JSON"}
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-      {result && (
-        <div
-          role="status"
-          className="mono"
-          style={{ fontSize: 10.5, color: result.ok ? "var(--green)" : "var(--red)", lineHeight: 1.45 }}
-        >
-          {result.text}
+    <section aria-label={`System ${s.name}`} style={{ ...card, borderTop: `3px solid ${color}`, display: "grid", gap: 10, alignContent: "start" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 14.5 }}>{s.name}</div>
+          <div style={{ fontSize: 11.5, color: "var(--dim)" }}>{s.criticality ?? "criticality not declared"}{s.owner ? ` · ${s.owner}` : ""}</div>
         </div>
-      )}
-      <div style={{ fontSize: 10, color: "var(--faint)" }}>
-        each file names the projection it was computed from; downloading the same projection twice
-        produces the same document.
+        <LivenessPill state={worst} />
       </div>
-    </div>
-  );
-}
-
-function PatternRow({ pattern }: { pattern: AttackPattern }) {
-  const tone = LEVEL_TONE[pattern.level] || "";
-  return (
-    <div
-      style={{
-        border: "1px solid var(--line)",
-        borderLeft: `2px solid ${tone === "critical" ? "var(--red)" : tone === "warn" ? "var(--amber)" : "var(--line-strong)"}`,
-        borderRadius: "var(--r)",
-        background: "var(--panel-2)",
-        padding: "9px 11px",
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <span className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>
-          {pattern.pattern_id}
-        </span>
-        <Badge tone={tone || "muted"}>{`L${pattern.level} ${pattern.level_name}`}</Badge>
-        <span style={{ fontSize: 12.5, fontWeight: 600 }}>{pattern.headline}</span>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, fontSize: 11.5 }}>
+        <div><div style={kicker}>Hosts</div><b style={{ fontSize: 16 }}>{s.agents.length}</b></div>
+        <div><div style={kicker}>Services</div><b style={{ fontSize: 16 }}>{services}</b></div>
+        <div><div style={kicker}>Q-vulnerable</div><b style={{ fontSize: 16, color: vuln ? "var(--red)" : "var(--green)" }}>{vuln}</b></div>
       </div>
-      <div style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: 1.45 }}>{pattern.why}</div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {pattern.change_kinds.map((kind) => (
-          <span
-            key={kind}
-            className="mono"
-            style={{
-              fontSize: 9.5,
-              letterSpacing: "0.04em",
-              padding: "2px 6px",
-              border: "1px solid var(--line)",
-              borderRadius: 2,
-              color: "var(--slate)",
-            }}
-          >
-            {kind}
-          </span>
-        ))}
+      <div style={{ display: "grid", gap: 6 }}>
+        {s.agents.map((a) => {
+          const cpu = metricValue(a.performance.latest, "cpu_pct");
+          const age = a.liveness.age_seconds;
+          return (
+            <div key={a.name} style={{ display: "grid", gridTemplateColumns: "10px 1fr auto auto", gap: 8, alignItems: "center", fontSize: 11.5 }}>
+              <span title={a.liveness.state} style={{ width: 8, height: 8, borderRadius: 99, background: LIVENESS_COLOR[a.liveness.state] }} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.name}>{a.host.name ?? a.name}</span>
+              <span style={{ fontFamily: "var(--mono)", color: pctColor(cpu) }}>{cpu === null ? "—" : `${cpu.toFixed(0)}%`}</span>
+              <span style={{ fontFamily: "var(--mono)", color: age === null || age > late ? (age !== null && age <= offline ? "var(--amber)" : "var(--red)") : "var(--faint)" }}>
+                {age === null ? "never" : fmtAge(age)}
+              </span>
+            </div>
+          );
+        })}
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-        <span className="mono" style={{ fontSize: 9.5, letterSpacing: "0.06em", color: "var(--faint)" }}>
-          sources
-        </span>
-        {pattern.corroboration?.collectors?.length ? (
-          pattern.corroboration.collectors.map((collector) => (
-            <span
-              key={collector}
-              className="mono"
-              style={{
-                fontSize: 9.5,
-                padding: "2px 6px",
-                border: "1px solid var(--line)",
-                borderRadius: 2,
-                color: pattern.corroboration.single_source ? "var(--amber)" : "var(--green)",
-              }}
-            >
-              {collector}
-            </span>
-          ))
-        ) : (
-          <span className="mono" style={{ fontSize: 9.5, color: "var(--amber)" }}>
-            none traced to stored evidence
-          </span>
-        )}
-        <span className="mono" style={{ fontSize: 9.5, color: "var(--faint)" }}>
-          {pattern.corroboration?.independent_sources ?? 0} independent
-          {pattern.corroboration?.single_source ? " · single source, not confirmed by a second plane" : ""}
-        </span>
+      <div>
+        <div style={{ ...kicker, marginBottom: 4 }}>Collectors</div>
+        <Bar label={`Plane states of ${s.name}`} parts={Object.entries(planes).map(([k, n]) => [k, n, PLANE_COLOR[k] ?? "var(--faint)"])} />
+        <div style={{ fontSize: 10.5, color: "var(--faint)", marginTop: 3 }}>{Object.entries(planes).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(" · ") || "no plane reported"}</div>
       </div>
-      <div style={{ fontSize: 10.5, color: "var(--faint)", lineHeight: 1.45 }}>
-        next: {pattern.next_action}
-      </div>
-      <div style={{ fontSize: 10.5, color: "var(--faint)", lineHeight: 1.45 }}>
-        not proven: {pattern.not_proven[0]}
-      </div>
-    </div>
+      {topAlert ? (
+        <div style={{ fontSize: 11.5, padding: "6px 8px", borderRadius: 6, background: "var(--panel-2)", borderLeft: `3px solid ${OPS_SEV_COLOR[topAlert.severity]}` }}>
+          <b>{topAlert.title}</b>{s.alerts.length > 1 ? <span style={{ color: "var(--faint)" }}> (+{s.alerts.length - 1})</span> : null}
+        </div>
+      ) : <div style={{ fontSize: 11.5, color: "var(--faint)" }}>no alert names this system</div>}
+    </section>
   );
 }
 
 export default function LiveEstate() {
-  const status = usePollingApi<LiveEstateStatus>(apiLiveEstateStatus, 10000);
-  const patterns = usePollingApi(useCallback(() => apiThreatPatterns(3600), []), 15000);
-  const data = status.data;
-  const view = patterns.data;
+  const live = useLive<EstateView>(readEstate, 15000);
+  const { data, state, error, refresh } = live;
+  const [onlyAttention, setOnlyAttention] = useState(false);
 
-  const severitySegments = Object.entries(data?.changes_today?.by_severity ?? {}).map(([key, value]) => ({
-    key,
-    label: key.toLowerCase(),
-    value,
-    tone: key.toUpperCase() === "CRITICAL" ? "red" : key.toUpperCase() === "WARNING" || key.toUpperCase() === "HIGH" ? "amber" : "slate",
-  }));
+  const systems = useMemo<SystemCard[]>(() => {
+    if (!data) return [];
+    const byName = new Map<string, SystemCard>();
+    const hostByAgent = new Map(data.hosts.hosts.map((h) => [h.agent, h]));
+    for (const a of data.fleet.agents) {
+      const name = a.system?.name ?? "No system declared";
+      const s = byName.get(name) ?? { name, criticality: a.system?.criticality ?? null, owner: a.system?.owner ?? null, agents: [], hosts: [], alerts: [] };
+      s.agents.push(a);
+      const h = hostByAgent.get(a.name); if (h) s.hosts.push(h);
+      byName.set(name, s);
+    }
+    for (const al of data.monitor.alerts) {
+      const s = al.system ? byName.get(al.system) : undefined;
+      if (s) s.alerts.push(al);
+    }
+    return Array.from(byName.values()).sort((x, y) => rank(x.criticality) - rank(y.criticality) || x.name.localeCompare(y.name));
+  }, [data]);
 
-  const levelRows = view
-    ? [4, 3, 2, 1, 0].map((level) => ({
-        key: String(level),
-        label: `L${level} ${view.level_definitions?.[String(level)]?.name ?? ""}`.trim(),
-        value: view.by_level?.[String(level)] ?? 0,
-        tone: level >= 3 ? "critical" : level === 2 ? "amber" : level === 1 ? "slate" : "",
-      }))
-    : [];
+  const shown = onlyAttention
+    ? systems.filter((s) => s.alerts.length || s.agents.some((a) => a.liveness.state !== "LIVE" || a.issues.length))
+    : systems;
+
+  const m = data?.monitor;
+  const t = data?.fleet.totals;
+  const sources = t?.source_states ?? {};
+  const unscoped = m?.alerts.filter((a) => !a.system) ?? [];
 
   return (
-    <div>
-      <PageHead
-        crumb="Overview"
+    <>
+      <OpsHeader
+        crumb="Operations / Live estate"
         title="Live estate"
-        sub="connected estate, stored changes, current BOMs and correlated activity — measured, never assumed"
-        right={
-          <Badge tone={(data?.connection?.state ?? "") === "LIVE" ? "green" : "amber"}>
-            {data?.connection?.state ?? (status.error ? "READ FAILED" : "READING")}
-          </Badge>
-        }
+        icon={<IconEstate size={18} />}
+        sub="The bank's business systems as the agents see them right now: which hosts serve each, whether they are reporting, how loaded they are, and the quantum-vulnerable crypto running on them."
+        right={<LiveBar live={live} />}
       />
-
-      {status.error && (
-        <div role="alert" style={{ marginBottom: 10, fontSize: 11.5, color: "var(--red)" }}>
-          live state unavailable ({status.error}) — nothing below is a current reading
-        </div>
-      )}
-
-      <div style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr", gap: 10, alignItems: "start" }}>
-        <Panel title="Connection" sub="age of the last accepted observation, against the expected interval">
-          <ConnectionBand status={data} />
-        </Panel>
-        <Panel title="Twin" sub="one evidence graph; the six BOMs are projections of it">
-          <TwinBlock status={data} />
-        </Panel>
-      </div>
-
-      <div style={{ height: 10 }} />
-
-      <Panel title="Current BOMs" sub="download projects the twin — no scan, no stored document">
-        <BomDownloadGrid status={data} />
-      </Panel>
-
-      <div style={{ height: 10 }} />
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 10, alignItems: "start" }}>
-        <Panel title="Changes today" sub={data?.changes_today?.note ?? "counted from the stored change feed"}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {/* A count that was never read is not zero. When the status read has
-                not returned, these tiles say so instead of drawing an empty feed. */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
-              <StateCell
-                label="changes"
-                value={data ? nf(data.changes_today?.count) : "—"}
-                note={data ? "stored events (UTC today)" : "the live-state read did not return"}
-              />
-              <StateCell
-                label="unacknowledged"
-                value={data ? nf(data.changes_today?.unacknowledged) : "—"}
-                tone={data && (data.changes_today?.unacknowledged ?? 0) > 0 ? "amber" : ""}
-                note="nobody has marked these seen"
-              />
-              <StateCell
-                label="highest level"
-                value={view ? `L${view.highest_level ?? 0}` : "—"}
-                tone={view && (view.highest_level ?? 0) >= 2 ? "amber" : ""}
-                note={view ? "correlation level, not probability" : "no correlation run returned"}
-              />
-            </div>
-            {severitySegments.length ? (
-              <StackedBar segments={severitySegments} note="share of today's stored changes by stored severity" />
-            ) : (
-              <VizEmpty
-                title="no change stored today"
-                note="that is the live model working: an unchanged poll stores a heartbeat, not an estate copy"
-                height={72}
-              />
-            )}
-            <Link to="/drift" style={{ fontSize: 11, color: "var(--dim)" }}>
-              open the full change feed →
-            </Link>
+      {state !== "ready" || !data || !m ? (
+        <OpsLoadStates state={state} error={error} refresh={refresh} what="The live estate" />
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+            <KpiTile label="Estate connection" ariaLabel="Estate connection" value={m.connection.state}
+              color={m.connection.state === "LIVE" ? "var(--green)" : "var(--amber)"}
+              sub={m.connection.seconds_since === null ? "no observation yet" : `last observation ${fmtAge(m.connection.seconds_since)} ago`} />
+            <KpiTile label="Systems watched" ariaLabel="Systems watched" value={systems.filter((s) => s.name !== "No system declared").length}
+              sub={`${t?.agents ?? 0} hosts with an agent`} />
+            <KpiTile label="Hosts live" ariaLabel="Hosts live" value={<>{t?.live ?? 0}<span style={{ fontSize: 14, color: "var(--faint)" }}> / {t?.agents ?? 0}</span></>}
+              color={t && t.live === t.agents ? "var(--green)" : "var(--amber)"} sub={`heartbeat every ${fmtAge(data.fleet.heartbeat_seconds)}`} />
+            <KpiTile label="Quantum-vulnerable uses" ariaLabel="Quantum-vulnerable uses" value={data.hosts.totals.quantum_vulnerable ?? 0}
+              color={(data.hosts.totals.quantum_vulnerable ?? 0) ? "var(--red)" : "var(--green)"} sub="Shor-breakable algorithms on hosts" />
+            <KpiTile label="Open alerts" ariaLabel="Open alerts" value={m.alerts.length}
+              color={(m.alert_counts.CRITICAL ?? 0) + (m.alert_counts.HIGH ?? 0) ? "var(--red)" : m.alerts.length ? "var(--amber)" : "var(--green)"}
+              sub={<Link to="/live-monitor" style={{ color: "var(--cyan)" }}>open Live monitor →</Link>} />
           </div>
-        </Panel>
 
-        <Panel title="Attack patterns" sub={`stored changes correlated over the last ${Math.round((view?.window_seconds ?? 3600) / 60)} minutes`}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-            <HBars
-              rows={levelRows}
-              emptyTitle="no correlation run"
-              emptyNote="the patterns endpoint returned nothing, so no level can be shown"
-            />
-            <div className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>
-              <span title={"L3 SECURITY_INCIDENT is never assigned by this engine — a correlated change feed is not an incident declaration. L4 means several patterns in one window, not more certainty."}>{"L3 SECURITY_INCIDENT is never assigned by this engine"}</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "4px 0 10px", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>Business systems <span style={{ color: "var(--faint)", fontWeight: 500 }}>most critical first</span></div>
+            <label style={{ fontSize: 12, color: "var(--dim)", display: "flex", gap: 6, alignItems: "center" }}>
+              <input type="checkbox" checked={onlyAttention} onChange={(e) => setOnlyAttention(e.target.checked)} /> only systems needing attention
+            </label>
+          </div>
+          <div aria-label="Systems" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
+            {shown.map((s) => <SystemTile key={s.name} s={s} late={data.fleet.late_after_seconds} offline={data.fleet.offline_after_seconds} />)}
+          </div>
+          {shown.length === 0 ? (
+            <div style={{ ...card, fontSize: 12.5, color: "var(--dim)" }}>
+              {systems.length === 0 ? "No agent is enrolled, so no system is being watched. Enroll Cryptava agents on the bank's hosts." : "Every system is reporting and no alert names one."}
             </div>
-            {(view?.patterns ?? []).length ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {(view?.patterns ?? []).map((pattern) => (
-                  <PatternRow key={pattern.pattern_id} pattern={pattern} />
+          ) : null}
+
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 14 }}>
+            <section aria-label="Collection health" style={{ ...card, flex: "1 1 420px" }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>Collection health</div>
+              <div style={{ fontSize: 11.5, color: "var(--dim)", marginBottom: 10 }}>every source behind every collector, across the fleet</div>
+              <Bar label="Source states" parts={Object.entries(sources).map(([k, n]) => [k, n, SOURCE_COLOR[k] ?? "var(--faint)"])} />
+              <div style={{ display: "grid", gap: 4, marginTop: 10 }}>
+                {Object.entries(sources).sort((a, b) => b[1] - a[1]).map(([k, n]) => (
+                  <div key={k} style={{ display: "grid", gridTemplateColumns: "130px 50px 1fr", gap: 8, fontSize: 11.5 }}>
+                    <b style={{ color: SOURCE_COLOR[k] ?? "var(--dim)", fontFamily: "var(--mono)" }}>{k}</b>
+                    <span style={{ fontVariantNumeric: "tabular-nums" }}>{n}</span>
+                    <span style={{ color: "var(--faint)" }}>{SOURCE_MEANING[k] ?? ""}</span>
+                  </div>
                 ))}
               </div>
-            ) : (
-              <VizEmpty
-                title="no pattern met a correlation rule"
-                note="this is not a statement that the estate is safe; a blind plane is reported as COLLECTION_LOSS, never as quiet"
-                height={92}
-              />
-            )}
+              {m.coverage ? (
+                <div style={{ fontSize: 11.5, color: "var(--dim)", marginTop: 10 }}>
+                  Coverage {typeof m.coverage.coverage_percent === "number" ? `${m.coverage.coverage_percent.toFixed(1)}%` : "—"} — {m.coverage.collected ?? "?"} of {m.coverage.expected ?? "?"} expected targets collected.
+                </div>
+              ) : null}
+            </section>
+            <section aria-label="Estate-wide alerts" style={{ ...card, flex: "1 1 420px" }}>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>Estate-wide</div>
+              <div style={{ fontSize: 11.5, color: "var(--dim)", marginBottom: 10 }}>alerts not tied to one system, and the twin this screen reads</div>
+              <div style={{ display: "grid", gap: 6 }}>
+                {unscoped.map((a) => (
+                  <div key={a.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 12 }}>
+                    <SevBadge severity={a.severity} />
+                    <div><b>{a.title}</b><div style={{ color: "var(--dim)", fontSize: 11.5 }}>{a.next_action}</div></div>
+                  </div>
+                ))}
+                {unscoped.length === 0 ? <div style={{ fontSize: 12, color: "var(--faint)" }}>no estate-wide alert</div> : null}
+              </div>
+              <div style={{ ...kicker, marginTop: 12 }}>
+                twin {m.twin.run_id?.slice(0, 8) ?? "—"} · recorded {fmtWhen(m.twin.recorded_at)} · {m.twin.assets ?? "?"} assets · {m.twin.evidence ?? "?"} evidence
+              </div>
+              <div style={{ fontSize: 11.5, marginTop: 8, display: "flex", gap: 14, flexWrap: "wrap" }}>
+                <Link to="/live-stream" style={{ color: "var(--cyan)" }}>Activity →</Link>
+                <Link to="/live-scanners" style={{ color: "var(--cyan)" }}>Live scanners →</Link>
+                <Link to="/runtime" style={{ color: "var(--cyan)" }}>Runtime hosts →</Link>
+              </div>
+            </section>
           </div>
-        </Panel>
-      </div>
-
-      <div style={{ height: 10 }} />
-
-      <Panel title="What this screen cannot say" sub="stated, because a green band would say it by accident">
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {(data?.limits ?? []).map((limit) => (
-            <div key={limit} style={{ fontSize: 11, color: "var(--dim)", lineHeight: 1.5 }}>
-              · {limit}
-            </div>
-          ))}
-          {(view?.limits ?? []).map((limit) => (
-            <div key={limit} style={{ fontSize: 11, color: "var(--faint)", lineHeight: 1.5 }}>
-              · {limit}
-            </div>
-          ))}
-        </div>
-      </Panel>
-    </div>
+          <details style={{ ...card, marginTop: 14 }}>
+            <summary style={{ cursor: "pointer", fontSize: 12.5, fontWeight: 600 }}>What this screen proves, and what it does not</summary>
+            <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, color: "var(--dim)", lineHeight: 1.6 }}>
+              {[...new Set([...data.fleet.limits, ...data.hosts.limits])].map((l) => <li key={l}>{l}</li>)}
+            </ul>
+          </details>
+        </>
+      )}
+    </>
   );
 }

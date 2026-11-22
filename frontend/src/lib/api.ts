@@ -8090,6 +8090,108 @@ Promise<ApiResult<EstateChangeEvent>> =>
     { note: note ?? null },
   );
 
+/* Operations — live monitoring of the agent-fed estate (/api/v1/operations/*).
+   Read-only. Liveness is the agent heartbeat against its interval; performance is the
+   agents' signed samples (NOT_SAMPLED is unknown, not idle); alerts are deterministic
+   rules with their thresholds shown. */
+export type OpsLivenessState = "LIVE" | "LATE" | "OFFLINE" | "NEVER_REPORTED" | "RETIRED" | "UNREGISTERED";
+export type OpsSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO";
+export interface OpsLiveness {
+  state: OpsLivenessState; age_seconds: number | null; last_heartbeat_at: string | null;
+  late_after_seconds: number; offline_after_seconds: number; meaning: string;
+}
+export interface OpsMetric { value: number; unit?: string | null; at?: string | null }
+export interface OpsPerformance {
+  state: "SAMPLED" | "SAMPLE_STALE" | "NOT_SAMPLED"; sampled_at: string | null; age_seconds: number | null;
+  latest: Record<string, OpsMetric | Record<string, number>>;
+  series?: Record<string, Array<[string, number]>>; meaning?: string;
+}
+export interface OpsHostIdentity {
+  name: string | null; fqdn: string | null; ip_addresses: string[]; os: string | null;
+  kernel: string | null; architecture: string | null; fips_mode: boolean | null;
+}
+export interface OpsSystemRef { name: string | null; owner?: string | null; criticality?: string | null }
+export interface OpsSource { source: string | null; reads?: string | null; state: string | null; found?: number | null; note?: string | null }
+export interface OpsPlane {
+  plane: string | null; bom: string; status: string; reason: string | null;
+  sources: OpsSource[]; source_states: Record<string, number>;
+}
+export interface OpsAgent {
+  name: string; agent_id: string | null; registered: boolean; registry_status: string | null;
+  liveness: OpsLiveness; healthy: boolean | null; link: string | null; version: string | null;
+  target_version: string | null; buffered: number; platform: string | null; environment: string | null;
+  last_seen_ip: string | null; enrolled_at: string | null; host: OpsHostIdentity; system: OpsSystemRef | null;
+  slice: { assets: number; evidence: number; relationships: number; asset_types: Record<string, number>;
+           observed_at: string | null; last_changed_at: string | null; authenticity: string | null;
+           key_id: string | null } | null;
+  planes: OpsPlane[]; plane_states: Record<string, number>; source_states: Record<string, number>;
+  performance: OpsPerformance; issues: string[];
+}
+export interface OpsFleet {
+  schema: string; at: string; run_id?: string | null; heartbeat_seconds: number;
+  late_after_seconds: number; offline_after_seconds: number;
+  totals: { agents: number; by_liveness: Record<string, number>; live: number; reporting: number;
+            with_issues: number; buffered: number; plane_states: Record<string, number>;
+            source_states: Record<string, number>; systems: string[] };
+  agents: OpsAgent[]; limits: string[];
+}
+export interface OpsHost {
+  agent: string; host: OpsHostIdentity; system: OpsSystemRef | null; liveness: OpsLiveness;
+  performance: OpsPerformance;
+  services: Array<{ name: string; executable: string | null; user: string | null; listens_on: string | null;
+                    running: boolean; libraries: string[] }>;
+  listeners: Array<{ name: string; host: string | null; port: string | null; protocol: string | null;
+                     process: string | null; loopback_only: boolean | null; tls_version: string | null; cipher: string | null }>;
+  libraries: Array<{ name: string; version: string | null; path: string | null; loaded: boolean; loaded_by: string[] }>;
+  certificates: Array<{ name: string; subject: string | null; issuer: string | null; algorithm: string | null;
+                        key_size: number | null; not_after: string | null; days_left: number | null }>;
+  keys: Array<{ name: string; algorithm: string | null; key_size: number | null; path: string | null }>;
+  algorithms: Array<{ algorithm: string; verdict: string; status: string | null; runtime: boolean; assets: string[] }>;
+  evidence_types: Record<string, number>; runtime_evidence: number;
+  counts: Record<string, number>;
+}
+export interface OpsHosts {
+  schema: string; at: string; run_id?: string | null; hosts: OpsHost[];
+  totals: Record<string, number>; thresholds: Record<string, number>; limits: string[];
+}
+export interface OpsEvent {
+  id: string; kind: "change" | "pattern" | "agent" | "task"; at: string; severity: OpsSeverity;
+  title: string; detail: string | null; next_action: string | null; agents: string[]; systems: string[];
+  acknowledged: boolean | null; ref: string | null; actor?: string | null; counts: Record<string, number>;
+  items: Array<{ kind: string | null; severity: string | null; subject: string | null; before: unknown; after: unknown; detail: string | null }>;
+  item_total: number; link: string | null;
+}
+export interface OpsActivity {
+  schema: string; at: string; window_hours?: number; events: OpsEvent[];
+  totals: { events: number; last_24h: number; by_kind: Record<string, number>; by_severity: Record<string, number>;
+            unacknowledged_changes: number };
+  hourly: { from: string; to: string; counts: number[] }; limits: string[];
+}
+export interface OpsAlert {
+  id: string; rule: string; severity: OpsSeverity; subject: string; title: string; detail: string;
+  next_action: string; since: string | null; agent: string | null; system: string | null; link: string | null;
+}
+export interface OpsMonitor {
+  schema: string; at: string;
+  status: { state: "OPERATIONAL" | "DEGRADED" | "DOWN" | "NOT_CONNECTED"; headline: string; meaning: string };
+  connection: { state: string; last_observation: string | null; seconds_since: number | null;
+                interval_seconds: number; stale_after_seconds: number; meaning: string };
+  coverage: { coverage_percent?: number | null; expected?: number; collected?: number; coverage_state?: string;
+              by_status?: Record<string, number> } | null;
+  alerts: OpsAlert[]; alert_counts: Record<string, number>;
+  fleet: { heartbeat_seconds: number; late_after_seconds: number; offline_after_seconds: number;
+           totals: OpsFleet["totals"];
+           agents: Array<Pick<OpsAgent, "name" | "system" | "host" | "liveness" | "healthy" | "buffered" | "plane_states" | "performance" | "issues">> };
+  changes: { total: number; unacknowledged: number; last_at: string | null; last_headline: string | null };
+  twin: { run_id: string | null; recorded_at: string | null; assets: number | null; evidence: number | null };
+  limits: string[];
+}
+export const apiOpsFleet = (): Promise<ApiResult<OpsFleet>> => _rsGet<OpsFleet>("/api/v1/operations/fleet");
+export const apiOpsHosts = (): Promise<ApiResult<OpsHosts>> => _rsGet<OpsHosts>("/api/v1/operations/hosts");
+export const apiOpsActivity = (windowHours = 24): Promise<ApiResult<OpsActivity>> =>
+  _rsGet<OpsActivity>(`/api/v1/operations/activity?window_hours=${windowHours}`);
+export const apiOpsMonitor = (): Promise<ApiResult<OpsMonitor>> => _rsGet<OpsMonitor>("/api/v1/operations/monitor");
+
 /* The durable catalogue — the twin's memory across observations.
 
    `lifecycle_state` is the load-bearing field: STALE means "observed before, absent

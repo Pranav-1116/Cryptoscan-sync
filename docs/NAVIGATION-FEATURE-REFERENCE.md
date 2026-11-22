@@ -107,11 +107,11 @@ row for row. Rows with a group render as a disclosure; the `—` rows are links.
 |---|---|---|---|---|
 | Command center | — | `/command-center` | `CommandCenter` | The main operational overview: estate summary, scan state, risk and the entry points into every live workspace. |
 | Operations | Operations | `/live` | — | One workspace over the live estate map, the activity stream and the monitors that feed them. |
-| Live estate | Operations | `/live` | `LiveEstate` | Connection age, stored changes, six BOM downloads and correlated attack patterns. A quiet estate and a stopped agent look identical, so the age is stated; level 3 (incident) is never assigned by the platform. |
-| Activity | Operations | `/live-stream` | `LiveStream` | Durable activity and event stream with live updates. |
-| Live monitor | Operations | `/live-monitor` | `LiveMonitor` | Watch-list daemon and estate streams; a live daemon with no enabled schedule is not collection coverage. |
-| Live scanners | Operations | `/live-scanners` | `LiveScanners` | Live scan runner status; same orchestrator as /scanners. |
-| Runtime hosts | Operations | `/runtime` | `Runtime` | Process-level cryptography observed on real machines by the runtime agent — TLS libraries, versions and links, with the runtime scope ("what may be instrumented") explicit and Tier-2 runtime events metadata-only. |
+| Live estate | Operations | `/live` | `LiveEstate` | Business systems as the agents see them now: hosts per declared system, liveness, CPU, collector completeness, quantum-vulnerable uses and the alerts that name each system; estate-wide collection health. Reads `/operations/{monitor,fleet,hosts}`. |
+| Activity | Operations | `/live-stream` | `LiveStream` | One timeline of estate changes, correlated patterns, agent lifecycle and remediation actions, attributed to agents and systems; filters, itemised change detail and acknowledgement. The platform event bus sits below, collapsed. |
+| Live monitor | Operations | `/live-monitor` | `LiveMonitor` | Overall status (OPERATIONAL / DEGRADED / DOWN / NOT_CONNECTED), deterministic alerts with rule, threshold, since and next action, and every agent's heartbeat against its late/offline thresholds with CPU and memory. Wallboard mode. |
+| Live scanners | Operations | `/live-scanners` | `LiveScanners` | The Cryptava agent fleet: heartbeat, delivery, link and version per agent, and each of the six collectors with every source behind it (READ, EMPTY, ABSENT, DISABLED, NOT_CONFIGURED). The on-demand server scanners sit below, collapsed. |
+| Runtime hosts | Operations | `/runtime` | `Runtime` | Per host: running services, listening sockets, crypto libraries with the process that loaded them, certificates, keys and algorithms with their quantum verdict, and signed load samples. A host with no sample is NOT_SAMPLED, never idle. Runtime crypto sensors sit below, collapsed. |
 | Oversight | Oversight | `/launch-readiness` | — | One row over the two preview oversight workspaces. |
 | Launch readiness | Oversight | `/launch-readiness` | `LaunchReadiness` | Gated independent-report, operational-duty and bounded-pilot records; real assessor execution, site exercises and customer acceptance require external evidence. |
 | Operator decisions | Oversight | `/operator-decisions` | `OperatorDecisions` | Exact-estate decision and condition-proof workflow; local workloads tested, site capacity and deployment acceptance remain open. |
@@ -255,40 +255,55 @@ its own source and freshness — the page never implies one global snapshot.
 
 #### Operations
 
-**`/live` — Live estate (`LiveEstate`).** Connection age and agent state, twin
-status, the six current BOMs (downloadable), changes today, correlated attack
-patterns, and a permanent "What this screen cannot say" panel. Visuals:
-`HBars`, `StackedBar`, `GapBar` with `VizEmpty`/`StateCell`. The age of the last
-observation is always printed, because a quiet estate and a stopped agent look
-identical without it.
+All five Operations pages read one read model, `GET /api/v1/operations/{fleet,hosts,activity,monitor}`
+(`api/operations_monitor.py`), built from what the Cryptava agents actually sent: the
+control-plane registry and heartbeats, each agent's signed estate slice, its signed
+performance samples, the estate change feed, correlated threat patterns and the audit log.
+Every page polls on a visible interval (5–60 s, pausable), keeps the last good answer
+when a read fails and says so, drops the previous tenant's answer on a tenant switch, and
+carries a "what this screen proves" list. Liveness is computed from the heartbeat:
+LIVE inside 3× the heartbeat interval, LATE after it, OFFLINE after the stale window,
+NEVER_REPORTED with no heartbeat. Absence is never drawn as health: a host with no
+performance sample is NOT_SAMPLED, a source that was not read is named as such.
 
-**`/live-stream` — Activity (`LiveStream`).** The signed event bus rendered as
-topic statistics, severity composition, rules that fired, the 13 deterministic
-attack-detection rules and the hash-chained Live CBOM. Ticks and bars
-(`TickStrip`, `HBars`, `StackedBar`) update as events stream (WebSocket/SSE
-with a polling fallback); `toneColor` badges carry severity. A cursor reset is
-shown as a **gap** in the tick strip, never as continuous history.
+**`/live` — Live estate (`LiveEstate`).** The bank's business systems, most critical
+first, each with the hosts whose agent declares it, their liveness and heartbeat age,
+CPU, running services, quantum-vulnerable algorithm uses, collector completeness and the
+alerts that name the system. Hosts with no declared system are listed as such. Below:
+collection health across every source, estate-wide alerts and the twin being read.
 
-**`/live-monitor` — Live monitor (`LiveMonitor`).** The observation record,
-estate composition, assets by domain, TechBOM layers, scan orchestrator,
-per-screen deltas (`DeltaChip`), estate events and scan history. `Sparkline`,
-`Meter`, `TickStrip` and `HBars` show movement between reads; when a stream
-stalls the page says so — a live daemon with no enabled schedule is never drawn
-as collection coverage.
+**`/live-stream` — Activity (`LiveStream`).** One timeline, newest first and grouped by
+day: estate changes caused by agent observations (itemised before → after, acknowledgeable
+from the row), correlated threat patterns, agent lifecycle (enrolled, activated, refused,
+went silent) and remediation actions, each attributed to agents and systems. Filters by
+kind, severity, agent and text; a 24-hour histogram; newly arrived events are marked. An
+unchanged agent report stores a heartbeat, not an event. The platform event bus, the 13
+attack-detection rules and the hash-chained Live CBOM sit in a collapsed section.
 
-**`/live-scanners` — Live scanners (`LiveScanners`).** The scanner fleet, cycle
-record, live activity and a run control. Activity streams over SSE as the real
-scanners run; `Sparkline`/`TickStrip` show the run. Controls (`start`, `stop`)
-are role-gated buttons that report the server's answer — a disabled button is
-never the only refusal, the API rejects unauthorized mutations regardless.
+**`/live-monitor` — Live monitor (`LiveMonitor`).** The overall status and its reason,
+KPIs (agents live, critical/high alerts, estate age, collection coverage, unreviewed
+changes), the alerts produced by deterministic rules (AGENT_OFFLINE / LATE /
+NEVER_REPORTED, DELIVERY_FAILING / BUFFERED, PLANE_FAILED / UNKNOWN, HOST_CPU_HIGH,
+COVERAGE_LOW, THREAT_PATTERN, CHANGES_UNREVIEWED, NO_TRUSTED_COLLECTOR_KEY…) each with
+since-when and a next action, and an agent-freshness grid drawing heartbeat age against the
+late and offline thresholds. A wallboard mode fills the screen. A quiet monitor means the
+agents report, not that the estate is safe.
 
-**`/runtime` — Runtime hosts (`Runtime`).** The runtime agent's view: hosts
-reporting, weak / EOL observations, library status, per-host runtime
-observations, the deploy panel and the runtime scope — "what may be
-instrumented" — controls (scope edits are explicit, auth-checked writes) and
-runtime crypto operations. "No runtime agents reporting yet" is drawn as an
-explicit empty state; Tier-2 runtime sessions carry the metadata-only collection
-boundary — plaintext, keys, passwords, tokens and buffers are never collected.
+**`/live-scanners` — Live scanners (`LiveScanners`).** The agent fleet table (host, IP,
+system, liveness, heartbeat bar, delivery and buffer, link, version, plane chips, slice
+size) with search and liveness filters. Opening an agent shows its host identity, signing
+key, issues and each of its six collector planes with every source, its state, the count
+it found and why a source was not read. The on-demand scanners that run on the CryptoScan
+server itself (SSE activity, run control) sit in a collapsed section and make no request
+until opened.
+
+**`/runtime` — Runtime hosts (`Runtime`).** A host list with live CPU / memory and a
+CPU sparkline; the selected host shows gauges (CPU, memory, disk, load, connections, TLS
+and HSM latency when sampled), running services and the libraries each loads, listening
+sockets (loopback vs exposed, TLS version), crypto libraries with the processes that
+mapped them (from `/proc/<pid>/maps` runtime edges), certificates with days to expiry,
+keys, and algorithms with their quantum verdict. The eBPF/adapter runtime crypto sensors
+sit in a collapsed section.
 #### Oversight
 
 **`/launch-readiness` — Launch readiness (`LaunchReadiness`).** The external

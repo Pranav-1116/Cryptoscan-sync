@@ -55,9 +55,9 @@ role-guarded actions.
 | `/dev-sec-ops` | Discovery | SBOM/container/binary/firmware/mobile/WASM scanning, VEX, licence, gates and correlated binary BOM sidecars; bounded evidence and explicit refusal/partial states. |
 | `/hardware` | Discovery | HSM/TPM/firmware plugins exist (ADR-014); live hardware collection needs vendor access and has a short field history. |
 | `/live-environment` | Discovery | Live environment roll-up of runtime + network. |
-| `/live-scanners` | Discovery | Live scan runner status; same orchestrator as /scanners. |
+| `/live-scanners` | Discovery | Cryptava agent fleet from /operations/fleet: heartbeat liveness, delivery, and every collector plane and source per agent; server-side scanners embedded. |
 | `/network` | Discovery | TLS/cipher/cert probes; 15k LOC, 33 test files. |
-| `/runtime` | Discovery | Host agent findings; agent rollout is per-deployment. |
+| `/runtime` | Discovery | Per-host services, listeners, loaded crypto libraries (runtime edges), certificates, keys, algorithms and signed load samples from /operations/hosts; agent rollout is per-deployment. |
 | `/scanners` | Discovery | Source/network/cloud/container/OT scan triggers over the worker pipeline (12 stages, 29 test files). |
 | `/telecom` | Discovery | 5G NF TLS/cert posture; 1.5k LOC with 24 tests; ran against lab targets only. |
 | `/vendor` | Discovery | 68 vendor plugins across 16 categories; 14k LOC, 31 test files. |
@@ -117,9 +117,9 @@ role-guarded actions.
 | `/command-center` | Overview | Reads the live stats/summary endpoints; empty until a scan runs. |
 | `/executive` | Overview | Executive summary over the same stats; presentation layer. |
 | `/launch-readiness` | Overview | Gated independent-report, operational-duty and bounded-pilot records; real assessor execution, site exercises and customer acceptance require external evidence. |
-| `/live` | Overview | Connection age, stored changes, six BOM downloads and correlated attack patterns. A quiet estate and a stopped agent look identical, so the age is stated; level 3 (incident) is never assigned by the platform, and a pattern reports which collectors corroborate it without raising its level. |
-| `/live-monitor` | Overview | Reads actual daemon and estate streams; a live daemon with no enabled schedule does not provide collection coverage. |
-| `/live-stream` | Overview | SSE event stream with Last-Event-ID resume and Redis federation. |
+| `/live` | Overview | Business systems from /operations/{monitor,fleet,hosts}: hosts per declared system with liveness, load, collector completeness and quantum-vulnerable uses. Connection age is always stated, because a quiet estate and a stopped agent look identical; a pattern is never raised to an incident by the platform. |
+| `/live-monitor` | Overview | Status and deterministic alerts from /operations/monitor over agent heartbeats, delivery, collector planes, performance samples and the change feed; a quiet monitor is not proof the estate is safe. |
+| `/live-stream` | Overview | Activity timeline from /operations/activity: estate changes, threat patterns, agent lifecycle and remediation actions attributed to agents and systems; SSE event bus embedded. |
 | `/operator-decisions` | Overview | Exact-estate decision and condition-proof workflow; local workloads tested, site capacity and deployment acceptance remain open. |
 | `/role-dashboard` | Overview | Per-role landing view. |
 | `/search-results` | Overview | Cross-inventory search. |

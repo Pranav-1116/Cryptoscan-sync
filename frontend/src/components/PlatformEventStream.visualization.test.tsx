@@ -10,9 +10,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { mockFetch } from "../test/setup";
-import LiveStream from "./LiveStream";
+import PlatformEventStream from "./PlatformEventStream";
 
-const draw = () => render(<MemoryRouter><LiveStream /></MemoryRouter>);
+const draw = () => render(<MemoryRouter><PlatformEventStream /></MemoryRouter>);
 const stats = {
   log_dir: "/var/stream",
   chain_len: 42,

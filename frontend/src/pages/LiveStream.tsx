@@ -1,255 +1,240 @@
-import React, { useState } from "react";
-import { Badge, PageHead, Panel } from "../components/ui.jsx";
-import { GapBar, HBars, StackedBar, StateCell, TickStrip, VizEmpty, toneColor } from "../components/viz.jsx";
-import { usePollingApi } from "../lib/apiUi.jsx";
+/* Activity — one timeline of what happened in the estate and to the agents watching it.
+ *
+ * Read from /api/v1/operations/activity: estate changes the agents' observations caused,
+ * correlated threat patterns, agent lifecycle (enrolled, activated, refused, went silent) and
+ * remediation actions — newest first, attributed to agents and systems where the record names
+ * them. A change can be acknowledged here. The platform event bus, attack detector and Live
+ * CBOM sit below, collapsed. */
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { apiEstateChangeAcknowledge, apiOpsActivity, type OpsActivity, type OpsEvent } from "../lib/api.js";
+import { IconLive } from "../components/icons";
+import PlatformEventStream from "../components/PlatformEventStream";
 import {
-  apiAttacks, apiAttackSummary, apiCbomLive, apiCbomVerify,
-  apiCbomSystemVersions, apiStreamStats,
-  AttackDetection, CbomVersion, StreamStats,
-} from "../lib/api.js";
+  Disclosure, KpiTile, LiveBar, OPS_SEV_COLOR, OpsHeader, OpsLoadStates, SevBadge, card, chip, fmtAge, fmtWhen,
+  agoFrom, inputStyle, kicker, parseWhen, useLive,
+} from "../components/opsUi";
 
-/* Live stream & Live CBOM — the realtime surface of the event-stream round.
-   Everything shown comes from the signed event bus: attack detections are the
-   output of deterministic rules evaluated by the stream processor; the CBOM
-   panel reads the JWS-signed, hash-chained version history for any system.
-   Empty until real observations flow through stream ingest or the monitor
-   daemon. No simulated data: an empty bus is drawn as an unmeasured bus, never
-   as a row of zeros, and a lag of zero is only drawn when the payload says 0. */
+const KIND_LABEL: Record<string, string> = { change: "Estate changes", pattern: "Threat patterns", agent: "Agents", task: "Remediation" };
+const KIND_COLOR: Record<string, string> = { change: "var(--violet)", pattern: "var(--red)", agent: "var(--cyan)", task: "var(--amber)" };
 
-const SEV_TONE: Record<string, string> = {
-  CRITICAL: "red", HIGH: "amber", ALERT: "amber", MEDIUM: "amber", LOW: "green",
-};
-const SEV_ORDER = ["CRITICAL", "HIGH", "ALERT", "MEDIUM", "LOW"];
-const sevColor = (s: string) => toneColor(SEV_TONE[s] ?? "slate");
+const readActivity = () => apiOpsActivity(24);
 
-function StreamStatsPanel() {
-  const stats = usePollingApi<StreamStats>(() => apiStreamStats(), 5000);
-  const topics = Object.entries(stats.data?.topics ?? {})
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([topic, st]) => ({ topic, ...st }));
-  const maxSeq = Math.max(0, ...topics.map((t) => t.last_seq ?? 0));
-  const totalInMemory = topics.reduce((n, t) => n + (t.in_memory ?? 0), 0);
-  const maxLag = topics.length ? Math.max(0, ...topics.map((t) => Math.max(0, ...Object.values(t.consumer_groups ?? {}).map((g) => g.lag)))) : null;
-  const groups = topics.reduce((n, t) => n + Object.keys(t.consumer_groups ?? {}).length, 0);
+function Histogram({ counts, from }: { counts: number[]; from: string }) {
+  const max = Math.max(1, ...counts);
+  const start = parseWhen(from)?.getTime() ?? Date.now() - 86400000;
   return (
-    <Panel title="Event bus topics">
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, marginBottom: 10 }}>
-        <StateCell label="topics" value={stats.data ? topics.length : "—"} note={stats.data ? "in the bus registry" : "bus not read"} />
-        <StateCell label="in memory" value={stats.data ? totalInMemory.toLocaleString() : "—"} note="events held, not a rate" />
-        <StateCell label="consumer groups" value={stats.data ? groups : "—"} />
-        <StateCell label="max lag" value={maxLag == null ? "—" : maxLag.toLocaleString()} tone={maxLag ? "amber" : ""} note={maxLag == null ? "no bus registry" : "largest group lag observed"} />
-        <StateCell label="chain length" value={stats.data?.chain_len != null ? String(stats.data.chain_len) : "—"} note={stats.data?.chain_len != null ? "signed event chain" : "not reported"} />
+    <figure aria-label="Events per hour" style={{ margin: 0 }}>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 64 }}>
+        {counts.map((c, i) => {
+          const hour = new Date(start + i * 3600000);
+          return (
+            <div key={i} title={`${hour.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}: ${c} event(s)`}
+              style={{ flex: 1, height: `${Math.max(c ? 8 : 2, (c / max) * 100)}%`, borderRadius: 3,
+                       background: c ? "color-mix(in srgb, var(--cyan) 70%, transparent)" : "var(--line)" }} />
+          );
+        })}
       </div>
-      {!topics.length ? (
-        <VizEmpty title="No topics in the bus" note="Bus not initialized yet — observations appear after the first ingest or daemon pass. An absent bus is not an idle bus." />
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-          {topics.map((t) => {
-            const lag = Math.max(0, ...Object.values(t.consumer_groups ?? {}).map((g) => g.lag));
-            return (
-              <div key={t.topic} style={{ display: "grid", gridTemplateColumns: "minmax(110px, 1.2fr) minmax(60px, 2fr) auto", gap: 8, alignItems: "center" }}>
-                <code style={{ fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={t.topic}>{t.topic}</code>
-                <span style={{ display: "block", height: 8, background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: 2, overflow: "hidden" }} title={`last seq ${t.last_seq}`}>
-                  <span style={{ display: "block", width: `${maxSeq > 0 ? (t.last_seq / maxSeq) * 100 : 0}%`, height: "100%", background: toneColor("") }} />
-                </span>
-                <span className="mono" style={{ fontSize: 10.5, color: "var(--dim)", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" }}>
-                  seq {t.last_seq} · mem {t.in_memory} · grp {Object.keys(t.consumer_groups ?? {}).length} ·{" "}
-                  <span style={{ color: lag > 0 ? sevColor("HIGH") : "var(--faint)" }}>lag {lag}</span>
-                </span>
-              </div>
-            );
-          })}
-          <div className="mono" style={{ fontSize: 10, color: "var(--faint)" }}>bar = last sequence relative to the busiest topic in this read</div>
-        </div>
-      )}
-    </Panel>
+      <figcaption style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--faint)", fontFamily: "var(--mono)", marginTop: 4 }}>
+        <span>24h ago</span><span>12h</span><span>now</span>
+      </figcaption>
+    </figure>
   );
 }
 
-function AttacksPanel() {
-  const attacks = usePollingApi<{ detections: AttackDetection[] }>(() => apiAttacks(50), 5000);
-  const summary = usePollingApi<{ by_rule: Record<string, number>; by_severity: Record<string, number> }>(
-    () => apiAttackSummary(), 5000);
-  const detections = attacks.data?.detections ?? [];
-  const sev = summary.data?.by_severity ?? {};
-  const byRule = summary.data?.by_rule ?? {};
-  const ticks = detections.slice().reverse().map((d) => ({
-    ts: new Date(d.detected_at).toLocaleTimeString(),
-    severity: (d.severity === "CRITICAL" ? "critical" : ["HIGH", "ALERT", "MEDIUM"].includes(d.severity) ? "warn" : "info") as "critical" | "warn" | "info",
-  }));
-  /* Only the severities the summary actually returned. Filling the missing ones
-     with 0 would draw a composition the server never reported. */
-  const severitySegments = [
-    ...SEV_ORDER.filter((s) => sev[s] != null).map((s) => ({ key: s, label: s.toLowerCase(), value: Number(sev[s]), tone: SEV_TONE[s] ?? "slate" })),
-    ...Object.keys(sev).filter((s) => !SEV_ORDER.includes(s)).map((s) => ({ key: s, label: s.toLowerCase(), value: Number(sev[s]), tone: "slate" })),
-  ];
-  const ruleRows = Object.entries(byRule).sort((a, b) => b[1] - a[1]).slice(0, 12)
-    .map(([rule, n]) => ({ key: rule, label: rule, value: n }));
-  return (
-    <>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, margin: "12px 0" }}>
-        <StateCell label="detections read" value={attacks.data ? detections.length : "—"} note={attacks.data ? "most recent page of the detection log" : "detection log not read"} />
-        {SEV_ORDER.slice(0, 4).map((s) => (
-          <StateCell
-            key={s}
-            label={s.toLowerCase()}
-            // a severity the summary did not return is unmeasured, not zero
-            value={summary.data ? (sev[s] == null ? "—" : Number(sev[s])) : "—"}
-            tone={Number(sev[s] ?? 0) > 0 ? SEV_TONE[s] : ""}
-            note="detections by server severity"
-          />
-        ))}
-      </div>
-      <div className="grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 12 }}>
-        <Panel title="Severity composition">
-          <StackedBar segments={severitySegments} note="Counts returned by the detector summary. A share of detections is not a share of exposure." />
-        </Panel>
-        <Panel title="Rules that fired">
-          <HBars rows={ruleRows} emptyTitle="No rule has fired" emptyNote="The summary reports no fired rule for this window. Detection needs real observations first." />
-        </Panel>
-      </div>
-      <Panel title="Real-time attack detections (13 deterministic rules)">
-        <div style={{ marginBottom: 10 }}>
-          <TickStrip ticks={ticks} label="observation ticks — newest first" emptyNote="No detection has been observed, so there are no ticks to draw." />
-        </div>
-        {!detections.length ? (
-          <VizEmpty title="No detections observed" note="Baselines learn from clean traffic — downgrades, pin mismatches, revocations and rate anomalies appear the moment they are observed. Nothing here is assumed clean." />
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {detections.map((d, i) => (
-              <div key={`${d.rule}-${i}`} style={{ display: "grid", gridTemplateColumns: "4px minmax(120px, 1fr) minmax(80px, 1fr) minmax(120px, 2fr) auto", gap: 10, alignItems: "center", padding: "7px 0", borderTop: i ? "1px solid var(--line)" : undefined }}>
-                <span aria-hidden style={{ height: 22, background: sevColor(d.severity) }} />
-                <span className="mono" style={{ fontSize: 10.5, letterSpacing: "0.05em", color: sevColor(d.severity), textTransform: "uppercase" }}>{d.severity}</span>
-                <code style={{ fontSize: 11.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.rule}>{d.rule}</code>
-                <span style={{ fontSize: 11.5, color: "var(--dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={d.detail}>{d.endpoint || d.system || "—"}</span>
-                <span className="mono" style={{ fontSize: 10.5, color: "var(--faint)", whiteSpace: "nowrap" }}>{new Date(d.detected_at).toLocaleTimeString()}</span>
-              </div>
-            ))}
-            <div style={{ display: "grid", gridTemplateColumns: "4px minmax(120px, 1fr) minmax(80px, 1fr) minmax(120px, 2fr) auto", gap: 10, marginTop: 6 }}>
-              <span /><span className="mono" style={{ fontSize: 9.5, color: "var(--faint)", letterSpacing: "0.06em" }}>SEVERITY</span>
-              <span className="mono" style={{ fontSize: 9.5, color: "var(--faint)", letterSpacing: "0.06em" }}>RULE</span>
-              <span className="mono" style={{ fontSize: 9.5, color: "var(--faint)", letterSpacing: "0.06em" }}>ENDPOINT / SYSTEM</span>
-              <span className="mono" style={{ fontSize: 9.5, color: "var(--faint)", letterSpacing: "0.06em" }}>DETECTED</span>
-            </div>
-            <div style={{ marginTop: 10 }}>
-              {detections.filter((d) => d.detail).slice(0, 1).map((d, i) => (
-                <div key={i} style={{ fontSize: 11, color: "var(--dim)" }}>{d.detail}</div>
-              ))}
-            </div>
-          </div>
-        )}
-      </Panel>
-    </>
-  );
-}
-
-function CbomPanel() {
-  const [system, setSystem] = useState("");
-  const [live, setLive] = useState<CbomVersion | null>(null);
-  const [verdict, setVerdict] = useState<{ chain_valid: boolean; broke_at?: number | null } | null>(null);
-  const [versions, setVersions] = useState<CbomVersion[]>([]);
-  const [err, setErr] = useState("");
+function EventRow({ e, now, fresh, onAck }: { e: OpsEvent; now: number; fresh: boolean; onAck: (id: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-
-  const load = async () => {
-    if (!system.trim()) return;
-    setBusy(true); setErr(""); setLive(null); setVerdict(null); setVersions([]);
-    const res = await apiCbomLive(system.trim());
-    // `call()` reports absence through `data`/`error`, not through a flag: a
-    // falsy check on `ok` here would silently refuse every real document.
-    if (!res.data) { setErr(res.error ?? "not found"); setBusy(false); return; }
-    setLive(res.data);
-    const v = await apiCbomVerify(system.trim());
-    // A verification that did not return is NOT a broken chain — it is unchecked.
-    setVerdict(v.data ?? null);
-    const vs = await apiCbomSystemVersions(system.trim());
-    if (vs.data) setVersions(vs.data.versions ?? []);
-    setBusy(false);
-  };
-
-  const fresh = live?.freshness as { stale: boolean; seconds_since_update: number } | undefined;
-  const maxAssets = Math.max(0, ...versions.map((v) => v.asset_count ?? 0));
+  const color = KIND_COLOR[e.kind] ?? "var(--faint)";
   return (
-    <Panel title="Live CBOM (signed, hash-chained)">
-      <div className="row" style={{ gap: 8 }}>
-        <input
-          value={system}
-          onChange={(e) => setSystem(e.target.value)}
-          placeholder="system id (e.g. core-1)"
-          onKeyDown={(e) => { if (e.key === "Enter") void load(); }}
-        />
-        <button className="btn primary" onClick={() => void load()} disabled={busy || !system.trim()}>{busy ? "Inspecting…" : "Inspect"}</button>
+    <li aria-label={`Event ${e.title}`} style={{
+      position: "relative", padding: "10px 12px 10px 18px", borderRadius: "var(--r)",
+      background: fresh ? "color-mix(in srgb, var(--cyan) 8%, var(--panel-2))" : "var(--panel-2)",
+      border: "1px solid var(--line)", transition: "background 1.5s ease",
+    }}>
+      <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, borderRadius: "3px 0 0 3px", background: color }} />
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 10, alignItems: "start" }}>
+        <SevBadge severity={e.severity} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "baseline", flexWrap: "wrap" }}>
+            <span style={{ fontWeight: 700, fontSize: 13 }}>{e.title}</span>
+            <span style={{ fontSize: 10.5, color, fontFamily: "var(--mono)", textTransform: "uppercase" }}>{e.kind}</span>
+            {e.acknowledged === false ? <span style={{ fontSize: 10.5, color: "var(--amber)", fontWeight: 700 }}>unreviewed</span> : null}
+            {e.acknowledged === true ? <span style={{ fontSize: 10.5, color: "var(--green)" }}>reviewed</span> : null}
+            {fresh ? <span style={{ fontSize: 10.5, color: "var(--cyan)", fontWeight: 700 }}>new</span> : null}
+          </div>
+          {e.detail ? <div style={{ fontSize: 12, color: "var(--dim)", marginTop: 2, overflowWrap: "anywhere" }}>{e.detail}</div> : null}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+            {e.systems.map((s) => <span key={s} style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 99, border: "1px solid var(--line)", color: "var(--text)" }}>{s}</span>)}
+            {e.agents.slice(0, 4).map((a) => <span key={a} style={{ fontSize: 10.5, padding: "1px 7px", borderRadius: 99, background: "var(--panel)", color: "var(--dim)", fontFamily: "var(--mono)" }}>{a}</span>)}
+            {e.agents.length > 4 ? <span style={{ fontSize: 10.5, color: "var(--faint)" }}>+{e.agents.length - 4}</span> : null}
+            {e.actor ? <span style={{ fontSize: 10.5, color: "var(--faint)" }}>by {e.actor}</span> : null}
+          </div>
+        </div>
+        <div style={{ textAlign: "right", fontSize: 11, color: "var(--dim)", whiteSpace: "nowrap", display: "grid", gap: 4, justifyItems: "end" }}>
+          <span title={fmtWhen(e.at)}>{fmtAge(agoFrom(e.at, now))} ago</span>
+          {e.items.length ? (
+            <button className="btn" aria-expanded={open} aria-label={`Details of ${e.title} at ${e.at}`} style={{ padding: "2px 8px", fontSize: 11 }} onClick={() => setOpen(!open)}>
+              {open ? "Hide" : `${e.item_total} detail(s)`}
+            </button>
+          ) : null}
+          {e.kind === "change" && e.acknowledged === false && e.ref ? (
+            <button className="btn" disabled={busy} aria-label={`Acknowledge ${e.ref}`} style={{ padding: "2px 8px", fontSize: 11 }}
+              onClick={async () => { setBusy(true); await onAck(e.ref as string); setBusy(false); }}>
+              {busy ? "…" : "Acknowledge"}
+            </button>
+          ) : null}
+        </div>
       </div>
-      {err && <p className="sub" style={{ color: "var(--red)" }}>{err}</p>}
-      {live && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, margin: "12px 0" }}>
-          <StateCell label="version" value={`#${live.version_no}`} note={new Date(String(live.generated_at)).toLocaleString()} />
-          <StateCell label="assets" value={String(live.asset_count)} note="components in this signed document" />
-          <StateCell
-            label="freshness"
-            value={fresh ? (fresh.stale ? "STALE" : `${Math.round(fresh.seconds_since_update)}s`) : "NOT REPORTED"}
-            tone={fresh ? (fresh.stale ? "amber" : "green") : ""}
-            note={fresh ? "record's own age, no extrapolation" : "payload carries no freshness block"}
-          />
-          <StateCell
-            label="hash chain"
-            value={verdict ? (verdict.chain_valid ? "VERIFIED" : `BROKEN @${verdict.broke_at}`) : "NOT CHECKED"}
-            tone={verdict ? (verdict.chain_valid ? "green" : "red") : ""}
-            note={verdict ? "checked against the stored chain" : "verification did not return"}
-          />
+      {open ? (
+        <div style={{ marginTop: 10, borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+          {e.next_action ? <div style={{ fontSize: 12, marginBottom: 8 }}><span style={{ color: "var(--faint)" }}>Next: </span>{e.next_action}</div> : null}
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11.5 }}>
+            <tbody>
+              {e.items.map((it, i) => (
+                <tr key={i} style={{ borderTop: i ? "1px solid var(--line)" : undefined, verticalAlign: "top" }}>
+                  <td style={{ padding: "4px 8px 4px 0", fontFamily: "var(--mono)", fontSize: 10.5, color: "var(--violet)", whiteSpace: "nowrap" }}>{it.kind}</td>
+                  <td style={{ padding: "4px 8px 4px 0", overflowWrap: "anywhere" }}>{it.subject}</td>
+                  <td style={{ padding: "4px 0", color: "var(--dim)", fontFamily: "var(--mono)", fontSize: 10.5, whiteSpace: "nowrap" }}>
+                    {it.before !== null && it.before !== undefined ? `${String(it.before)} → ` : ""}{it.after !== null && it.after !== undefined ? String(it.after) : ""}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {e.item_total > e.items.length ? <div style={{ fontSize: 11, color: "var(--faint)", marginTop: 4 }}>{e.item_total - e.items.length} more not shown</div> : null}
+          {e.link ? <Link to={e.link} style={{ fontSize: 11.5, color: "var(--cyan)" }}>Open →</Link> : null}
         </div>
-      )}
-      {live && verdict && !verdict.chain_valid && (
-        <div style={{ marginBottom: 10, border: `1px solid ${toneColor("red")}`, borderRadius: "var(--r)", background: "var(--panel-2)", backgroundImage: "repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--red) 10%, transparent) 6px 8px)", padding: "8px 10px" }}>
-          <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: toneColor("red") }}>chain does not verify</div>
-          <div style={{ fontSize: 11.5, color: "var(--dim)", lineHeight: 1.5 }}>
-            {`The hash chain does not verify for this system${verdict.broke_at != null ? ` — first break at version ${verdict.broke_at}` : ""}. Later versions are not provably linked to earlier ones.`}
-          </div>
-        </div>
-      )}
-      {live && verdict === null && (
-        <div style={{ marginBottom: 10 }}>
-          <GapBar label="chain integrity" reason="The verification read did not return, so no chain verdict exists. The document is shown as read, not as verified." />
-        </div>
-      )}
-      {live && versions.length > 0 && (
-        <div>
-          <div className="mono" style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--faint)", marginBottom: 5 }}>
-            version history — {versions.length} retained version(s)
-          </div>
-          <HBars unit="" rows={versions.slice().reverse().map((v) => ({
-            key: `${v.version_no}`,
-            label: `#${v.version_no} · ${String(v.version_hash).slice(0, 12)}…`,
-            value: v.asset_count ?? 0,
-            note: new Date(String(v.generated_at)).toLocaleString(),
-          }))} emptyTitle="No retained versions" emptyNote="Versions exist once real observations for this system reach the stream." />
-          <div className="mono" style={{ fontSize: 10, color: "var(--faint)", marginTop: 5 }}>bar = asset count relative to the largest version in this history · JWS HS256 on every version</div>
-        </div>
-      )}
-      {live && !versions.length && (
-        <VizEmpty title="No retained version history" note="The current document exists but the system returned no earlier versions to draw." />
-      )}
-      {!live && !err && !busy && (
-        <VizEmpty title="No system inspected" note="Enter a system id to read its current signed CBOM, the chain verdict and the retained version history. Nothing is drawn before a read." />
-      )}
-    </Panel>
+      ) : null}
+    </li>
   );
+}
+
+function dayLabel(iso: string): string {
+  const d = parseWhen(iso);
+  if (!d) return "Unknown day";
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const day = new Date(d); day.setHours(0, 0, 0, 0);
+  const diff = Math.round((today.getTime() - day.getTime()) / 86400000);
+  return diff === 0 ? "Today" : diff === 1 ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
 export default function LiveStream() {
+  const live = useLive<OpsActivity>(readActivity, 10000);
+  const { data, state, error, refresh, now } = live;
+  const [kinds, setKinds] = useState<Set<string>>(new Set());
+  const [severity, setSeverity] = useState<string | null>(null);
+  const [agent, setAgent] = useState("");
+  const [query, setQuery] = useState("");
+  const [unreviewed, setUnreviewed] = useState(false);
+  const [limit, setLimit] = useState(60);
+  const seen = useRef<Set<string> | null>(null);
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
+
+  // highlight events that arrived after the first read of this screen
+  useEffect(() => {
+    if (!data) return;
+    const ids = new Set(data.events.map((e) => e.id));
+    if (seen.current === null) { seen.current = ids; return; }
+    const arrived = data.events.filter((e) => !seen.current!.has(e.id)).map((e) => e.id);
+    seen.current = ids;
+    if (arrived.length) setFresh(new Set(arrived));
+  }, [data]);
+
+  const agents = useMemo(() => Array.from(new Set((data?.events ?? []).flatMap((e) => e.agents))).sort(), [data]);
+  const events = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (data?.events ?? []).filter((e) =>
+      (kinds.size === 0 || kinds.has(e.kind)) && (!severity || e.severity === severity) &&
+      (!agent || e.agents.includes(agent)) && (!unreviewed || e.acknowledged === false) &&
+      (!q || [e.title, e.detail, ...e.systems, ...e.agents].some((v) => String(v ?? "").toLowerCase().includes(q))));
+  }, [data, kinds, severity, agent, query, unreviewed]);
+
+  const ack = async (id: string) => { await apiEstateChangeAcknowledge(id, "reviewed in Activity"); await refresh(); };
+  const toggleKind = (k: string) => setKinds((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+
+  let lastDay = "";
+  const t = data?.totals;
+
   return (
     <>
-      <PageHead
-        crumb="Platform / Stream"
-        title="Live stream & attack detection"
-        sub="recorded live events, detections and the Live CBOM"
-        right={<Badge tone=""><span className="dot" /> DETERMINISTIC RULES</Badge>}
+      <OpsHeader
+        crumb="Operations / Activity"
+        title="Activity"
+        icon={<IconLive size={18} />}
+        sub="Everything that happened in the estate and to the agents watching it: changes their observations caused, correlated patterns, agent lifecycle and remediation actions — newest first."
+        right={<LiveBar live={live} />}
       />
-      <AttacksPanel />
-      <div className="grid-2" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-        <StreamStatsPanel />
-        <CbomPanel />
-      </div>
+      {state !== "ready" || !data ? (
+        <OpsLoadStates state={state} error={error} refresh={refresh} what="The activity timeline" />
+      ) : (
+        <>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 14 }}>
+            <KpiTile label="Events · 24h" ariaLabel="Events in 24 hours" value={t?.last_24h ?? 0} sub={`${t?.events ?? 0} in the feed`} />
+            <KpiTile label="Unreviewed changes" ariaLabel="Unreviewed changes" value={t?.unacknowledged_changes ?? 0}
+              color={t?.unacknowledged_changes ? "var(--amber)" : "var(--green)"} active={unreviewed} onClick={() => setUnreviewed(!unreviewed)}
+              sub="estate changes nobody acknowledged" />
+            <KpiTile label="Critical & high" ariaLabel="Critical and high events" value={(t?.by_severity.CRITICAL ?? 0) + (t?.by_severity.HIGH ?? 0)}
+              color={(t?.by_severity.CRITICAL ?? 0) + (t?.by_severity.HIGH ?? 0) ? "var(--red)" : "var(--green)"}
+              active={severity === "HIGH"} onClick={() => setSeverity(severity === "HIGH" ? null : "HIGH")} sub="patterns, refusals, silent agents" />
+            <div style={{ ...card, flex: "2 1 320px", minWidth: 280 }}>
+              <div style={kicker}>Events per hour · last 24h</div>
+              <div style={{ marginTop: 8 }}><Histogram counts={data.hourly.counts} from={data.hourly.from} /></div>
+            </div>
+          </div>
+
+          <section aria-label="Timeline" style={card}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
+              {Object.keys(KIND_LABEL).map((k) => (
+                <button key={k} aria-label={`Show ${KIND_LABEL[k]}`} aria-pressed={kinds.has(k)} style={chip(kinds.has(k), KIND_COLOR[k])} onClick={() => toggleKind(k)}>
+                  {KIND_LABEL[k]} {t?.by_kind[k] ?? 0}
+                </button>
+              ))}
+              <select aria-label="Severity" value={severity ?? ""} onChange={(e) => setSeverity(e.target.value || null)} style={inputStyle}>
+                <option value="">Any severity</option>
+                {["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"].map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+              <select aria-label="Agent" value={agent} onChange={(e) => setAgent(e.target.value)} style={inputStyle}>
+                <option value="">Any agent</option>
+                {agents.map((a) => <option key={a} value={a}>{a}</option>)}
+              </select>
+              <input aria-label="Search activity" placeholder="Search…" value={query} onChange={(e) => setQuery(e.target.value)} style={{ ...inputStyle, flex: "1 1 180px" }} />
+              <label style={{ fontSize: 12, color: "var(--dim)", display: "flex", gap: 6, alignItems: "center" }}>
+                <input type="checkbox" checked={unreviewed} onChange={(e) => setUnreviewed(e.target.checked)} /> unreviewed only
+              </label>
+            </div>
+            {events.length === 0 ? (
+              <div style={{ padding: 14, fontSize: 12.5, color: "var(--dim)" }}>
+                {data.events.length === 0 ? "Nothing has happened yet: no change, pattern or agent event is stored." : "No event matches these filters."}
+              </div>
+            ) : (
+              <ol aria-label="Events" style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 8 }}>
+                {events.slice(0, limit).map((e) => {
+                  const day = dayLabel(e.at);
+                  const header = day !== lastDay ? day : null;
+                  lastDay = day;
+                  return (
+                    <React.Fragment key={e.id}>
+                      {header ? <li aria-hidden style={{ ...kicker, padding: "6px 2px 0" }}>{header}</li> : null}
+                      <EventRow e={e} now={now} fresh={fresh.has(e.id)} onAck={ack} />
+                    </React.Fragment>
+                  );
+                })}
+              </ol>
+            )}
+            {events.length > limit ? (
+              <button className="btn" style={{ marginTop: 10 }} onClick={() => setLimit(limit + 60)}>Show {Math.min(60, events.length - limit)} more</button>
+            ) : null}
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginTop: 12, fontSize: 11, color: "var(--faint)" }}>
+              {Object.entries(OPS_SEV_COLOR).map(([k, c]) => <span key={k}><b style={{ color: c, fontFamily: "var(--mono)" }}>{k}</b></span>)}
+              <span>· an unchanged agent report stores a heartbeat, not an event — the feed lists changes, not every report</span>
+            </div>
+          </section>
+        </>
+      )}
+      <Disclosure title="Platform event bus & attack detection" sub="The in-process event bus, the 13 deterministic attack-detection rules and the signed, hash-chained Live CBOM.">
+        <PlatformEventStream embedded />
+      </Disclosure>
     </>
   );
 }

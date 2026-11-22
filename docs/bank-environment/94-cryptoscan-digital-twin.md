@@ -1483,3 +1483,26 @@ configured Neo4j store, `dry_run` **default**. Its honesty lives in four refusal
 * Simulation changes *evidence facts in a copy*, not a real configuration. It can
   tell you that a BOM would change; it cannot tell you that a vendor's firmware
   would accept it — that stays a human finding.
+
+### Operations: live monitoring of the agents and the estate
+
+The Operations pages (Live estate, Activity, Live monitor, Live scanners, Runtime hosts)
+read one read model, `GET /api/v1/operations/{fleet,hosts,activity,monitor}`
+(`api/operations_monitor.py`, router `api/routers/operations.py`). It joins what the
+Cryptava agents actually sent — control-plane registry and heartbeats, each agent's signed
+estate slice and plane/source status, signed performance samples, the estate change feed,
+correlated threat patterns and the audit log — and computes:
+
+- liveness per agent from its heartbeat: LIVE, LATE (past 3× the interval), OFFLINE (past
+  the stale window), NEVER_REPORTED, RETIRED;
+- per host: running services, listeners, crypto libraries with the process that loaded
+  them (only from `uses_crypto_library` runtime edges, never from a file existing),
+  certificates, keys and algorithms with `quantum_verdict`, and the performance series;
+- deterministic alerts with severity, since-when and next action (a silent tier-0 agent is
+  CRITICAL), and an overall state OPERATIONAL / DEGRADED / DOWN / NOT_CONNECTED;
+- one activity timeline attributed to agents and systems.
+
+Nothing in this read model scans or mutates. A host with no sample is NOT_SAMPLED, not
+idle; a quiet screen means the agents report, not that the estate is safe. Tests:
+`services/api/tests/unit/test_operations_monitor.py`.
+

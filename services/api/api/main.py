@@ -79,6 +79,7 @@ from api.routers import (
     estate,
     estate_graph,
     ingestion,
+    operations as operations_router,
     pqc_migration,
     roadmap_intelligence,
     roadmap_operations,
@@ -632,6 +633,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(scale_validation.router, prefix=prefix)
     app.include_router(failure_matrix.router, prefix=prefix)
     app.include_router(ingestion.router, prefix=prefix)
+    app.include_router(operations_router.router, prefix=prefix)
     app.include_router(scans.router, prefix=prefix)
     app.include_router(accuracy.router, prefix=prefix)
     app.include_router(findings.router, prefix=prefix)

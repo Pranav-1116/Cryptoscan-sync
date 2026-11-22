@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "../test/render";
 import { mockFetch } from "../test/setup";
-import LiveScanners from "./LiveScanners";
+import ServerScanners from "./ServerScanners";
 
 const statusPath = "/api/v1/live-scan/status";
 
@@ -20,7 +20,7 @@ const idle = {
 describe("realtime scanner visualisation", () => {
   it("shows an empty fleet as an absence, not as eight silent passes", async () => {
     mockFetch({ [statusPath]: idle });
-    renderWithProviders(<LiveScanners />, { route: "/live-scanners" });
+    renderWithProviders(<ServerScanners />, { route: "/live-scanners" });
     expect(await screen.findByText("No scanner result recorded")).toBeInTheDocument();
     // “no result” is counted separately from ok and failed
     expect(screen.getByText("no result")).toBeInTheDocument();
@@ -42,7 +42,7 @@ describe("realtime scanner visualisation", () => {
         },
       },
     });
-    renderWithProviders(<LiveScanners />, { route: "/live-scanners" });
+    renderWithProviders(<ServerScanners />, { route: "/live-scanners" });
     await waitFor(() => expect(screen.getByText("2.50s")).toBeInTheDocument());
     expect(screen.getByText("9.00s")).toBeInTheDocument();
     expect(screen.getByText("collector denied")).toBeInTheDocument();
@@ -55,7 +55,7 @@ describe("realtime scanner visualisation", () => {
     mockFetch({
       [statusPath]: { ...idle, last_run_at: "2026-10-29T06:00:00Z", ok_count: 2, failed_count: 0, scanners: { hardware: { ok: true } } },
     });
-    renderWithProviders(<LiveScanners />, { route: "/live-scanners" });
+    renderWithProviders(<ServerScanners />, { route: "/live-scanners" });
     await waitFor(() => expect(screen.getByText("Cycles observed here")).toBeInTheDocument());
     // one cycle seen through the status snapshot
     expect(screen.getAllByText("1").length).toBeGreaterThan(0);
@@ -66,7 +66,7 @@ describe("realtime scanner visualisation", () => {
 
   it("marks which scanners the current form would request", async () => {
     mockFetch({ [statusPath]: idle });
-    renderWithProviders(<LiveScanners />, { route: "/live-scanners" });
+    renderWithProviders(<ServerScanners />, { route: "/live-scanners" });
     await screen.findByText("will request");
     // hardware + runtime always, every target scanner is off until a target is given
     expect(screen.getByTitle("Hardware (CPU / TPM / HSM)")).toBeInTheDocument();

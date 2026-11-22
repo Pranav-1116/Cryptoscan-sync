@@ -308,7 +308,7 @@ export const CAPABILITY_LIMITS = {
   },
   "live": {
     "area": "Overview",
-    "limit": "Connection age, stored changes, six BOM downloads and correlated attack patterns. A quiet estate and a stopped agent look identical, so the age is stated; level 3 (incident) is never assigned by the platform, and a pattern reports which collectors corroborate it without raising its level."
+    "limit": "Business systems from /operations/{monitor,fleet,hosts}: hosts per declared system with liveness, load, collector completeness and quantum-vulnerable uses. Connection age is always stated, because a quiet estate and a stopped agent look identical; a pattern is never raised to an incident by the platform."
   },
   "live-asset-intelligence": {
     "area": "Intelligence",
@@ -320,15 +320,15 @@ export const CAPABILITY_LIMITS = {
   },
   "live-monitor": {
     "area": "Overview",
-    "limit": "Reads actual daemon and estate streams; a live daemon with no enabled schedule does not provide collection coverage."
+    "limit": "Status and deterministic alerts from /operations/monitor over agent heartbeats, delivery, collector planes, performance samples and the change feed; a quiet monitor is not proof the estate is safe."
   },
   "live-scanners": {
     "area": "Discovery",
-    "limit": "Live scan runner status; same orchestrator as /scanners."
+    "limit": "Cryptava agent fleet from /operations/fleet: heartbeat liveness, delivery, and every collector plane and source per agent; server-side scanners embedded."
   },
   "live-stream": {
     "area": "Overview",
-    "limit": "SSE event stream with Last-Event-ID resume and Redis federation."
+    "limit": "Activity timeline from /operations/activity: estate changes, threat patterns, agent lifecycle and remediation actions attributed to agents and systems; SSE event bus embedded."
   },
   "login": {
     "area": "Auth",
@@ -420,7 +420,7 @@ export const CAPABILITY_LIMITS = {
   },
   "runtime": {
     "area": "Discovery",
-    "limit": "Host agent findings; agent rollout is per-deployment."
+    "limit": "Per-host services, listeners, loaded crypto libraries (runtime edges), certificates, keys, algorithms and signed load samples from /operations/hosts; agent rollout is per-deployment."
   },
   "sbom": {
     "area": "Intelligence",
