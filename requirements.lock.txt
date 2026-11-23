@@ -67,7 +67,7 @@ azure-keyvault-keys==4.11.3
 # OSPG fork from git. Locked to the fork's build version so a floating git ref
 # cannot silently change the built artifact under this constraint.
 binwalk==2.4.3+ce6c706
-boto3==1.43.114
+boto3==1.44.7
 botocore==1.43.114
 charset-normalizer==3.5.2
 coverage==7.16.2
